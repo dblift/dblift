@@ -95,7 +95,7 @@ def test_with_delete_returning_insert_writes_correct_row(pg_schema) -> None:
 
     Executed through ``StatementSplitter`` + the provider directly (not the
     full ``migrate()`` path): a CTE-prefixed INSERT is a separate, pre-existing
-    statement-type misclassification in ``SqlAnalyzer`` unrelated to this fix,
+    statement-type misclassification in ``StatementReader`` unrelated to this fix,
     and is not what this test is proving.
     """
     from dblift.core.migration.sql.statement_splitter import StatementSplitter

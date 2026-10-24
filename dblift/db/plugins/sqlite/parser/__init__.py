@@ -1,9 +1,1 @@
-"""
-SQLite SQL Parser module.
-
-This module provides SQLite-specific SQL parsing capabilities.
-"""
-
-from .sqlite_regex_parser import SQLiteRegexParser
-
-__all__ = ["SQLiteRegexParser"]
+"""SQLite SQL reading: the lexical spec splits scripts and the statement facts read each one."""

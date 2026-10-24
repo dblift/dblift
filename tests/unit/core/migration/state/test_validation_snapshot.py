@@ -253,3 +253,208 @@ def test_client_validate_returns_failed_result_for_unreadable_history(client, tm
         result = client.validate()
     assert not result.success
     assert "could not read migration history" in result.error_message
+
+
+def test_snapshot_and_state_carry_repeatable_runs(client, tmp_path):
+    (tmp_path / "R__view.sql").write_text("SELECT 1;")
+    manager = client.executor.state_manager
+
+    before = manager.build_validation_snapshot(tmp_path, "validate")
+    assert before.repeatable_runs["R__view.sql"].status.value == "NEW"
+    assert manager.build_state(tmp_path).repeatable_runs["R__view.sql"].status.value == "NEW"
+
+    assert client.migrate().success
+    after = manager.build_validation_snapshot(tmp_path, "validate")
+    assert after.repeatable_runs["R__view.sql"].status.value == "UNCHANGED"
+    assert manager.build_state(tmp_path).repeatable_runs["R__view.sql"].status.value == "UNCHANGED"
+
+
+def _edited_v1(tmp_path):
+    (tmp_path / "V1__init.sql").write_text("SELECT 1;")
+    (tmp_path / "V2__more.sql").write_text("SELECT 2;")
+
+
+def test_build_state_reports_drift(client, tmp_path):
+    _edited_v1(tmp_path)
+    assert client.migrate().success
+    manager = client.executor.state_manager
+    assert manager.build_state(tmp_path).checksum_drift == ()
+    (tmp_path / "V1__init.sql").write_text("SELECT 1; -- edited")
+    state = manager.build_state(tmp_path)
+    assert [d.script_name for d in state.checksum_drift] == ["V1__init.sql"]
+    assert not state.checksum_drift[0].repeatable
+    assert state.copy().checksum_drift == state.checksum_drift
+    assert manager.build_state(None).checksum_drift == ()
+
+
+def test_snapshot_reports_drift(client, tmp_path):
+    _edited_v1(tmp_path)
+    assert client.migrate().success
+    manager = client.executor.state_manager
+    assert manager.build_validation_snapshot(tmp_path, "validate").checksum_drift == ()
+    (tmp_path / "V1__init.sql").write_text("SELECT 1; -- edited")
+    snapshot = manager.build_validation_snapshot(tmp_path, "validate")
+    assert [d.script_name for d in snapshot.checksum_drift] == ["V1__init.sql"]
+    # A script outside the version scope is not reported.
+    scoped = manager.build_validation_snapshot(tmp_path, "validate", versions=["2"])
+    assert scoped.checksum_drift == ()
+
+
+def _plan_refuses(manager, tmp_path):
+    from dblift.core.migration.state.migrate_plan import StrictModeError
+
+    try:
+        manager.plan_migrate(
+            tmp_path,
+            recursive=True,
+            additional_dirs=None,
+            dir_recursive_map=None,
+            target_version=None,
+            tags=None,
+            exclude_tags=None,
+            versions=None,
+            exclude_versions=None,
+            strict_mode=True,
+        )
+    except StrictModeError:
+        return True
+    return False
+
+
+def _applied_v1_v3(tmp_path):
+    (tmp_path / "V1__a.sql").write_text("SELECT 1;")
+    (tmp_path / "V3__c.sql").write_text("SELECT 3;")
+    (tmp_path / "U3__c.sql").write_text("SELECT -3;")
+
+
+def test_snapshot_out_of_order_is_measured_against_current_version(client, tmp_path):
+    _applied_v1_v3(tmp_path)
+    assert client.migrate().success
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    manager = client.executor.state_manager
+
+    snapshot = manager.build_validation_snapshot(tmp_path, "validate", strict_mode=True)
+
+    assert [(o.migration.script_name, o.current_version) for o in snapshot.out_of_order] == [
+        ("V2__b.sql", "3")
+    ]
+    assert _plan_refuses(manager, tmp_path)
+
+
+def test_snapshot_out_of_order_ignores_undone_versions(client, tmp_path):
+    _applied_v1_v3(tmp_path)
+    assert client.migrate().success
+    assert client.undo().success
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    manager = client.executor.state_manager
+
+    snapshot = manager.build_validation_snapshot(tmp_path, "validate", strict_mode=True)
+
+    assert snapshot.out_of_order == ()
+    assert not _plan_refuses(manager, tmp_path)
+
+
+def test_snapshot_out_of_order_follows_the_selection(client, tmp_path):
+    _applied_v1_v3(tmp_path)
+    assert client.migrate().success
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    manager = client.executor.state_manager
+
+    excluded = manager.build_validation_snapshot(
+        tmp_path, "validate", strict_mode=True, exclude_versions=["2"]
+    )
+
+    assert excluded.out_of_order == ()
+
+
+def test_snapshot_out_of_order_is_only_computed_for_strict_validation(client, tmp_path):
+    _applied_v1_v3(tmp_path)
+    assert client.migrate().success
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    manager = client.executor.state_manager
+
+    with patch.object(manager, "_analyse_history", wraps=manager._analyse_history) as analyse:
+        loose = manager.build_validation_snapshot(tmp_path, "validate", strict_mode=False)
+
+    assert loose.out_of_order == ()
+    analyse.assert_not_called()
+
+
+def test_snapshot_missing_applied_ignores_tag_and_version_filters(client, tmp_path):
+    (tmp_path / "V1__a.sql").write_text("SELECT 1;")
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    assert client.migrate().success
+    (tmp_path / "V2__b.sql").unlink()
+    manager = client.executor.state_manager
+
+    everything = manager.build_validation_snapshot(tmp_path, "validate")
+    filtered = manager.build_validation_snapshot(tmp_path, "validate", versions=["1"])
+
+    assert [m.script_name for m in everything.missing_applied] == ["V2__b.sql"]
+    # Version 2 is outside the filter, so its row is out of scope, not missing.
+    assert filtered.missing_applied == ()
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    present = manager.build_validation_snapshot(tmp_path, "validate", versions=["1"])
+    assert present.missing_applied == ()
+
+
+def test_snapshot_missing_applied_is_filled_without_strict_mode(client, tmp_path):
+    (tmp_path / "V1__a.sql").write_text("SELECT 1;")
+    assert client.migrate().success
+    (tmp_path / "V1__a.sql").unlink()
+    manager = client.executor.state_manager
+
+    with patch.object(manager, "_analyse_history", wraps=manager._analyse_history) as analyse:
+        loose = manager.build_validation_snapshot(tmp_path, "validate", strict_mode=False)
+
+    assert [m.script_name for m in loose.missing_applied] == ["V1__a.sql"]
+    analyse.assert_not_called()
+
+
+def test_state_missing_applied_follows_the_catalog(client, tmp_path):
+    (tmp_path / "V1__a.sql").write_text("SELECT 1;")
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    assert client.migrate().success
+    (tmp_path / "V2__b.sql").unlink()
+    manager = client.executor.state_manager
+
+    state = manager.build_state(tmp_path)
+    without_catalog = manager.build_state(None)
+
+    assert [m.script_name for m in state.missing_applied] == ["V2__b.sql"]
+    assert state.copy().missing_applied == state.missing_applied
+    assert without_catalog.missing_applied == ()
+
+
+def _applied_v1_v2_with_undo(client, tmp_path):
+    (tmp_path / "V1__a.sql").write_text("SELECT 1;")
+    (tmp_path / "V2__b.sql").write_text("SELECT 2;")
+    (tmp_path / "U2__b.sql").write_text("SELECT -2;")
+    assert client.migrate().success
+
+
+def test_undone_version_with_deleted_script_is_not_missing(client, tmp_path):
+    _applied_v1_v2_with_undo(client, tmp_path)
+    assert client.undo().success
+    (tmp_path / "V2__b.sql").unlink()
+    manager = client.executor.state_manager
+
+    snapshot = manager.build_validation_snapshot(tmp_path, "validate")
+    state = manager.build_state(tmp_path)
+
+    assert snapshot.missing_applied == ()
+    assert state.missing_applied == ()
+
+
+def test_reapplied_version_with_deleted_script_is_missing(client, tmp_path):
+    _applied_v1_v2_with_undo(client, tmp_path)
+    assert client.undo().success
+    assert client.migrate().success
+    (tmp_path / "V2__b.sql").unlink()
+    manager = client.executor.state_manager
+
+    snapshot = manager.build_validation_snapshot(tmp_path, "validate")
+    state = manager.build_state(tmp_path)
+
+    assert [m.script_name for m in snapshot.missing_applied] == ["V2__b.sql"]
+    assert [m.script_name for m in state.missing_applied] == ["V2__b.sql"]

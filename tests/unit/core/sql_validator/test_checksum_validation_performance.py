@@ -6,9 +6,13 @@ from unittest.mock import patch
 import pytest
 
 from dblift.core.logger import NullLog
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.state.checksum_drift import find_checksum_drift
+from dblift.core.migration.state.missing_scripts import missing_applied
+from dblift.core.migration.state.repeatable_status import repeatable_runs
 from dblift.core.sql_validator.migration_validator import MigrationValidator, ValidationResult
+from tests.unit._migration_factory import make_migration
 
 
 class CountingList(list):
@@ -35,7 +39,7 @@ def validator():
 
 
 def history(script, *, checksum=None, success=True, type=None, rank=1, name=None):
-    row = Migration(script_name=name or script.script_name, type=type or script.type)
+    row = make_migration(script_name=name or script.script_name, type=type or script.type)
     row.checksum = script.checksum if checksum is None else checksum
     row.success = success
     row.installed_rank = rank
@@ -50,17 +54,24 @@ def history(script, *, checksum=None, success=True, type=None, rank=1, name=None
 def test_resolved_checksums_do_not_reread_files(tmp_path, changed, encoding, detect):
     path = tmp_path / "V1__example.sql"
     path.write_text("SELECT 1; -- café\n", encoding=encoding)
-    script = Migration(path, script_encoding=encoding, detect_encoding=detect)
+    script = make_migration(path, script_encoding=encoding, detect_encoding=detect)
     rows = [history(script)]
     if changed:
         path.write_text("SELECT 2; -- café\n", encoding=encoding)
-        script = Migration(path, script_encoding=encoding, detect_encoding=detect)
+        script = make_migration(path, script_encoding=encoding, detect_encoding=detect)
     result, issues = ValidationResult(), []
     instance = validator()
     instance.script_manager.script_encoding = encoding
     instance.script_manager.detect_encoding = detect
     with patch("pathlib.Path.read_text", wraps=path.read_text) as reads:
-        instance._validate_checksums([script], rows, result, issues)
+        instance._validate_checksums(
+            [script],
+            rows,
+            result,
+            issues,
+            drift=find_checksum_drift([script], rows),
+            missing=missing_applied([script], rows),
+        )
     assert result.failed_scripts == ([script.script_name] if changed else [])
     assert any("has been modified" in issue for issue in issues) == changed
     assert reads.call_count == 0
@@ -71,7 +82,7 @@ def test_history_lookup_scales_and_preserves_supplied_order(tmp_path):
     for number in range(120):
         path = tmp_path / f"V{number + 1}__example.sql"
         path.write_text("SELECT 1;\n")
-        script = Migration(path)
+        script = make_migration(path)
         scripts.append(script)
         rows.extend(
             [
@@ -82,10 +93,13 @@ def test_history_lookup_scales_and_preserves_supplied_order(tmp_path):
                 history(script, checksum=4, type=MigrationType.DELETE, rank=5),
             ]
         )
+    # The state layer's answers come from plain copies, so the counters measure the validator.
+    drift = find_checksum_drift(list(scripts), list(rows))
+    missing = missing_applied(list(scripts), list(rows))
     rows = CountingList(rows)
     scripts = CountingList(scripts)
     result, issues = ValidationResult(), []
-    validator()._validate_checksums(scripts, rows, result, issues)
+    validator()._validate_checksums(scripts, rows, result, issues, drift=drift, missing=missing)
     assert issues == []
     assert result.checked_scripts == [script.script_name for script in scripts]
     assert rows.visits <= 4 * len(rows)
@@ -99,14 +113,16 @@ def test_repeatable_history_is_indexed_and_previous_run_uses_rank(tmp_path, fail
     for number in range(80):
         path = tmp_path / f"R__example_{number}.sql"
         path.write_text("SELECT 1;\n")
-        script = Migration(path)
+        script = make_migration(path)
         scripts.append(script)
         rows.extend(
             [history(script, success=not failed, rank=20), history(script, rank=later_rank)]
         )
     rows = CountingList(rows)
     result = ValidationResult()
-    validator()._check_repeatable_migrations(scripts, rows, result)
+    validator()._check_repeatable_migrations(
+        scripts, rows, result, runs=repeatable_runs(scripts, rows)
+    )
     assert result.success is not failed
     assert result.error_message.count("previously failed") == (len(scripts) if failed else 0)
     assert result.repeatable_migrations_to_reapply == []
@@ -120,12 +136,12 @@ def test_qualified_names_choose_first_match_and_filtered_deleted_missing_rows(tm
     second.parent.mkdir()
     first.write_text("SELECT 1;\n")
     second.write_text("SELECT 2;\n")
-    script, duplicate = Migration(first), Migration(second)
+    script, duplicate = make_migration(first), make_migration(second)
     filtered_path = tmp_path / "V2__filtered.sql"
     filtered_path.write_text("SELECT 2;\n")
-    filtered = Migration(filtered_path)
-    missing = Migration(script_name="V3__missing.sql")
-    deleted = Migration(script_name="V4__deleted.sql")
+    filtered = make_migration(filtered_path)
+    missing = make_migration(script_name="V3__missing.sql")
+    deleted = make_migration(script_name="V4__deleted.sql")
     rows = [
         history(script, name="old/directory/V1__example.sql"),
         history(filtered, checksum=1),
@@ -140,7 +156,8 @@ def test_qualified_names_choose_first_match_and_filtered_deleted_missing_rows(tm
         result,
         issues,
         strict_mode=True,
-        all_scripts=[script, duplicate, filtered],
+        drift=find_checksum_drift([script, duplicate], rows),
+        missing=missing_applied([script, duplicate, filtered], rows),
     )
     assert result.failed_scripts == [missing.script_name]
     assert len(issues) == 1
@@ -150,11 +167,14 @@ def test_qualified_names_choose_first_match_and_filtered_deleted_missing_rows(tm
 def test_validation_uses_supplied_checksum_and_standalone_observes_edits(tmp_path):
     path = tmp_path / "V1__example.sql"
     path.write_text("SELECT 1;\n")
-    script = Migration(path)
+    script = make_migration(path)
     rows = [history(script)]
     path.write_text("SELECT 2;\n")
     legacy = SimpleNamespace(
-        script_name=script.script_name, path=path, version="1", checksum=Migration(path).checksum
+        script_name=script.script_name,
+        path=path,
+        version="1",
+        checksum=make_migration(path).checksum,
     )
     instance = validator()
     result, issues = ValidationResult(), []
@@ -162,7 +182,14 @@ def test_validation_uses_supplied_checksum_and_standalone_observes_edits(tmp_pat
         "pathlib.Path.read_text",
         wraps=path.read_text,
     ) as reads:
-        instance._validate_checksums([legacy], rows, result, issues)
+        instance._validate_checksums(
+            [legacy],
+            rows,
+            result,
+            issues,
+            drift=find_checksum_drift([legacy], rows),
+            missing=missing_applied([legacy], rows),
+        )
     assert result.failed_scripts == [script.script_name]
     assert "has been modified" in issues[0]
     assert reads.call_count == 0

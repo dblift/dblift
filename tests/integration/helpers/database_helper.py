@@ -142,10 +142,10 @@ class DatabaseHelper:
         # This is necessary because some databases (like MySQL) can't execute
         # multiple statements in a single executeUpdate() call
         # Use proper parser to handle PL/SQL blocks with internal semicolons
-        from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+        from dblift.core.migration.sql.statement_reader import StatementReader
 
         db_type = self.db_config.get("type", "postgresql")
-        analyzer = SqlAnalyzer(dialect=db_type)
+        analyzer = StatementReader(dialect=db_type)
         statements = analyzer.split_statements(sql)
 
         try:

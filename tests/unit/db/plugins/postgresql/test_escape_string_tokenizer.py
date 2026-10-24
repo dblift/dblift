@@ -2,8 +2,9 @@
 
 import pytest
 
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 
 pytestmark = pytest.mark.unit
 
@@ -12,7 +13,7 @@ pytestmark = pytest.mark.unit
 def test_escape_string_is_one_token_with_source_coordinates(prefix):
     literal = prefix + "'it\\'s;\n x'"
     sql = "SELECT (" + literal + "); SELECT 2;"
-    tokens = PostgreSQLTokenizer(sql).tokenize()
+    tokens = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC).tokenize()
     strings = [token for token in tokens if token.type == TokenType.STRING]
 
     assert len(strings) == 1
@@ -29,7 +30,7 @@ def test_escape_string_is_one_token_with_source_coordinates(prefix):
 
 @pytest.mark.parametrize("prefix", ["SOME", "some", "_E", "a$E", "éE", "'x'E", '"x"E'])
 def test_non_standalone_e_is_not_an_escape_prefix(prefix):
-    tokens = PostgreSQLTokenizer(prefix + r"'x\'; SELECT 2;").tokenize()
+    tokens = LexicalTokenizer(prefix + r"'x\'; SELECT 2;", spec=POSTGRESQL_SPEC).tokenize()
 
     assert [token.text for token in tokens if token.type == TokenType.STRING][-1] == r"'x\'"
     assert [token.text for token in tokens if token.type == TokenType.DELIMITER] == [";", ";"]

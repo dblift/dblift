@@ -8,18 +8,22 @@ from dblift.core.logger import NullLog
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.transaction_policy import TransactionPolicy
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.sql.execution_statement import (
     ExecutionStatement,
     classify_execution_statement,
 )
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.provider_interfaces import TransactionalProvider
+from tests.unit._migration_factory import make_migration
 
 
 class RecordingTransactionalProvider(TransactionalProvider):
     def __init__(self):
         self.events = []
+
+    def check_transaction_state(self) -> None:
+        self.events.append("health")
 
     def begin_transaction(self) -> None:
         self.events.append("begin")
@@ -163,11 +167,11 @@ def test_execution_engine_runs_autocommit_only_statement_without_migration_trans
     history_manager = MagicMock()
     engine = ExecutionEngine(
         provider=provider,
-        sql_analyzer=SqlAnalyzer(dialect="postgresql"),
+        sql_analyzer=StatementReader(dialect="postgresql"),
         log=NullLog(),
         history_manager=history_manager,
     )
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__index.sql",
         content="CREATE INDEX CONCURRENTLY idx_users_id ON users(id);",
         version="1",
@@ -182,6 +186,10 @@ def test_execution_engine_runs_autocommit_only_statement_without_migration_trans
     # The flagged statement goes through the provider's autocommit call — the
     # provider owns how it reaches the server outside a transaction block.
     assert "autocommit:CREATE INDEX CONCURRENTLY idx_users_id ON users(id);" in provider.events
+    assert provider.events[:2] == [
+        "health",
+        "autocommit:CREATE INDEX CONCURRENTLY idx_users_id ON users(id);",
+    ]
     assert provider.events[-2:] == ["begin", "commit"]
     assert provider.events.count("begin") == 1
     history_manager.record_migration.assert_called_once()
@@ -193,11 +201,11 @@ def test_execution_engine_runs_sqlserver_fulltext_catalog_without_migration_tran
     history_manager = MagicMock()
     engine = ExecutionEngine(
         provider=provider,
-        sql_analyzer=SqlAnalyzer(dialect="sqlserver"),
+        sql_analyzer=StatementReader(dialect="sqlserver"),
         log=NullLog(),
         history_manager=history_manager,
     )
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__fulltext.sql",
         content="CREATE FULLTEXT CATALOG dblift_ft_catalog AS DEFAULT;",
         version="1",
@@ -210,6 +218,10 @@ def test_execution_engine_runs_sqlserver_fulltext_catalog_without_migration_tran
 
     assert result.success is True
     assert "autocommit:CREATE FULLTEXT CATALOG dblift_ft_catalog AS DEFAULT;" in provider.events
+    assert provider.events[:2] == [
+        "health",
+        "autocommit:CREATE FULLTEXT CATALOG dblift_ft_catalog AS DEFAULT;",
+    ]
     assert provider.events[-2:] == ["begin", "commit"]
     assert provider.events.count("begin") == 1
     history_manager.record_migration.assert_called_once()
@@ -220,10 +232,10 @@ def test_execution_engine_rejects_mixed_transaction_policy_before_execution():
     provider = RecordingTransactionalProvider()
     engine = ExecutionEngine(
         provider=provider,
-        sql_analyzer=SqlAnalyzer(dialect="postgresql"),
+        sql_analyzer=StatementReader(dialect="postgresql"),
         log=NullLog(),
     )
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__mixed.sql",
         content="""
         CREATE TABLE users(id int);
@@ -247,10 +259,10 @@ def test_get_executable_sql_statements_rejects_mixed_transaction_policy():
     provider = RecordingTransactionalProvider()
     engine = ExecutionEngine(
         provider=provider,
-        sql_analyzer=SqlAnalyzer(dialect="postgresql"),
+        sql_analyzer=StatementReader(dialect="postgresql"),
         log=NullLog(),
     )
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__mixed.sql",
         content="""
         CREATE TABLE users(id int);

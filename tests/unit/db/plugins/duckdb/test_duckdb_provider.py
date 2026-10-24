@@ -11,8 +11,11 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import pytest
+
+from tests.support.facts_parser import facts_parser
 
 duckdb = pytest.importorskip("duckdb", reason="duckdb driver not installed")
 pytest.importorskip("duckdb_engine", reason="duckdb_engine dialect not installed")
@@ -60,32 +63,6 @@ class TestDuckDBParamBinding:
         )
         assert sql == "SELECT * FROM t WHERE a = $1 AND b = $2"
         assert params == ("x", "y")
-
-
-@pytest.mark.unit
-class TestDuckDBSplitter:
-    def test_splits_respecting_strings_and_comments(self) -> None:
-        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-
-        parser = DuckDBRegexParser()
-        sql = "CREATE TABLE t (a INT); INSERT INTO t VALUES (';');\n-- c; still comment\nSELECT 1;"
-        stmts = parser.split_statements(sql)
-        assert len(stmts) == 3
-        assert stmts[1] == "INSERT INTO t VALUES (';');"
-
-    def test_strict_mode_does_not_raise(self) -> None:
-        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-
-        parser = DuckDBRegexParser()
-        stmts = parser.split_statements("CREATE TABLE t (a INT);", strict_tokenizer=True)
-        assert stmts == ["CREATE TABLE t (a INT);"]
-
-    def test_extract_objects_from_create(self) -> None:
-        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-
-        parser = DuckDBRegexParser()
-        objs = parser.extract_objects("CREATE TABLE main.foo (a int)")
-        assert [(o.object_type.value, o.name) for o in objs] == [("TABLE", "foo")]
 
 
 @pytest.fixture()
@@ -258,6 +235,37 @@ class TestDuckDBDmlRowcount:
         assert provider.execute_statement("INSERT INTO t VALUES (1, 'a'), (2, 'b'), (3, 'c')") == 3
         assert provider.execute_statement("DELETE FROM t WHERE id >= 2") == 2
 
+    @pytest.mark.parametrize(
+        "statement",
+        [
+            "DELETE FROM t WHERE x\u00a0",
+            "UPDATE t SET a = 9 WHERE x\u00a0",
+            "INSERT INTO t VALUES (3, true)\u00a0",
+        ],
+    )
+    def test_a_final_no_break_space_is_not_moved_out_of_the_tail_by_the_rewrite(
+        self, tmp_path: Path, statement: str
+    ) -> None:
+        """The engine keeps a final U+00A0 and fails; RETURNING after it would make it run another statement."""
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (a INT, x BOOL)")
+        provider.execute_statement("INSERT INTO t VALUES (1, true), (2, false)")
+        with pytest.raises(Exception):
+            provider.execute_statement(statement)
+        # DuckDB 2.0 aborts the transaction on any error, a parser or binder error included
+        provider.rollback_transaction()
+        conn = provider._ensure_connection()
+        rows = conn.exec_driver_sql("SELECT a, x FROM t ORDER BY a").fetchall()
+        assert [tuple(r) for r in rows] == [(1, True), (2, False)]
+
+    def test_a_statement_without_a_final_blank_still_reports_its_rowcount(
+        self, tmp_path: Path
+    ) -> None:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (a INT, x BOOL)")
+        provider.execute_statement("INSERT INTO t VALUES (1, true), (2, false)")
+        assert provider.execute_statement("DELETE FROM t WHERE x") == 1
+
     def test_returning_rewrite_runs_unbound_sql_through_exec_unbound(self, tmp_path: Path) -> None:
         """The RETURNING rewrite sends unbound SQL with no parameter argument."""
         from unittest.mock import patch
@@ -277,7 +285,7 @@ class TestDuckDBDmlRowcount:
         with patch.object(SqlAlchemyProvider, "_exec_unbound", staticmethod(spy)):
             assert provider.execute_statement("UPDATE t SET v = '50%' WHERE id = 1") == 1
 
-        assert sent == ["UPDATE t SET v = '50%' WHERE id = 1 RETURNING 1"]
+        assert sent == ["UPDATE t SET v = '50%' WHERE id = 1\nRETURNING 1"]
 
     def test_params_update_reports_positive_rowcount(self, tmp_path: Path) -> None:
         """Parameterized DML uses RETURNING rewrite (undo restore / bind paths)."""
@@ -345,30 +353,6 @@ class TestDuckDBDmlRowcount:
         )
         assert isinstance(rc, int)
 
-    def test_strip_sql_comments_helpers(self) -> None:
-        from dblift.db.plugins.duckdb.provider import DuckDBProvider
-
-        strip = DuckDBProvider._strip_sql_comments
-        assert strip("-- only comment") == ""
-        assert strip("/* block */") == ""
-        assert strip("/* a */\nUPDATE t SET v=1 /* trail */") == "UPDATE t SET v=1"
-        assert strip("-- d1\n-- d2\nDELETE FROM t") == "DELETE FROM t"
-        assert strip("UPDATE t SET v=1\n-- trail\n") == "UPDATE t SET v=1"
-        # Inline trailing comment on the DML line (Bugbot finding)
-        assert strip("UPDATE t SET v=1  -- note") == "UPDATE t SET v=1"
-        # Dashes inside string literals must remain
-        assert strip("UPDATE t SET v = 'a--b'") == "UPDATE t SET v = 'a--b'"
-
-    def test_has_top_level_semicolon_helpers(self) -> None:
-        from dblift.db.plugins.duckdb.provider import DuckDBProvider
-
-        has = DuckDBProvider._has_top_level_semicolon
-        assert has("UPDATE t SET v = 1") is False
-        assert has("UPDATE t SET v = 'a;b'") is False
-        assert has('UPDATE t SET v = "a;b"') is False
-        assert has("UPDATE t SET v = 'it''s;ok'") is False
-        assert has("INSERT INTO t VALUES (1); INSERT INTO t VALUES (2)") is True
-
     def test_returning_word_in_string_still_rewrites(self, tmp_path: Path) -> None:
         """Bugbot: substring ' RETURNING ' inside a literal must not skip rewrite."""
         provider = self._provider(tmp_path)
@@ -386,14 +370,16 @@ class TestDuckDBDmlRowcount:
         assert provider.execute_statement(sql) == 1
 
     def test_has_top_level_keyword_helpers(self) -> None:
+        from dblift.core.sql_parser.lexical_engine import LexicalEngine
+        from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
         from dblift.db.plugins.duckdb.provider import DuckDBProvider
 
         has = DuckDBProvider._has_top_level_keyword
-        strip = DuckDBProvider._strip_sql_comments
+        blank = LexicalEngine(DUCKDB_SPEC).blank_comments
         assert has("UPDATE t SET v = 1 RETURNING id", "RETURNING") is True
         assert has("UPDATE t SET v = ' returning ' WHERE id = 1", "RETURNING") is False
         # After comment strip, mid-line/full-line comments mentioning returning are gone
-        cleaned = strip("UPDATE t SET v = 1  -- returning\nWHERE id = 1")
+        cleaned = blank("UPDATE t SET v = 1  -- returning\nWHERE id = 1")
         assert "returning" not in cleaned.lower()
         assert has(cleaned, "RETURNING") is False
 
@@ -405,3 +391,275 @@ class TestDuckDBDmlRowcount:
         )
         provider.execute_statement("INSERT INTO s.t VALUES (1, 'a')", schema="s")
         assert provider.execute_statement("UPDATE s.t SET v = 'x' WHERE id = 1", schema="s") == 1
+
+
+MULTILINE_LITERAL = "a\n\n-- b\n/* c */\nd\r\ne"
+
+
+@pytest.mark.unit
+class TestDuckDBDmlKeepsLiterals:
+    """The RETURNING rewrite must send string literals exactly as written."""
+
+    _provider = TestDuckDBDmlRowcount._provider
+
+    def _table(self, tmp_path: Path) -> Any:
+        provider = self._provider(tmp_path)
+        provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
+        return provider
+
+    def _values(self, provider: Any) -> list:
+        return [r["v"] for r in provider.execute_query("SELECT v FROM t ORDER BY id")]
+
+    def test_insert_keeps_blank_comment_and_crlf_lines_in_literal(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        rc = provider.execute_statement(f"INSERT INTO t VALUES (1, '{MULTILINE_LITERAL}')")
+        assert rc == 1
+        assert self._values(provider) == [MULTILINE_LITERAL]
+
+    def test_update_keeps_literal(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        provider.execute_statement("INSERT INTO t VALUES (1, 'x')")
+        rc = provider.execute_statement(f"UPDATE t SET v = '{MULTILINE_LITERAL}' WHERE id = 1")
+        assert rc == 1
+        assert self._values(provider) == [MULTILINE_LITERAL]
+
+    def test_delete_where_literal_matches_the_stored_row(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        # Built by the engine, so the stored row does not depend on the statement under test.
+        provider.execute_statement(
+            "INSERT INTO t SELECT 1, 'a' || chr(10) || chr(10) || '-- b' || chr(10)"
+            " || '/* c */' || chr(10) || 'd' || chr(13) || chr(10) || 'e'"
+        )
+        provider.execute_statement("INSERT INTO t VALUES (2, 'a / d / e')")
+        rc = provider.execute_statement(f"DELETE FROM t WHERE v = '{MULTILINE_LITERAL}'")
+        assert rc == 1
+        assert self._values(provider) == ["a / d / e"]
+
+    def test_literal_with_returning_text_and_comment_lines(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        literal = "x\n\n-- returning\nRETURNING y"
+        assert provider.execute_statement(f"INSERT INTO t VALUES (1, '{literal}')") == 1
+        assert self._values(provider) == [literal]
+
+    def test_comments_around_the_statement_still_count_rows(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        assert provider.execute_statement("-- lead\n/* lead */\nINSERT INTO t VALUES (1, 'a')") == 1
+        assert provider.execute_statement("INSERT INTO t VALUES (2, 'b') -- trail") == 1
+        assert provider.execute_statement("UPDATE t SET v = 'z' /* trail */;\n-- after\n") == 2
+        assert provider.execute_statement("DELETE FROM t -- all\nWHERE id > 0;") == 2
+        assert self._values(provider) == []
+
+    def test_returning_already_present_is_left_alone(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a') RETURNING id")
+        assert self._values(provider) == ["a"]
+
+    def test_with_cte_insert_is_not_rewritten_but_runs(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        provider.execute_statement(
+            "WITH s AS (SELECT 1 AS id, 'a' AS v) INSERT INTO t SELECT * FROM s"
+        )
+        assert self._values(provider) == ["a"]
+
+    def test_trailing_line_comment_does_not_swallow_returning(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        provider.execute_statement("INSERT INTO t VALUES (1, 'a'), (2, 'a'), (3, 'a')")
+        assert provider.execute_statement("UPDATE t SET v = 'b' -- trailing") == 3
+        assert provider.execute_statement("DELETE FROM t -- trailing") == 3
+
+    def test_two_statements_both_run_through_the_default_path(self, tmp_path: Path) -> None:
+        provider = self._table(tmp_path)
+        rc = provider.execute_statement(
+            "INSERT INTO t VALUES (1, 'a'); INSERT INTO t VALUES (2, 'b')"
+        )
+        assert rc == -1
+        assert self._values(provider) == ["a", "b"]
+
+    def test_shell_command_and_nul_fall_back_to_the_default_path(self, tmp_path: Path) -> None:
+        """The scanner's refusals are not raised by the rewrite: the engine answers instead."""
+        from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
+
+        provider = self._table(tmp_path)
+        answered = []
+        for sql in (".tables", "INSERT INTO t VALUES (1, 'a\x00b')"):
+            try:
+                provider.execute_statement(sql)
+            except Exception as error:  # noqa: BLE001 - the engine's own answer
+                assert not isinstance(
+                    error, (UnsafeStatementSplitError, UnsupportedMetaCommandError)
+                ), sql
+                answered.append(sql)
+                # DuckDB 2.0 aborts the transaction on any error, a parser or binder error included
+                provider.rollback_transaction()
+        # the shell command is a parser error in both; DuckDB 2.0 stores the NUL where 1.x rejects it
+        assert answered[0] == ".tables"
+        if _duckdb_major() >= 2:
+            assert answered == [".tables"]
+            assert self._values(provider) == ["a\x00b"]
+        else:
+            assert len(answered) == 2
+            assert self._values(provider) == []
+
+
+@pytest.mark.unit
+class TestDuckDBAutocommit:
+    @pytest.mark.parametrize("checkpoint", ["CHECKPOINT", "FORCE CHECKPOINT"])
+    def test_checkpoint_ends_pending_writes_without_committing(self, duckdb_provider, checkpoint):
+        provider, _ = duckdb_provider
+        provider.execute_statement("CREATE TABLE pending (id INTEGER)")
+        connection = provider._ensure_connection()
+        provider.begin_transaction()
+        provider.execute_statement("INSERT INTO pending VALUES (1)")
+
+        provider.execute_autocommit_statement(checkpoint)
+
+        assert provider._ensure_connection() is connection
+        assert not connection.in_transaction()
+        assert provider.execute_query("SELECT * FROM pending") == []
+        provider.begin_transaction()
+        provider.execute_statement("INSERT INTO pending VALUES (2)")
+        provider.rollback_transaction()
+        assert provider.execute_query("SELECT * FROM pending") == []
+
+    def test_failure_leaves_connection_transactional(self, duckdb_provider):
+        provider, _ = duckdb_provider
+        provider.execute_statement("CREATE TABLE pending (id INTEGER)")
+        provider.begin_transaction()
+        provider.execute_statement("INSERT INTO pending VALUES (1)")
+        with pytest.raises(duckdb.Error, match="missing_database"):
+            provider.execute_autocommit_statement("CHECKPOINT missing_database")
+        assert not provider._ensure_connection().in_transaction()
+        provider.begin_transaction()
+        provider.execute_statement("INSERT INTO pending VALUES (2)")
+        provider.rollback_transaction()
+        assert provider.execute_query("SELECT * FROM pending") == []
+
+    def test_schema_and_parameters_are_preserved(self, duckdb_provider):
+        provider, _ = duckdb_provider
+        provider.execute_statement("CREATE SCHEMA target")
+        provider.execute_statement("CREATE TABLE target.items (id INTEGER)")
+        provider.execute_autocommit_statement(
+            "INSERT INTO items VALUES (?)", schema="target", params=[7]
+        )
+        assert provider.execute_query("SELECT * FROM target.items") == [{"id": 7}]
+
+    @pytest.mark.parametrize("checkpoint", ["CHECKPOINT", "FORCE CHECKPOINT"])
+    def test_checkpoint_migration_routes_to_autocommit(
+        self, duckdb_provider, checkpoint, monkeypatch
+    ):
+        from dblift.api.client import DBLiftClient
+
+        provider, tmp = duckdb_provider
+        migrations = tmp / "migrations"
+        migrations.mkdir()
+        (migrations / "V1__create.sql").write_text(
+            "CREATE TABLE items (id INTEGER); INSERT INTO items VALUES (1);"
+        )
+        (migrations / "V2__checkpoint.sql").write_text(f"-- persist writes\n{checkpoint};")
+        calls = []
+        execute = provider.execute_autocommit_statement
+
+        def record(sql, schema=None, params=None):
+            calls.append(sql)
+            return execute(sql, schema=schema, params=params)
+
+        monkeypatch.setattr(provider, "execute_autocommit_statement", record)
+        client = DBLiftClient(provider, migrations)
+        result = client.migrate()
+        assert result.success, result.error_message
+        assert len(calls) == 1
+        assert checkpoint in calls[0]
+        assert provider.execute_query("SELECT * FROM items") == [{"id": 1}]
+        assert len(provider.get_applied_migrations("main")) == 2
+
+    @pytest.mark.parametrize(
+        "checkpoint", ["CHECKPOINT", "FORCE /* flush */ CHECKPOINT", "FORCE -- flush\nCHECKPOINT"]
+    )
+    def test_mixed_checkpoint_migration_is_rejected_before_writes(
+        self, duckdb_provider, checkpoint
+    ):
+        from dblift.api.client import DBLiftClient
+
+        provider, tmp = duckdb_provider
+        provider.execute_statement("CREATE TABLE pending (id INTEGER)")
+        migrations = tmp / "migrations"
+        migrations.mkdir()
+        (migrations / "V1__mixed.sql").write_text(f"INSERT INTO pending VALUES (1); {checkpoint};")
+        result = DBLiftClient(provider, migrations).migrate()
+        assert not result.success
+        assert "mixes transactional and autocommit-only statements" in result.error_message
+        assert provider.execute_query("SELECT * FROM pending") == []
+
+
+NB = "\xa0"
+
+
+def _duckdb_major() -> int:
+    import duckdb
+
+    return int(duckdb.__version__.split(".")[0])
+
+
+#: scripts the driver rejects whole (a ParserException, the table kept) because a piece made of a
+#: character it does not count as blank is a statement of its own
+REJECTED_WHOLE = [
+    "/* ' */ DROP TABLE t;" + NB,
+    "/* ' */ SELECT 1;" + NB + ";DROP TABLE t;",
+    "/* ' */ DROP TABLE t; /* c */" + NB,
+    "/* ' */ DROP TABLE t; -- c\n" + NB,
+    "/* $t$ */ DROP TABLE t;" + NB,
+    pytest.param(
+        "DROP TABLE t;\x0b",
+        marks=pytest.mark.skipif(
+            _duckdb_major() >= 2,
+            reason="measured with DuckDB 2.0.0: a vertical tab is a blank there, 1.5.5 rejects it",
+        ),
+    ),
+    "DROP TABLE t;\x85",
+    "DROP TABLE t;\x1f",
+]
+
+
+@pytest.mark.unit
+class TestDuckDBMigrateFailsWhereTheDriverRejects:
+    @pytest.mark.parametrize(
+        "script", REJECTED_WHOLE, ids=[repr(getattr(s, "values", (s,))[0]) for s in REJECTED_WHOLE]
+    )
+    def test_a_migration_does_not_succeed_after_skipping_a_statement_the_engine_rejects(
+        self, duckdb_provider, script
+    ) -> None:
+        from dblift.api.client import DBLiftClient
+
+        con = duckdb.connect()
+        con.execute("CREATE TABLE t (i INT)")
+        with pytest.raises(duckdb.ParserException):
+            con.execute(script)
+
+        provider, tmp = duckdb_provider
+        provider.execute_statement("CREATE TABLE t (i INT)")
+        migrations = tmp / "migrations"
+        migrations.mkdir()
+        (migrations / "V1__drop.sql").write_text(script, encoding="utf-8")
+        result = DBLiftClient(provider, migrations).migrate()
+        assert not result.success
+        assert provider.table_exists("main", "t") is True
+
+
+pytest.importorskip("duckdb_engine", reason="duckdb_engine dialect not installed")
+
+
+@pytest.mark.unit
+class TestDuckDBSplitter:
+    def test_splits_respecting_strings_and_comments(self) -> None:
+
+        parser = facts_parser("duckdb")
+        sql = "CREATE TABLE t (a INT); INSERT INTO t VALUES (';');\n-- c; still comment\nSELECT 1;"
+        stmts = parser.split_statements(sql)
+        assert len(stmts) == 3
+        assert stmts[1] == "INSERT INTO t VALUES (';')"
+
+    def test_extract_objects_from_create(self) -> None:
+
+        parser = facts_parser("duckdb")
+        objs = parser.extract_objects("CREATE TABLE main.foo (a int)")
+        assert [(o.object_type.value, o.name) for o in objs] == [("TABLE", "foo")]

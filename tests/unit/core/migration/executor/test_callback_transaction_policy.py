@@ -7,9 +7,9 @@ import pytest
 from dblift.core.exceptions import CallbackExecutionError
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.transaction_policy import TransactionPolicyDecision
-from dblift.core.migration.migration import Migration
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.provider_interfaces import TransactionalProvider
+from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
 
@@ -18,7 +18,7 @@ SQL = "CREATE INDEX CONCURRENTLY idx_t_id ON t(id)"
 
 @pytest.fixture
 def callback():
-    return Migration(script_name="beforeMigrate__index.sql", content=SQL, sql_statements=[SQL])
+    return make_migration(script_name="beforeMigrate__index.sql", content=SQL, sql_statements=[SQL])
 
 
 @pytest.fixture
@@ -28,7 +28,7 @@ def engine():
     provider.supports_transactions.return_value = True
     service = MagicMock()
     service.execute_statement.return_value = (False, 0)
-    engine = ExecutionEngine(provider, SqlAnalyzer(dialect="postgresql"), MagicMock(), service)
+    engine = ExecutionEngine(provider, StatementReader(dialect="postgresql"), MagicMock(), service)
     engine._classify_execution_statements = MagicMock(return_value=[])
     engine.transaction_policy = MagicMock()
     engine.transaction_policy.decide.return_value = TransactionPolicyDecision(transactional=True)

@@ -26,14 +26,11 @@ import sys
 core = importlib.import_module('dblift.core')
 model = importlib.import_module('dblift.core.sql_model')
 migration = importlib.import_module('dblift.core.migration')
-parser = importlib.import_module('dblift.core.sql_parser')
 assert 'dblift.core.sql_model.table' not in sys.modules
 assert 'dblift.core.migration.migration' not in sys.modules
-assert 'dblift.core.sql_parser.parser_factory' not in sys.modules
 for facade, names in ((core, ('Table', 'SqlObjectType')),
                       (model, ('Table', 'SqlObjectType', 'quote_identifier')),
-                      (migration, ('Migration', 'is_versioned')),
-                      (parser, ('SqlParserFactory',))):
+                      (migration, ('Migration', 'is_versioned'))):
     assert set(names) <= set(facade.__all__)
     assert set(names) <= set(dir(facade))
     for name in names:
@@ -61,9 +58,6 @@ assert (restored.name, restored.schema, restored.dialect) == ('users', 'public',
 from dblift.core.migration import Migration
 from dblift.core.migration.migration import Migration as DefinedMigration
 assert Migration is DefinedMigration
-from dblift.core.sql_parser import SqlParserFactory
-from dblift.core.sql_parser.parser_factory import SqlParserFactory as DefinedFactory
-assert SqlParserFactory is DefinedFactory
 """)
     assert run.returncode == 0, run.stderr
 
@@ -72,13 +66,10 @@ def test_reexports_work_when_definition_imports_first_and_with_import_star():
     run = run_python("""
 from dblift.core.sql_model.table import Table as DefinedTable
 from dblift.core.migration.migration import Migration as DefinedMigration
-from dblift.core.sql_parser.parser_factory import SqlParserFactory as DefinedFactory
 from dblift.core.sql_model import *
 from dblift.core.migration import *
-from dblift.core.sql_parser import *
 assert Table is DefinedTable
 assert Migration is DefinedMigration
-assert SqlParserFactory is DefinedFactory
 """)
     assert run.returncode == 0, run.stderr
 

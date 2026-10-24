@@ -104,7 +104,7 @@ class DbliftLogger(Log):
         self.operation_result = None
 
         # Avoid circular imports - create our own internal logger
-        console_log = ConsoleLog(name=name, enable_debug=level == LogLevel.DEBUG)
+        console_log = ConsoleLog(name=name, enable_debug=level == LogLevel.DEBUG, log_level=level)
         self.log = console_log
 
         # Default to "./logs" if no logfile_dir is provided
@@ -118,7 +118,7 @@ class DbliftLogger(Log):
         self.current_log_file = None
 
         # Set up console log
-        console_log = ConsoleLog(name, enable_debug=level == LogLevel.DEBUG)
+        console_log = ConsoleLog(name, enable_debug=level == LogLevel.DEBUG, log_level=level)
         self.logs.append(console_log)
 
         # Set up file log if directory is provided
@@ -142,6 +142,7 @@ class DbliftLogger(Log):
                 database_name=database_name,
                 log_file_pattern=log_file_pattern,
                 enable_debug=level == LogLevel.DEBUG,
+                log_level=level,
             )
             self.logs.append(file_log)
             self.current_log_file = file_log.log_file if hasattr(file_log, "log_file") else None

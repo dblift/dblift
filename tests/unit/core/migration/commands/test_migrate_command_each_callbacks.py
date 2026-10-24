@@ -9,8 +9,18 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.logger.results import MigrateResult
-from dblift.core.migration.commands.migrate_command import MigrateCommand
+from dblift.core.migration.commands._script_runner import ScriptRunner
+from dblift.core.migration.commands.migrate_command import MIGRATE_POLICY, MigrateCommand
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+
+
+def _run_migration(command, migration, result):
+    return ScriptRunner(command, MIGRATE_POLICY).run(
+        migration,
+        result,
+        event_data={"script": migration.script_name},
+        on_success=lambda execution_time: None,
+    )
 
 
 @pytest.mark.unit
@@ -28,15 +38,9 @@ def test_migrate_dispatches_generic_and_command_specific_each_callbacks():
         checksum=123,
     )
     result = MigrateResult()
+    command._bind_callbacks(Path("migrations"), True, None, None, result)
 
-    assert command._execute_single_migration(
-        migration=migration,
-        scripts_dir=Path("migrations"),
-        use_recursive=True,
-        use_additional_dirs=None,
-        dir_recursive_map=None,
-        result=result,
-    )
+    assert _run_migration(command, migration, result)
 
     events = [call.args[1] for call in command._execute_callbacks.call_args_list]
     assert events == ["beforeEach", "beforeEachMigrate", "afterEachMigrate", "afterEach"]
@@ -69,15 +73,9 @@ def test_failing_beforeEachMigrate_callback_surfaces_its_own_error():
         checksum=123,
     )
     result = MigrateResult()
+    command._bind_callbacks(Path("migrations"), True, None, None, result)
 
-    success = command._execute_single_migration(
-        migration=migration,
-        scripts_dir=Path("migrations"),
-        use_recursive=True,
-        use_additional_dirs=None,
-        dir_recursive_map=None,
-        result=result,
-    )
+    success = _run_migration(command, migration, result)
 
     assert success is False
     assert result.error_message is not None
@@ -119,7 +117,7 @@ def test_each_callback_banner_logs_once_per_migration_in_a_batch():
 
     scripts_dir = Path("migrations")
 
-    # Simulate the per-migration dispatch that _execute_single_migration does
+    # Simulate the per-migration dispatch that the script runner does
     # for a 2-migration batch, each with a matching beforeEachMigrate callback.
     for _ in range(2):
         command._execute_callbacks(

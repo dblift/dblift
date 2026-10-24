@@ -240,6 +240,7 @@ class MigrateResult(OperationResult):
         self.success = True
         self.current_schema_version: Optional[str] = None
         self.dry_run_count: int = 0
+        self.dry_run: bool = False
 
     def add_migration(self, migration: MigrationInfo) -> None:
         """Add a migration to the result."""
@@ -296,6 +297,7 @@ class CleanResult(OperationResult):
     def __init__(self) -> None:
         """Initialize empty per-type object buckets and detail metadata."""
         super().__init__()
+        self.dry_run: bool = False
         self.target_schema: str = ""
         # ``schema_name`` comes from OperationResult as a property.
         self._objects_by_type: Dict[str, Set[str]] = defaultdict(set)
@@ -570,6 +572,7 @@ class RepairResult(OperationResult):
     def __init__(self) -> None:
         """Initialize empty repaired/removed/aligned migration lists and repair counters."""
         super().__init__()
+        self.dry_run: bool = False
         self.target_schema: str = ""
         # ``schema_name`` comes from OperationResult as a property.
         self.repaired_migrations: List[MigrationInfo] = []
@@ -598,6 +601,7 @@ class UndoResult(OperationResult):
     def __init__(self) -> None:
         """Initialize empty undo bookkeeping (target version, undone migrations, count)."""
         super().__init__()
+        self.dry_run: bool = False
         self.target_version: str = ""
         self.target_schema: str = ""
         # ``schema_name`` comes from OperationResult as a property.
@@ -624,22 +628,3 @@ class UndoResult(OperationResult):
     def migrations(self) -> List[MigrationInfo]:
         """Undone migrations, then failed ones, for the log formatters."""
         return self.undone_migrations + self.failed_migrations
-
-
-class GenerateUndoScriptResult(OperationResult):
-    """Result of generating an undo script."""
-
-    def __init__(self) -> None:
-        """Initialize undo-script generation bookkeeping (paths, counts, review flag)."""
-        super().__init__()
-        self.migration_path: Optional[str] = None
-        self.undo_script_path: Optional[str] = None
-        self.overwritten: bool = False
-        self.statements_generated: int = 0
-        self.requires_manual_review: bool = False
-
-    def add_warning(self, warning: str) -> None:
-        """Add a warning to the result."""
-        super().add_warning(warning)
-        if "manual review" in warning.lower() or "warning" in warning.lower():
-            self.requires_manual_review = True

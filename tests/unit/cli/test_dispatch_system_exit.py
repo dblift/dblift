@@ -20,6 +20,7 @@ def _ctx(*, strict_on_args: bool = False, strict_on_config: bool = False):
     config.migrations = SimpleNamespace(directories=None)
     args = MagicMock()
     args.strict_mode = strict_on_args
+    args.target_version = None
     return cli_main._CliContext(
         commands=["info"],
         global_arguments=[],

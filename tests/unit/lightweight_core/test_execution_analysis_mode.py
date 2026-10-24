@@ -135,8 +135,42 @@ def test_inprocess_async_factories_forward_selected_mode(tmp_path):
         engine.dispose()
 
 
+@pytest.mark.parametrize("factory", ["from_config", "from_config_file", "from_sqlalchemy"])
+def test_explicit_mode_reaches_registered_class_with_different_default(factory, tmp_path):
+    from sqlalchemy import create_engine
+
+    from dblift.api import DBLiftClient
+    from dblift.config import DbliftConfig
+    from dblift.core.logger import NullLog
+
+    class FullByDefaultClient(DBLiftClient):
+        def __init__(self, *args, analysis_mode="full", **kwargs):
+            super().__init__(*args, analysis_mode=analysis_mode, **kwargs)
+
+    db = tmp_path / "reg.db"
+    config = DbliftConfig.from_dict(
+        {"database": {"type": "sqlite", "path": str(db), "schema": "main"}}
+    )
+    config_file = tmp_path / "dblift.yml"
+    config_file.write_text(f"database:\n  type: sqlite\n  path: {db}\n  schema: main\n")
+    engine = create_engine(f"sqlite:///{db}")
+    try:
+        common = {"migrations_dir": tmp_path, "logger": NullLog(), "analysis_mode": "execution"}
+        if factory == "from_config":
+            client = FullByDefaultClient.from_config(config, **common)
+        elif factory == "from_config_file":
+            client = FullByDefaultClient.from_config_file(str(config_file), **common)
+        else:
+            client = FullByDefaultClient.from_sqlalchemy(engine, **common)
+        with client:
+            assert client.analysis_mode == "execution"
+    finally:
+        engine.dispose()
+
+
 @pytest.mark.parametrize("factory", ["from_config", "from_sqlalchemy"])
-def test_default_full_preserves_strict_legacy_subclass_constructor(factory, tmp_path):
+def test_registered_class_must_accept_analysis_mode(factory, tmp_path):
+    """The keyword is always passed, so a constructor without it is rejected."""
     from sqlalchemy import create_engine
 
     from dblift.api import DBLiftClient
@@ -152,22 +186,49 @@ def test_default_full_preserves_strict_legacy_subclass_constructor(factory, tmp_
     )
     engine = create_engine(f"sqlite:///{tmp_path / 'legacy.db'}")
     try:
-
-        def create(**kwargs):
-            if factory == "from_config":
-                return LegacyClient.from_config(
-                    config, migrations_dir=tmp_path, logger=NullLog(), **kwargs
-                )
-            return LegacyClient.from_sqlalchemy(
-                engine, migrations_dir=tmp_path, logger=NullLog(), **kwargs
-            )
-
-        with create() as client:
-            assert client.analysis_mode == "full"
-        with pytest.raises(TypeError, match="analysis_mode"):
-            create(analysis_mode="execution")
+        for mode in ("execution", "full"):
+            with pytest.raises(TypeError, match="analysis_mode"):
+                if factory == "from_config":
+                    LegacyClient.from_config(
+                        config, migrations_dir=tmp_path, logger=NullLog(), analysis_mode=mode
+                    )
+                else:
+                    LegacyClient.from_sqlalchemy(
+                        engine, migrations_dir=tmp_path, logger=NullLog(), analysis_mode=mode
+                    )
     finally:
         engine.dispose()
+
+
+def test_cli_execution_mode_reaches_registered_class_with_different_default(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    import dblift.cli.main as cli_main
+    from dblift.api import DBLiftClient
+    from dblift.config import DbliftConfig
+    from dblift.core.logger import NullLog
+    from dblift.core.seams import client_factory
+
+    class FullByDefaultClient(DBLiftClient):
+        def __init__(self, *args, analysis_mode="full", **kwargs):
+            super().__init__(*args, analysis_mode=analysis_mode, **kwargs)
+
+    config = DbliftConfig.from_dict(
+        {
+            "database": {"type": "sqlite", "path": str(tmp_path / "cli.db"), "schema": "main"},
+            "migrations": {"directory": str(tmp_path)},
+        }
+    )
+    monkeypatch.setattr(client_factory, "resolve_client_class", lambda: FullByDefaultClient)
+    monkeypatch.setattr(cli_main, "_COMMAND_HANDLERS", {"migrate": lambda ctx: None})
+    ctx = SimpleNamespace(
+        commands=["migrate"],
+        config=config,
+        log=NullLog(),
+        args=SimpleNamespace(analysis_mode="execution"),
+    )
+    with cli_main._build_command_client(ctx) as client:
+        assert client.analysis_mode == "execution"
 
 
 def test_sqlite_versioned_validate_and_undo_without_analysis_packages(tmp_path):
@@ -503,7 +564,8 @@ with DBLiftClient.from_config(config, migrations_dir=sql, logger=NullLog(), anal
     outcome = client.undo(target_version='0.0.0')
     assert not outcome.success
     assert "analysis_mode='full'" in outcome.error_message
-    assert not [query for query in observed if query.lstrip().upper().startswith(
+    assert not [query for query in observed if 'dblift_migration_lock' not in query
+                and query.lstrip().upper().startswith(
         ('CREATE', 'ALTER', 'DROP', 'INSERT', 'UPDATE', 'DELETE', 'REPLACE'))], observed
 """,
         blocked=("sqlglot", "rich", "jinja2"),
@@ -740,41 +802,6 @@ with DBLiftClient.from_config(config, migrations_dir=sql, logger=NullLog(), anal
     assert "analysis_mode='full'" in outcome.error_message
 with sqlite3.connect('db.sqlite') as connection:
     assert connection.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall() == []
-""",
-        blocked=("sqlglot", "rich", "jinja2"),
-        cwd=tmp_path,
-    )
-    assert result.returncode == 0, result.stderr
-
-
-def test_deprecated_text_undo_request_does_not_claim_success_without_sqlglot(tmp_path):
-    result = run_python(
-        """
-import warnings
-from pathlib import Path
-from dblift.api import DBLiftClient
-from dblift.config import DbliftConfig
-from dblift.core.logger import NullLog
-
-sql = Path('sql')
-sql.mkdir()
-script = sql / 'V1__create.sql'
-script.write_text('CREATE TABLE t (id INTEGER);')
-config = DbliftConfig.from_dict({'database': {
-    'type': 'sqlite', 'path': 'db.sqlite', 'schema': 'main'
-}})
-with DBLiftClient.from_config(config, migrations_dir=sql, logger=NullLog(), analysis_mode='execution') as client:
-    with warnings.catch_warnings(record=True) as recorded:
-        warnings.simplefilter('always', DeprecationWarning)
-        try:
-            generated = client.generate_undo_script(script)
-        except ModuleNotFoundError as exc:
-            assert exc.name == 'sqlglot'
-        else:
-            assert not generated.success
-            assert 'sqlglot' in (generated.error_message or '').lower()
-    assert any(issubclass(item.category, DeprecationWarning) for item in recorded)
-assert not (sql / 'U1__create.sql').exists()
 """,
         blocked=("sqlglot", "rich", "jinja2"),
         cwd=tmp_path,

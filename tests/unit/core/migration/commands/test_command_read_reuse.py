@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
+from dblift.core.logger import DbliftLogger
 from dblift.core.migration.commands.base_command import BaseCommand
 from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.info_command import InfoCommand
@@ -21,6 +22,7 @@ from dblift.core.migration.commands.repair_command import RepairCommand
 from dblift.core.migration.commands.validate_command import ValidateCommand
 from dblift.core.migration.state.migration_data_service import MigrationDataService
 from dblift.core.migration.state.migration_state import MigrationState
+from tests.unit.core.migration.commands._plan_repairs_wiring import as_actions
 
 pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
 
@@ -31,7 +33,9 @@ def database_client(tmp_path):
     migrations.mkdir()
     database = tmp_path / "app.db"
     engine = create_engine(f"sqlite:///{database}")
-    client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=str(migrations))
+    client = DBLiftClient.from_sqlalchemy(
+        engine, migrations_dir=str(migrations), logger=DbliftLogger(), analysis_mode="full"
+    )
     try:
         yield client, engine, migrations, database
     finally:
@@ -73,7 +77,7 @@ def observe_reads(client, migrations):
 @pytest.mark.parametrize(
     "operation,populated,expected_history,expected_loads",
     [
-        ("migrate", False, 4, 2),
+        ("migrate", False, 4, 3),
         ("migrate", True, 2, 1),
         ("info", False, 0, 1),
         ("info", True, 2, 1),
@@ -295,7 +299,12 @@ def test_lock_refresh_sees_other_client_apply_pending_migration(database_client)
 
     def another_client_applies_before_lock(*args, **kwargs):
         other_engine = create_engine(f"sqlite:///{database}")
-        other = DBLiftClient.from_sqlalchemy(other_engine, migrations_dir=str(migrations))
+        other = DBLiftClient.from_sqlalchemy(
+            other_engine,
+            migrations_dir=str(migrations),
+            logger=DbliftLogger(),
+            analysis_mode="full",
+        )
         try:
             result = other.migrate()
             assert result.success, result.error_message
@@ -438,7 +447,7 @@ def test_nonempty_recursion_map_preserves_validator_discovery_scope(database_cli
 
     assert result.success, result.error_message
     assert [m.script for m in result.migrations] == ["V1__app.sql"]
-    assert counts == {"history": 4, "files": {"V1__app.sql": 2}, "scans": 2}
+    assert counts == {"history": 4, "files": {"V1__app.sql": 3}, "scans": 3}
 
 
 def test_info_duplicate_warning_reuses_state_catalog(database_client):
@@ -504,7 +513,7 @@ def test_filtered_migrate_keeps_full_catalog_for_missing_file_validation(databas
     assert filtered.success, filtered.error_message
     assert [row.script for row in filtered.migrations] == ["V3__new[keep].sql"]
     assert not any("is missing from" in call.args[0] for call in warnings.call_args_list)
-    assert counts["scans"] == 2
+    assert counts["scans"] == 3
 
     excluded.unlink()
     with (
@@ -716,8 +725,8 @@ def test_callback_discovery_sees_file_created_during_lock_acquisition(database_c
     ]
     assert counts == {
         "history": 4,
-        "files": {"V1__app.sql": 2, "beforeMigrate__late.sql": 1},
-        "scans": 2,
+        "files": {"V1__app.sql": 3, "beforeMigrate__late.sql": 2},
+        "scans": 3,
     }
     with sqlite3.connect(database) as connection:
         assert connection.execute(
@@ -749,12 +758,12 @@ def test_grouped_state_catalog_preserves_collector_data_and_refreshes(database_c
         return catalog
 
     with patch.object(collector, "load_migration_scripts", side_effect=capture_catalog) as load:
-        first = client.executor.state_manager.get_grouped_migrations(migrations, **options)
+        first = client.executor.state_manager.build_state(migrations, **options).grouped_objects
         (migrations / "V1__app.sql").write_text("SELECT 100;")
-        second = client.executor.state_manager.get_grouped_migrations(migrations, **options)
+        second = client.executor.state_manager.build_state(migrations, **options).grouped_objects
 
-    assert first is collected[0]
-    assert second is collected[1]
+    assert first == collected[0]
+    assert second == collected[1]
     assert first is not second
     assert [kind.name for kind in first] == [
         "SQL",
@@ -827,11 +836,13 @@ def test_baseline_dry_run_consumes_fresh_typed_state_history(database_client):
         assert read.call_count == 1
 
         assert client.baseline("1").success
+        # The real baseline re-checks for existing history once under the lock.
+        assert read.call_count == 2
         before = database.read_bytes()
         populated = command.execute("2", dry_run=True)
         assert not populated.success
         assert "1 migration(s)" in populated.error_message
-        assert read.call_count == 2
+        assert read.call_count == 3
         assert database.read_bytes() == before
 
 
@@ -857,7 +868,9 @@ def test_commands_validate_state_snapshots_without_public_collection_adapters(
     ):
         result = getattr(client, operation)()
     assert result.success, result.error_message
-    assert build.call_count == validate.call_count == 1
+    # A real migrate validates again once it holds the lock.
+    expected_calls = 2 if operation == "migrate" else 1
+    assert build.call_count == validate.call_count == expected_calls
     assert validate.call_args.args[0].selected_migrations[0].script_name == "V1__app.sql"
 
 
@@ -965,15 +978,17 @@ def test_repair_delete_record_never_uses_model_filename_inference(
     monkeypatch.setattr(Migration, "_parse_filename", forbidden)
     result = RepairResult()
     count, failed = command._execute_repair_loop(
-        [
-            {
-                "type": "MISSING_SCRIPT",
-                "script": "V1_2__missing[tag].sql",
-                "version": version,
-                "description": "missing",
-                "original_type": MigrationType.SQL,
-            }
-        ],
+        as_actions(
+            [
+                {
+                    "type": "MISSING_SCRIPT",
+                    "script": "V1_2__missing[tag].sql",
+                    "version": version,
+                    "description": "missing",
+                    "original_type": MigrationType.SQL,
+                }
+            ]
+        ),
         result,
     )
     assert not failed, result.error_message

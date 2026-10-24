@@ -9,10 +9,14 @@ predicates and rank defaults; they now call :func:`latest_successful_ranks`.
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, NamedTuple
+from typing import Any, Callable, Dict, Iterable, NamedTuple, Optional
 
-from dblift.core.migration._type_match import is_migration_type, is_versioned
-from dblift.core.migration.migration import MigrationType
+from dblift.core.migration._type_match import (
+    is_migration_type,
+    is_versioned,
+    migration_type_name,
+)
+from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration, MigrationType
 from dblift.core.migration.version_utils import is_migration_success
 
 
@@ -72,3 +76,35 @@ def latest_successful_ranks(rows: Iterable[Any]) -> Dict[str, VersionRankState]:
         key: VersionRankState(versioned=versioned.get(key, 0), undo=undo.get(key, 0))
         for key in keys
     }
+
+
+def effective_current_version(
+    rows: Iterable[Migration], compare_versions: Callable[[str, str], int]
+) -> Optional[str]:
+    """Highest active successful versioned migration or baseline."""
+    history = list(rows)
+    ranks = latest_successful_ranks(history)
+    # A legacy undo with no usable rank still deactivates its version unless
+    # a ranked successful reapply supersedes it.
+    undone = {
+        str(row.version)
+        for row in history
+        if getattr(row, "version", None)
+        and migration_type_name(getattr(row, "type", None)).upper() == "UNDO_SQL"
+        and is_migration_success(getattr(row, "success", None))
+    }
+    inactive = {
+        version for version in undone if not ranks.get(version, VersionRankState(0, 0)).reapplied
+    }
+    current = None
+    for row in history:
+        version = getattr(row, "version", None)
+        if not version or not is_migration_success(getattr(row, "success", None)):
+            continue
+        kind = migration_type_name(getattr(row, "type", None))
+        if kind != "BASELINE" and (kind not in VERSIONED_SCRIPT_TYPES or str(version) in inactive):
+            continue
+        candidate = str(version)
+        if current is None or compare_versions(candidate, current) > 0:
+            current = candidate
+    return current

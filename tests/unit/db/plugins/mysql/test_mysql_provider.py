@@ -419,8 +419,8 @@ def test_get_columns_query_contains_schema_and_table():
 
     sql = provider.get_columns_query("mydb", "orders")
 
-    assert "mydb" in sql
-    assert "orders" in sql
+    assert "_utf8mb4 X'6d796462'" in sql
+    assert "_utf8mb4 X'6f7264657273'" in sql
 
 
 def test_get_add_column_sql():

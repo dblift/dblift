@@ -15,9 +15,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.migration import MigrationType
-from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.migration_state import MigrationEntry
+from dblift.core.migration.state.migration_state import CatalogMigration, MigrationEligibility
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from tests.unit.core.migration.commands._plan_undo_wiring import wire_plan_undo
 
 
 def _make_applied_migration(version: str, mtype):
@@ -46,22 +46,13 @@ def _make_undo_script(version: str):
 def _make_command(applied_migrations, undo_scripts):
     from dblift.core.migration.commands.undo_command import UndoCommand
 
-    state_manager = MagicMock()
+    state_manager = wire_plan_undo(MagicMock())
     migration_state = MagicMock()
     migration_state.applied_objects = applied_migrations
     migration_state.all_applied_objects = list(applied_migrations)
-    migration_state.pending_objects = undo_scripts
-    migration_state.pending = [
-        MigrationEntry(
-            s.script_name,
-            str(s.version),
-            s.description,
-            "UNDO_SQL",
-            MigrationDisplayState.AVAILABLE.value,
-            None,
-        )
-        for s in undo_scripts
-    ]
+    migration_state.catalog = tuple(
+        CatalogMigration(s, MigrationEligibility.UNDO_AVAILABLE) for s in undo_scripts
+    )
     state_manager.build_state.return_value = migration_state
     state_manager.get_current_version.return_value = None
     _filter_mgr = MigrationStateManager.__new__(MigrationStateManager)
@@ -101,6 +92,7 @@ def _make_command(applied_migrations, undo_scripts):
         migration_ui=MagicMock(),
         migration_rules=migration_rules,
     )
+    cmd.provider.migration_lock_lost.return_value = False
     cmd.journal = None
     cmd.placeholder_service = MagicMock()
     cmd.migration_helpers.setup_migration_parameters.return_value = (True, None)

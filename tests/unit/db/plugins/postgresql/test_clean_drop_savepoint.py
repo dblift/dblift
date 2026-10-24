@@ -63,6 +63,7 @@ class _FakeConnection:
 
     def __init__(self, failing_sql: Optional[List[str]] = None) -> None:
         self.dialect = _FakeDialect()
+        self.info: dict = {}
         self.failing_sql = set(failing_sql or [])
         self.aborted = False
         self.executed: List[str] = []

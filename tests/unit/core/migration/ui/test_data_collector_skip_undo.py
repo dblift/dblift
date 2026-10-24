@@ -8,7 +8,12 @@ import pytest
 
 from dblift.core.logger import NullLog
 from dblift.core.migration.migration import MigrationType
-from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.state.migration_state import (
+    CatalogMigration,
+    MigrationEligibility,
+    MigrationEntry,
+    MigrationState,
+)
 from dblift.core.migration.ui.data_collector import MigrationDataCollector
 
 pytestmark = pytest.mark.unit
@@ -34,11 +39,10 @@ def test_skips_pending_undo_sql_rows_and_keeps_undoable_from_companion():
     versioned = _make_migration("2", script_name="V2__test.sql")
     undo = _make_migration("2", mtype=MigrationType.UNDO_SQL, script_name="U2__undo.sql")
     state = MigrationState(
-        pending_objects=[versioned, undo],
-        pending=[
-            MigrationEntry.from_migration(versioned, status="Pending"),
-            MigrationEntry.from_migration(undo, status="Available"),
-        ],
+        catalog=(
+            CatalogMigration(versioned, MigrationEligibility.PENDING),
+            CatalogMigration(undo, MigrationEligibility.UNDO_AVAILABLE),
+        ),
     )
     collector = MigrationDataCollector(NullLog())
 

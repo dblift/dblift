@@ -14,28 +14,13 @@ the same as any other synchronous call would.
 from __future__ import annotations
 
 import asyncio
-import warnings
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
-from typing import Any, Callable, Literal, TypeVar
+from typing import Any, Literal
 
-from dblift.api.client import (
-    _TEXT_UNDO_DEPRECATION_MESSAGE,
-    DBLiftClient,
-    _text_undo_deprecation_gate,
-)
+from dblift.api.client import DBLiftClient
 from dblift.api.events import EventEmitter
-
-_T = TypeVar("_T")
-
-
-def _without_text_undo_deprecation(fn: Callable[..., _T], *args: object, **kwargs: object) -> _T:
-    """Run *fn* on this thread with the sync client's undo deprecation silenced."""
-    _text_undo_deprecation_gate.silenced = True
-    try:
-        return fn(*args, **kwargs)
-    finally:
-        _text_undo_deprecation_gate.silenced = False
+from dblift.config import DbliftConfig
 
 
 class AsyncDBLiftClient:
@@ -56,7 +41,7 @@ class AsyncDBLiftClient:
         cls,
         engine: Any = None,
         *,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **kwargs: Any,
     ) -> "AsyncDBLiftClient":
         """Create an async client from a SQLAlchemy engine or connection."""
@@ -64,7 +49,11 @@ class AsyncDBLiftClient:
 
     @classmethod
     def from_config(
-        cls, config: Any, *, analysis_mode: Literal["full", "execution"] = "full", **kwargs: Any
+        cls,
+        config: DbliftConfig,
+        *,
+        analysis_mode: Literal["full", "execution"] = "execution",
+        **kwargs: Any,
     ) -> "AsyncDBLiftClient":
         """Create an async client from a DBLift config object."""
         return cls(DBLiftClient.from_config(config, analysis_mode=analysis_mode, **kwargs))
@@ -74,7 +63,7 @@ class AsyncDBLiftClient:
         cls,
         config_path: str,
         *,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **kwargs: Any,
     ) -> "AsyncDBLiftClient":
         """Create an async client from a DBLift config file path."""
@@ -133,28 +122,6 @@ class AsyncDBLiftClient:
     async def undo(self, *args: Any, **kwargs: Any) -> Any:
         """Undo migrations without blocking the event loop."""
         return await self._run(self._sync.undo, *args, **kwargs)
-
-    async def generate_undo_script(self, *args: Any, **kwargs: Any) -> Any:
-        """Generate one undo script without blocking the event loop.
-
-        Deprecated since v4.10: text-based undo script generation will be
-        removed in the next major release. Emits ``DeprecationWarning``.
-        """
-        warnings.warn(_TEXT_UNDO_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
-        return await self._run(
-            _without_text_undo_deprecation, self._sync.generate_undo_script, *args, **kwargs
-        )
-
-    async def generate_undo_scripts(self, *args: Any, **kwargs: Any) -> Any:
-        """Generate undo scripts without blocking the event loop.
-
-        Deprecated since v4.10: text-based undo script generation will be
-        removed in the next major release. Emits ``DeprecationWarning``.
-        """
-        warnings.warn(_TEXT_UNDO_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=2)
-        return await self._run(
-            _without_text_undo_deprecation, self._sync.generate_undo_scripts, *args, **kwargs
-        )
 
     async def clean(self, *args: Any, **kwargs: Any) -> Any:
         """Clean database objects without blocking the event loop."""

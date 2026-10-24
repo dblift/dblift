@@ -26,7 +26,7 @@ Python 3.11 or 3.12.
 git clone https://github.com/dblift/dblift.git
 cd dblift
 python -m venv .venv && source .venv/bin/activate
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev]"   # includes the cli and analysis extras
 python -m pip install -e packages/pytest-dblift   # only if you touch the pytest plugin
 ```
 

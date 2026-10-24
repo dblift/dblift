@@ -10,6 +10,7 @@ import pytest
 from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.undo_command import UndoCommand
+from tests.unit.core.migration.commands._plan_undo_wiring import wire_plan_undo
 
 
 class _OrderTrackingProvider:
@@ -38,14 +39,22 @@ class _OrderTrackingProvider:
     def rollback_transaction(self) -> None:
         pass
 
+    def acquire_migration_lock(self, schema, wait_timeout_seconds=60) -> bool:
+        return True
+
+    def release_migration_lock(self, schema) -> bool:
+        return True
+
+    def migration_lock_lost(self) -> bool:
+        return False
+
 
 def _make_undo_cmd(history_manager=None, provider=None):
-    state_manager = MagicMock()
+    state_manager = wire_plan_undo(MagicMock())
     migration_state = MagicMock()
     migration_state.applied_objects = []
     migration_state.all_applied_objects = []
-    migration_state.pending_objects = []
-    migration_state.pending = []
+    migration_state.catalog = ()
     state_manager.build_state.return_value = migration_state
     state_manager.get_current_version.return_value = None
     from dblift.core.migration.state.migration_state_manager import MigrationStateManager

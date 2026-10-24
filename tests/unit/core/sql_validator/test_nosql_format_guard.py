@@ -31,6 +31,7 @@ from unittest.mock import MagicMock
 from dblift.core.migration.migration import Migration
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.provider_registry import ProviderRegistry
+from tests.unit._migration_factory import make_migration
 
 
 def _validator(dialect: str) -> MigrationValidator:
@@ -54,13 +55,13 @@ def _validator(dialect: str) -> MigrationValidator:
 def _sql_migration(tmp_path: Path, name: str) -> Migration:
     script = tmp_path / name
     script.write_text("CREATE TABLE t (id INT);", encoding="utf-8")
-    return Migration(script_path=script)
+    return make_migration(script_path=script)
 
 
 def _python_migration(tmp_path: Path, name: str) -> Migration:
     script = tmp_path / name
     script.write_text("def migrate(context):\n    pass\n", encoding="utf-8")
-    return Migration(script_path=script)
+    return make_migration(script_path=script)
 
 
 def test_plain_validate_rejects_sql_migration_on_cosmosdb(tmp_path):

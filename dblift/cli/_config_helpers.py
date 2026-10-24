@@ -9,7 +9,7 @@ from dblift.api._cli_support import ConnectionProvider
 from dblift.api._client_factory import apply_derived_schema
 from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
 from dblift.config.config_builder import ConfigBuilder
-from dblift.config.dblift_config import _placeholder_tokens, load_config
+from dblift.config.dblift_config import DbliftConfig, _placeholder_tokens, load_config
 from dblift.config.errors import ConfigurationError
 from dblift.config.secrets._provider_base import SecretsResolutionError
 from dblift.core.logger import LogFactory, LogFormat, LogLevel
@@ -195,8 +195,8 @@ def _build_args_namespace(
             args.config = None
             args.scripts_list = None
             args.dry_run = False
-            args.log_dir = "logs"
-            args.log_format = "text"
+            args.log_dir = None
+            args.log_format = None
             args.log_level = None
             args.log_file = None
             args.database_url = None
@@ -288,7 +288,8 @@ def _load_and_merge_config(args: argparse.Namespace, log: Any) -> Any:
         ):
             message = "Database URL is required"
         print(f"Error: {message}", file=sys.stderr)
-        sys.exit(1)
+        # An unknown log level exits 2 from every source, like an unknown format.
+        sys.exit(2 if message.startswith("Invalid log level") else 1)
 
     db_overrides = {}
     if hasattr(args, "database_url") and args.database_url:
@@ -450,6 +451,40 @@ def _validate_db_config(
         args.baseline_version = "1"
 
 
+_LOG_LEVEL_MAP = {
+    "debug": LogLevel.DEBUG,
+    "warn": LogLevel.WARN,
+    "warning": LogLevel.WARN,
+    "error": LogLevel.ERROR,
+    "critical": LogLevel.ERROR,
+}
+_VALID_LOG_LEVELS = ("debug", "info", "warn", "warning", "error", "critical")
+
+
+def _effective_log_level_name(args: argparse.Namespace, config: "DbliftConfig") -> str:
+    """Lowercase level name after flag > environment > file > ``logging.level``.
+
+    ``config.log_level`` is the already-merged value (file -> env -> CLI precedence applied in
+    ``load_config``); the raw namespace only reflects an explicit ``--log-level``. INFO in the
+    ``logging.level`` section is the default, not a request.
+    """
+    name = getattr(config, "log_level", None) or args.log_level
+    if not name:
+        section_level = config.logging.level
+        if isinstance(section_level, str) and section_level.upper() != "INFO":
+            name = section_level
+    return str(name or "info").lower()
+
+
+def _validate_log_level_for_cli(
+    args: argparse.Namespace, config: "DbliftConfig", parser: argparse.ArgumentParser
+) -> None:
+    """Reject an unknown level from any source with the flag's exit code (2)."""
+    name = _effective_log_level_name(args, config)
+    if name not in _VALID_LOG_LEVELS:
+        parser.error(f"Invalid log level: {name}. Valid levels are: {', '.join(_VALID_LOG_LEVELS)}")
+
+
 def _configure_logging(
     args: argparse.Namespace, config: Any, parser: argparse.ArgumentParser
 ) -> Any:
@@ -458,24 +493,13 @@ def _configure_logging(
     Returns:
         Configured log instance
     """
-    log_dir_path = Path(args.log_dir if args.log_dir is not None else "logs")
+    log_dir_path = Path(args.log_dir or "logs")
     try:
         log_dir_path.mkdir(parents=True, exist_ok=True)
     except OSError as e:
         _exit_log_location_error(e)
 
-    _LOG_LEVEL_MAP = {
-        "debug": LogLevel.DEBUG,
-        "warn": LogLevel.WARN,
-        "error": LogLevel.ERROR,
-    }
-    # ``config.log_level`` is the already-merged value (file -> env -> CLI
-    # precedence applied in config.dblift_config.load_config); prefer it over
-    # the raw CLI namespace, which only reflects an explicit --log-level and
-    # otherwise carries no signal about file/env config. Fall back to
-    # args.log_level when the merged config has none set.
-    effective_log_level = getattr(config, "log_level", None) or args.log_level
-    log_level = _LOG_LEVEL_MAP.get(effective_log_level, LogLevel.INFO)
+    log_level = _LOG_LEVEL_MAP.get(_effective_log_level_name(args, config), LogLevel.INFO)
     # ``--quiet`` raises the *console* threshold to NOTICE so info/debug
     # lines disappear from the terminal while NOTICE (success
     # confirmations, "Command completed"), WARN, and ERROR still show
@@ -497,7 +521,7 @@ def _configure_logging(
 
         set_progress_disabled(True)
 
-    format_strings = [f.strip().lower() for f in args.log_format.split(",")]
+    format_strings = [f.strip().lower() for f in (args.log_format or "text").split(",")]
 
     _LOG_FORMAT_MAP = {
         "html": LogFormat.HTML,

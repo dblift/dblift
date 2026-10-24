@@ -2,17 +2,19 @@
 
 import pytest
 
+from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 
 
-class TestPostgreSQLTokenizerCoverage:
+class TestLexicalTokenizerCoverage:
     """Tests to cover remaining PostgreSQL tokenizer lines."""
 
     def test_double_quoted_identifier_simple(self):
         """Test double-quoted identifier (lines 99-119)."""
         sql = 'SELECT "column_name" FROM "table_name";'
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
         identifier_tokens = [t for t in tokens if t.type == TokenType.IDENTIFIER]
@@ -21,28 +23,25 @@ class TestPostgreSQLTokenizerCoverage:
     def test_double_quoted_identifier_with_escaped_quotes(self):
         """Test double-quoted identifier with escaped quotes (lines 111-112)."""
         sql = 'SELECT "col""name" FROM "tab""le";'
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
         identifier_tokens = [t for t in tokens if t.type == TokenType.IDENTIFIER]
         assert len(identifier_tokens) >= 2
 
     def test_copy_from_stdin_data_block(self):
-        """Test COPY FROM STDIN data block handling (lines 204-227)."""
+        """The tokenizer consumes COPY rows after the header terminator."""
         sql = """COPY users FROM STDIN;
 1\tJohn
 2\tJane
 \\.
 """
-        tokenizer = PostgreSQLTokenizer(sql)
-        # Set in_copy_data to True to test handle_copy_data
-        tokenizer.in_copy_data = True
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
+        tokens = tokenizer.tokenize()
 
-        # Manually call handle_copy_data
-        token = tokenizer.handle_copy_data()
-
-        # Should return a COPY_DATA token
-        assert token.type == TokenType.COPY_DATA
+        data_tokens = [token for token in tokens if token.type == TokenType.COPY_DATA]
+        assert len(data_tokens) == 1
+        assert data_tokens[0].text == "1\tJohn\n2\tJane\n"
         assert tokenizer.in_copy_data is False
 
     def test_copy_from_stdin_with_backslash_dot(self):
@@ -52,55 +51,16 @@ data line 1
 data line 2
 \\.
 SELECT 1;"""
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
         # Should tokenize without error
         assert len(tokens) > 0
 
-    def test_is_at_line_start_after_newline(self):
-        """Test _is_at_line_start method (lines 236-248)."""
-        sql = "\ntext"
-        tokenizer = PostgreSQLTokenizer(sql)
-
-        # At start of file
-        assert tokenizer._is_at_line_start()
-
-        # After reading newline
-        tokenizer.read()
-        assert tokenizer._is_at_line_start()
-
-        # After reading text
-        tokenizer.read()
-        assert not tokenizer._is_at_line_start()
-
-    def test_is_at_line_start_with_whitespace(self):
-        """Test _is_at_line_start with whitespace before text."""
-        sql = "\n   text"
-        tokenizer = PostgreSQLTokenizer(sql)
-
-        # Read newline
-        tokenizer.read()
-        assert tokenizer._is_at_line_start()
-
-        # Read spaces
-        tokenizer.read(3)
-        # Still at line start (only whitespace)
-        assert tokenizer._is_at_line_start()
-
-    def test_is_at_line_start_with_carriage_return(self):
-        """Test _is_at_line_start with \\r."""
-        sql = "\rtext"
-        tokenizer = PostgreSQLTokenizer(sql)
-
-        # Read carriage return
-        tokenizer.read()
-        assert tokenizer._is_at_line_start()
-
     def test_is_copy_from_stdin_detection(self):
         """Test _is_copy_from_stdin method (lines 169)."""
         sql = "COPY users (id, name) FROM STDIN;"
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
         # Should detect COPY FROM STDIN
@@ -110,16 +70,16 @@ SELECT 1;"""
     def test_dollar_quote_at_end_of_string(self):
         """Test dollar quote that reaches end of string."""
         sql = "$$incomplete"
-        tokenizer = PostgreSQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
 
-        # Should handle incomplete dollar quote gracefully
-        assert len(tokens) > 0
+        # an unterminated dollar-quoted string is refused, not swallowed
+        with pytest.raises(UnsafeStatementSplitError):
+            tokenizer.tokenize()
 
     def test_dollar_quote_with_alphanumeric_tag(self):
         """Test dollar quote with alphanumeric characters in tag."""
         sql = "$tag123$content$tag123$"
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
         string_tokens = [t for t in tokens if t.type == TokenType.STRING]
@@ -128,7 +88,7 @@ SELECT 1;"""
     def test_dollar_quote_tag_with_underscore(self):
         """Test dollar quote tag with underscore."""
         sql = "$my_tag$content$my_tag$"
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
         string_tokens = [t for t in tokens if t.type == TokenType.STRING]
@@ -137,7 +97,7 @@ SELECT 1;"""
     def test_handle_keyword_with_copy(self):
         """Test _handle_keyword when it encounters COPY."""
         sql = "COPY users FROM STDIN;"
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
         # Should set in_copy_data flag
@@ -149,7 +109,7 @@ SELECT 1;"""
         META_COMMAND token ending at end of line, not as unclaimed
         characters glued onto the next statement."""
         sql = "\\restrict tok\nSELECT 1;"
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
         tokens = tokenizer.tokenize()
 
         meta_tokens = [t for t in tokens if t.type == TokenType.META_COMMAND]
@@ -158,18 +118,13 @@ SELECT 1;"""
 
     def test_meta_command_not_recognized_inside_copy_data(self):
         """A data row starting with '\\N' must not become a META_COMMAND
-        token. This holds regardless of the ``in_copy_data`` gate: a COPY
-        data block is consumed whole by ``handle_copy_data`` before the
-        top-level dispatch loop runs again, so the meta-command check never
-        sees a line from inside it either way."""
-        sql = "1\t\\N\n\\.\n"
-        tokenizer = PostgreSQLTokenizer(sql)
-        tokenizer.in_copy_data = True
+        token: the data block is consumed before top-level dispatch resumes."""
+        sql = "COPY t FROM STDIN;\n1\t\\N\n\\.\n"
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
+        tokens = tokenizer.tokenize()
 
-        token = tokenizer.handle_copy_data()
-
-        assert token.type == TokenType.COPY_DATA
-        assert "\\N" in token.text
+        assert [token.text for token in tokens if token.type == TokenType.COPY_DATA] == ["1\t\\N\n"]
+        assert not any(token.type == TokenType.META_COMMAND for token in tokens)
 
     def test_meta_command_gate_protects_the_copy_header_window(self):
         """Unlike the data block above, the COPY-header gate *is* load-
@@ -178,7 +133,7 @@ SELECT 1;"""
         still fall to the unclaimed-character path, not become a
         META_COMMAND — removing the gate reddens this test."""
         sql = "COPY t (\n    id\n)\n\\restrict tok\nFROM stdin;\n1\n\\.\n"
-        tokenizer = PostgreSQLTokenizer(sql)
+        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
 
         with pytest.warns(UserWarning, match="unclaimed character"):
             tokens = tokenizer.tokenize()

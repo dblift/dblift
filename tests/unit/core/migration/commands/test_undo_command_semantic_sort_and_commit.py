@@ -13,6 +13,7 @@ import pytest
 
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from tests.unit.core.migration.commands._plan_undo_wiring import wire_plan_undo
 
 
 def _make_migration(version: str, mtype):
@@ -30,12 +31,11 @@ def _make_migration(version: str, mtype):
 def _make_command(applied_migrations):
     from dblift.core.migration.commands.undo_command import UndoCommand
 
-    state_manager = MagicMock()
+    state_manager = wire_plan_undo(MagicMock())
     migration_state = MagicMock()
     migration_state.applied_objects = applied_migrations
     migration_state.all_applied_objects = list(applied_migrations)
-    migration_state.pending_objects = []
-    migration_state.pending = []
+    migration_state.catalog = ()
     state_manager.build_state.return_value = migration_state
     state_manager.get_current_version.return_value = None
     _filter_mgr = MigrationStateManager.__new__(MigrationStateManager)

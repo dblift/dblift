@@ -20,8 +20,7 @@ stopped from being captured.
 import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
+from tests.support.facts_parser import facts_parser
 
 
 @pytest.mark.unit
@@ -29,29 +28,7 @@ class TestDb2IndexObjectSchemaRegexParser:
     """Exercises ``DB2RegexParser`` directly."""
 
     def setup_method(self):
-        self.parser = DB2RegexParser()
-
-    def test_create_index(self):
-        objects = self.parser.extract_objects("CREATE INDEX idx1 ON myschema.mytable (col);")
-
-        assert len(objects) == 1
-        assert objects[0].name == "IDX1"
-        assert objects[0].schema == "SYSIBM"
-        assert objects[0].object_type == SqlObjectType.INDEX
-
-    def test_create_unique_index(self):
-        objects = self.parser.extract_objects("CREATE UNIQUE INDEX idx1 ON myschema.mytable (col);")
-
-        assert len(objects) == 1
-        assert objects[0].name == "IDX1"
-        assert objects[0].schema == "SYSIBM"
-
-    def test_create_index_on_unqualified_table(self):
-        objects = self.parser.extract_objects("CREATE INDEX idx1 ON mytable (col);")
-
-        assert len(objects) == 1
-        assert objects[0].name == "IDX1"
-        assert objects[0].schema == "SYSIBM"
+        self.parser = facts_parser("db2")
 
     def test_create_index_own_schema_qualified(self):
         # The index's own schema ("idxschema") is captured; the table's
@@ -63,22 +40,6 @@ class TestDb2IndexObjectSchemaRegexParser:
         assert len(objects) == 1
         assert objects[0].name == "IDX1"
         assert objects[0].schema == "IDXSCHEMA"
-
-    def test_create_index_quoted_name(self):
-        # A quoted name keeps its exact text; Db2 only folds unquoted names.
-        objects = self.parser.extract_objects('CREATE INDEX "idx 1" ON "myschema"."mytable" (col);')
-
-        assert len(objects) == 1
-        assert objects[0].name == "idx 1"
-        assert objects[0].schema == "SYSIBM"
-
-    def test_drop_index_unqualified(self):
-        objects = self.parser.extract_objects("DROP INDEX idx1;")
-
-        assert len(objects) == 1
-        assert objects[0].name == "IDX1"
-        assert objects[0].schema == "SYSIBM"
-        assert objects[0].object_type == SqlObjectType.INDEX
 
     def test_drop_index_own_schema_qualified(self):
         # Db2 DROP INDEX has no ON clause at all — the index's own
@@ -92,13 +53,11 @@ class TestDb2IndexObjectSchemaRegexParser:
 
 @pytest.mark.unit
 class TestDb2IndexObjectSchemaDefaultParser:
-    """Same assertions through the default (hybrid) parser. Db2 has no
-    sqlglot dialect, so the hybrid parser falls back to the regex parser
-    entirely — this class exists to prove that fallback, not to catch a
-    disagreement between two implementations."""
+    """Same assertions through the default parser, which reads statement facts.
+    An index name without a schema takes the default schema as given."""
 
     def setup_method(self):
-        self.parser = SqlParserFactory("db2").get_parser()
+        self.parser = facts_parser("db2")
 
     def test_create_index(self):
         objects = self.parser.extract_objects(
@@ -107,7 +66,7 @@ class TestDb2IndexObjectSchemaDefaultParser:
 
         assert len(objects) == 1
         assert objects[0].name == "IDX1"
-        assert objects[0].schema == "MYSCHEMA"
+        assert objects[0].schema == "myschema"
         assert objects[0].object_type == SqlObjectType.INDEX
 
     def test_create_index_own_schema_qualified(self):

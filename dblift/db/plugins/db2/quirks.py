@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import re
-from typing import Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
+from dblift.db.plugins.db2.parser.statement_facts import Db2StatementFactsReader
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
 # ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
@@ -45,6 +49,20 @@ class Db2Quirks(BaseQuirks):
     ``COMPRESS YES/NO`` storage clause, and migration-engine semantics
     where ``clean_schema`` auto-commits and DDL needs an explicit commit.
     """
+
+    def lexical_spec(self) -> "LexicalSpec":
+        """The lexical specification the shared engine splits Db2 scripts with."""
+        from dblift.db.plugins.db2.parser.lexical_spec import DB2_SPEC
+
+        return DB2_SPEC
+
+    def redaction_tokenizer(self) -> "Optional[type]":
+        """Db2 nests block comments; literal masking reads that flag."""
+        from dblift.db.plugins.db2.parser.db2_tokenizer import DB2NestingCommentTokenizer
+
+        return DB2NestingCommentTokenizer
+
+    statement_facts_class = Db2StatementFactsReader
 
     # Capability matrix (was ``_CAPABILITIES["db2"]``).
     supports_transactions = True
@@ -104,24 +122,6 @@ class Db2Quirks(BaseQuirks):
     def error_patterns(self) -> "List[Tuple[re.Pattern[str], ErrorCategory]]":
         """DB2 SQLSTATE / errorcode error-classification patterns (ADR-26 A2)."""
         return _ERROR_PATTERNS
-
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """Return the Db2 parser class for ``parser_type``, or ``None``.
-
-        ``"hybrid"`` → ``HybridParser`` (which falls back to regex since
-        sqlglot has no Db2 dialect), ``"regex"`` → ``DB2RegexParser``,
-        ``"sqlglot"`` → ``None`` (no Db2 sqlglot dialect — factory raises
-        ``UnsupportedDialectError``, matching the legacy ``SQLGLOT_PARSER_MAP``).
-        """
-        if parser_type == "hybrid":
-            from dblift.core.sql_parser.hybrid_parser import HybridParser
-
-            return HybridParser
-        if parser_type == "regex":
-            from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
-
-            return DB2RegexParser
-        return None
 
     def type_equivalents(self) -> "dict[str, str]":
         """Db2 alias → canonical type map.

@@ -13,19 +13,19 @@ def test_log_py_jinja_available_no_try_except():
 
     src = inspect.getsource(mod)
     # The try:pass artifact is gone — JINJA_AVAILABLE should be a direct assignment
-    assert "JINJA_AVAILABLE = True" in src
+    assert "JINJA_AVAILABLE = module_available" in src
     # No dead try/except wrapping a bare pass before JINJA_AVAILABLE
     lines = src.splitlines()
     for i, line in enumerate(lines):
-        if "JINJA_AVAILABLE = True" in line:
+        if "JINJA_AVAILABLE = module_available" in line:
             # The preceding non-blank line should NOT be 'pass'
             preceding = [l.strip() for l in lines[:i] if l.strip()]
-            assert preceding[-1] != "pass", "pass found immediately before JINJA_AVAILABLE = True"
+            assert preceding[-1] != "pass", "pass found immediately before JINJA_AVAILABLE"
             break
 
 
 def test_log_py_jinja_available_is_true():
-    """JINJA_AVAILABLE is True at runtime."""
+    """JINJA_AVAILABLE is True where Jinja2 is installed (the test environment)."""
     from dblift.core.logger.log import JINJA_AVAILABLE
 
     assert JINJA_AVAILABLE is True

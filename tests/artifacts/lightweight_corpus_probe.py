@@ -68,8 +68,13 @@ def _scripts(result) -> list[list[str]]:
     return [[item.script, item.status] for item in result.migrations]
 
 
+def _text(statement: str) -> str:
+    """A statement without its terminator: older releases return it, this one does not."""
+    return statement[:-1] if statement.endswith(";") else statement
+
+
 def _sql(result) -> list[list]:
-    return [[item.script, item.statements] for item in result.sql]
+    return [[item.script, [_text(text) for text in item.statements]] for item in result.sql]
 
 
 def _core(work: Path) -> dict:
@@ -354,10 +359,12 @@ def _cli_matrix(work: Path) -> dict:
         assert "missing_table" in payload["error"]
         migrations = [[row["script"], row["status"]] for row in payload["migrations"]]
         assert migrations == [["V1__ok.sql", "SUCCESS"], ["V2__bad.sql", "FAILED"]]
-        statements = [[row["script"], row["statements"]] for row in payload["sql"]]
+        statements = [
+            [row["script"], [_text(text) for text in row["statements"]]] for row in payload["sql"]
+        ]
         assert statements == [
-            ["V1__ok.sql", ["CREATE TABLE cli_items (id INTEGER PRIMARY KEY);"]],
-            ["V2__bad.sql", ["INSERT INTO missing_table VALUES (1);"]],
+            ["V1__ok.sql", ["CREATE TABLE cli_items (id INTEGER PRIMARY KEY)"]],
+            ["V2__bad.sql", ["INSERT INTO missing_table VALUES (1)"]],
         ]
         reports = sorted((root / "logs").iterdir())
         assert len(reports) == (2 if log_format == "text,html" else 1)
@@ -469,7 +476,9 @@ def _cli_matrix(work: Path) -> dict:
         "text_exit": text.returncode,
         "success_cli": {
             "migrate_success": migrated_payload["success"],
-            "migrate_sql": [row["statements"] for row in migrated_payload["sql"]],
+            "migrate_sql": [
+                [_text(text) for text in row["statements"]] for row in migrated_payload["sql"]
+            ],
             "repeatable_applied": rerun_migrations == ["R__item_view.sql"],
             "undo_success": undone.returncode == 0,
             "history_after_undo": cli_final_history,

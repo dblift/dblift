@@ -22,6 +22,9 @@ def _project(root: Path) -> Path:
         "  path: ./app.db\n"
         "migrations:\n"
         "  directory: ./migrations\n"
+        "logging:\n"
+        "  directory: ./logs\n"
+        "  file: dblift.log\n"
     )
     return config
 

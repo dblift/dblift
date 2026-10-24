@@ -7,19 +7,6 @@ import pytest
 pytestmark = [pytest.mark.unit]
 
 
-class TestHybridParserSilentExceptions:
-    """hybrid_parser.py had 5 silent except blocks."""
-
-    def test_hybrid_parser_silent_excepts_replaced(self):
-        import inspect
-
-        from dblift.core.sql_parser import hybrid_parser as mod
-
-        source = inspect.getsource(mod)
-        silent_count = len(re.findall(r"except Exception:\s*\n\s*pass", source))
-        assert silent_count == 0, f"Found {silent_count} silent except blocks in hybrid_parser"
-
-
 class TestMigrationDataServiceSilentExceptions:
     """migration_data_service.py had 4 silent except blocks."""
 
@@ -70,23 +57,4 @@ class TestRemainingIntentionalExcepts:
                     pytest.fail(
                         f"Line {i + 1} has bare except without comment: {bare_line!r} "
                         f"followed by {next_lines}"
-                    )
-
-    def test_undo_script_generator_regex_fallbacks_have_comments(self):
-        import inspect
-
-        from dblift.core.migration.scripting import undo_script_generator as mod
-
-        source = inspect.getsource(mod)
-        lines = source.splitlines()
-        for i, line in enumerate(lines):
-            if re.search(r"except Exception:\s*$", line):
-                next_lines = [lines[j].strip() for j in range(i + 1, min(i + 3, len(lines)))]
-                has_comment_or_log = any(
-                    l.startswith("# Intentional:") or "self.log" in l or "logger" in l
-                    for l in next_lines
-                )
-                if not has_comment_or_log:
-                    pytest.fail(
-                        f"Line {i + 1} has bare except without comment, followed by {next_lines}"
                     )

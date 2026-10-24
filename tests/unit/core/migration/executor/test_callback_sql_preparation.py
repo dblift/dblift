@@ -6,9 +6,9 @@ import pytest
 
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
-from dblift.core.migration.migration import Migration
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
+from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
 
@@ -19,7 +19,7 @@ def _engine(dialect):
     log = MagicMock()
     return ExecutionEngine(
         provider,
-        SqlAnalyzer(dialect=dialect, logger=log),
+        StatementReader(dialect=dialect, logger=log),
         log,
         placeholder_service=PlaceholderService({"owner": "APP", "env": "dev"}, log),
     )
@@ -29,8 +29,10 @@ def _engine(dialect):
 def test_preparation_resolves_identifiers_without_changing_canonical_sql(dialect):
     engine = _engine(dialect)
     content = "CREATE TABLE ${owner}.log_${env} (id INT);"
-    migration = Migration(script_name="V1__log.sql", content=content, logger=engine.log)
-    callback = Migration(script_name="beforeMigrate__log.sql", content=content, logger=engine.log)
+    migration = make_migration(script_name="V1__log.sql", content=content, logger=engine.log)
+    callback = make_migration(
+        script_name="beforeMigrate__log.sql", content=content, logger=engine.log
+    )
     for script in (migration, callback):
         script._sql_statements = [content]
     cached = [script._sql_statements for script in (migration, callback)]
@@ -59,8 +61,10 @@ def test_callback_preprocesses_sqlplus_after_placeholders_and_discards_directive
         "WHENEVER SQLERROR EXIT\n"
         "CREATE TABLE &owner..log_${env} (id INT);\n"
     )
-    callback = Migration(script_name="beforeMigrate__log.sql", content=content, logger=engine.log)
-    migration = Migration(script_name="V1__log.sql", content=content, logger=engine.log)
+    callback = make_migration(
+        script_name="beforeMigrate__log.sql", content=content, logger=engine.log
+    )
+    migration = make_migration(script_name="V1__log.sql", content=content, logger=engine.log)
     callback._sql_statements = [content]
     cached = callback._sql_statements
     expected = engine.get_executable_sql_statements(migration, MigrateResult())
@@ -78,7 +82,9 @@ def test_callback_preprocesses_sqlplus_after_placeholders_and_discards_directive
 @pytest.mark.parametrize("dialect", ["postgresql", "oracle"])
 def test_preparation_errors_keep_migration_result_and_callback_exception_contracts(dialect):
     engine = _engine(dialect)
-    script = Migration(script_name="beforeMigrate__log.sql", content="SELECT 1", logger=engine.log)
+    script = make_migration(
+        script_name="beforeMigrate__log.sql", content="SELECT 1", logger=engine.log
+    )
     failure = ValueError("invalid script")
     result = MigrateResult()
 
@@ -99,19 +105,20 @@ def test_preparation_errors_keep_migration_result_and_callback_exception_contrac
 
 
 @pytest.mark.parametrize(
-    "dialect, non_executable",
-    [("sqlserver", "GO"), ("postgresql", "-- comment only"), ("postgresql", "  ")],
+    "dialect, content",
+    [
+        ("sqlserver", "GO\nCREATE TABLE t (id INT)\nGO\n"),
+        ("postgresql", "-- comment only\n;\nCREATE TABLE t (id INT);"),
+        ("postgresql", "  ;\nCREATE TABLE t (id INT);"),
+    ],
 )
-def test_callback_skips_non_executable_statements(dialect, non_executable):
+def test_callback_sends_only_the_statements_the_splitter_returns(dialect, content):
     engine = _engine(dialect)
-    callback = Migration(
-        script_name="beforeMigrate__log.sql", content="SELECT 1", logger=engine.log
+    callback = make_migration(
+        script_name="beforeMigrate__log.sql", content=content, logger=engine.log
     )
-    with patch.object(
-        engine.sql_analyzer,
-        "split_statements",
-        return_value=[non_executable, "CREATE TABLE t (id INT)"],
-    ):
-        engine.execute_callback(callback)
 
-    engine.provider.execute_statement.assert_called_once_with("CREATE TABLE t (id INT)")
+    engine.execute_callback(callback)
+
+    engine.provider.execute_statement.assert_called_once()
+    assert engine.provider.execute_statement.call_args.args[0].startswith("CREATE TABLE t (id INT)")

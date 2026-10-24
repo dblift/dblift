@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
-from typing import Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Type
 
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
@@ -26,13 +27,9 @@ _ERROR_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
     (re.compile(r"SQLSTATE\s*57\w{3}", re.IGNORECASE), ErrorCategory.INTERNAL),
 ]
 
-_DROP_TRIGGER_ON_RE = re.compile(
-    r"^\s*DROP\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?"
-    r'(?:(?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)\.)?'
-    r'(?:"[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)'
-    r"\s+ON\s+",
-    re.IGNORECASE,
-)
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
+    from dblift.core.sql_parser.statement_facts import StatementFactsReader
 
 
 class PostgresqlQuirks(BaseQuirks):
@@ -57,16 +54,16 @@ class PostgresqlQuirks(BaseQuirks):
     uppercase_identifiers = False
     clean_strategy = "introspector"
     sqlglot_dialect = "postgres"
+    statement_facts_class: Optional[Type["StatementFactsReader"]] = SqlglotStatementFactsReader
     # PostgreSQL's permissive grammar is the last-resort sqlglot read dialect
     # for dialects that declare none of their own (DB2, CosmosDB). See
-    # ``dblift.core.migration.scripting.undo_script_generator._helpers``.
+    # ``dblift.core.migration.sql.script_analysis``.
     is_default_sqlglot_read_fallback = True
     # PostgreSQL is the ANSI/generic rendering reference when a model has no
     # dialect of its own, resolved via ProviderRegistry.reference_dialect_name.
     is_ansi_reference_dialect = True
     default_schema_name = "public"
     drop_supports_if_exists = True
-    drop_table_default_cascade = True
     # Index DDL.
     table_supports_inherits = True
     supports_virtual_computed_columns = False
@@ -109,24 +106,40 @@ class PostgresqlQuirks(BaseQuirks):
             return True
         return bool(_value("host") and _value("database"))
 
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """PostgreSQL parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
-        :class:`SqlGlotParser` (``postgres`` dialect), regex → :class:`PostgreSqlRegexParser`."""
-        if parser_type == "hybrid":
-            from dblift.core.sql_parser.hybrid_parser import HybridParser
+    def lexical_spec(self) -> "LexicalSpec":
+        """The lexical specification shared by PostgreSQL-compatible plugins."""
+        from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 
-            return HybridParser
-        if parser_type == "sqlglot":
-            from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
+        return POSTGRESQL_SPEC
 
-            return SqlGlotParser
-        if parser_type == "regex":
-            from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
-                PostgreSqlRegexParser,
-            )
+    def blank_comments(self, sql: str) -> str:
+        """Mask comments using the same scanner as execution."""
+        from dblift.core.sql_parser.lexical_engine import LexicalEngine
 
-            return PostgreSqlRegexParser
-        return None
+        return LexicalEngine(self.lexical_spec()).blank_comments(sql)
+
+    # Maintenance commands are DDL; COPY, CALL, LOCK and prepared statements are DML; VALUES and
+    # TABLE return rows; transaction control is DDL.
+    leading_word_statement_types = (
+        ("DDL", ("VACUUM", "ANALYZE", "CLUSTER", "REINDEX")),
+        ("DML", ("COPY", "CALL", "EXECUTE", "PREPARE", "DEALLOCATE", "LOCK")),
+        ("QUERY", ("VALUES", "TABLE")),
+        (
+            "DDL",
+            (
+                "BEGIN",
+                "START",
+                "COMMIT",
+                "END",
+                "ROLLBACK",
+                "ABORT",
+                "SAVEPOINT",
+                "RELEASE",
+                "TRANSACTION",
+                "WORK",
+            ),
+        ),
+    )
 
     non_transactional_sql_patterns = (
         (
@@ -175,13 +188,6 @@ class PostgresqlQuirks(BaseQuirks):
             "PostgreSQL DROP INDEX CONCURRENTLY cannot run inside a transaction block",
         ),
     )
-
-    def is_sqlglot_opaque_valid_ddl(self, sql_content: str) -> bool:
-        """PG ``DROP TRIGGER name ON table`` — sqlglot rejects this valid DDL
-        only when the table is schema-qualified (``ON schema.table``).
-        Quoting alone — either identifier, or both — does not make sqlglot
-        raise; it parses those forms without error."""
-        return _DROP_TRIGGER_ON_RE.search(sql_content) is not None
 
     def type_equivalents(self) -> "dict[str, str]":
         """PostgreSQL alias → canonical type map.

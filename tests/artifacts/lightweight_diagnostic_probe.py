@@ -75,15 +75,15 @@ def _sqlglot() -> dict:
     from dblift.api import DBLiftClient
     from dblift.config import DbliftConfig
     from dblift.core.logger import NullLog
-    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
     from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+    from dblift.core.migration.sql.statement_reader import StatementReader
     from dblift.db.plugins.sqlite.provider import SQLiteProvider
 
     config = DbliftConfig.from_dict({"database": {"type": "sqlite", "url": "sqlite:///:memory:"}})
     provider = SQLiteProvider(config, NullLog())
     provider.create_connection()
     try:
-        service = SqlExecutionService(provider, SqlAnalyzer("sqlite"), journal=None)
+        service = SqlExecutionService(provider, StatementReader("sqlite"), journal=None)
         assert service.execute_statement("CREATE TABLE t (id INTEGER)")[0] is False
         assert service.execute_statement("INSERT INTO t VALUES (?)", params=[7])[0] is False
         is_query, rows = service.execute_statement("SELECT id FROM t WHERE id = ?", params=[7])
@@ -98,45 +98,53 @@ def _sqlglot() -> dict:
     (migrations / "V1__create.sql").write_text(
         "CREATE TABLE standard_client_target (id INTEGER);\n", encoding="utf-8"
     )
+    # An explicit full-analysis client needs sqlglot: it must refuse before any side effect.
+    refused_database = Path.cwd() / "sqlglot_refused.sqlite"
+    refused_config = DbliftConfig.from_dict(
+        {"database": {"type": "sqlite", "path": str(refused_database), "schema": "main"}}
+    )
+    failure = ""
+    try:
+        DBLiftClient.from_config(
+            refused_config, migrations_dir=migrations, logger=NullLog(), analysis_mode="full"
+        )
+    except ModuleNotFoundError as exc:
+        assert exc.name == "sqlglot", exc.name
+        assert "dblift[analysis]" in str(exc), str(exc)
+        failure = f"ModuleNotFoundError: {exc.name}: {exc}"
+    else:
+        raise AssertionError("explicit full analysis must fail without sqlglot")
+    objects: list = []
+    if refused_database.exists():
+        with sqlite3.connect(refused_database) as connection:
+            objects = [
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+                )
+            ]
+    assert objects == []
+
+    # The default client is execution-only: it runs the whole cycle without sqlglot.
     database = Path.cwd() / "sqlglot_standard.sqlite"
     standard_config = DbliftConfig.from_dict(
         {"database": {"type": "sqlite", "path": str(database), "schema": "main"}}
     )
-    failure = ""
-    try:
-        with DBLiftClient.from_config(
-            standard_config, migrations_dir=migrations, logger=NullLog()
-        ) as client:
-            result = client.migrate()
-            assert not result.success
-            failure = result.error_message or ""
-            assert "sqlglot" in failure.lower(), failure
-    except ModuleNotFoundError as exc:
-        assert exc.name == "sqlglot", exc.name
-        failure = f"ModuleNotFoundError: {exc.name}"
-    with sqlite3.connect(database) as connection:
-        objects = [
-            row[0]
-            for row in connection.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-            )
-        ]
-    assert objects == []
     (migrations / "R__seed.sql").write_text(
         "INSERT INTO standard_client_target VALUES (9);\n", encoding="utf-8"
     )
     (migrations / "U1__create.sql").write_text(
         "DROP TABLE standard_client_target;\n", encoding="utf-8"
     )
-    with DBLiftClient.from_config(
-        standard_config, migrations_dir=migrations, logger=NullLog(), analysis_mode="execution"
-    ) as client:
+    with DBLiftClient.from_config(standard_config, migrations_dir=migrations) as client:
+        assert client.analysis_mode == "execution"
         migrated = client.migrate()
         assert migrated.success, migrated.error_message
         assert migrated.journal.capture_objects is False
         assert client.provider.execute_query("SELECT * FROM standard_client_target") == [{"id": 9}]
         assert client.validate().success
         assert client.undo(target_version="0.0.0").success
+    assert "sqlglot" not in sys.modules
     return {"failure": failure, "tables_after_failure": objects, "execution_cycle": True}
 
 
@@ -152,8 +160,12 @@ def main() -> None:
     removed = ["Jinja2", "rich"] if profile == "presentation" else ["sqlglot"]
     uninstall = _run([sys.executable, "-m", "pip", "uninstall", "-y", *removed])
     assert uninstall.returncode == 0
+    # Rich, Jinja2 and SQLGlot are optional extras, not base requirements, so
+    # removing them leaves a consistent environment. What matters is that the
+    # execution path below works without them, through the plain-text logger
+    # fallback and the execution-mode client.
     pip_check = _run([sys.executable, "-m", "pip", "check"])
-    assert pip_check.returncode != 0
+    assert pip_check.returncode == 0, pip_check.stdout
     sqlglot_evidence = None
     if profile == "presentation":
         presentation_verified = _presentation()

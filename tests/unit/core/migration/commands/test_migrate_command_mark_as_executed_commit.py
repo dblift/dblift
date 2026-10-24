@@ -10,9 +10,13 @@ import pytest
 
 from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.migration import MigrationType
-from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.state.migration_state import (
+    CatalogMigration,
+    MigrationEligibility,
+    MigrationState,
+)
 from dblift.db.provider_interfaces import TransactionalProvider
+from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 
 def _command_with_pending_migration(monkeypatch, provider: MagicMock) -> MigrateCommand:
@@ -23,10 +27,16 @@ def _command_with_pending_migration(monkeypatch, provider: MagicMock) -> Migrate
     command.journal = None
     command.history_manager = MagicMock()
     command.execution_engine = MagicMock()
-    command._initialize_migration_execution = MagicMock(return_value=(True, True, None))
+    command._run_preflight = MagicMock()
+    command._log_command_header_update = MagicMock()
+    command.migration_helpers = MagicMock()
+    command.migration_helpers.setup_migration_parameters.return_value = (True, None)
+    command.migration_helpers.validate_migrations_for_migrate.return_value = (True, None, 0.0)
+    command.validator = MagicMock()
+    command.placeholder_service = MagicMock()
     command._update_final_state = MagicMock()
     command._log_command_completion = MagicMock()
-    command.state_manager = MagicMock()
+    command.state_manager = wire_plan_migrate(MagicMock())
     command.state_manager.get_current_version.return_value = None
     pending = SimpleNamespace(
         script_name="V2__second.sql",
@@ -38,17 +48,7 @@ def _command_with_pending_migration(monkeypatch, provider: MagicMock) -> Migrate
     )
     command.state_manager.build_state.return_value = MigrationState(
         applied_objects=[],
-        pending_objects=[pending],
-        pending=[
-            MigrationEntry(
-                pending.script_name,
-                pending.version,
-                pending.description,
-                "SQL",
-                MigrationDisplayState.PENDING.value,
-                None,
-            )
-        ],
+        catalog=(CatalogMigration(pending, MigrationEligibility.PENDING),),
     )
     command.state_manager.apply_filters_to_migrations.side_effect = (
         lambda migrations, **kwargs: list(migrations)

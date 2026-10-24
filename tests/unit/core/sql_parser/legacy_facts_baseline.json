@@ -1,0 +1,668 @@
+{
+  "description": "LEGACY observations from the current hybrid parser; not StatementFacts or engine conformance.",
+  "limitations": "Static current-parser observations only, not engine conformance or semantic correctness. Only statement text/type, named objects, success, and errors are captured; roles, predicates, columns, constraints, and full model detail are absent. CTE DELETE target loss is tracked in issue #560; missing simple UPDATE targets across all seven dialects (and Oracle UNKNOWN classification) are tracked in issue #561.",
+  "known_gap_inputs": {
+    "cte_delete_target": "WITH chosen AS (SELECT id FROM src) DELETE FROM dst WHERE id IN (SELECT id FROM chosen)"
+  },
+  "cases": [
+    {
+      "dialect": "postgresql",
+      "script": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id));\nCREATE INDEX ix_child_parent ON child (parent_id);\nUPDATE child SET parent_id = 2 WHERE id = 1;\nDELETE FROM child WHERE id = 1;\nDROP TABLE child;",
+      "legacy_observed": {
+        "success": true,
+        "errors": [],
+        "statements": [
+          {
+            "sql": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id))",
+            "type": "UNKNOWN",
+            "objects": [],
+            "affected_objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": null
+              }
+            ]
+          },
+          {
+            "sql": "CREATE INDEX ix_child_parent ON child (parent_id)",
+            "type": "DDL",
+            "objects": [],
+            "affected_objects": [
+              {
+                "type": "INDEX",
+                "name": "ix_child_parent",
+                "schema": null
+              }
+            ]
+          },
+          {
+            "sql": "UPDATE child SET parent_id = 2 WHERE id = 1",
+            "type": "DML",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "DELETE FROM child WHERE id = 1",
+            "type": "DML",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "DROP TABLE child",
+            "type": "DDL",
+            "objects": [],
+            "affected_objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": null
+              }
+            ]
+          }
+        ]
+      },
+      "accepted_differences": [
+        "CREATE TABLE is now classified DDL instead of UNKNOWN.",
+        "CREATE TABLE, CREATE INDEX and DROP TABLE now report the object they change in both objects and affected_objects; the legacy extractor filled affected_objects only.",
+        "UPDATE and DELETE now name child as their affected TABLE; the legacy extractor omitted both targets."
+      ]
+    },
+    {
+      "dialect": "oracle",
+      "script": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id));\nCREATE INDEX ix_child_parent ON child (parent_id);\nUPDATE child SET parent_id = 2 WHERE id = 1;\nDELETE FROM child WHERE id = 1;\nDROP TABLE child;",
+      "legacy_observed": {
+        "success": true,
+        "errors": [],
+        "statements": [
+          {
+            "sql": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id))",
+            "type": "UNKNOWN",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "CREATE INDEX ix_child_parent ON child (parent_id)",
+            "type": "UNKNOWN",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "UPDATE child SET parent_id = 2 WHERE id = 1",
+            "type": "UNKNOWN",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "DELETE FROM child WHERE id = 1",
+            "type": "UNKNOWN",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "DROP TABLE child",
+            "type": "UNKNOWN",
+            "objects": [],
+            "affected_objects": []
+          }
+        ]
+      }
+    },
+    {
+      "dialect": "sqlserver",
+      "script": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id));\nCREATE INDEX ix_child_parent ON child (parent_id);\nUPDATE child SET parent_id = 2 WHERE id = 1;\nDELETE FROM child WHERE id = 1;\nDROP TABLE child;",
+      "legacy_observed": {
+        "success": true,
+        "errors": [],
+        "statements": [
+          {
+            "sql": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id));",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": "dbo"
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": "dbo"
+              }
+            ]
+          },
+          {
+            "sql": "CREATE INDEX ix_child_parent ON child (parent_id);",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "INDEX",
+                "name": "ix_child_parent",
+                "schema": "dbo"
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "INDEX",
+                "name": "ix_child_parent",
+                "schema": "dbo"
+              }
+            ]
+          },
+          {
+            "sql": "UPDATE child SET parent_id = 2 WHERE id = 1;",
+            "type": "DML",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "DELETE FROM child WHERE id = 1;",
+            "type": "DML",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "DROP TABLE child;",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": "dbo"
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": "dbo"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "dialect": "mysql",
+      "script": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id));\nCREATE INDEX ix_child_parent ON child (parent_id);\nUPDATE child SET parent_id = 2 WHERE id = 1;\nDELETE FROM child WHERE id = 1;\nDROP TABLE child;",
+      "legacy_observed": {
+        "success": true,
+        "errors": [],
+        "statements": [
+          {
+            "sql": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id))",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": null
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": null
+              }
+            ]
+          },
+          {
+            "sql": "CREATE INDEX ix_child_parent ON child (parent_id)",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "INDEX",
+                "name": "ix_child_parent",
+                "schema": null
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "INDEX",
+                "name": "ix_child_parent",
+                "schema": null
+              }
+            ]
+          },
+          {
+            "sql": "UPDATE child SET parent_id = 2 WHERE id = 1",
+            "type": "DML",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "DELETE FROM child WHERE id = 1",
+            "type": "DML",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "DROP TABLE child",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": null
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": null
+              }
+            ]
+          }
+        ]
+      },
+      "accepted_differences": [
+        "UPDATE and DELETE expose their changed TABLE target instead of an empty object list.",
+        "Undo requires manual review for all mutations, including plain CREATE; queries and comment-only units need no undo."
+      ]
+    },
+    {
+      "dialect": "db2",
+      "script": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id));\nCREATE INDEX ix_child_parent ON child (parent_id);\nUPDATE child SET parent_id = 2 WHERE id = 1;\nDELETE FROM child WHERE id = 1;\nDROP TABLE child;",
+      "legacy_observed": {
+        "success": true,
+        "errors": [],
+        "statements": [
+          {
+            "sql": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id))",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "TABLE",
+                "name": "CHILD",
+                "schema": "SYSIBM"
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "TABLE",
+                "name": "CHILD",
+                "schema": "SYSIBM"
+              }
+            ]
+          },
+          {
+            "sql": "CREATE INDEX ix_child_parent ON child (parent_id)",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "INDEX",
+                "name": "IX_CHILD_PARENT",
+                "schema": "SYSIBM"
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "INDEX",
+                "name": "IX_CHILD_PARENT",
+                "schema": "SYSIBM"
+              }
+            ]
+          },
+          {
+            "sql": "UPDATE child SET parent_id = 2 WHERE id = 1",
+            "type": "DML",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "DELETE FROM child WHERE id = 1",
+            "type": "DML",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "DROP TABLE child",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "TABLE",
+                "name": "CHILD",
+                "schema": "SYSIBM"
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "TABLE",
+                "name": "CHILD",
+                "schema": "SYSIBM"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "dialect": "sqlite",
+      "script": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id));\nCREATE INDEX ix_child_parent ON child (parent_id);\nUPDATE child SET parent_id = 2 WHERE id = 1;\nDELETE FROM child WHERE id = 1;\nDROP TABLE child;",
+      "legacy_observed": {
+        "success": true,
+        "errors": [],
+        "statements": [
+          {
+            "sql": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id))",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": null
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": null
+              }
+            ]
+          },
+          {
+            "sql": "CREATE INDEX ix_child_parent ON child (parent_id)",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "INDEX",
+                "name": "ix_child_parent",
+                "schema": null
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "INDEX",
+                "name": "ix_child_parent",
+                "schema": null
+              }
+            ]
+          },
+          {
+            "sql": "UPDATE child SET parent_id = 2 WHERE id = 1",
+            "type": "DML",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "DELETE FROM child WHERE id = 1",
+            "type": "DML",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "DROP TABLE child",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": null
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": null
+              }
+            ]
+          }
+        ]
+      },
+      "facts_observed": [
+        {
+          "sql": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id))",
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "child",
+              "schema": null,
+              "role": "created"
+            },
+            {
+              "type": "TABLE",
+              "name": "parent",
+              "schema": null,
+              "role": "referenced"
+            }
+          ],
+          "target": null,
+          "predicate": null,
+          "declared_columns": [
+            "id",
+            "parent_id"
+          ],
+          "declared_constraints": [
+            {
+              "kind": "PRIMARY_KEY",
+              "columns": [
+                "id"
+              ],
+              "name": null,
+              "referenced_table": null,
+              "referenced_columns": []
+            },
+            {
+              "kind": "FOREIGN_KEY",
+              "columns": [
+                "parent_id"
+              ],
+              "name": null,
+              "referenced_table": "parent",
+              "referenced_columns": [
+                "id"
+              ]
+            }
+          ],
+          "declared_column_comments": null,
+          "affected_columns": [],
+          "events": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        },
+        {
+          "sql": "CREATE INDEX ix_child_parent ON child (parent_id)",
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "INDEX",
+              "name": "ix_child_parent",
+              "schema": null,
+              "role": "created"
+            },
+            {
+              "type": "TABLE",
+              "name": "child",
+              "schema": null,
+              "role": "referenced"
+            }
+          ],
+          "target": null,
+          "predicate": null,
+          "declared_columns": [],
+          "declared_constraints": [],
+          "declared_column_comments": null,
+          "affected_columns": [],
+          "events": null,
+          "diagnostic": null,
+          "indexed_table": "child",
+          "indexed_columns": [
+            "parent_id"
+          ]
+        },
+        {
+          "sql": "UPDATE child SET parent_id = 2 WHERE id = 1",
+          "operation": "UPDATE",
+          "kind": "DML",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "child",
+              "schema": null,
+              "role": "altered"
+            }
+          ],
+          "target": "child",
+          "predicate": "id = 1",
+          "declared_columns": [],
+          "declared_constraints": [],
+          "declared_column_comments": null,
+          "affected_columns": [
+            "parent_id"
+          ],
+          "events": [
+            "UPDATE"
+          ],
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        },
+        {
+          "sql": "DELETE FROM child WHERE id = 1",
+          "operation": "DELETE",
+          "kind": "DML",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "child",
+              "schema": null,
+              "role": "altered"
+            }
+          ],
+          "target": "child",
+          "predicate": "id = 1",
+          "declared_columns": [],
+          "declared_constraints": [],
+          "declared_column_comments": null,
+          "affected_columns": [],
+          "events": [
+            "DELETE"
+          ],
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        },
+        {
+          "sql": "DROP TABLE child",
+          "operation": "DROP",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "child",
+              "schema": null,
+              "role": "dropped"
+            }
+          ],
+          "target": null,
+          "predicate": null,
+          "declared_columns": [],
+          "declared_constraints": [],
+          "declared_column_comments": null,
+          "affected_columns": [],
+          "events": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "accepted_differences": [
+        "UPDATE and DELETE now name child as their affected TABLE; the legacy extractor omitted both targets (#561).",
+        "CREATE INDEX records its referenced child table separately from the created index.",
+        "AST facts add DML predicates and column names, and CREATE TABLE declarations without building a schema model."
+      ]
+    },
+    {
+      "dialect": "duckdb",
+      "script": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id));\nCREATE INDEX ix_child_parent ON child (parent_id);\nUPDATE child SET parent_id = 2 WHERE id = 1;\nDELETE FROM child WHERE id = 1;\nDROP TABLE child;",
+      "legacy_observed": {
+        "success": true,
+        "errors": [],
+        "statements": [
+          {
+            "sql": "CREATE TABLE child (id INT PRIMARY KEY, parent_id INT REFERENCES parent(id))",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": null
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": null
+              }
+            ]
+          },
+          {
+            "sql": "CREATE INDEX ix_child_parent ON child (parent_id)",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "INDEX",
+                "name": "ix_child_parent",
+                "schema": null
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "INDEX",
+                "name": "ix_child_parent",
+                "schema": null
+              }
+            ]
+          },
+          {
+            "sql": "UPDATE child SET parent_id = 2 WHERE id = 1",
+            "type": "DML",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "DELETE FROM child WHERE id = 1",
+            "type": "DML",
+            "objects": [],
+            "affected_objects": []
+          },
+          {
+            "sql": "DROP TABLE child",
+            "type": "DDL",
+            "objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": null
+              }
+            ],
+            "affected_objects": [
+              {
+                "type": "TABLE",
+                "name": "child",
+                "schema": null
+              }
+            ]
+          }
+        ]
+      },
+      "accepted_differences": [
+        "UPDATE and DELETE expose their changed TABLE target instead of an empty object list.",
+        "CTE mutations and COPY imports use statement facts in regex, hybrid, and sqlglot factory modes.",
+        "Undo requires manual review for all mutations, including plain CREATE; queries and comment-only units need no undo. CREATE TYPE and DROP TYPE remain opaque with no reported identity because sqlglot provides no target AST; their undo always requires manual review."
+      ]
+    }
+  ],
+  "input_provenance": "Portable CREATE/INDEX/UPDATE/DELETE/DROP forms adapted from tests/unit/core/sql_parser/test_index_method_and_kind.py and tests/unit/core/sql_parser/test_hybrid_parser_extended.py; parent/child FK shape also appears in tests/unit/core/migration/test_clean_no_introspector.py."
+}

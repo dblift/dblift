@@ -11,10 +11,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from dblift.core.logger import Log, NullLog
+from dblift.core.logger.results import is_failed_migration_status
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.migration_state import MigrationState
+from dblift.core.migration.state.migration_state import MigrationEligibility, MigrationState
 from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
 
 
@@ -178,10 +179,8 @@ class MigrationDataCollector:
         # Get pending migrations from state (already sorted by migration order)
         pending_migrations = migration_state.pending_objects
 
-        # migration_state.applied/pending were built 1:1 (same order, same objects)
-        # from migration_state.all_applied_objects/pending_objects by MigrationStateManager,
-        # using MigrationStateService as the single source of truth for status. Reuse those
-        # already-computed statuses instead of re-deriving them here.
+        # Applied rows come from the manager and unresolved display rows are
+        # derived from the typed catalog. Reuse their existing display statuses.
         applied_status_by_id = {
             id(migration): entry.status
             for migration, entry in zip(
@@ -206,8 +205,14 @@ class MigrationDataCollector:
             checksum = getattr(migration, "checksum", None)
             installed_by = getattr(migration, "installed_by", None)
 
-            # Flyway removeUndos: undo scripts are not table rows.
-            if self._is_migration_type_equal(migration_type, "UNDO_SQL"):
+            # Status is already computed by MigrationStateService (via build_state()).
+            state = applied_status_by_id.get(id(migration), MigrationDisplayState.UNKNOWN.value)
+
+            # Flyway removeUndos: completed undo scripts are not table rows. A
+            # failed one is kept: it blocks validate, migrate and undo.
+            if self._is_migration_type_equal(
+                migration_type, "UNDO_SQL"
+            ) and not is_failed_migration_status(state):
                 continue
 
             # Skip if this version should be excluded based on filters
@@ -220,9 +225,6 @@ class MigrationDataCollector:
                 exclude_versions or [],
             ):
                 continue
-
-            # Status is already computed by MigrationStateService (via build_state()).
-            state = applied_status_by_id.get(id(migration), MigrationDisplayState.UNKNOWN.value)
 
             migrations_data.append(
                 {
@@ -311,10 +313,10 @@ class MigrationDataCollector:
         """
         if migration_state is not None:
             return {
-                str(migration.version)
-                for migration in migration_state.pending_objects
-                if self._is_migration_type_equal(getattr(migration, "type", None), "UNDO_SQL")
-                and getattr(migration, "version", None) is not None
+                str(record.migration.version)
+                for record in migration_state.catalog
+                if record.eligibility == MigrationEligibility.UNDO_AVAILABLE
+                and getattr(record.migration, "version", None) is not None
             }
 
         undo_versions = set()

@@ -39,6 +39,10 @@ a module-level `PLUGIN` constant.
 postgresql = "dblift.db.plugins.postgresql.plugin:PLUGIN"
 ```
 
+A SQL provider's quirks must return a `LexicalSpec` from `lexical_spec()`: it is the only way dblift
+splits a script, and a dialect without one raises `UnsupportedDialectError` at its first split (see
+[Creating a provider](creating-a-provider.md)).
+
 Third-party packages use the same pattern:
 
 ```toml
@@ -233,6 +237,8 @@ the corresponding native drivers or thin integration dependencies.
 
 | Extra | Installed dependencies | Effect |
 | --- | --- | --- |
+| `dblift[cli]` | `rich`, `Jinja2` | Command line and report rendering. |
+| `dblift[analysis]` | `sqlglot` | Full SQL analysis (statement facts, lint). |
 | `dblift[postgresql]` | `psycopg[binary]` | Enables PostgreSQL connections. |
 | `dblift[oracle]` | `oracledb` | Enables Oracle connections. |
 | `dblift[mysql]` | `PyMySQL` | Enables MySQL and MariaDB connections. |
@@ -240,9 +246,13 @@ the corresponding native drivers or thin integration dependencies.
 | `dblift[fastapi]` | `fastapi` | Enables FastAPI integration helpers. |
 | `dblift[flask]` | `flask` | Enables Flask integration helpers. |
 | `dblift[mcp]` | `mcp` | Enables the `dblift mcp` server. |
-| `dblift[all]` | every engine extra above | Convenience meta-extra. |
+| `dblift[all]` | every engine extra, `cli` and `analysis` | Convenience meta-extra. |
 
-A bare `pip install dblift` installs **no** database driver or SDK — including
+The `fastapi`, `flask`, `django`, `mcp` and `dev` extras also install `cli` and
+`analysis`, because the code they run uses them.
+
+A bare `pip install dblift` installs only PyYAML and SQLAlchemy, and **no**
+database driver or SDK — including
 Cosmos DB's. Every engine's client library sits behind its own extra, so the
 plugins all have to import without their driver present; that is what keeps
 `ProviderRegistry.discover_plugins()` working on a bare install.

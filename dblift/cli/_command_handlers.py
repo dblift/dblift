@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 from typing import Any, Callable, Dict, List, NoReturn, Optional, Tuple
 
@@ -26,6 +27,9 @@ from dblift.cli.handlers.undo import _handle_undo
 from dblift.cli.handlers.validate import _handle_validate
 from dblift.cli.handlers.validate_sql import _handle_validate_sql
 from dblift.cli.premium_manifest import PremiumCommand, premium_stub_index, render_upsell
+from dblift.core.exceptions import InvalidTargetVersionError
+from dblift.core.logger import Log
+from dblift.core.migration.target_version import available_versions, validate_target_version
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.tier_resolver import resolve_tier
 
@@ -126,6 +130,34 @@ def execute_single_command(
         return handler(ctx)
     except CapabilityDeniedError as e:
         exit_license_required(e, log)
+
+
+def _validate_target_version_option(
+    command: str,
+    cmd_args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    log: Log,
+    scripts_dir: Optional[Path],
+    additional_scripts_dirs: List[Path],
+    recursive: bool,
+    dir_recursive_map: Dict[Path, bool],
+) -> None:
+    """Refuse a ``--target-version`` that is no script's version, before connecting."""
+    target_version = cmd_args.target_version
+    if target_version is None or scripts_dir is None:
+        return
+    target_version = str(target_version)
+    versions = available_versions(
+        log, scripts_dir, recursive, additional_scripts_dirs, dir_recursive_map
+    )
+    try:
+        validate_target_version(target_version, versions, allow_zero=command == "undo")
+    except InvalidTargetVersionError as error:
+        # ``undo`` may also target an applied version whose script is gone; the
+        # client checks that against the history once it is connected.
+        if command == "undo" and target_version.strip()[:1].isdigit():
+            return
+        parser.error(str(error))
 
 
 def _validate_migrate_options(cmd_args: Any, parser: Any) -> None:

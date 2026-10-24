@@ -1,7 +1,6 @@
 """Main client for programmatic access to DBLift."""
 
 import threading
-import warnings
 from functools import wraps
 from pathlib import Path
 from types import TracebackType
@@ -20,6 +19,8 @@ from typing import (
     overload,
 )
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from dblift.api._client_factory import (
     apply_ctor_overrides,
     build_default_logger,
@@ -29,16 +30,12 @@ from dblift.api._client_factory import (
     normalize_migrations_dirs,
     resolve_config_or_raise,
 )
-from dblift.api._client_operations import (
-    generate_undo_script_operation,
-    generate_undo_scripts_operation,
-)
 from dblift.api.events import EventEmitter, EventType, use_client_emitter
 from dblift.config import DbliftConfig
+from dblift.core.exceptions import InvalidTargetVersionError
 from dblift.core.logger.results import (
     BaselineResult,
     CleanResult,
-    GenerateUndoScriptResult,
     InfoResult,
     MigrateResult,
     OperationResult,
@@ -47,7 +44,15 @@ from dblift.core.logger.results import (
     ValidateResult,
 )
 from dblift.core.migration.commands.base_command import PreflightConnectionError
-from dblift.core.migration.executor.migration_executor import MigrationExecutor
+from dblift.core.migration.executor.migration_executor import (
+    MigrationExecutor,
+    require_analysis_support,
+)
+from dblift.core.migration.target_version import (
+    available_versions,
+    merge_versions,
+    validate_target_version,
+)
 from dblift.core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL, render_upsell
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.event_listeners import attach_registered_listeners
@@ -59,28 +64,7 @@ __all__ = ["DBLiftClient"]
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 _R = TypeVar("_R", bound=OperationResult)
-
-# Shared with ``AsyncDBLiftClient``, which warns from its own methods.
-_TEXT_UNDO_DEPRECATION_MESSAGE = (
-    "text-based undo script generation is deprecated and will be removed in "
-    "the next major release; see CHANGELOG"
-)
-
-
-class _TextUndoDeprecationGate(threading.local):
-    """Per-thread switch that silences the sync methods' deprecation warning.
-
-    ``AsyncDBLiftClient`` warns at its caller's line, then runs the sync
-    method on its worker thread with ``silenced`` set, so one call warns once.
-    Thread-local because ``warnings.catch_warnings`` changes process-wide
-    filters and would also swallow other threads' warnings.
-    """
-
-    silenced = False
-
-
-_text_undo_deprecation_gate = _TextUndoDeprecationGate()
-
+_T = TypeVar("_T")
 
 # Paid-tier commands that have a corresponding OSS-visible DBLiftClient
 # method name (issue #753). Keyed by ``api_method`` so
@@ -274,7 +258,7 @@ class DBLiftClient:
         log_level: Optional[str] = None,
         log_format: Optional[str] = None,
         log_file: Optional[str] = None,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **kwargs: Any,
     ):
         """Initialize DBLift client.
@@ -283,7 +267,8 @@ class DBLiftClient:
             provider: Database provider instance (e.g., PostgreSqlProvider)
             migrations_dir: Path(s) to migration scripts directory
             config: Optional configuration object (defaults to provider's config)
-            logger: Optional logger instance (if None, creates one)
+            logger: Optional logger instance (if None, the client is silent
+                unless a ``log_*`` argument or a config logging setting asks for output)
             log_level: Log level (DEBUG, INFO, WARN, ERROR); omit to keep ``config`` values
             log_format: Log format (text, json, html); omit to keep ``config`` values
             log_file: Optional log file path; omit to keep ``config`` values
@@ -291,6 +276,7 @@ class DBLiftClient:
         """
         if analysis_mode not in ("full", "execution"):
             raise ValueError("analysis_mode must be 'full' or 'execution'")
+        require_analysis_support(analysis_mode)
         self.analysis_mode = analysis_mode
 
         # Feature registrations from installed add-on packages must load for
@@ -343,6 +329,59 @@ class DBLiftClient:
         # would silently route core-layer events to the process-wide default.
         self.events = EventEmitter()
         attach_registered_listeners(self.events)
+
+    def _resolve_target_version(self, target_version: Optional[str]) -> Optional[str]:
+        """Return the explicit target, else the configured ``target_version``."""
+        return target_version if target_version is not None else self.config.target_version
+
+    def _resolve_run_option(self, value: Optional[_T], configured: _T) -> _T:
+        """Return the explicit value, else the configured one (argument > environment > YAML)."""
+        return value if value is not None else configured
+
+    def _check_target_version(
+        self,
+        target_version: Optional[str],
+        recursive: Optional[bool],
+        additional_dirs: Optional[List[Path]],
+        dir_recursive_map: Optional[Dict[Path, bool]],
+        *,
+        allow_zero: bool = False,
+        allow_applied: bool = False,
+    ) -> None:
+        """Raise ``InvalidTargetVersionError`` unless the target is a script's version.
+
+        With ``allow_applied`` (undo) a version in the applied history also
+        passes, for a migration whose script has since been removed.
+        """
+        if target_version is None:
+            return
+        target_version = str(target_version)
+        recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
+            recursive, additional_dirs, dir_recursive_map
+        )
+        versions = available_versions(
+            self.logger, self._get_scripts_dir(), recursive, additional_dirs, dir_recursive_map
+        )
+        try:
+            validate_target_version(target_version, versions, allow_zero=allow_zero)
+        except InvalidTargetVersionError:
+            if not allow_applied or not target_version.strip()[:1].isdigit():
+                raise
+            try:
+                records = self.executor.history_manager.get_applied_migration_records()
+            except (OSError, SQLAlchemyError) as exc:
+                from dblift.db.error import format_connection_error
+
+                raise PreflightConnectionError(
+                    format_connection_error(exc, self.config.database.type or "")
+                ) from exc
+            applied = [str(record.version) for record in records if record.version]
+            try:
+                validate_target_version(target_version, applied)
+            except InvalidTargetVersionError:
+                raise InvalidTargetVersionError(
+                    target_version, merge_versions(versions, applied)
+                ) from None
 
     def _get_scripts_dir(self) -> Path:
         """Get primary scripts directory.
@@ -463,6 +502,16 @@ class DBLiftClient:
             MigrateResult with details of applied migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        dry_run = dry_run or self.config.dry_run
+        tags = self._resolve_run_option(tags, self.config.tags)
+        exclude_tags = self._resolve_run_option(exclude_tags, self.config.exclude_tags)
+        versions = self._resolve_run_option(versions, self.config.versions)
+        exclude_versions = self._resolve_run_option(exclude_versions, self.config.exclude_versions)
+        mark_as_executed = mark_as_executed or self.config.mark_as_executed
+        target_version = self._resolve_target_version(target_version)
+        self._check_target_version(
+            target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
+        )
         self.events.emit(
             EventType.MIGRATION_STARTED,
             {
@@ -499,6 +548,7 @@ class DBLiftClient:
                 additional_dirs=additional_dirs,
                 **kwargs,
             )
+            result.dry_run = dry_run
 
             if result.success:
                 self.events.emit(
@@ -574,6 +624,14 @@ class DBLiftClient:
             InfoResult with migration status
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        tags = self._resolve_run_option(tags, self.config.tags)
+        exclude_tags = self._resolve_run_option(exclude_tags, self.config.exclude_tags)
+        versions = self._resolve_run_option(versions, self.config.versions)
+        exclude_versions = self._resolve_run_option(exclude_versions, self.config.exclude_versions)
+        target_version = self._resolve_target_version(target_version)
+        self._check_target_version(
+            target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
+        )
         self.events.emit(
             EventType.INFO_STARTED,
             {
@@ -647,6 +705,14 @@ class DBLiftClient:
             emitted.
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        tags = self._resolve_run_option(tags, self.config.tags)
+        exclude_tags = self._resolve_run_option(exclude_tags, self.config.exclude_tags)
+        versions = self._resolve_run_option(versions, self.config.versions)
+        exclude_versions = self._resolve_run_option(exclude_versions, self.config.exclude_versions)
+        target_version = self._resolve_target_version(target_version)
+        self._check_target_version(
+            target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
+        )
         self.events.emit(EventType.VALIDATION_STARTED, {"dialect": getattr(self, "dialect", None)})
 
         try:
@@ -720,6 +786,23 @@ class DBLiftClient:
             UndoResult with details of rolled back migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        dry_run = dry_run or self.config.dry_run
+        tags = self._resolve_run_option(tags, self.config.tags)
+        exclude_tags = self._resolve_run_option(exclude_tags, self.config.exclude_tags)
+        versions = self._resolve_run_option(versions, self.config.versions)
+        exclude_versions = self._resolve_run_option(exclude_versions, self.config.exclude_versions)
+        target_version = self._resolve_target_version(target_version)
+        try:
+            self._check_target_version(
+                target_version,
+                recursive,
+                additional_dirs,
+                kwargs.get("dir_recursive_map"),
+                allow_zero=True,
+                allow_applied=True,
+            )
+        except PreflightConnectionError as exc:
+            return _failed_preflight_result(exc, UndoResult, self.config.database.schema)
         self.events.emit(
             EventType.UNDO_STARTED,
             {
@@ -751,6 +834,7 @@ class DBLiftClient:
                 additional_dirs=additional_dirs,
                 **kwargs,
             )
+            result.dry_run = dry_run
 
             if result.success:
                 self.events.emit(
@@ -783,112 +867,6 @@ class DBLiftClient:
                 return _failed_preflight_result(preflight, UndoResult, self.config.database.schema)
             raise
 
-    # Mutating on purpose: it emits MIGRATION_* events, so a listener
-    # nesting it would re-trigger itself.
-    @_with_client_emitter
-    def generate_undo_script(
-        self,
-        migration_path: Union[str, Path],
-        output_dir: Optional[Union[str, Path]] = None,
-        overwrite: bool = False,
-        **kwargs: Any,
-    ) -> "GenerateUndoScriptResult":
-        """Generate an undo script for a versioned migration.
-
-        Deprecated since v4.10: text-based undo script generation will be
-        removed in the next major release. It reverses the migration's SQL
-        text, so it cannot reverse changes whose prior state the file does
-        not hold (``DROP COLUMN``, ``DROP CONSTRAINT``, column modifications,
-        any ``DROP``). Emits ``DeprecationWarning``.
-
-        Args:
-            migration_path: Path to the versioned SQL migration file (V*__.sql)
-            output_dir: Directory to write undo script (default: same as migration file)
-            overwrite: Whether to overwrite existing undo script
-            **kwargs: Additional options
-
-        Returns:
-            GenerateUndoScriptResult with details of the generated undo script
-
-        Raises:
-            FileNotFoundError: If ``migration_path`` does not exist (after emitting
-                ``MIGRATION_FAILED``). Callers using try/except or batch flows rely on this.
-
-        Example:
-            >>> client = DBLiftClient.from_config_file("dblift.yaml")
-            >>> result = client.generate_undo_script(
-            ...     "migrations/V1_0_1__Create_table.sql",
-            ...     overwrite=True
-            ... )
-            >>> print(f"Generated: {result.undo_script_path}")
-        """
-        # stacklevel=3: this method, then the ``_with_client_emitter`` wrapper.
-        if not _text_undo_deprecation_gate.silenced:
-            warnings.warn(_TEXT_UNDO_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=3)
-        return generate_undo_script_operation(
-            self,
-            migration_path=migration_path,
-            output_dir=output_dir,
-            overwrite=overwrite,
-        )
-
-    # Mutating on purpose: it emits MIGRATION_* events, so a listener
-    # nesting it would re-trigger itself.
-    @_with_client_emitter
-    def generate_undo_scripts(
-        self,
-        migration_paths: Optional[List[Union[str, Path]]] = None,
-        migrations_dir: Optional[Union[str, Path]] = None,
-        overwrite: bool = False,
-        recursive: bool = True,
-        **kwargs: Any,
-    ) -> List["GenerateUndoScriptResult"]:
-        """Generate undo scripts for one or more versioned migrations.
-
-        Deprecated since v4.10: text-based undo script generation will be
-        removed in the next major release (see :meth:`generate_undo_script`).
-        Emits ``DeprecationWarning``.
-
-        Args:
-            migration_paths: List of paths to versioned SQL migration files (V*__.sql).
-                             If None, finds all versioned migrations in migrations_dir.
-                             Non-SQL migrations (e.g. Python) are included in the results
-                             with an error explaining why they were skipped, since automatic
-                             undo generation only supports SQL migrations.
-            migrations_dir: Directory to search for migrations (default: configured migrations dir)
-            overwrite: Whether to overwrite existing undo scripts
-            recursive: Search migrations directory recursively
-            **kwargs: Additional options
-
-        Returns:
-            List of GenerateUndoScriptResult, one for each migration processed
-
-        Example:
-            >>> client = DBLiftClient.from_config_file("dblift.yaml")
-            >>> # Generate undo scripts for specific migrations
-            >>> results = client.generate_undo_scripts(
-            ...     migration_paths=[
-            ...         "migrations/V1_0_1__Create_table.sql",
-            ...         "migrations/V1_0_2__Add_column.sql"
-            ...     ],
-            ...     overwrite=True
-            ... )
-            >>> # Or generate for all versioned migrations
-            >>> results = client.generate_undo_scripts(overwrite=True)
-            >>> print(f"Generated {len(results)} undo scripts")
-        """
-        # stacklevel=3: this method, then the ``_with_client_emitter`` wrapper.
-        if not _text_undo_deprecation_gate.silenced:
-            warnings.warn(_TEXT_UNDO_DEPRECATION_MESSAGE, DeprecationWarning, stacklevel=3)
-        return generate_undo_scripts_operation(
-            self,
-            migration_paths=migration_paths,
-            migrations_dir=migrations_dir,
-            overwrite=overwrite,
-            recursive=recursive,
-            **kwargs,
-        )
-
     @_with_client_emitter
     def clean(
         self,
@@ -913,6 +891,7 @@ class DBLiftClient:
             CleanResult with details of cleaned objects
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        dry_run = dry_run or self.config.dry_run
         self.events.emit(
             EventType.CLEAN_STARTED,
             {
@@ -935,6 +914,7 @@ class DBLiftClient:
                 show_query_results=show_query_results,
                 **kwargs,
             )
+            result.dry_run = dry_run
 
             if result.success:
                 self.events.emit(
@@ -1054,6 +1034,7 @@ class DBLiftClient:
             RepairResult with repair details
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        dry_run = dry_run or self.config.dry_run
         self.events.emit(
             EventType.REPAIR_STARTED,
             {
@@ -1074,6 +1055,7 @@ class DBLiftClient:
                 dir_recursive_map=dir_recursive_map,
                 **kwargs,
             )
+            result.dry_run = dry_run
 
             if result.success:
                 self.events.emit(
@@ -1128,6 +1110,7 @@ class DBLiftClient:
             OperationResult with import details
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        dry_run = dry_run or self.config.dry_run
         self.events.emit(
             EventType.MIGRATION_STARTED,
             {
@@ -1218,15 +1201,16 @@ class DBLiftClient:
         config: "DbliftConfig",
         logger: Optional[Any] = None,
         migrations_dir: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **kwargs: Any,
     ) -> Self:
         """Create a client instance from existing configuration.
 
         Args:
             config: DbliftConfig instance.
-            logger: Optional logger. When ``None`` a DbliftLogger is built
-                from the config's log settings.
+            logger: Optional logger. When ``None`` the client is silent
+                unless the config has a logging setting, in which case a
+                DbliftLogger is built from the config's log settings.
             migrations_dir: Override for the migrations directory (or list of
                 directories). When omitted, falls back to
                 ``config.migrations.directory`` and
@@ -1260,7 +1244,7 @@ class DBLiftClient:
         environment: Optional[str] = None,
         *,
         relative_to_config: bool = False,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **overrides: Any,
     ) -> Self:
         """Create a client instance from config file path.
@@ -1299,13 +1283,13 @@ class DBLiftClient:
         migrations_dir: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
         schema: Optional[str] = None,
         logger: Optional[Any] = None,
-        log_level: str = "INFO",
-        log_format: str = "text",
+        log_level: Optional[str] = None,
+        log_format: Optional[str] = None,
         log_file: Optional[str] = None,
         *,
         connection: Any = None,
         config: Optional["DbliftConfig"] = None,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
         **kwargs: Any,
     ) -> Self:
         """Create DBLiftClient from an existing SQLAlchemy Engine (or Connection).

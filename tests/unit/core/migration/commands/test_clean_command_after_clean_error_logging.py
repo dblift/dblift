@@ -45,7 +45,7 @@ class TestCleanCommandAfterCleanErrorLogging:
         with patch.object(cmd, "_execute_callbacks", side_effect=self._after_clean_error_raises):
             cmd.execute(scripts_dir="/some/dir")
 
-        log.debug.assert_any_call("afterCleanError callback skipped: callback failed")
+        log.debug.assert_any_call("Error handler for clean failed: callback failed")
 
     def test_after_clean_error_callback_exception_does_not_raise(self):
         """AC#2.2: _execute_callbacks(afterCleanError) raises → execute() does not propagate."""
@@ -62,4 +62,4 @@ class TestCleanCommandAfterCleanErrorLogging:
             cmd.execute(scripts_dir="/some/dir")
 
         debug_calls = [str(c) for c in log.debug.call_args_list]
-        assert not any("afterCleanError callback skipped" in c for c in debug_calls)
+        assert not any("Error handler for clean failed" in c for c in debug_calls)

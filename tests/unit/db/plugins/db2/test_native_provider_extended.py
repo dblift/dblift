@@ -82,6 +82,19 @@ class TestExecuteStatement:
 
         assert self._sent(sql) == "INSERT INTO t VALUES ('/* not /* a */ comment */')"
 
+    def test_removed_nested_comment_keeps_a_name_ending_in_a_no_break_space(self) -> None:
+        # Db2 keeps U+00A0 in a name: the CLP drops "T<NBSP>" here, not "T".
+        assert self._sent("DROP TABLE t\u00a0 /* a /* b */ */") == "DROP TABLE t\u00a0"
+
+    def test_removed_nested_comment_before_a_terminator_keeps_the_no_break_space(self) -> None:
+        assert self._sent("DROP TABLE t\u00a0 /* a /* b */ */;") == "DROP TABLE t\u00a0"
+
+    def test_removed_nested_comment_leaves_a_lone_no_break_space(self) -> None:
+        # The engine, not dblift, answers for it (CLP: SQL0104N); '' would be
+        # a different error from the driver.
+        assert self._sent("\u00a0/* a /* b */ c */") == "\u00a0"
+        assert self._sent("\u00a0/* a /* b */ c */;") == "\u00a0"
+
     def test_statement_without_a_nested_comment_is_sent_unchanged(self) -> None:
         sql = "/* header; */\nCREATE TABLE t (x INT) -- tail\n"
 

@@ -222,6 +222,19 @@ def _make_filter_parent() -> argparse.ArgumentParser:
     return p
 
 
+def _add_analysis_mode_option(p: argparse.ArgumentParser) -> None:
+    p.add_argument(
+        "--analysis-mode",
+        choices=["full", "execution"],
+        default="full",
+        help=(
+            "full (default) reads each statement to track objects, classify it and keep "
+            "its safeguards; execution only splits and runs the SQL and skips that "
+            "analysis. full needs sqlglot: install dblift[analysis]"
+        ),
+    )
+
+
 def _add_placeholders_option(p: argparse.ArgumentParser) -> None:
     """Add ``--placeholders``, shared by the filter parent and ``validate-sql``."""
     p.add_argument(
@@ -308,6 +321,8 @@ def _add_diff_and_target_options(
         action="store_true",
         help="Show rows returned by SELECT statements in command output and reports",
     )
+    for _analysing_parser in (migrate_parser, undo_parser, info_parser):
+        _add_analysis_mode_option(_analysing_parser)
     undo_parser.add_argument(
         "--show-sql",
         action="store_true",
@@ -527,8 +542,13 @@ def create_parser(
         dest="installed_by",
         help="Value recorded in the installed_by column (default: database username)",
     )
-    parser.add_argument("--log-dir", default="logs", help="Log directory")
-    parser.add_argument("--log-format", default="text", help="Log format (text, json, html)")
+    # No defaults on --log-dir/--log-format, for the reason given at --log-level
+    # below: a non-None default would always beat DBLIFT_LOG_DIR / DBLIFT_LOG_FORMAT
+    # and the config file. _configure_logging() falls back to "logs" and "text".
+    parser.add_argument("--log-dir", default=None, help="Log directory (default: logs)")
+    parser.add_argument(
+        "--log-format", default=None, help="Log format (text, json, html; default: text)"
+    )
     parser.add_argument(
         "--log-level",
         # No default here: a non-None default is indistinguishable from an
@@ -537,9 +557,9 @@ def create_parser(
         # DBLIFT_LOG_LEVEL / a config file's log_level. _configure_logging()
         # falls back to LogLevel.INFO when nothing sets a level.
         default=None,
-        type=str.lower,
+        type=lambda value: {"warning": "warn"}.get(value.lower(), value.lower()),
         choices=["debug", "info", "warn", "error"],
-        help="Log level (case-insensitive, default: info)",
+        help="Log level (case-insensitive, 'warning' means warn; default: info)",
     )
     parser.add_argument("--log-file", help="Log file name")
     parser.add_argument(

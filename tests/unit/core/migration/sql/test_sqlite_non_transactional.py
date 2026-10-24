@@ -44,3 +44,35 @@ def test_pragma_foreign_keys_is_classified_non_transactional(sql):
 def test_other_sqlite_statements_stay_transactional(sql):
     result = classify_execution_statement(sql, dialect="sqlite")
     assert result.can_execute_in_transaction is True, result.transaction_reason
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "VACUUM",
+        "vacuum;",
+        "VACUUM main",
+        "VACUUM INTO '/tmp/copy.db'",
+        "VACUUM main INTO 'x'",
+        "-- compact\nVACUUM",
+    ],
+)
+def test_vacuum_is_classified_non_transactional(sql):
+    """SQLite: "VACUUM ... cannot be run inside a transaction"."""
+    result = classify_execution_statement(sql, dialect="sqlite")
+    assert result.can_execute_in_transaction is False
+    assert "VACUUM" in result.transaction_reason
+
+
+@pytest.mark.parametrize(
+    "sql",
+    ["INSERT INTO vacuum_log VALUES (1)", "CREATE TABLE vacuum_t (a INT)", "SELECT 'VACUUM'"],
+)
+def test_statements_that_only_mention_vacuum_stay_transactional(sql):
+    assert classify_execution_statement(sql, dialect="sqlite").can_execute_in_transaction is True
+
+
+def test_duckdb_vacuum_stays_transactional():
+    assert (
+        classify_execution_statement("VACUUM", dialect="duckdb").can_execute_in_transaction is True
+    )

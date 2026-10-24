@@ -2,9 +2,10 @@
 
 import pytest
 
-from dblift.core.sql_parser.parser_context import ParserContext
+from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
+from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
 
 
@@ -51,54 +52,40 @@ class TestOracleTokenizerCoverage:
         # Verify we have identifiers (may or may not include quotes depending on implementation)
         assert len(identifier_tokens) > 0
 
-    def test_double_quoted_identifier_with_multiple_escapes(self):
-        """Test double-quoted identifier with multiple escaped quotes."""
-        sql = 'SELECT "id""with""quotes" FROM dual;'
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
+    def test_doubled_quote_in_identifier_is_not_an_escape(self):
+        """``""`` is not an escape: an identifier cannot contain ``"`` (spec section 2)."""
+        tokens = OracleTokenizer('SELECT "id""with""quotes" FROM dual;').tokenize()
 
-        identifier_tokens = [t for t in tokens if t.type == TokenType.IDENTIFIER]
-        # Should have at least one identifier
-        assert len(identifier_tokens) >= 1
+        identifiers = [t.text for t in tokens if t.type == TokenType.IDENTIFIER]
+        assert identifiers[:3] == ['"id"', '"with"', '"quotes"']
 
-    def test_is_wrapped_plsql_with_few_tokens(self):
-        """Test is_wrapped_plsql with less than 3 tokens."""
-        tokenizer = OracleTokenizer("SELECT 1")
-        tokens = tokenizer.tokenize()
+    def test_doubled_quote_identifier_splits_into_two_statements(self):
+        """Spec section 2: the first ``"`` closes, so ``"a""b"`` is two identifiers.
 
-        # Less than 3 tokens - should return False (covers line 212)
-        result = tokenizer.is_wrapped_plsql(tokens[:2])
-        assert result is False
+        The server rejects the first statement; the client splits the same way.
+        """
+        script = 'SELECT "a""b" FROM t;\nSELECT 1 FROM dual;'
+        tokens = OracleTokenizer(script).tokenize()
 
-    def test_is_wrapped_plsql_without_create(self):
-        """Test is_wrapped_plsql without CREATE keyword."""
-        sql = "SELECT * FROM wrapped_table"
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
+        identifiers = [t.text for t in tokens if t.type == TokenType.IDENTIFIER]
+        assert identifiers[:2] == ['"a"', '"b"']
+        assert len(LexicalEngine(ORACLE_SPEC).split_statements(script)) == 2
 
-        # No CREATE keyword - should return False (covers line 224)
-        result = tokenizer.is_wrapped_plsql(tokens)
-        assert result is False
+    def test_semicolon_after_doubled_quote_stays_inside_the_second_identifier(self):
+        """In ``"a"";b"`` the second ``"`` opens a new identifier ``";b"``.
 
-    def test_is_wrapped_plsql_create_without_wrapped(self):
-        """Test is_wrapped_plsql with CREATE but no WRAPPED."""
-        sql = "CREATE TABLE test (id NUMBER)"
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
+        So the ``;`` is inside a quoted identifier, not a terminator (spec section 2).
+        """
+        script = 'SELECT "a"";b" FROM t;\nSELECT 1 FROM dual;'
+        tokens = OracleTokenizer(script).tokenize()
 
-        # CREATE but no WRAPPED - should return False (covers line 231)
-        result = tokenizer.is_wrapped_plsql(tokens)
-        assert result is False
+        identifiers = [t.text for t in tokens if t.type == TokenType.IDENTIFIER]
+        assert identifiers[:2] == ['"a"', '";b"']
+        assert len(LexicalEngine(ORACLE_SPEC).split_statements(script)) == 2
 
-    def test_is_wrapped_plsql_with_create_and_wrapped(self):
-        """Test is_wrapped_plsql with CREATE and WRAPPED."""
-        sql = "CREATE PROCEDURE test WRAPPED a000000"
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        # CREATE followed by WRAPPED - should return True (covers lines 227-229)
-        result = tokenizer.is_wrapped_plsql(tokens)
-        assert result is True
+    def test_q_quote_at_end_of_input_is_unterminated(self):
+        with pytest.raises(UnsafeStatementSplitError, match="unterminated q-quoted string"):
+            OracleTokenizer("SELECT q'").tokenize()
 
     def test_percent_rowtype_not_dropped(self):
         sql = "DECLARE v employees%ROWTYPE; BEGIN NULL; END;\n/"
@@ -115,67 +102,33 @@ class TestOracleTokenizerCoverage:
         assert "%" in full_text
 
 
-class TestOracleStatementParserCoverage:
-    """Tests to cover remaining Oracle statement parser lines."""
+class TestOracleUnitTermination:
+    """A unit ends only at its terminator line."""
 
-    def test_package_body_detection_method(self):
-        """Test _is_package_body method."""
+    def test_package_body_without_slash_is_refused(self):
+        """A PACKAGE BODY ends only at ``/`` (docs/sql-parsing/oracle.md section 11, row 20)."""
         sql = """CREATE OR REPLACE PACKAGE BODY test_pkg AS
     PROCEDURE proc1 AS BEGIN NULL; END;
 END test_pkg;"""
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-        parser = OracleStatementParser(tokens)
-        statements = parser.split_statements()
+        with pytest.raises(UnsafeStatementSplitError, match="not terminated by a '/' line"):
+            LexicalEngine(ORACLE_SPEC).split_statements(sql)
 
-        # Should detect package body
-        assert len(statements) == 1
-
-    def test_package_spec_method(self):
-        """Test _is_package_spec method."""
+    def test_package_spec_without_slash_is_refused(self):
+        """A PACKAGE spec ends only at ``/`` (docs/sql-parsing/oracle.md section 11, row 20)."""
         sql = """CREATE PACKAGE test_pkg AS
     PROCEDURE proc1;
 END test_pkg;"""
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-        parser = OracleStatementParser(tokens)
-        statements = parser.split_statements()
+        with pytest.raises(UnsafeStatementSplitError, match="not terminated by a '/' line"):
+            LexicalEngine(ORACLE_SPEC).split_statements(sql)
 
-        # Should detect package spec
-        assert len(statements) == 1
 
-    def test_preceded_by_end_method(self):
-        """Test _preceded_by_end method."""
-        sql = "BEGIN IF x THEN NULL; END IF; END;"
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-        parser = OracleStatementParser(tokens)
+class TestOracleNationalQQuote:
+    @pytest.mark.parametrize("prefix", ["nq", "NQ", "Nq", "nQ", "q"])
+    def test_alternative_quote_literal_with_embedded_quote_splits_cleanly(self, prefix):
+        from dblift.core.migration.sql.statement_reader import StatementReader
 
-        # Process tokens until we hit IF
-        for idx, token in enumerate(tokens):
-            parser.current_idx = idx
-            if token.type != TokenType.EOF:
-                parser._adjust_context(token)
-                if token.text.upper() == "IF" and idx > 0:
-                    # Check if IF is preceded by END
-                    result = parser._preceded_by_end()
-                    # May or may not be preceded by END depending on position
-                    assert isinstance(result, bool)
-                    break
-
-    def test_is_control_flow_end_method(self):
-        """Test _is_control_flow_end method."""
-        sql = "BEGIN IF x THEN NULL; END IF; END;"
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-        parser = OracleStatementParser(tokens)
-
-        # Process tokens until END IF
-        for idx, token in enumerate(tokens):
-            parser.current_idx = idx
-            if token.type != TokenType.EOF:
-                parser._adjust_context(token)
-                if token.text.upper() == "END":
-                    # Check if this is a control flow END
-                    result = parser._is_control_flow_end()
-                    assert isinstance(result, bool)
+        script = f"SELECT {prefix}'[it's]' FROM dual;\nSELECT 1 FROM dual;"
+        assert StatementReader("oracle").split_statements(script) == [
+            f"SELECT {prefix}'[it's]' FROM dual;",
+            "SELECT 1 FROM dual;",
+        ]

@@ -4,6 +4,12 @@
 # because a dependency published a release that morning. The weekly
 # `latest` job in .github/workflows/unit-tests.yml runs without it.
 #
+# sqlglot is pinned at the declared minimum (the "floor" in
+# tests/support/facts_corpus/VERSIONS.json), so the main unit-test job runs
+# the statement-facts corpus on that release. The `sqlglot-floor` job does not
+# read this file: it installs the extras, then one explicit sqlglot release per
+# leg (the declared minimum, and the newest release the corpus was recorded on).
+#
 # Regenerate after a deliberate bump:
 #   python -m venv /tmp/ci && /tmp/ci/bin/pip install -e ".[dev,postgresql,mysql,mariadb,oracle,sqlserver,db2,duckdb,cosmosdb,mongodb,django,mcp]"
 #   /tmp/ci/bin/pip freeze --exclude-editable | grep -v -i '^dblift' > constraints-ci.txt   (keep this header)
@@ -119,7 +125,7 @@ rpds-py==2026.6.3
 six==1.17.0
 sortedcontainers==2.4.0
 SQLAlchemy==2.0.52
-sqlglot==30.18.0
+sqlglot==30.23.0
 sqlparse==0.6.0
 sse-starlette==3.4.11
 starlette==1.6.0

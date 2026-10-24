@@ -29,6 +29,15 @@ class UnsupportedMetaCommandError(ParserError):
     """Raised for a client meta-command line with no safe no-op interpretation."""
 
 
+class TransactionStatementError(UnsupportedMetaCommandError):
+    """Raised when a script holds a transaction statement dblift cannot run or drop.
+
+    dblift runs each script in a transaction of its own; a ``COMMIT``, ``ROLLBACK`` or
+    ``BEGIN`` inside it would end or fail against that transaction. The message names
+    the script, the statement and its line.
+    """
+
+
 class UnsafeStatementSplitError(ParserError):
     """Raised when a SQL script cannot be split without changing its meaning."""
 
@@ -38,6 +47,15 @@ class UnsafeStatementSplitError(ParserError):
 
 class ExecutionError(DbliftError):
     """Base exception for migration execution errors."""
+
+
+class StatementVerdictError(ExecutionError):
+    """A verdict the server deferred past its statement, attributed to a statement of the script."""
+
+    def __init__(self, message: str, statement_index: int) -> None:
+        """Keep the 0-based index of the statement the failure belongs to."""
+        super().__init__(message)
+        self.statement_index = statement_index
 
 
 class FixedDboSchemaError(ExecutionError):
@@ -112,3 +130,17 @@ class UnsupportedMigrationFormatError(ValidationError):
 
 class SchemaCreationError(ValidationError):
     """Raised when a test schema cannot be created."""
+
+
+class InvalidTargetVersionError(ValidationError, ValueError):
+    """Raised when ``target_version`` is not a version of any migration script."""
+
+    def __init__(self, target_version: str, available: "list[str]") -> None:
+        """Record the rejected value and the versions a caller could have used."""
+        self.target_version = target_version
+        self.available_versions = list(available)
+        listed = ", ".join(available) if available else "(no versioned migration scripts found)"
+        super().__init__(
+            f"Invalid target version {target_version!r}: it is not the version of a migration "
+            f"script. Available versions: {listed}"
+        )

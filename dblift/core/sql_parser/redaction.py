@@ -2,6 +2,7 @@
 
 import re
 import warnings
+from dataclasses import replace
 from typing import List, Optional, Tuple, Type
 
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
@@ -31,8 +32,8 @@ def _is_name_part(token: Token) -> bool:
 def describe_statement(sql: str, dialect: Optional[str] = None) -> str:
     """Leading verb words and the first object name of *sql*, nothing after it.
 
-    ``CREATE USER bob IDENTIFIED BY pw`` gives ``CREATE USER bob``. Falls back
-    to the first word when the text cannot be tokenized.
+    ``CREATE USER bob IDENTIFIED BY pw`` gives ``CREATE USER bob``. Gives only
+    the first word when the text cannot be tokenized.
     """
     try:
         tokens = _tokens(sql, dialect)
@@ -62,17 +63,36 @@ def describe_statement(sql: str, dialect: Optional[str] = None) -> str:
 def _tokens(sql: str, dialect: Optional[str]) -> List[Token]:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        tokens = _dialect_tokenizer(dialect)(sql).tokenize()
+        from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
+        from dblift.db.provider_registry import ProviderRegistry
+
+        spec = ProviderRegistry.get_quirks(dialect).lexical_spec() if dialect else None
+        if spec is not None and not spec.redaction_reads_engine:
+            spec = None
+        elif spec is not None and (spec.client_script or spec.batch_script):
+            # Masking reads the text as SQL: a client line (a directive, a batch separator) is not
+            # a literal-free token.
+            spec = replace(spec, client_script=None, batch_script=None)
+        elif spec is not None and spec.segment_script and spec.segment_script.command_prefix:
+            # Likewise a shell command line: masking refuses nothing, it reads the text as SQL.
+            spec = replace(spec, segment_script=replace(spec.segment_script, command_prefix=""))
+        tokens = (
+            LexicalTokenizer(sql, spec=spec).tokenize()
+            if spec is not None
+            else _dialect_tokenizer(dialect)(sql).tokenize()
+        )
+    if spec is not None and spec.segment_script is not None:
+        # A segment script runs an unclosed name or comment to the end: it is quoted text.
+        tokens = [replace(t, type=TokenType.STRING) if _runs_unclosed(t) else t for t in tokens]
     return [t for t in tokens if t.type not in (TokenType.COMMENT, TokenType.EOF)]
 
 
 def _dialect_tokenizer(dialect: Optional[str]) -> Type[BaseTokenizer]:
     if dialect:
         try:
-            from dblift.core.sql_parser.parser_factory import SqlParserFactory
+            from dblift.db.provider_registry import ProviderRegistry
 
-            parser = SqlParserFactory(dialect, parser_type="regex").get_parser()
-            tokenizer = getattr(parser, "tokenizer_class", None)
+            tokenizer = ProviderRegistry.get_quirks(dialect).redaction_tokenizer()
             if isinstance(tokenizer, type) and issubclass(tokenizer, BaseTokenizer):
                 return tokenizer
         except Exception:  # the generic tokenizer still masks
@@ -88,6 +108,19 @@ def _closing_quote(sql: str, start: int) -> int:
         if sql[i + 1 : i + 2] != '"':
             return i + 1
         i += 2
+
+
+_CLOSED_NAME = re.compile(r'"(?:[^"]|"")*"')
+
+
+def _runs_unclosed(token: Token) -> bool:
+    """Whether *token* is a quoted name or block comment that never closes: it holds the rest."""
+    text = token.text
+    if token.type == TokenType.IDENTIFIER and text.startswith('"'):
+        return not _CLOSED_NAME.fullmatch(text)
+    # A closed comment (nested ones too) is a COMMENT token; a block comment read as a symbol never
+    # closed, whatever its text ends with.
+    return token.type == TokenType.SYMBOL and text.startswith("/*")
 
 
 def _credential_span(
@@ -117,7 +150,7 @@ def _credential_span(
 def mask_string_literals(sql: str, dialect: Optional[str] = None) -> str:
     """Replace string literals and the value after ``IDENTIFIED BY`` / ``PASSWORD`` with ``?``.
 
-    Keeps the statement's shape. Falls back to :func:`describe_statement` when
+    Keeps the statement's shape. Gives :func:`describe_statement` instead when
     the text cannot be tokenized, so a failure to mask never leaks the values.
     """
     try:

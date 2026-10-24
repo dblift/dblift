@@ -158,14 +158,11 @@ class TestParseSqlStatements(unittest.TestCase):
     def test_config_dialect_key_str_fallback(self):
         """Lines 270-271: config.database.type has no .value → str(raw_type)."""
         engine = _make_engine(with_config=True)
-        # Remove .value attribute so getattr returns None
-        raw_type = MagicMock()
-        del raw_type.value
-        engine.config.database.type = raw_type
+        engine.config.database.type = "postgresql"
 
         migration = _make_sql_migration()
         result = engine._parse_sql_statements(migration, MagicMock())
-        # Should still work (fall through to sql_analyzer.dialect)
+        # Plain string config values use str(raw_type).
         self.assertIsNotNone(result)
 
     def test_mssql_normalized_to_sqlserver(self):
@@ -319,30 +316,13 @@ class TestProbeDialectKeyAdditional(unittest.TestCase):
 
 class TestClassifyExecutionStatements(unittest.TestCase):
 
-    def test_skips_empty_statements(self):
-        """Lines 203-220: Empty statements are skipped."""
+    def test_classifies_every_statement_it_is_handed(self):
+        """The splitter decides what a statement is; the engine classifies the whole list."""
         engine = _make_engine()
         engine.sql_analyzer.get_statement_type.return_value = "DML"
 
-        result = engine._classify_execution_statements(["", "   ", "SELECT 1"])
-        # Only "SELECT 1" should be classified
-        self.assertEqual(len(result), 1)
-
-    def test_skips_comment_only_statements(self):
-        """Lines 203-220: Comment-only statements skipped."""
-        engine = _make_engine()
-        engine.sql_analyzer.get_statement_type.return_value = "DML"
-
-        result = engine._classify_execution_statements(["-- comment only"])
-        self.assertEqual(len(result), 0)
-
-    def test_skips_tsql_batch_separator(self):
-        """Lines 203-220: GO is a TSQL batch separator, skipped."""
-        engine = _make_engine(dialect="sqlserver")
-        engine.sql_analyzer.get_statement_type.return_value = "DML"
-
-        result = engine._classify_execution_statements(["GO", "SELECT 1"])
-        self.assertEqual(len(result), 1)
+        result = engine._classify_execution_statements(["SELECT 1", "SELECT 2"])
+        self.assertEqual([c.sql for c in result], ["SELECT 1", "SELECT 2"])
 
     def test_classifies_normal_statement(self):
         """Lines 203-220: Normal statement gets classified."""
@@ -431,28 +411,26 @@ class TestExecuteStatements(unittest.TestCase):
         self.assertTrue(success)
 
     def test_transaction_aborted_raises_transaction_aborted_error(self):
-        """Lines 520-528: TransactionAbortedError raised when transaction is aborted."""
+        """A typed provider health failure stops the statement."""
         engine = _make_engine()
-        engine.provider.supports_transactions.return_value = True
-
-        # prepareStatement raises "transaction is aborted"
-        engine.provider.connection.prepareStatement.side_effect = Exception(
+        engine.provider.check_transaction_state.side_effect = TransactionAbortedError(
             "current transaction is aborted"
         )
         migration, result = self._make_migration_result()
 
         success = engine._execute_statements(["SELECT 1"], migration, result, time.time())
         self.assertFalse(success)
+        engine.provider.execute_statement.assert_not_called()
 
     def test_non_transaction_aborted_precheck_error_propagates(self):
-        """Lines 529-530: Non-aborted pre-check error → raised → failure path."""
+        """A distinct provider health error reaches the failure path unchanged."""
         engine = _make_engine()
-        engine.provider.supports_transactions.return_value = True
-        engine.provider.connection.prepareStatement.side_effect = Exception("connection lost")
+        engine.provider.check_transaction_state.side_effect = ConnectionError("connection lost")
         migration, result = self._make_migration_result()
 
         success = engine._execute_statements(["SELECT 1"], migration, result, time.time())
         self.assertFalse(success)
+        engine.provider.execute_statement.assert_not_called()
 
     def test_sql_execution_service_query_result(self):
         """Lines 532-547: sql_execution_service returns is_query=True."""
@@ -487,31 +465,28 @@ class TestExecuteStatements(unittest.TestCase):
         success = engine._execute_statements(["SELECT 1"], migration, result, time.time())
         self.assertFalse(success)
 
-    def test_precheck_attribute_error_falls_back_to_execute_query(self):
-        """Lines 508-510: prepareStatement raises AttributeError → execute_query."""
+    def test_health_hook_is_used_before_statement(self):
+        """The engine delegates health to the provider before execution."""
         engine = _make_engine()
-        engine.provider.supports_transactions.return_value = True
-        engine.provider.connection.prepareStatement.side_effect = AttributeError(
-            "no prepareStatement"
-        )
-        engine.provider.execute_query.return_value = [{"1": 1}]
         engine.provider.execute_statement.return_value = 0
         migration, result = self._make_migration_result()
 
         success = engine._execute_statements(["SELECT 1"], migration, result, time.time())
         self.assertTrue(success)
+        engine.provider.check_transaction_state.assert_called_once_with()
+        engine.provider.execute_query.assert_not_called()
 
-    def test_no_connection_uses_execute_query_fallback(self):
-        """Lines 518-519: No connection → execute_query directly."""
+    def test_health_hook_does_not_require_engine_connection(self):
+        """The engine can delegate health without inspecting a connection."""
         engine = _make_engine()
-        engine.provider.supports_transactions.return_value = True
-        engine.provider.connection = None  # No connection
-        engine.provider.execute_query.return_value = [{"1": 1}]
+        engine.provider.connection = None
         engine.provider.execute_statement.return_value = 0
         migration, result = self._make_migration_result()
 
         success = engine._execute_statements(["SELECT 1"], migration, result, time.time())
         self.assertTrue(success)
+        engine.provider.check_transaction_state.assert_called_once_with()
+        engine.provider.execute_query.assert_not_called()
 
     def test_whenever_sqlerror_continue_skips_statement_error(self):
         """Lines 573-584: WHENEVER SQLERROR CONTINUE → continue on DB error."""
@@ -664,7 +639,7 @@ class TestExecuteViaFactoryExtended(unittest.TestCase):
         """Lines 866-906: success + no history_manager → just commit.
 
         ``_execute_via_factory`` does not add a MigrationInfo to the result on
-        success — the caller (MigrateCommand._execute_single_migration) does
+        success — the caller (MigrateCommand, via its script runner) does
         that uniformly for every migration type. Adding it here too used to
         duplicate the entry for non-SQL (e.g. Python) migrations (issue #835).
         """

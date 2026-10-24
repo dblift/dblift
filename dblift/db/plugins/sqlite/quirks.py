@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING
 
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.base_quirks import BaseQuirks
+from dblift.db.dml_analysis import DmlMutation
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 
 class SqliteQuirks(BaseQuirks):
@@ -14,8 +19,7 @@ class SqliteQuirks(BaseQuirks):
     (no schema concept; ``schema_required=False``), no traditional
     user/password credentials, ``"main"`` as the default schema name,
     integer 0/1 literals for booleans, no CASCADE on ``DROP TABLE``,
-    and the regex-only parser path (sqlglot's SQLite dialect is not
-    used for round-trip parsing).
+    and statement facts read from sqlglot's SQLite AST.
     """
 
     # Capability matrix (was ``_CAPABILITIES["sqlite"]``).
@@ -25,6 +29,7 @@ class SqliteQuirks(BaseQuirks):
     uppercase_identifiers = False
     clean_strategy = "native"
     sqlglot_dialect = "sqlite"
+    statement_facts_class = SqlglotStatementFactsReader
     default_schema_name = "main"
     boolean_false_literal = "0"
     drop_supports_if_exists = True  # supported since SQLite 3.3.0 (2006)
@@ -46,25 +51,48 @@ class SqliteQuirks(BaseQuirks):
             r"^PRAGMA\s+FOREIGN_KEYS\s*=?\s*\(?\s*(ON|OFF|TRUE|FALSE|0|1)\s*\)?;?$",
             "SQLite PRAGMA foreign_keys is a no-op inside a transaction block",
         ),
+        # "VACUUM ... cannot be run inside a transaction" (lang_vacuum.html).
+        (r"^VACUUM\b", "SQLite VACUUM cannot run inside a transaction"),
     )
+
+    # dblift's migrate holds the connection's one transaction: a script's own BEGIN fails against
+    # it and its COMMIT/END/ROLLBACK ends it early. The SAVEPOINT family has no entry: it nests.
+    transaction_control_sql_patterns = (
+        (r"^BEGIN(\s+(DEFERRED|IMMEDIATE))?(\s+TRANSACTION)?\s*;?$", "begin"),
+        (r"^BEGIN\b", "begin_other"),
+        (r"^(COMMIT|END)(\s+TRANSACTION)?\s*;?$", "end"),
+        (r"^ROLLBACK(\s+TRANSACTION)?\s*;?$", "abort"),
+    )
+
+    def blank_comments(self, sql: str) -> str:
+        """The statement with its comments blanked by the SQLite scanner."""
+        from dblift.core.sql_parser.lexical_engine import LexicalEngine
+
+        return LexicalEngine(self.lexical_spec()).blank_comments(sql)
+
+    def lexical_spec(self) -> "LexicalSpec":
+        """The SQLite script rules used by execution, analysis and masking."""
+        from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
+
+        return SQLITE_SPEC
 
     def __init__(self, dialect_name: str = "sqlite") -> None:
         """Initialize SQLite quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
 
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """SQLite uses :class:`SQLiteRegexParser` for ``"hybrid"`` and ``"regex"``.
+    def analyze_dml(self, statement: str) -> DmlMutation:
+        """Project DML safety details from the SQLite statement facts."""
+        facts = self.statement_facts(statement)
+        return DmlMutation(
+            facts.target or "",
+            set(facts.events) if facts.events else None,
+            list(facts.affected_columns),
+        )
 
-        ``"sqlglot"`` returns ``None`` — sqlglot's SQLite dialect is not used
-        for round-trip parsing (regex handles SQLite's small DDL surface).
-        """
-        # SQLite uses regex-only parser for all three modes (hybrid
-        # routing previously dispatched here too).
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
-
-        if parser_type in ("hybrid", "regex"):
-            return SQLiteRegexParser
-        return None
+    def is_full_table_dml(self, statement: str) -> bool:
+        """Treat an opaque mutation as potentially affecting every row."""
+        facts = self.statement_facts(statement)
+        return facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)
 
     def type_equivalents(self) -> "dict[str, str]":
         """SQLite alias → canonical type map.

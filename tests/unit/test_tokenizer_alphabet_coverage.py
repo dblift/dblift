@@ -30,6 +30,7 @@ import unittest
 import warnings
 
 from dblift.core.sql_parser.base_tokenizer import TokenizerWarning
+from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 
 
 class TestTokenizerNoSilentDrop(unittest.TestCase):
@@ -40,12 +41,12 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
     which we turn into ``TokenizerError`` (an exception) for the test.
     """
 
-    def _assert_no_drops(self, tokenizer_cls, corpus: list[str]) -> None:
+    def _assert_no_drops(self, tokenizer_cls, corpus: list[str], **kwargs) -> None:
         for sql in corpus:
             with self.subTest(dialect=tokenizer_cls.dialect_name, sql=sql[:60]):
                 with warnings.catch_warnings():
                     warnings.simplefilter("error", TokenizerWarning)
-                    tokenizer_cls(sql).tokenize()
+                    tokenizer_cls(sql, **kwargs).tokenize()
 
     def test_mysql_tokenizer_claims_user_variables(self) -> None:
         from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
@@ -81,10 +82,10 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
         )
 
     def test_postgresql_tokenizer_claims_dollar_quotes_and_quoted_idents(self) -> None:
-        from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import PostgreSQLTokenizer
+        from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 
         self._assert_no_drops(
-            PostgreSQLTokenizer,
+            LexicalTokenizer,
             [
                 'CREATE TABLE "Quoted" (id INT);',
                 "CREATE FUNCTION f() RETURNS void AS $$ BEGIN RAISE NOTICE 'hi'; END; $$ LANGUAGE plpgsql;",
@@ -92,21 +93,24 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
                 "INSERT INTO t (a) VALUES (1) ON CONFLICT DO NOTHING;",
                 "SELECT a || b FROM t;",
             ],
+            spec=POSTGRESQL_SPEC,
         )
 
-    def test_sqlserver_tokenizer_claims_brackets_and_at_signs(self) -> None:
-        from dblift.db.plugins.sqlserver.parser.sqlserver_tokenizer import SQLServerTokenizer
+    def test_sqlserver_scanner_preserves_brackets_and_at_signs(self) -> None:
+        from tests.support.facts_parser import facts_parser
 
-        self._assert_no_drops(
-            SQLServerTokenizer,
-            [
-                "SELECT [Order Date] FROM [dbo].[Orders];",
-                "DECLARE @id INT = 1;\nSELECT @@ROWCOUNT;",
-                "EXEC sp_executesql N'SELECT 1';\nGO\n",
-                "INSERT INTO t (a) VALUES (1);",
-                "CREATE PROCEDURE dbo.p @x INT AS BEGIN SELECT @x; END",
-            ],
-        )
+        parser = facts_parser("sqlserver")
+        for sql in (
+            "SELECT [Order Date] FROM [dbo].[Orders];",
+            "DECLARE @id INT = 1;\nSELECT @@ROWCOUNT;",
+            "EXEC sp_executesql N'SELECT 1';\nGO\n",
+            "INSERT INTO t (a) VALUES (1);",
+            "CREATE PROCEDURE dbo.p @x INT AS BEGIN SELECT @x; END",
+        ):
+            with self.subTest(sql=sql):
+                statements = parser.split_statements(sql)
+                self.assertEqual(len(statements), 1)
+                self.assertEqual(statements[0], sql.removesuffix("\nGO\n"))
 
     def test_warning_carries_dialect_char_line_col(self) -> None:
         """Sanity-check the diagnostic shape for new regressions."""

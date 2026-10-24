@@ -7,7 +7,7 @@ was a result-payload construction bug.
 
 Root cause: ``ExecutionEngine._execute_via_factory`` (the non-SQL/Python
 execution path) records a ``MigrationInfo`` into the result on success, and
-``MigrateCommand._execute_single_migration`` *also* unconditionally records a
+``MigrateCommand`` (through the script runner's success callback) *also* unconditionally records a
 ``MigrationInfo`` for every successfully executed migration. The SQL
 execution path never appends to the result internally on success (only
 ``_handle_statement_failure`` does, for failures), so only Python migrations
@@ -81,6 +81,7 @@ def _make_command(execution_engine):
     cmd.execution_engine = execution_engine
     cmd.log = MagicMock()
     cmd.journal = None
+    cmd.provider = None
     cmd._execute_callbacks = MagicMock()
     return cmd
 
@@ -107,32 +108,20 @@ class TestMigrateResultNoDuplicateForPythonMigration(unittest.TestCase):
         engine.executor_factory = MagicMock()
         engine.executor_factory.execute.return_value = exec_result
 
-        with patch("dblift.core.migration.commands.migrate_command._emit_script_event"):
+        cmd._bind_callbacks(Path("/migrations"), True, None, None, result)
+
+        with patch("dblift.core.migration.commands._script_runner.emit_script_event"):
             with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
                 with patch.object(engine, "_classify_execution_statements", return_value=[]):
                     with patch.object(engine, "_prepare_transaction", return_value=True):
                         with patch.object(engine, "_execute_statements", return_value=True):
                             with patch.object(engine, "_record_migration_history"):
                                 with patch.object(engine, "_commit_migration"):
-                                    success_sql = cmd._execute_single_migration(
-                                        sql_migration,
-                                        Path("/migrations"),
-                                        True,
-                                        None,
-                                        None,
-                                        result,
-                                    )
-                                    success_py = cmd._execute_single_migration(
-                                        python_migration,
-                                        Path("/migrations"),
-                                        True,
-                                        None,
-                                        None,
-                                        result,
+                                    cmd._execute_migration_loop(
+                                        [sql_migration, python_migration], result
                                     )
 
-        self.assertTrue(success_sql)
-        self.assertTrue(success_py)
+        self.assertIsNone(result.error_message)
 
         applied = result.migrations_applied
         self.assertEqual(applied, ["1", "2"], f"expected no duplicates, got {applied}")

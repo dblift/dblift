@@ -28,6 +28,7 @@ docs/
 │   ├── creating-a-provider.md
 │   ├── plugin-entry-points.md
 │   └── forking.md               # Using this repository as the base of another tool
+├── sql-parsing/                # Lexical specifications of the statement splitter, one per dialect; §10 of each is compiled into tests
 ├── operations/recovery/         # Failure-mode recovery runbooks
 └── examples/                    # Code examples
     ├── basic-migrations.md

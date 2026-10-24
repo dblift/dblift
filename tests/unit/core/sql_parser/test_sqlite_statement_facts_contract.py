@@ -1,0 +1,136 @@
+"""SQLite statement facts replace text-based object extraction."""
+
+import importlib.util
+from unittest.mock import MagicMock
+
+import pytest
+
+from dblift.core.migration.sql.script_analysis import analyse_script
+from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+from dblift.core.migration.sql.statement_reader import StatementReader
+from dblift.core.sql_model.base import SqlObjectType, SqlStatementType
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
+from dblift.db.dml_analysis import analyze_dml, statement_dml_table
+from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
+from dblift.db.plugins.sqlite.quirks import SqliteQuirks
+from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
+
+_quirks = ProviderRegistry.get_quirks
+
+UPDATE = "UPDATE child SET parent_id = 2 WHERE id = 1;"
+
+
+def test_update_target_is_reported_in_the_existing_parse_result_shape():
+    result = facts_parser("sqlite").parse_sql(UPDATE)
+
+    assert result.success
+    assert len(result.statements) == 1
+    statement = result.statements[0]
+    assert statement.statement_type == SqlStatementType.DML
+    assert [(obj.object_type, obj.name) for obj in statement.affected_objects] == [
+        (SqlObjectType.TABLE, "child")
+    ]
+
+
+def test_sql_analyzer_objects_come_from_facts():
+    assert StatementReader("sqlite").extract_objects(UPDATE) == [
+        {"object_type": "TABLE", "object_name": "default_schema.child"}
+    ]
+
+
+def test_sqlite_regex_extractor_module_is_removed():
+    assert importlib.util.find_spec("dblift.db.plugins.sqlite.parser.sqlite_regex_parser") is None
+
+
+def test_index_facts_separate_indexed_columns_from_declared_table_columns():
+    facts = SqlglotStatementFactsReader("sqlite", SQLITE_SPEC).read(
+        "CREATE INDEX ix ON child (parent_id, id)"
+    )
+    assert facts.indexed_table == "child"
+    assert facts.indexed_columns == ("parent_id", "id")
+    assert facts.declared_columns == ()
+
+
+def test_cte_update_has_one_target_and_full_table_caution():
+    sql = "WITH x AS (SELECT 1) UPDATE child SET parent_id = 2;"
+    analysis = analyse_script(sql, "sqlite")
+
+    assert analysis.errors == ()
+    assert analysis.statements[0].kind == "DML"
+    assert [(obj.type, obj.name) for obj in analysis.statements[0].objects] == [("TABLE", "child")]
+    assert analysis.statements[0].full_table
+    assert analysis.cautions[0].code == "dml-no-where"
+
+
+def test_opaque_trigger_keeps_identity_without_an_error():
+    sql = "CREATE TRIGGER trg AFTER INSERT ON child BEGIN UPDATE child SET id = 2; END;"
+    result = facts_parser("sqlite").parse_sql(sql)
+
+    assert len(result.statements) == 1
+    assert [(obj.object_type, obj.name) for obj in result.statements[0].affected_objects] == [
+        (SqlObjectType.TRIGGER, "trg")
+    ]
+    assert result.success
+    assert result.errors == []
+
+
+def test_sqlite_dml_analysis_of_unparsed_mutation_names_only_the_head_target():
+    mutation = SqliteQuirks().analyze_dml("UPDATE child SET parent_id =")
+
+    assert mutation.table == "child"
+    assert mutation.events == {"UPDATE"}
+    assert mutation.updated_columns == []
+
+
+def test_direct_sqlite_dml_helpers_read_only_the_head_after_parse_failure():
+    sql = "UPDATE child SET parent_id ="
+    assert analyze_dml(sql, quirks=_quirks("sqlite")).table == "child"
+    assert statement_dml_table(sql, quirks=_quirks("sqlite")) == "child"
+    assert analyze_dml(sql, quirks=_quirks("sqlite")).updated_columns == []
+
+
+def test_sqlite_parser_config_patterns_are_removed():
+    assert importlib.util.find_spec("dblift.db.plugins.sqlite.parser.parser_config") is None
+
+
+def test_comment_only_script_has_no_statement_and_no_parse_diagnostic():
+    analysis = analyse_script("-- note\n", "sqlite")
+    assert analysis.statements == ()
+    assert analysis.errors == ()
+
+
+def test_cte_update_journal_records_the_ast_target():
+    provider = MagicMock(spec=["execute_statement"])
+    provider.execute_statement.return_value = 1
+    journal = MagicMock()
+    service = SqlExecutionService(
+        provider, StatementReader("sqlite"), journal=journal, quirks=SqliteQuirks()
+    )
+
+    service.execute_statement("WITH x AS (SELECT 1) UPDATE child SET parent_id = 2")
+
+    objects = journal.record_object_changes.call_args.args[2]
+    assert [(obj["object_type"], obj["object_name"]) for obj in objects] == [("TABLE", "child")]
+
+
+@pytest.mark.parametrize("mode", ["full", "execution"])
+def test_sqlite_analyzer_modes_preserve_cte_mutation_target(mode):
+    analyzer = StatementReader("sqlite", analysis_mode=mode)
+    assert analyzer.extract_objects("WITH x AS (SELECT 1) UPDATE child SET parent_id = 2") == [
+        {"object_type": "TABLE", "object_name": "default_schema.child"}
+    ]
+
+
+@pytest.mark.parametrize("mode", ["full", "execution"])
+def test_sqlite_analyzer_modes_preserve_statement_facts(mode):
+    result = StatementReader("sqlite", analysis_mode=mode).analyze_statement(
+        "CREATE TABLE t (x INT)"
+    )
+    assert result == {
+        "type": "DDL",
+        "objects": [{"object_type": "TABLE", "object_name": "default_schema.t"}],
+        "is_valid": True,
+        "errors": [],
+        "parsed_with": "facts",
+    }

@@ -12,12 +12,11 @@ Covers:
   - Exception handling + re-raise + error logging
   - Oracle DDL normalization (when provider has _normalize_ddl_for_oracle)
   - Object changes recording via journal (DDL path, parser_factory)
-  - _extract_table_from_dml (INSERT / UPDATE / DELETE)
   - _extract_simple_table_name (qualified, quoted, bracket, backtick)
 """
 
 import unittest
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -84,29 +83,6 @@ def _make_service(
 # ===========================================================================
 # T-SQL batch separator
 # ===========================================================================
-
-
-class TestTsqlBatchSeparator(unittest.TestCase):
-
-    def test_go_statement_skipped(self):
-        svc, provider, sql_analyzer, logger, journal = _make_service()
-        is_query, result = svc.execute_statement("GO")
-        assert is_query is False
-        assert result == 0
-        provider.execute_statement.assert_not_called()
-        provider.execute_query.assert_not_called()
-
-    def test_go_lowercase_skipped(self):
-        svc, provider, _, _, _ = _make_service()
-        is_query, result = svc.execute_statement("go")
-        assert is_query is False
-        assert result == 0
-
-    def test_go_with_whitespace_skipped(self):
-        svc, provider, _, _, _ = _make_service()
-        is_query, result = svc.execute_statement("  GO  ")
-        assert is_query is False
-        assert result == 0
 
 
 # ===========================================================================
@@ -289,7 +265,6 @@ class TestDmlStatementType(unittest.TestCase):
 
     def test_object_changes_name_the_table_behind_a_dml_target_alias(self):
         """The HTML report's object column must name the written table, not an alias."""
-        from dblift.core.sql_parser.parser_factory import SqlParserFactory
 
         cases = [
             ("UPDATE a SET qty = 1 FROM orders AS a WHERE a.id = 1", "orders", "dbo"),
@@ -306,8 +281,6 @@ class TestDmlStatementType(unittest.TestCase):
             svc, _, sql_analyzer, _, journal = _make_service(
                 stmt_type=SqlStatementType.DML.value, has_journal=True, schema="dbo"
             )
-            # The real dialect parser (not a mock) is what feeds the report.
-            sql_analyzer.parser_factory = SqlParserFactory("sqlserver")
             svc.execute_statement(statement, stmt_index=0)
             objects = journal.record_object_changes.call_args[0][2]
             assert [(o["object_name"], o["schema"]) for o in objects] == [
@@ -370,7 +343,10 @@ class TestExceptionHandling(unittest.TestCase):
         journal.record_statement_failed.assert_called_once()
 
     def test_journal_records_driver_error_without_wrapping(self):
-        """The journal keeps the driver's reason, without wrapping or the SQL block."""
+        """The journal keeps the driver's reason, without wrapping or the SQL block.
+
+        The quoted name is masked with the values: a name cannot be told from a value.
+        """
         from sqlalchemy.exc import ProgrammingError
 
         svc, provider, _, _, journal = _make_service(
@@ -383,7 +359,7 @@ class TestExceptionHandling(unittest.TestCase):
             svc.execute_statement("DROP TABLE missing", stmt_index=1)
 
         _statement, _index, message, _ms = journal.record_statement_failed.call_args[0]
-        assert message == 'table "missing" does not exist'
+        assert message == "table ? does not exist"
 
     def test_failure_masks_literals_in_journal_and_logs_at_error(self):
         svc, provider, _, logger, journal = _make_service(
@@ -399,7 +375,7 @@ class TestExceptionHandling(unittest.TestCase):
         logged = " ".join(str(c) for c in logger.error.call_args_list)
         assert "SENTINEL-SECRET-42" not in logged
         assert "SQL: INSERT INTO t" in logged
-        logger.debug.assert_any_call(f"Failed statement: {statement}")
+        logger.debug.assert_any_call("Failed statement: INSERT INTO t VALUES ('?')")
 
     def test_sqlstate_included_in_error_when_available(self):
         svc, provider, _, logger, _ = _make_service(stmt_type=SqlStatementType.DDL.value)
@@ -486,59 +462,6 @@ class TestExtractSimpleTableName(unittest.TestCase):
 
 
 # ===========================================================================
-# _extract_table_from_dml
-# ===========================================================================
-
-
-class TestExtractTableFromDml(unittest.TestCase):
-
-    def setUp(self):
-        provider = MagicMock()
-        sql_analyzer = MagicMock()
-        self.svc = SqlExecutionService(provider=provider, sql_analyzer=sql_analyzer)
-
-    def test_insert_into(self):
-        result = self.svc._extract_table_from_dml("INSERT INTO users VALUES (1, 'Alice')")
-        assert result == "users"
-
-    def test_insert_qualified(self):
-        result = self.svc._extract_table_from_dml("INSERT INTO public.orders VALUES (1)")
-        assert result == "orders"
-
-    def test_update_table(self):
-        result = self.svc._extract_table_from_dml("UPDATE products SET price=10 WHERE id=1")
-        assert result == "products"
-
-    def test_update_qualified(self):
-        result = self.svc._extract_table_from_dml("UPDATE dbo.products SET price=10")
-        assert result == "products"
-
-    def test_delete_from(self):
-        result = self.svc._extract_table_from_dml("DELETE FROM orders WHERE id=1")
-        assert result == "orders"
-
-    def test_delete_qualified(self):
-        result = self.svc._extract_table_from_dml("DELETE FROM public.orders WHERE id=1")
-        assert result == "orders"
-
-    def test_none_statement_returns_none(self):
-        result = self.svc._extract_table_from_dml(None)
-        assert result is None
-
-    def test_empty_statement_returns_none(self):
-        result = self.svc._extract_table_from_dml("")
-        assert result is None
-
-    def test_unknown_dml_returns_none(self):
-        result = self.svc._extract_table_from_dml("MERGE INTO t USING s ON ...")
-        assert result is None
-
-    def test_insert_bracket_notation(self):
-        result = self.svc._extract_table_from_dml("INSERT INTO [dbo].[users] VALUES (1)")
-        assert result == "users"
-
-
-# ===========================================================================
 # Journal without the optional methods (getattr guard)
 # ===========================================================================
 
@@ -574,6 +497,9 @@ class _AutocommitRecordingProvider(TransactionalProvider):
 
     def __init__(self):
         self.calls = []
+
+    def check_transaction_state(self):  # noqa: D102
+        pass
 
     def begin_transaction(self):  # noqa: D102
         pass

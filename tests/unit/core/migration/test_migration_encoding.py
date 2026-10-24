@@ -8,8 +8,9 @@ from dblift.core.migration.encoding import (
     detect_file_encoding,
     read_migration_text,
 )
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from tests.unit._migration_factory import make_migration
 
 
 def test_default_utf8_decode_remains_strict(tmp_path):
@@ -25,7 +26,7 @@ def test_detect_encoding_preserves_iso_8859_1_accents(tmp_path):
     expected = "INSERT INTO t VALUES ('éàç');\n"
     script.write_bytes(expected.encode("iso-8859-1"))
 
-    migration = Migration(script_path=script, detect_encoding=True)
+    migration = make_migration(script_path=script, detect_encoding=True)
 
     assert migration.content == expected
     assert detect_file_encoding(script) == "iso-8859-1"
