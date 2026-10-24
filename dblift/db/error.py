@@ -102,6 +102,65 @@ def strip_sql_statement_block(message: str) -> str:
     return _SQL_STATEMENT_BLOCK_RE.sub("", message).strip()
 
 
+# Everything a driver may quote from the failing statement, removed by shape rather than by
+# matching the statement's own literals (which escapes, truncated excerpts and $$ bodies defeat).
+_DRIVER_BLOCK_RE = re.compile(r"\s*\[(?:SQL|parameters):.*", re.IGNORECASE | re.DOTALL)
+# A PostgreSQL field line starts the part that quotes statement text (DETAIL, HINT, QUERY,
+# CONTEXT and LINE n: with its caret line); the primary message precedes the first one.
+_DRIVER_FIELD_RE = re.compile(
+    r"^[ \t]*(?:DETAIL|HINT|QUERY|CONTEXT|STATEMENT|LINE\s+\d+)[ \t]*:", re.MULTILINE
+)
+# MySQL's syntax error quotes the rest of the statement, newlines and quotes included.
+_MYSQL_NEAR_RE = re.compile(r"\bnear '.*?' at line (\d+)", re.DOTALL)
+_VALUE_GROUP_RE = re.compile(r"=\(.*\)|\bvalue is \(.*\)", re.IGNORECASE)
+
+
+# An apostrophe between two word characters (can't, doesn't) is text, not a delimiter.
+_DELIMITERS = {"'": re.compile(r"(?<!\w)'|'(?!\w)"), '"': re.compile('"')}
+
+
+def _mask_quoted(text: str, quote: str) -> str:
+    """Replace quoted text with ``?``, from the first quote to the last, failing closed.
+
+    Drivers do not escape a quote inside the value they quote, so the span is not paired up. It is
+    taken per line; when a line holds an odd number of quotes (a quote that never closes, or a
+    value with a newline in it) it is taken across the whole message.
+    """
+    delimiter = _DELIMITERS[quote]
+    if not delimiter.search(text):
+        return text
+    lines = text.split("\n")
+    if any(len(delimiter.findall(line)) % 2 for line in lines):
+        marks = [m.start() for m in delimiter.finditer(text)]
+        return text[: marks[0]] + "?" + (text[marks[-1] + 1 :] if len(marks) > 1 else "")
+    masked = []
+    for line in lines:
+        marks = [m.start() for m in delimiter.finditer(line)]
+        masked.append(line if not marks else line[: marks[0]] + "?" + line[marks[-1] + 1 :])
+    return "\n".join(masked)
+
+
+def redact_driver_error_text(message: str) -> str:
+    """Remove what a driver error quotes from the failing statement.
+
+    Drops SQLAlchemy's ``[SQL: ...]`` and ``[parameters: ...]`` blocks and everything from
+    PostgreSQL's first ``DETAIL:`` / ``HINT:`` / ``QUERY:`` / ``CONTEXT:`` / ``LINE n:`` line, then
+    replaces MySQL's ``near '...'`` excerpt, anything in single quotes, anything in double quotes
+    and every ``=(...)`` value group with ``?``. Error classes, codes and plain words stay. Names
+    in quotes (PostgreSQL ``relation "t"``, MySQL ``for key '...'``) are replaced too: a name
+    cannot be told from a value, so the text fails closed.
+    """
+    text = _DRIVER_BLOCK_RE.sub("", message)
+    field = _DRIVER_FIELD_RE.search(text)
+    if field:
+        text = text[: field.start()]
+    text = _MYSQL_NEAR_RE.sub(lambda m: f"near ? at line {m.group(1)}", text)
+    text = _mask_quoted(text, "'")
+    text = _VALUE_GROUP_RE.sub(lambda m: m.group(0).split("(", 1)[0] + "(?)", text)
+    text = _mask_quoted(text, '"')
+    return text.strip()
+
+
 # Generic fallback patterns (checked for all database types)
 _GENERIC_PATTERNS: List[Tuple[re.Pattern[str], ErrorCategory]] = [
     (

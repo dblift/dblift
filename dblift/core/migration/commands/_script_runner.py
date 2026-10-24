@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Tuple
 from dblift.core.constants import SECONDS_TO_MILLISECONDS
 from dblift.core.logger.results import OperationResult
 from dblift.core.migration.migration import Migration
+from dblift.db.error import redact_driver_error_text
 
 from ._script_events import emit_script_event
 
@@ -132,10 +133,11 @@ class ScriptRunner:
                 # The failure was already reported in full; this is the error
                 # callback itself failing.
                 raise
-            error = result.error_message or str(e)
+            reason = redact_driver_error_text(str(e))
+            error = result.error_message or reason
             if not result.error_message:
-                command.log.error(f"{policy.failure_prefix} for {script.script_name}: {e}")
-                result.set_error(f"{policy.failure_prefix}: {e}")
+                command.log.error(f"{policy.failure_prefix} for {script.script_name}: {reason}")
+                result.set_error(f"{policy.failure_prefix}: {reason}")
 
             execution_time = int((time.time() - start_time) * SECONDS_TO_MILLISECONDS)
             if journal and journal_started:

@@ -15,6 +15,7 @@ from dblift.core.migration.history.history_transaction import history_transactio
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.state.repair_plan import RepairAction, RepairSafetyError
+from dblift.db.error import redact_driver_error_text
 from dblift.db.provider_capabilities import ensure_provider_connection
 from dblift.db.provider_interfaces import TransactionalProvider
 
@@ -292,13 +293,14 @@ class RepairCommand(BaseCommand):
                                     "migration can now be retried"
                                 )
                     except Exception as e:
-                        self.log.error(f"Failed to repair {repair['script']}: {e}")
-                        result.set_error(f"Repair failed: {e}")
+                        reason = redact_driver_error_text(str(e))
+                        self.log.error(f"Failed to repair {repair['script']}: {reason}")
+                        result.set_error(f"Repair failed: {reason}")
                         step_error = e
                         raise
         except Exception as e:
             if e is not step_error:
-                result.set_error(f"Repair operation failed: {e}")
+                result.set_error(f"Repair operation failed: {redact_driver_error_text(str(e))}")
             return repairs_executed, True
 
         return repairs_executed, False

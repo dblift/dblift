@@ -40,6 +40,7 @@ from dblift.core.migration.ui.migration_ui import MigrationUI
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.core.utils.url_masking import mask_database_url
 from dblift.db.base_provider import BaseProvider
+from dblift.db.error import redact_driver_error_text
 from dblift.db.provider_capabilities import (
     ensure_provider_connection,
     get_provider_display_url,
@@ -428,19 +429,20 @@ class BaseCommand:
                     record.status = "OK"
                 except Exception as e:
                     record.status = "FAILED"
+                    reason = redact_driver_error_text(str(e))
                     _emit_script_event(
-                        "callback.failed", {"name": callback.script_name, "error": str(e)}
+                        "callback.failed", {"name": callback.script_name, "error": reason}
                     )
                     # Error callbacks (afterMigrateError, afterCleanError, afterUndoError) should only log warnings
                     # Regular callbacks should fail the entire operation
                     if "Error" in event_prefix:
-                        self.log.warning(f"Error callback {callback.script_name} failed: {e}")
+                        self.log.warning(f"Error callback {callback.script_name} failed: {reason}")
                         # Don't raise - error callbacks failing should not stop execution
                     else:
                         # Regular callback failure should fail the entire operation
-                        self.log.error(f"Callback {callback.script_name} failed: {e}")
+                        self.log.error(f"Callback {callback.script_name} failed: {reason}")
                         raise CallbackExecutionError(
-                            f"Callback {callback.script_name} failed: {e}"
+                            f"Callback {callback.script_name} failed: {reason}"
                         ) from e
                 finally:
                     record.duration_ms = int((time.perf_counter() - started) * 1000)
@@ -900,7 +902,7 @@ class BaseCommand:
                 except Exception:
                     formatted = ""
                 if not formatted:
-                    formatted = strip_sql_statement_block(str(exc))
+                    formatted = redact_driver_error_text(strip_sql_statement_block(str(exc)))
                 raise PreflightConnectionError(
                     f"{SCHEMA_HISTORY_CREATE_ERROR_PREFIX}: {formatted or exc}",
                     result,

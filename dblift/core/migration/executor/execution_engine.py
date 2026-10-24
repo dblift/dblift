@@ -46,9 +46,13 @@ from dblift.core.migration.sql.migration_sql_parser import (
 )
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.migration.sql.statement_reader import StatementReader
-from dblift.core.sql_parser.redaction import describe_statement
+from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.base_provider import BaseProvider
-from dblift.db.error import clean_driver_error_message, strip_sql_statement_block
+from dblift.db.error import (
+    clean_driver_error_message,
+    redact_driver_error_text,
+    strip_sql_statement_block,
+)
 from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.value_utils import to_python_string
@@ -593,9 +597,10 @@ class ExecutionEngine:
             # a resolved placeholder value.
 
             # Log the statement (truncated for readability)
-            self.log.debug(
-                f"Executing: {truncate_sql_for_logging(statement, LOG_STATEMENT_PREVIEW_LENGTH)}"
+            preview = truncate_sql_for_logging(
+                mask_string_literals(statement, dialect), LOG_STATEMENT_PREVIEW_LENGTH
             )
+            self.log.debug(f"Executing: {preview}")
 
             stmt_start_time = time.time()
             try:
@@ -685,7 +690,7 @@ class ExecutionEngine:
                 ):
                     self.log.warning(
                         f"Statement {i + 1} failed (WHENEVER SQLERROR CONTINUE): "
-                        f"{strip_sql_statement_block(str(stmt_error))}"
+                        f"{redact_driver_error_text(strip_sql_statement_block(str(stmt_error)))}"
                     )
                     continue
 
@@ -729,8 +734,10 @@ class ExecutionEngine:
         Sequence: result.set_error -> result.add_migration(FAILED) -> rollback ->
         begin_transaction + record_migration(success=False) + commit.
         """
-        error_msg = strip_sql_statement_block(
-            clean_driver_error_message(to_python_string(error) or str(error))
+        error_msg = redact_driver_error_text(
+            strip_sql_statement_block(
+                clean_driver_error_message(to_python_string(error) or str(error))
+            )
         )
         self.log.error(
             f"Failed to execute statement {stmt_index+1} from {migration.script_name}: {error_msg}"
@@ -1129,7 +1136,8 @@ class ExecutionEngine:
                     )
 
                 # Execute statement using provider
-                self.log.debug(f"Executing callback SQL: {statement}")
+                masked = mask_string_literals(statement, self._probe_dialect_key())
+                self.log.debug(f"Executing callback SQL: {masked}")
 
                 try:
                     if self.sql_execution_service:
@@ -1243,11 +1251,12 @@ class ExecutionEngine:
                 except Exception as e:
                     self.log.error(
                         "Error executing callback SQL statement: "
-                        f"{strip_sql_statement_block(str(e))}"
+                        f"{redact_driver_error_text(strip_sql_statement_block(str(e)))}"
                     )
                     if not self.sql_execution_service:
                         self.log.error(f"SQL: {describe_statement(statement)}")
-                    self.log.debug(f"Failed statement: {statement}")
+                    masked = mask_string_literals(statement, self._probe_dialect_key())
+                    self.log.debug(f"Failed statement: {masked}")
                     raise
 
             self._finish_statements(sql_statements)
