@@ -180,3 +180,88 @@ def test_an_apostrophe_inside_a_word_is_text_not_a_delimiter(message, expected):
 def test_inner_apostrophes_in_a_quoted_value_are_still_masked():
     assert redact(f"Duplicate entry 'SEC'RET-{S}' for key 'k'") == "Duplicate entry ?"
     assert redact(f"bad 'it's {S}' here") == "bad ? here"
+
+
+ORA_NUMBER = (
+    "ORA-01722: unable to convert string value containing 'S' to a number: \n"
+    f"ORA-03302: (ORA-01722 details) invalid string value: {S}\n"
+    "Help: https://docs.oracle.com/error-help/db/ora-01722/"
+)
+
+
+def test_oracle_unquoted_invalid_string_value_is_masked_and_the_rest_kept():
+    masked = redact(ORA_NUMBER)
+    assert S not in masked
+    assert masked.splitlines()[0].startswith("ORA-01722: unable to convert string value")
+    assert "ORA-03302: (ORA-01722 details) invalid string value: ?" in masked
+    assert masked.endswith("Help: https://docs.oracle.com/error-help/db/ora-01722/")
+
+
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        (f"invalid number: {S}", "invalid number: ?"),
+        (f"invalid value: {S} here", "invalid value: ?"),
+        (f"bad value: {S}", "bad value: ?"),
+        (f"oops: value {S}", "oops: value ?"),
+        (f"The duplicate key value is {S}", "The duplicate key value is ?"),
+        (
+            f"ORA-00001: x\nORA-03302: (ORA-00001 details) invalid number: {S}",
+            "ORA-00001: x\nORA-03302: (ORA-00001 details) invalid number: ?",
+        ),
+    ],
+)
+def test_unquoted_value_tails_are_masked(message, expected):
+    assert redact(message) == expected
+
+
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        (f"ORA-01722: custom detail: {S}", "ORA-01722: custom detail: ?"),
+        (
+            f"ORA-06502: PL/SQL: numeric or value error: {S}",
+            "ORA-06502: PL/SQL: numeric or value error: ?",
+        ),
+    ],
+)
+def test_an_unknown_oracle_tail_after_a_colon_is_masked(message, expected):
+    assert redact(message) == expected
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "ORA-06502: PL/SQL: value or conversion error: character to number conversion error",
+        "ORA-06502: PL/SQL: value or conversion error: character string buffer too small",
+        "ORA-12899: value too large for column ? (actual: 60, maximum: 10)",
+        "ORA-00001: unique constraint (APP.SYS_C1) violated on table APP.T columns (V)",
+        "ORA-02290: check constraint (APP.SYS_C1) violated",
+        "ORA-01858: A non-numeric character was found instead of a numeric character.",
+        "ORA-12541: TNS:no listener",
+        "ORA-06550: line 1, column 13:",
+    ],
+)
+def test_known_oracle_texts_are_kept(message):
+    assert redact(message) == message
+
+
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        (
+            'ORA-01400: cannot insert NULL into ("APP"."T"."NN")',
+            "ORA-01400: cannot insert NULL into (?)",
+        ),
+        (
+            'ORA-12899: value too large for column "APP"."T"."V" (actual: 35, maximum: 10)',
+            "ORA-12899: value too large for column ? (actual: 35, maximum: 10)",
+        ),
+        (
+            "ORA-03301: (ORA-00001 details) row with column values (V:'dup') already exists",
+            "ORA-03301: (ORA-00001 details) row with column values (V:?) already exists",
+        ),
+    ],
+)
+def test_oracle_quoted_identifiers_and_values_keep_their_masking(message, expected):
+    assert redact(message) == expected

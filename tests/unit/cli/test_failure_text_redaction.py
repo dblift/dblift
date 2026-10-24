@@ -127,6 +127,32 @@ MYSQL = {
     ),
 }
 
+# --- Oracle -------------------------------------------------------------------------------------
+_ORA_TABLE = (
+    "CREATE TABLE ot (n NUMBER, d DATE, v VARCHAR2(10) UNIQUE, "
+    "c VARCHAR2(10) CHECK (c <> 'forbidden'), nn NUMBER NOT NULL);\n"
+)
+ORACLE = {
+    "number-cast": (_ORA_TABLE + f"INSERT INTO ot (n, nn) VALUES ('{S}', 1);\n", 2, S),
+    "to-number": (_ORA_TABLE + f"INSERT INTO ot (nn) VALUES (TO_NUMBER('{S}'));\n", 2, S),
+    "date-cast": (_ORA_TABLE + f"INSERT INTO ot (d, nn) VALUES ('{S}', 1);\n", 2, S),
+    "too-long": (_ORA_TABLE + f"INSERT INTO ot (v, nn) VALUES ('{S}-{S}', 1);\n", 2, S),
+    "check": (_ORA_TABLE + "INSERT INTO ot (c, nn) VALUES ('forbidden', 1);\n", 2, "'forbidden'"),
+    "unique": (
+        _ORA_TABLE
+        + f"INSERT INTO ot (v, nn) SELECT '{S[:9]}', 1 FROM dual UNION ALL "
+        + f"SELECT '{S[:9]}', 2 FROM dual;\n",
+        2,
+        S[:9],
+    ),
+    "not-null": (_ORA_TABLE + f"INSERT INTO ot (v) VALUES ('{S[:9]}');\n", 2, S[:9]),
+    "plsql-conversion": (
+        _ORA_TABLE + f"DECLARE x NUMBER; BEGIN x := '{S}'; END;\n/\n",
+        2,
+        S,
+    ),
+}
+
 
 def _cli(tmp_path, url, files, *args):
     mig = tmp_path / "mig"
@@ -220,6 +246,32 @@ def test_postgresql_callback_error_is_masked(tmp_path):
         "beforeMigrate__bad.sql": f"INSERT INTO p VALUES (1, '{S}', 1), (2, '{S}', 2);\n",
     }
     _check(tmp_path, url, files, "beforeMigrate__bad.sql")
+
+
+def _oracle_reset(url):
+    from urllib.parse import parse_qs, urlparse
+
+    import oracledb
+
+    u = urlparse(url)
+    service = parse_qs(u.query)["service_name"][0]
+    with oracledb.connect(
+        user=u.username, password=u.password, dsn=f"{u.hostname}:{u.port}/{service}"
+    ) as conn:
+        conn.cursor().execute(
+            "BEGIN FOR t IN (SELECT table_name FROM user_tables) LOOP "
+            "EXECUTE IMMEDIATE 'DROP TABLE \"' || t.table_name || '\" CASCADE CONSTRAINTS PURGE'; "
+            "END LOOP; END;"
+        )
+
+
+@pytest.mark.skipif(not os.environ.get("DBLIFT_TEST_ORACLE_URL"), reason="needs Oracle")
+@pytest.mark.parametrize("case", ORACLE)
+def test_oracle(tmp_path, case):
+    url = os.environ["DBLIFT_TEST_ORACLE_URL"]
+    _oracle_reset(url)
+    sql, position, leak = ORACLE[case]
+    _check(tmp_path, url, {"V1__t.sql": sql}, _statement_marker(position), leak)
 
 
 def _mysql_reset(url):

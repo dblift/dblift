@@ -185,7 +185,9 @@ token. DBLift removes the driver's `DETAIL`, `HINT`, `QUERY`, `CONTEXT` and `LIN
 SQLAlchemy's `[SQL: ...]` and `[parameters: ...]` blocks from the error text before it reaches the
 console, the log files, the run result and the statement journal. In what remains, anything in
 single or double quotes (from the first quote to the last on the line) and every `=(...)` group is
-replaced with `?`.
+replaced with `?`. An unquoted value after `value:`, `value is` or `invalid number:`, and the
+unquoted tail of an Oracle `ORA-` line that follows a colon (except Oracle's fixed phrases), are
+replaced too.
 
 The statement number, the script name, the error class and error codes stay. Because a name cannot
 be told from a value, quoted names are replaced too: PostgreSQL's `relation "orders"`, a constraint
