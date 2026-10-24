@@ -64,7 +64,15 @@ def _client(executor: MigrationExecutor, scripts_dir: Path) -> DBLiftClient:
     client.executor = executor
     client.events = MagicMock()
     client.dialect = "sqlite"
-    client.config = MagicMock(target_version=None)
+    client.config = MagicMock(
+        target_version=None,
+        dry_run=False,
+        mark_as_executed=False,
+        tags=None,
+        exclude_tags=None,
+        versions=None,
+        exclude_versions=None,
+    )
     client._guard_scripts_dir_kwarg = lambda kwargs: None
     client._get_scripts_dir = lambda: scripts_dir
     client._resolve_script_options = lambda recursive, additional_dirs, dir_recursive_map: (

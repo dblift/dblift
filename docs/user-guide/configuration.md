@@ -405,6 +405,37 @@ below it on the console and in the log files: `error` shows only errors, `warn` 
 errors. The command banners and result tables are not log lines and are always printed;
 `--quiet` hides log lines on the console only.
 
+## Run Options
+
+These top-level keys set defaults for a run. Each has an environment variable and, for the
+command line, a flag; the order is flag, then environment variable, then YAML key.
+
+| YAML key | Environment variable | Flag | Applies to |
+| --- | --- | --- | --- |
+| `dry_run` | `DBLIFT_DRY_RUN` | `--dry-run` | `migrate`, `undo`, `clean`, `repair`, `import_flyway` |
+| `mark_as_executed` | `DBLIFT_MARK_AS_EXECUTED` | `--mark-as-executed` | `migrate` |
+| `tags`, `exclude_tags` | `DBLIFT_TAGS`, `DBLIFT_EXCLUDE_TAGS` | `--tags`, `--exclude-tags` | `migrate`, `undo`, `info`, `validate` |
+| `versions`, `exclude_versions` | `DBLIFT_VERSIONS`, `DBLIFT_EXCLUDE_VERSIONS` | `--versions`, `--exclude-versions` | `migrate`, `undo`, `info`, `validate` |
+
+```yaml
+dry_run: true
+tags: core,auth
+exclude_versions: 1.0.1
+```
+
+Boolean environment variables (`DBLIFT_DRY_RUN`, `DBLIFT_MARK_AS_EXECUTED`) are true for `1`, `true` or
+`yes` in any case; `on`, `y` and anything else count as false.
+
+The Python API follows the same order through `DBLiftClient.from_config_file`, which reads the YAML
+and the environment: `client.migrate()` and the other calls use the configured value when the call
+passes none, and an argument you pass wins. `dry_run=True` and `mark_as_executed=True` can be added
+by an argument, but a configured `true` is only turned off in the configuration or with the
+environment variable (`DBLIFT_DRY_RUN=false`), since the argument's default is `False`.
+`DBLiftClient.from_sqlalchemy(engine, config=cfg)` sees only what `cfg` holds, and without `config=`
+it reads neither the YAML nor the environment. The `migrate`, `undo`, `clean` and `repair` results
+carry a `dry_run` attribute that is `True` when the run was a dry run, whether it was asked for by
+an argument or by the configuration.
+
 ## File Encoding
 
 If you're using special characters (é, ñ, ö, etc.) in your SQL files, specify the encoding:
