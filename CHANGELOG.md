@@ -345,7 +345,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `info`, and the Python API's `log_level="ERROR"` still wrote every `info` line to the console
   and the log file. `error` now shows only errors and `warn` warnings and errors; `warning` is
   accepted as `warn`, and an unknown level from the flag, the environment or the file now exits
-  with status 2 instead of silently running at `info`. `DBLiftClient.from_config(cfg,
+  with status 2 instead of silently running at `info`; `critical` is accepted and means `error`. `DBLiftClient.from_config(cfg,
   log_level=...)` (and `log_format`, `log_file`) no longer ignores the argument.
 - **`info` now lists a failed undo.** After an undo script failed, `dblift info` (console, `--format json`, the Python API and the MCP `info` tool) showed a clean schema while `validate`, `migrate` and `undo` refused to run because of the failed history row. The failed undo now appears as an `Undo` row in the `Failed` state and is counted in the summary's failed total. Completed undos are still not listed.
 - **An Oracle procedure, function, package, trigger, type or `FORCE` view that is still INVALID at the end of

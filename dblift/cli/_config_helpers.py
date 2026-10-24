@@ -288,7 +288,8 @@ def _load_and_merge_config(args: argparse.Namespace, log: Any) -> Any:
         ):
             message = "Database URL is required"
         print(f"Error: {message}", file=sys.stderr)
-        sys.exit(1)
+        # An unknown log level exits 2 from every source, like an unknown format.
+        sys.exit(2 if message.startswith("Invalid log level") else 1)
 
     db_overrides = {}
     if hasattr(args, "database_url") and args.database_url:
@@ -455,8 +456,9 @@ _LOG_LEVEL_MAP = {
     "warn": LogLevel.WARN,
     "warning": LogLevel.WARN,
     "error": LogLevel.ERROR,
+    "critical": LogLevel.ERROR,
 }
-_VALID_LOG_LEVELS = ("debug", "info", "warn", "warning", "error")
+_VALID_LOG_LEVELS = ("debug", "info", "warn", "warning", "error", "critical")
 
 
 def _effective_log_level_name(args: argparse.Namespace, config: "DbliftConfig") -> str:

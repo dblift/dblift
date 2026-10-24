@@ -381,7 +381,7 @@ log_format: text,json
 log_dir: build/logs
 ```
 
-Level names are case-insensitive, and `warning` is accepted for `warn` in the flag, the environment variable and the file. An unknown level from any of them exits with status 2, as an unknown format does. A level hides everything
+Level names are case-insensitive, `warning` is accepted for `warn` in the flag, the environment variable and the file, and `critical` for `error` in the environment variable and the file. An unknown level from any of them exits with status 2, as an unknown format does. A level hides everything
 below it on the console and in the log files: `error` shows only errors, `warn` shows warnings and
 errors. The command banners and result tables are not log lines and are always printed;
 `--quiet` hides log lines on the console only.

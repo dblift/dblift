@@ -236,3 +236,22 @@ def test_api_from_config_log_level_info_argument_turns_logging_on(tmp_path):
         timeout=120,
     )
     assert _PROGRESS in out.stdout + out.stderr
+
+
+@pytest.mark.parametrize("extra", ["log_level: CRITICAL\n", "logging:\n  level: CRITICAL\n"])
+def test_cli_critical_means_error(tmp_path, extra):
+    out = _cli(tmp_path, yaml_extra=extra, failing=True)
+    assert out.returncode == 1, out.stderr  # the migration fails; the level itself is accepted
+    assert _FAILING in out.stdout + out.stderr
+
+
+def test_cli_critical_from_environment_hides_progress(tmp_path):
+    out = _cli(tmp_path, env={"DBLIFT_LOG_LEVEL": "CRITICAL"})
+    assert out.returncode == 0, out.stderr
+    assert _PROGRESS not in out.stdout + out.stderr
+
+
+def test_cli_invalid_logging_section_level_exits_2(tmp_path):
+    out = _cli(tmp_path, yaml_extra="logging:\n  level: loud\n")
+    assert out.returncode == 2, out.stdout + out.stderr
+    assert "Invalid log level" in out.stderr
