@@ -365,6 +365,7 @@ _SERVER_SIDE_COPY = {
     "copy-to-program": "COPY TO PROGRAM runs a shell command on the database server",
     "copy-from-program": "COPY FROM PROGRAM runs a shell command on the database server",
     "copy-to-file": "COPY TO a file writes a file on the database server",
+    "copy-from-file": "COPY FROM a file loads rows into a table",
 }
 
 

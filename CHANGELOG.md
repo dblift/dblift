@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `validate-sql --files` and pending-migration analysis now report operations on a table created
   in an earlier file; only a `CREATE TABLE` earlier in the same script exempts them as operations
   on a new table.
+- SQL lint asks for review of DuckDB and Redshift `COPY ... FROM 'file'` loads. SQL Server
+  `UPDATE STATISTICS` no longer triggers a full-table `UPDATE` warning for recognized forms;
+  unread options still require review.
 - The Db2 statement facts reader names the object of `CREATE`, `ALTER` and `DROP` for
   `TABLESPACE`, `STOGROUP`, `BUFFERPOOL`, `TYPE` and `MODULE`, and of `CREATE` and `DROP` for
   `SYNONYM` (typed `SYNONYM`, as `ALIAS` is: Db2 LUW creates an alias). They were reported as
