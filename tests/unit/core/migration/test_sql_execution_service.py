@@ -343,7 +343,10 @@ class TestExceptionHandling(unittest.TestCase):
         journal.record_statement_failed.assert_called_once()
 
     def test_journal_records_driver_error_without_wrapping(self):
-        """The journal keeps the driver's reason, without wrapping or the SQL block."""
+        """The journal keeps the driver's reason, without wrapping or the SQL block.
+
+        The quoted name is masked with the values: a name cannot be told from a value.
+        """
         from sqlalchemy.exc import ProgrammingError
 
         svc, provider, _, _, journal = _make_service(
@@ -356,7 +359,7 @@ class TestExceptionHandling(unittest.TestCase):
             svc.execute_statement("DROP TABLE missing", stmt_index=1)
 
         _statement, _index, message, _ms = journal.record_statement_failed.call_args[0]
-        assert message == 'table "missing" does not exist'
+        assert message == "table ? does not exist"
 
     def test_failure_masks_literals_in_journal_and_logs_at_error(self):
         svc, provider, _, logger, journal = _make_service(
