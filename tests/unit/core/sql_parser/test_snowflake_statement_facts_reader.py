@@ -5,6 +5,32 @@ import pytest
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
 from dblift.core.sql_parser.statement_facts import NamedObject
+from dblift.db.plugins.snowflake.quirks import SnowflakeQuirks
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "INSERT OVERWRITE INTO target SELECT * FROM source",
+        "INSERT OVERWRITE INTO target (id) VALUES (1)",
+    ],
+)
+def test_insert_overwrite_is_not_a_plain_insert(sql):
+    facts = read_statement_facts(sql, dialect="snowflake")
+
+    assert facts.operation == "INSERT"
+    assert facts.opaque
+    assert "OVERWRITE" in (facts.diagnostic or "").upper()
+    assert facts.target == "TARGET"
+    assert facts.events is None
+
+    mutation = SnowflakeQuirks().analyze_dml(sql)
+    assert mutation.table == "TARGET"
+    assert mutation.events is None
+
+    plain = read_statement_facts("INSERT INTO target VALUES (1)", dialect="snowflake")
+    assert not plain.opaque
+    assert plain.events == frozenset({"INSERT"})
 
 
 @pytest.mark.parametrize(
