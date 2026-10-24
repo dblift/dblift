@@ -116,6 +116,9 @@ class TestLogCommandCompletionResolvesSchemaVersion:
         """Ensures we're reading the post-state, not a stale cached value."""
         cmd = BaseCommand.__new__(BaseCommand)
         cmd.log = MagicMock()
+        from dblift.core.migration.ui.command_presentation import CommandPresentation
+
+        cmd.execution_engine = SimpleNamespace(_presentation=CommandPresentation())
         # Defensive resolution requires a non-None history_manager — a truthy
         # stub satisfies the guard without needing the full wiring.
         cmd.history_manager = MagicMock()

@@ -5,7 +5,6 @@ This module contains the low-level execution logic for individual migrations,
 callbacks, and SQL statements.
 """
 
-import sys
 import time
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -35,6 +34,7 @@ from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.migration import Migration
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
+from dblift.core.migration.presentation import presentation_for
 from dblift.core.migration.sql.execution_statement import (
     ExecutionStatement,
     classify_execution_statement,
@@ -643,17 +643,9 @@ class ExecutionEngine:
                                 columns,
                                 table_rows,
                             )
-                            if not isinstance(self.log, NullLog):
-                                render_table = getattr(
-                                    sys.modules[__name__], "render_records_table"
-                                )
-                                self.log.info(
-                                    render_table(
-                                        [(c, "left") for c in columns],
-                                        table_rows,
-                                        title=f"Query result ({len(table_rows)} rows)",
-                                    )
-                                )
+                            presenter = presentation_for(self, self.log)
+                            if presenter is not None:
+                                presenter.present_query_result(self, columns, table_rows)
                     else:
                         if not isinstance(result_data, int):
                             raise TypeError(
@@ -1181,17 +1173,10 @@ class ExecutionEngine:
                                     columns,
                                     table_rows,
                                 )
-                                if table_rows and not isinstance(self.log, NullLog):
-                                    render_table = getattr(
-                                        sys.modules[__name__], "render_records_table"
-                                    )
-                                    self.log.info(
-                                        render_table(
-                                            [(c, "left") for c in columns],
-                                            table_rows,
-                                            title=f"Query result ({len(table_rows)} rows)",
-                                        )
-                                    )
+                                if table_rows:
+                                    presenter = presentation_for(self, self.log)
+                                    if presenter is not None:
+                                        presenter.present_query_result(self, columns, table_rows)
                         else:
                             rows_affected = result_data if isinstance(result_data, int) else -1
                             if _is_ddl_statement_for_success_log(statement):
@@ -1231,17 +1216,10 @@ class ExecutionEngine:
                                     columns,
                                     table_rows,
                                 )
-                                if table_rows and not isinstance(self.log, NullLog):
-                                    render_table = getattr(
-                                        sys.modules[__name__], "render_records_table"
-                                    )
-                                    self.log.info(
-                                        render_table(
-                                            [(c, "left") for c in columns],
-                                            table_rows,
-                                            title=f"Query result ({len(table_rows)} rows)",
-                                        )
-                                    )
+                                if table_rows:
+                                    presenter = presentation_for(self, self.log)
+                                    if presenter is not None:
+                                        presenter.present_query_result(self, columns, table_rows)
                     else:
                         # This is DDL or DML - execute as regular SQL
                         if policy.autocommit_required and isinstance(

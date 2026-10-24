@@ -50,13 +50,20 @@ _HEAD = re.compile(
 _HEAD_SCAN = re.compile(
     _HEAD.pattern.replace(r"^\s*", r"(?:^|;)\s*", 1), re.IGNORECASE | re.MULTILINE
 )
+# MySQL and MariaDB add two kinds sqlglot reads as an opaque command: a tablespace (MySQL) and a
+# sequence (MariaDB). A tablespace has no schema part, see ``_head_facts``.
+_MYSQL_HEAD = re.compile(
+    _HEAD.pattern.replace("|TRIGGER)", "|TRIGGER|TABLESPACE|SEQUENCE)", 1), re.IGNORECASE
+)
 # PostgreSQL names more kinds than the generic head and skips its creation modifiers;
 # CONCURRENTLY is a modifier after INDEX only, elsewhere an ordinary name.
 _POSTGRES_HEAD = re.compile(
     rf"^\s*(CREATE|ALTER|DROP)\s+"
     rf"(?:(?:OR\s+REPLACE|UNLOGGED|TEMP|TEMPORARY|UNIQUE|CONSTRAINT|IF|NOT|EXISTS)\s+)*"
     rf"(VIRTUAL\s+TABLE|MATERIALIZED\s+VIEW|TABLE|VIEW|INDEX|TRIGGER|FUNCTION|PROCEDURE"
-    rf"|SEQUENCE|TYPE|SCHEMA|EXTENSION)(?:(?<=INDEX)\s+CONCURRENTLY\b)?\s+"
+    rf"|SEQUENCE|TYPE|SCHEMA|EXTENSION|EVENT\s+TRIGGER|FOREIGN\s+DATA\s+WRAPPER|SERVER|PUBLICATION"
+    rf"|OPERATOR\s+CLASS|TEXT\s+SEARCH\s+(?:DICTIONARY|CONFIGURATION|PARSER|TEMPLATE)|TABLESPACE)"
+    rf"(?:(?<=INDEX)\s+CONCURRENTLY\b)?\s+"
     rf"(?:(?:IF|NOT|EXISTS)\s+)*"
     rf"(?!(?:IF|NOT|EXISTS|AUTHORIZATION|OR|REPLACE)\b)"
     rf"({_NAME})(?:\s*\.\s*({_NAME}))?",
@@ -64,6 +71,16 @@ _POSTGRES_HEAD = re.compile(
 )
 _POSTGRES_HEAD_SCAN = re.compile(
     _POSTGRES_HEAD.pattern.replace(r"^\s*", r"(?:^|;)\s*", 1), re.IGNORECASE | re.MULTILINE
+)
+# The kinds PostgreSQL does not put in a schema: a dotted name is a syntax error (42601).
+_POSTGRES_UNQUALIFIED = frozenset(
+    {
+        SqlObjectType.EVENT_TRIGGER,
+        SqlObjectType.FOREIGN_DATA_WRAPPER,
+        SqlObjectType.FOREIGN_SERVER,
+        SqlObjectType.PUBLICATION,
+        SqlObjectType.TABLESPACE,
+    }
 )
 # Oracle names more kinds than the generic head, skips its creation modifiers and counts ``#``
 # as a name character. ``TYPE BODY`` is not listed (no object type), and the reserved words that
@@ -102,6 +119,11 @@ _MYSQL_QUOTES_AND_COMMENTS = re.compile(
     r"(?:\#|--(?=[\x00-\x20\x7f]|\Z))[^\n]*|/\*.*?(?:\*/|\Z)",
     re.DOTALL,
 )
+# `/*!NNNNN … */` runs where NNNNN is not above the server's own version. MariaDB 11 runs up to
+# 50699, MySQL 8.0 and 8.4 more: below this floor the text runs on every supported server
+# (measured 2026-10-24, docs/sql-parsing/mariadb.md).
+_EXECUTABLE_COMMENT_FLOOR = 50700
+_EXECUTABLE_COMMENT_OPENER = re.compile(r"/\*!(\d*)")
 _KINDS = {
     **dict.fromkeys(
         ("CREATE", "ALTER", "DROP", "VACUUM", "ANALYZE", "REINDEX", "PRAGMA", "ATTACH", "DETACH"),
@@ -217,6 +239,29 @@ def _supplementary_name_character(sql: str) -> Optional[str]:
             return str(wide)
         at = span.end()
     return next((str(c) for c in sql[at:] if c > "\uffff"), None)
+
+
+def _mysql_server_view(sql: str) -> Optional[str]:
+    """The text a MySQL-family server runs: each executable comment's markers blanked, its content
+    kept, so offsets do not move. ``None`` when an executable comment may not run on every
+    supported server or cannot be scanned to a single reading: a ``/*M!`` comment, a version
+    that is not five digits or is not below the floor, a comment opened inside it, or no ``*/``.
+    """
+    pieces = []
+    at = 0
+    for span in _MYSQL_QUOTES_AND_COMMENTS.finditer(sql):
+        text = span.group()
+        if not text.startswith(("/*!", "/*M!")):
+            continue
+        opener = _EXECUTABLE_COMMENT_OPENER.match(text)
+        if opener is None or not text.endswith("*/") or "/*" in text[opener.end() : -2]:
+            return None
+        version = opener.group(1)
+        if version and (len(version) != 5 or int(version) >= _EXECUTABLE_COMMENT_FLOOR):
+            return None
+        pieces.append(sql[at : span.start()] + " " * opener.end() + text[opener.end() : -2] + "  ")
+        at = span.end()
+    return "".join(pieces) + sql[at:]
 
 
 def readable_dml_target(sql: str, *, dialect: str) -> Optional[str]:
@@ -601,6 +646,15 @@ def _mysql_identifier_is_proven(identifier: exp.Expression, sql: str) -> bool:
     mysql = Dialect.get_or_raise("mysql")  # lint: allow-dialect-string: MySQL tokens
     tokens = mysql.tokenize(sql[start : end + 1])
     return tokens[0].token_type in {TokenType.VAR, TokenType.IDENTIFIER}
+
+
+def _mysql_names_are_proven(table: exp.Table, sql: str) -> bool:
+    """Whether the table name, and its schema if written, are identifiers in any SQL mode."""
+    return all(
+        _mysql_identifier_is_proven(part, sql)
+        for part in (table.this, table.args.get("db"))
+        if part is not None
+    )
 
 
 def _mysql_on_table_name(on: exp.OnProperty, sql: str) -> Optional[str]:
@@ -1398,11 +1452,18 @@ def _upper_case_name(name: str, *, ascii_only: bool = False) -> Optional[str]:
     return "".join(folded) if all(len(letter) == 1 for letter in folded) else None
 
 
+def _head_object_type(match: "re.Match[str]") -> SqlObjectType:
+    """The object type a head's kind words name: the words joined by ``_``, except that the
+    PostgreSQL ``SERVER`` is the ``FOREIGN_SERVER`` member."""
+    words = "_".join(match.group(2).upper().split())
+    return SqlObjectType["FOREIGN_SERVER" if words == "SERVER" else words]
+
+
 def _head_object(
     match: "re.Match[str]", *, fold: bool = False, ascii_only: bool = False
 ) -> Optional[NamedObject]:
     operation = match.group(1).upper()
-    object_type = SqlObjectType["_".join(match.group(2).upper().split())]
+    object_type = _head_object_type(match)
     name = strip_identifier_quotes(match.group(4) or match.group(3))
     schema = strip_identifier_quotes(match.group(3)) if match.group(4) else None
     if fold:  # an unquoted name is stored upper-cased, a quoted one as written
@@ -1488,7 +1549,10 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
     objects: Tuple[NamedObject, ...] = ()
     oracle = dialect == "oracle"  # lint: allow-dialect-string: Oracle head kinds and folding
     folds = oracle or dialect == "snowflake"  # lint: allow-dialect-string: upper-case names
-    match = (_ORACLE_HEAD if oracle else _POSTGRES_HEAD if postgres else _HEAD).match(head)
+    mysql = dialect == "mysql"  # lint: allow-dialect-string: MySQL head kinds
+    match = (
+        _ORACLE_HEAD if oracle else _POSTGRES_HEAD if postgres else _MYSQL_HEAD if mysql else _HEAD
+    ).match(head)
     if match is None and first is None:
         # Stray characters (a NUL, a lone ``/``) ahead of the statement; the engine reads past them.
         scan = _POSTGRES_HEAD_SCAN if postgres else _HEAD_SCAN
@@ -1511,6 +1575,10 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
         match = None
     if oracle and match and match.group(4) and match.group(2).upper().startswith("DATABASE"):
         match = None  # a link name is global: ``a.b`` is one name with a domain, not a schema
+    if postgres and match and match.group(4) and _head_object_type(match) in _POSTGRES_UNQUALIFIED:
+        match = None  # the engine rejects ``s.name`` for these: a dot never makes a schema
+    if mysql and match and match.group(4) and match.group(2).upper() == "TABLESPACE":
+        match = None  # a tablespace is global: ``a.b`` is a syntax error (1064), not a schema
     if dml and (
         not _head_name_is_bounded(head, dml, (2, 3))
         or not _head_tokens_prove_name(
@@ -2099,24 +2167,108 @@ def _redshift_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[Statement
     return None
 
 
+# The securable kinds a written ``GRANT ... ON <kind> name`` proves; no keyword names a table.
+_GRANT_SECURABLES = {
+    "": SqlObjectType.TABLE,
+    "TABLE": SqlObjectType.TABLE,
+    "SEQUENCE": SqlObjectType.SEQUENCE,
+    "FUNCTION": SqlObjectType.FUNCTION,
+    "PROCEDURE": SqlObjectType.PROCEDURE,
+    "SCHEMA": SqlObjectType.SCHEMA,
+    "DATABASE": SqlObjectType.DATABASE,
+    "TYPE": SqlObjectType.TYPE,
+}
+_MYSQL_GRANT_KINDS = frozenset({"", "TABLE", "FUNCTION", "PROCEDURE"})
+# Dialects whose GRANT and REVOKE name their securable, each checked against the engine.
+_GRANT_DIALECTS = frozenset({"postgres", "mysql"})  # lint: allow-dialect-string: privileges
+
+
+def _grant_facts(ast: exp.Grant | exp.Revoke, sql: str, dialect: str) -> StatementFacts:
+    """GRANT and REVOKE are DDL that only reference the securable they name.
+
+    The securable is named when the grammar holds it as one plain identifier whose kind is
+    written (or absent, which means a table); every other form is left opaque.
+    """
+    operation = type(ast).__name__.upper()
+    opaque = StatementFacts(
+        operation,
+        "DDL",
+        diagnostic=f"{dialect} {type(ast).__name__} privilege targets are not modelled",
+    )
+    kind = str(ast.args.get("kind") or "").upper()
+    securable = ast.args.get("securable")
+    object_type = _GRANT_SECURABLES.get(kind)
+    if (
+        object_type is None
+        or not isinstance(securable, exp.Table)
+        or not isinstance(securable.this, exp.Identifier)
+        or any(value for key, value in securable.args.items() if key not in {"this", "db"})
+        or (securable.db and object_type in {SqlObjectType.SCHEMA, SqlObjectType.DATABASE})
+    ):
+        return opaque
+    if dialect == "mysql":  # lint: allow-dialect-string: MySQL identifiers and securables
+        if (
+            kind not in _MYSQL_GRANT_KINDS
+            # ``ON v`` names an account, not a table.
+            or any(
+                privilege.name.upper() == "PROXY" for privilege in ast.args.get("privileges", ())
+            )
+            or not _mysql_names_are_proven(securable, sql)
+        ):
+            return opaque
+    identity = _named(securable, object_type, "referenced")
+    return StatementFacts(operation, "DDL", (identity,)) if identity else opaque
+
+
+def _metadata_facts(ast: exp.Show | exp.Describe, read: exp.Expr) -> StatementFacts:
+    """SHOW and DESCRIBE read the tables of ``read``; they change nothing."""
+    operation = "SHOW" if isinstance(ast, exp.Show) else "DESCRIBE"
+    return StatementFacts(operation, "QUERY", _referenced(read))
+
+
+def _mysql_metadata_table(ast: exp.Show | exp.Describe, sql: str) -> Optional[exp.Table]:
+    """The one table ``DESCRIBE t`` or ``SHOW CREATE TABLE | COLUMNS | INDEX`` names, if proven."""
+    if isinstance(ast, exp.Describe):
+        table, read_keys = ast.this, {"this"}
+    else:
+        target = ast.args.get("target")
+        if ast.name.upper() not in {"CREATE TABLE", "COLUMNS", "INDEX"} or not isinstance(
+            target, exp.Identifier
+        ):
+            return None
+        table = exp.Table(this=target, db=ast.args.get("db"))
+        read_keys = {"this", "target", "db", "full"}
+    if (
+        not isinstance(table, exp.Table)
+        or not isinstance(table.this, exp.Identifier)
+        or any(value for key, value in ast.args.items() if key not in read_keys)
+        or any(value for key, value in table.args.items() if key not in {"this", "db"})
+        or _unread_names(table, "mysql") is not None  # lint: allow-dialect-string: MySQL words
+        or not _mysql_names_are_proven(table, sql)
+    ):
+        return None
+    return table
+
+
 def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     """Read one already-split statement; never retry a second extractor.
 
     Text that does not tokenize is reported as an error. A statement the grammar does not
     model is classified from its leading words with an informational diagnostic.
     """
-    # MariaDB shares this grammar; without engine/version context both markers are opaque.
-    if (
-        dialect == "mysql"  # lint: allow-dialect-string: MySQL-family executable comments
-        and ("/*!" in sql or "/*M!" in sql)
-        and any(
-            match.group().startswith(("/*!", "/*M!"))
-            for match in _MYSQL_QUOTES_AND_COMMENTS.finditer(sql)
-        )
+    # MariaDB shares this grammar. Without the server version only the executable comments that
+    # run on every supported server are read, as the server reads them; the rest stay opaque.
+    if dialect == "mysql" and (  # lint: allow-dialect-string: MySQL-family executable comments
+        "/*!" in sql or "/*M!" in sql
     ):
-        return StatementFacts(
-            "UNKNOWN", "UNKNOWN", diagnostic="mysql executable comment is opaque to statement facts"
-        )
+        served = _mysql_server_view(sql)
+        if served is None:
+            return StatementFacts(
+                "UNKNOWN",
+                "UNKNOWN",
+                diagnostic="mysql executable comment is opaque to statement facts",
+            )
+        sql = served
     unread = unread_name_character(sql, dialect=dialect)
     if unread is not None:
         return _unread_name_facts(sql, dialect, unread)
@@ -2416,8 +2568,14 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             identity = _named(ast.this, SqlObjectType.TABLE, "altered")
             return StatementFacts("COMMENT", "DDL", (identity,) if identity else ())
         if isinstance(ast, (exp.Show, exp.Describe)):
-            operation = "SHOW" if isinstance(ast, exp.Show) else "DESCRIBE"
-            return StatementFacts(operation, "QUERY", _referenced(ast))
+            return _metadata_facts(ast, ast)
+
+    if dialect == "mysql" and isinstance(  # lint: allow-dialect-string: MySQL DESCRIBE and SHOW
+        ast, (exp.Show, exp.Describe)
+    ):
+        metadata_table = _mysql_metadata_table(ast, sql)
+        if metadata_table is not None:
+            return _metadata_facts(ast, metadata_table)
 
     if dialect == "oracle" and (  # lint: allow-dialect-string: PL/SQL bodies are not read
         (
@@ -3028,15 +3186,8 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                     sources = _referenced(ast, tuple(into.find_all(exp.Table)))
                     return StatementFacts("SELECT", "DML", (created,) + sources)
         return StatementFacts("SELECT", "QUERY", _referenced(ast))
-    if (
-        dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL privileges are DDL
-        and isinstance(ast, (exp.Grant, exp.Revoke))
-    ):
-        return StatementFacts(
-            type(ast).__name__.upper(),
-            "DDL",
-            diagnostic=f"{dialect} {type(ast).__name__} privilege targets are not modelled",
-        )
+    if dialect in _GRANT_DIALECTS and isinstance(ast, (exp.Grant, exp.Revoke)):
+        return _grant_facts(ast, sql, dialect)
     return _head_facts(
         sql, f"{dialect} {type(ast).__name__} has no statement facts mapping", dialect=dialect
     )

@@ -43,6 +43,13 @@ class SqlObjectType(Enum):
     STORAGE_GROUP = "STORAGE_GROUP"  # Db2 storage groups
     BUFFERPOOL = "BUFFERPOOL"  # Db2 buffer pools
     MODULE = "MODULE"  # Db2 modules
+    PUBLICATION = "PUBLICATION"  # PostgreSQL logical replication publications
+    EVENT_TRIGGER = "EVENT_TRIGGER"  # PostgreSQL event triggers
+    OPERATOR_CLASS = "OPERATOR_CLASS"  # PostgreSQL operator classes
+    TEXT_SEARCH_DICTIONARY = "TEXT_SEARCH_DICTIONARY"  # PostgreSQL text search dictionaries
+    TEXT_SEARCH_CONFIGURATION = "TEXT_SEARCH_CONFIGURATION"  # PostgreSQL text search configurations
+    TEXT_SEARCH_PARSER = "TEXT_SEARCH_PARSER"  # PostgreSQL text search parsers
+    TEXT_SEARCH_TEMPLATE = "TEXT_SEARCH_TEMPLATE"  # PostgreSQL text search templates
     UNKNOWN = "UNKNOWN"
 
 

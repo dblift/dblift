@@ -117,10 +117,19 @@ def test_postgres_family_keeps_nonconcurrently_as_an_ordinary_index_name(plugin,
     assert (facts.indexed_table, facts.indexed_columns, facts.opaque) == ("t", ("id",), False)
 
 
+@pytest.mark.parametrize("plugin", ["mariadb", "mysql"])
+def test_alter_sequence_names_its_sequence_through_each_mysql_plugin(plugin):
+    # MariaDB 11.8.8 runs it (4091 when the sequence is missing); MySQL rejects it (1064). The
+    # reader is shared, so both plugins name the sequence from the head.
+    facts = _read(plugin, "ALTER SEQUENCE users_seq RESTART WITH 100")
+
+    assert (facts.operation, facts.kind) == ("ALTER", "DDL")
+    assert facts.objects == (NamedObject("users_seq", SqlObjectType.SEQUENCE, "altered"),)
+
+
 @pytest.mark.parametrize(
     ("plugin", "sql", "operation"),
     [
-        ("mariadb", "ALTER SEQUENCE users_seq RESTART WITH 100", "ALTER"),
         ("postgresql", "CREATE FOREIGN TABLE ft (id integer) SERVER s", "CREATE"),
         ("postgresql", "ALTER FOREIGN TABLE ft ADD COLUMN c integer", "ALTER"),
         ("postgresql", "DROP FOREIGN TABLE ft", "DROP"),

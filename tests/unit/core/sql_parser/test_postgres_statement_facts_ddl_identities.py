@@ -265,16 +265,97 @@ def test_drop_index_concurrently_names_the_index():
     )
 
 
+@pytest.mark.parametrize("operation,tail", [("GRANT", "TO r"), ("REVOKE", "FROM r")])
 @pytest.mark.parametrize(
-    "sql,operation",
-    [("GRANT SELECT ON t TO r", "GRANT"), ("REVOKE SELECT ON t FROM r", "REVOKE")],
+    "privileges_on,expected",
+    [
+        ("SELECT ON t", NamedObject("t", T.TABLE, "referenced")),
+        ("SELECT ON TABLE t", NamedObject("t", T.TABLE, "referenced")),
+        ("SELECT ON s.t", NamedObject("t", T.TABLE, "referenced", "s")),
+        ("SELECT ON TABLE s.t", NamedObject("t", T.TABLE, "referenced", "s")),
+        ("SELECT, INSERT ON t", NamedObject("t", T.TABLE, "referenced")),
+        ("SELECT (a) ON t", NamedObject("t", T.TABLE, "referenced")),
+        ("ALL ON t", NamedObject("t", T.TABLE, "referenced")),
+        ("USAGE ON SEQUENCE sq", NamedObject("sq", T.SEQUENCE, "referenced")),
+        ("USAGE ON SCHEMA s", NamedObject("s", T.SCHEMA, "referenced")),
+        ("CONNECT ON DATABASE d", NamedObject("d", T.DATABASE, "referenced")),
+        ("USAGE ON TYPE ty", NamedObject("ty", T.TYPE, "referenced")),
+        ("EXECUTE ON FUNCTION f", NamedObject("f", T.FUNCTION, "referenced")),
+        ("EXECUTE ON FUNCTION s.f", NamedObject("f", T.FUNCTION, "referenced", "s")),
+        ("EXECUTE ON PROCEDURE p", NamedObject("p", T.PROCEDURE, "referenced")),
+    ],
 )
-def test_grant_and_revoke_are_ddl_without_objects(sql, operation):
+def test_grant_and_revoke_are_ddl_that_reference_the_object_they_name(
+    privileges_on, expected, operation, tail
+):
+    """GRANT and REVOKE change privileges, not the object, so the securable is only referenced.
+
+    Measured 2026-10-24 on PostgreSQL 16.14: every form here runs on an existing object, and on
+    a missing one fails after parsing (42P01 table or sequence, 3F000 schema, 3D000 database,
+    42704 type, 42883 function), never with 42601.
+    """
+    facts = _pg(f"{operation} {privileges_on} {tail}")
+
+    assert (facts.operation, facts.kind) == (operation, "DDL")
+    assert facts.objects == (expected,)
+    assert facts.diagnostic is None
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "GRANT SELECT ON t TO GROUP g",
+        "GRANT SELECT ON t TO PUBLIC",
+        "GRANT SELECT ON t TO u WITH GRANT OPTION",
+        "REVOKE GRANT OPTION FOR SELECT ON t FROM u CASCADE",
+        "REVOKE ALL ON t FROM u RESTRICT",
+    ],
+)
+def test_grant_options_and_principals_do_not_change_the_securable(sql):
+    # Measured 2026-10-24 on PostgreSQL 16.14: all five run.
+    assert _pg(sql).objects == (NamedObject("t", T.TABLE, "referenced"),)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # sqlglot reads these as an unmodelled command: no single table is proven.
+        "GRANT SELECT ON ALL TABLES IN SCHEMA s TO u",
+        "GRANT ALL ON ALL SEQUENCES IN SCHEMA s TO u",
+        "GRANT r TO u",
+        "GRANT SELECT ON t1, t2 TO u",
+        "GRANT USAGE ON FOREIGN SERVER fs TO u",
+        # sqlglot holds a routine with a signature as a call, not as a name.
+        "GRANT EXECUTE ON FUNCTION f(int) TO u",
+        "GRANT EXECUTE ON PROCEDURE p(int) TO u",
+        "REVOKE EXECUTE ON FUNCTION f(int) FROM u",
+        # The catalog part of a table name is not read.
+        "GRANT SELECT ON a.b.c TO u",
+    ],
+)
+def test_grant_forms_that_prove_no_single_object_name_stay_opaque(sql):
+    """Measured 2026-10-24 on PostgreSQL 16.14: all parse (``t1, t2`` grants on two tables;
+    ``a.b.c`` is refused after parsing with 0A000, cross-database references).
+    """
     facts = _pg(sql)
-    assert (facts.operation, facts.kind, facts.objects) == (operation, "DDL", ())
+
+    assert facts.objects == ()
+    assert facts.opaque
+    assert facts.operation in {"GRANT", "REVOKE"}
 
 
-@pytest.mark.parametrize("dialect", ["mysql", "oracle"])
+@pytest.mark.parametrize(
+    "sql", ["GRANT USAGE ON SCHEMA a.b TO u", "GRANT CONNECT ON DATABASE a.b TO u"]
+)
+def test_a_qualified_schema_or_database_is_not_named(sql):
+    # Measured 2026-10-24 on PostgreSQL 16.14: both are syntax errors (42601).
+    facts = _pg(sql)
+
+    assert facts.objects == ()
+    assert facts.opaque
+
+
+@pytest.mark.parametrize("dialect", ["oracle"])
 @pytest.mark.parametrize("sql", ["GRANT SELECT ON t TO r", "REVOKE SELECT ON t FROM r"])
 def test_grant_and_revoke_keep_their_kind_on_other_dialects(sql, dialect):
     facts = read_statement_facts(sql, dialect=dialect)

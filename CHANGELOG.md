@@ -9,8 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `SqlObjectType` gains `TABLESPACE`, `STORAGE_GROUP`, `BUFFERPOOL` and `MODULE`, the object types
-  of the Db2 statements below.
+- `SqlObjectType.TABLESPACE` names a tablespace, as the statement facts of the `mysql` grammar, of
+  PostgreSQL and of Db2 now report one.
+- `SqlObjectType` gains `STORAGE_GROUP`, `BUFFERPOOL` and `MODULE`, the object types of the Db2
+  statements below.
+- `SqlObjectType` gains `PUBLICATION`, `EVENT_TRIGGER`, `OPERATOR_CLASS`,
+  `TEXT_SEARCH_DICTIONARY`, `TEXT_SEARCH_CONFIGURATION`, `TEXT_SEARCH_PARSER` and
+  `TEXT_SEARCH_TEMPLATE`, the PostgreSQL object kinds the statement facts reader names.
 
 ### Changed
 
@@ -26,11 +31,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   space with it, the lint reports a Db2 `DROP TABLESPACE` as `drop-table` (it was
   `drop-unread-object` while the statement was unread); the types whose drop discards rows are
   now a quirk of each dialect, `drop_discards_rows_types`.
+- The PostgreSQL statement facts reader names the object of `CREATE`, `ALTER` and `DROP` for event
+  triggers, foreign data wrappers, servers, publications, operator classes, text search
+  dictionaries, configurations, parsers and templates, and tablespaces. They came back with no
+  object, so `info --format json` and execution-time object tracking did not list them. Event
+  triggers, foreign data wrappers, servers, publications and tablespaces are not schema-qualified
+  in PostgreSQL; a dotted name there, which the engine rejects, is left unnamed.
+- Statement analysis names the object of `GRANT` and `REVOKE` on the PostgreSQL and MySQL
+  grammars (MariaDB included): `GRANT SELECT ON t TO u` is a DDL statement that references
+  table `t` (also `ON TABLE`, `ON db.t`, and on PostgreSQL `ON SEQUENCE`, `SCHEMA`, `DATABASE`,
+  `TYPE`, `FUNCTION` and `PROCEDURE`; on MySQL `ON FUNCTION` and `ON PROCEDURE`). On MySQL and
+  MariaDB `DESCRIBE t`, `DESC t`, `EXPLAIN t`, `SHOW CREATE TABLE t`, `SHOW COLUMNS FROM t` and
+  `SHOW INDEX FROM t` reference their table; they returned no object. Wildcard grants, role
+  grants, grants to `'u'@'h'` and routines written with a signature stay unnamed.
+- The statement facts of the `mysql` grammar (MySQL and MariaDB) name the object of two forms that
+  came back unread: `CREATE`, `ALTER` and `DROP TABLESPACE ts` (MySQL) name the tablespace, and
+  `ALTER SEQUENCE [db.]s RESTART WITH 100` (MariaDB) names the sequence, as `CREATE SEQUENCE` and
+  `DROP SEQUENCE` already did. A qualified tablespace name and the `UNDO` forms stay unread. A
+  compound statement outside a program (`WHILE`, `IF`), `EXECUTE IMMEDIATE '…'` and the statements
+  inside a trigger or program body stay unread by design; `docs/sql-parsing/mysql.md` gives the
+  reason for each.
 - The HTML report of `migrate --dry-run --show-sql` and `undo --dry-run --show-sql` names the
   object type and name of each statement, as the report of an applied run does; those columns
   were empty. Each `MigrationSqlInfo` in `result.sql` carries the same per-statement
   `annotations` (`operation`, `object_type`, `object_name`). Without object analysis
   (`analysis_mode="execution"`) the columns stay empty, as they do for an applied run.
+- MySQL and MariaDB statement facts read the executable comments that run on every supported
+  server, such as the ones `mysqldump` writes (`CREATE TABLE /*!32312 IF NOT EXISTS*/ t (…)`,
+  `/*!50001 CREATE TABLE t (…) */`, a dumped view, `/*!40101 SET NAMES utf8mb4 */`): a `/*!`
+  comment with no version number or a five-digit version below 50700 is read as the server
+  reads it, its content kept, so the statement names its objects instead of being reported
+  unread. 50700 is the lowest version at which a supported server stops running the comment
+  (MariaDB 11 runs `/*!50699 … */`, not `/*!50700 … */`). A statement with any other executable
+  comment (`/*!50700` and above, `/*M!`) is still reported unread, because whether it runs
+  depends on the server version.
 
 ### Removed
 
