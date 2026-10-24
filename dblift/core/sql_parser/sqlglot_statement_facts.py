@@ -603,6 +603,15 @@ def _mysql_identifier_is_proven(identifier: exp.Expression, sql: str) -> bool:
     return tokens[0].token_type in {TokenType.VAR, TokenType.IDENTIFIER}
 
 
+def _mysql_names_are_proven(table: exp.Table, sql: str) -> bool:
+    """Whether the table name, and its schema if written, are identifiers in any SQL mode."""
+    return all(
+        _mysql_identifier_is_proven(part, sql)
+        for part in (table.this, table.args.get("db"))
+        if part is not None
+    )
+
+
 def _mysql_on_table_name(on: exp.OnProperty, sql: str) -> Optional[str]:
     """The table named by ``ON`` when it is one proven bare identifier, else ``None``.
 
@@ -2099,6 +2108,89 @@ def _redshift_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[Statement
     return None
 
 
+# The securable kinds a written ``GRANT ... ON <kind> name`` proves; no keyword names a table.
+_GRANT_SECURABLES = {
+    "": SqlObjectType.TABLE,
+    "TABLE": SqlObjectType.TABLE,
+    "SEQUENCE": SqlObjectType.SEQUENCE,
+    "FUNCTION": SqlObjectType.FUNCTION,
+    "PROCEDURE": SqlObjectType.PROCEDURE,
+    "SCHEMA": SqlObjectType.SCHEMA,
+    "DATABASE": SqlObjectType.DATABASE,
+    "TYPE": SqlObjectType.TYPE,
+}
+_MYSQL_GRANT_KINDS = frozenset({"", "TABLE", "FUNCTION", "PROCEDURE"})
+# Dialects whose GRANT and REVOKE name their securable, each checked against the engine.
+_GRANT_DIALECTS = frozenset({"postgres", "mysql"})  # lint: allow-dialect-string: privileges
+
+
+def _grant_facts(ast: exp.Grant | exp.Revoke, sql: str, dialect: str) -> StatementFacts:
+    """GRANT and REVOKE are DDL that only reference the securable they name.
+
+    The securable is named when the grammar holds it as one plain identifier whose kind is
+    written (or absent, which means a table); every other form is left opaque.
+    """
+    operation = type(ast).__name__.upper()
+    opaque = StatementFacts(
+        operation,
+        "DDL",
+        diagnostic=f"{dialect} {type(ast).__name__} privilege targets are not modelled",
+    )
+    kind = str(ast.args.get("kind") or "").upper()
+    securable = ast.args.get("securable")
+    object_type = _GRANT_SECURABLES.get(kind)
+    if (
+        object_type is None
+        or not isinstance(securable, exp.Table)
+        or not isinstance(securable.this, exp.Identifier)
+        or any(value for key, value in securable.args.items() if key not in {"this", "db"})
+        or (securable.db and object_type in {SqlObjectType.SCHEMA, SqlObjectType.DATABASE})
+    ):
+        return opaque
+    if dialect == "mysql":  # lint: allow-dialect-string: MySQL identifiers and securables
+        if (
+            kind not in _MYSQL_GRANT_KINDS
+            # ``ON v`` names an account, not a table.
+            or any(
+                privilege.name.upper() == "PROXY" for privilege in ast.args.get("privileges", ())
+            )
+            or not _mysql_names_are_proven(securable, sql)
+        ):
+            return opaque
+    identity = _named(securable, object_type, "referenced")
+    return StatementFacts(operation, "DDL", (identity,)) if identity else opaque
+
+
+def _metadata_facts(ast: exp.Show | exp.Describe, read: exp.Expr) -> StatementFacts:
+    """SHOW and DESCRIBE read the tables of ``read``; they change nothing."""
+    operation = "SHOW" if isinstance(ast, exp.Show) else "DESCRIBE"
+    return StatementFacts(operation, "QUERY", _referenced(read))
+
+
+def _mysql_metadata_table(ast: exp.Show | exp.Describe, sql: str) -> Optional[exp.Table]:
+    """The one table ``DESCRIBE t`` or ``SHOW CREATE TABLE | COLUMNS | INDEX`` names, if proven."""
+    if isinstance(ast, exp.Describe):
+        table, read_keys = ast.this, {"this"}
+    else:
+        target = ast.args.get("target")
+        if ast.name.upper() not in {"CREATE TABLE", "COLUMNS", "INDEX"} or not isinstance(
+            target, exp.Identifier
+        ):
+            return None
+        table = exp.Table(this=target, db=ast.args.get("db"))
+        read_keys = {"this", "target", "db", "full"}
+    if (
+        not isinstance(table, exp.Table)
+        or not isinstance(table.this, exp.Identifier)
+        or any(value for key, value in ast.args.items() if key not in read_keys)
+        or any(value for key, value in table.args.items() if key not in {"this", "db"})
+        or _unread_names(table, "mysql") is not None  # lint: allow-dialect-string: MySQL words
+        or not _mysql_names_are_proven(table, sql)
+    ):
+        return None
+    return table
+
+
 def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     """Read one already-split statement; never retry a second extractor.
 
@@ -2416,8 +2508,14 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             identity = _named(ast.this, SqlObjectType.TABLE, "altered")
             return StatementFacts("COMMENT", "DDL", (identity,) if identity else ())
         if isinstance(ast, (exp.Show, exp.Describe)):
-            operation = "SHOW" if isinstance(ast, exp.Show) else "DESCRIBE"
-            return StatementFacts(operation, "QUERY", _referenced(ast))
+            return _metadata_facts(ast, ast)
+
+    if dialect == "mysql" and isinstance(  # lint: allow-dialect-string: MySQL DESCRIBE and SHOW
+        ast, (exp.Show, exp.Describe)
+    ):
+        metadata_table = _mysql_metadata_table(ast, sql)
+        if metadata_table is not None:
+            return _metadata_facts(ast, metadata_table)
 
     if dialect == "oracle" and (  # lint: allow-dialect-string: PL/SQL bodies are not read
         (
@@ -3028,15 +3126,8 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                     sources = _referenced(ast, tuple(into.find_all(exp.Table)))
                     return StatementFacts("SELECT", "DML", (created,) + sources)
         return StatementFacts("SELECT", "QUERY", _referenced(ast))
-    if (
-        dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL privileges are DDL
-        and isinstance(ast, (exp.Grant, exp.Revoke))
-    ):
-        return StatementFacts(
-            type(ast).__name__.upper(),
-            "DDL",
-            diagnostic=f"{dialect} {type(ast).__name__} privilege targets are not modelled",
-        )
+    if dialect in _GRANT_DIALECTS and isinstance(ast, (exp.Grant, exp.Revoke)):
+        return _grant_facts(ast, sql, dialect)
     return _head_facts(
         sql, f"{dialect} {type(ast).__name__} has no statement facts mapping", dialect=dialect
     )
