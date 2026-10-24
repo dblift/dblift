@@ -119,10 +119,15 @@ _VALUE_TAIL_RE = re.compile(
     r"|:\s+value(?!\s+(?:or|too|is)\b))[ \t]+)(?![(?])\S[^\n]*",
     re.IGNORECASE,
 )
-_ORACLE_HEADER_RE = re.compile(r"ORA-\d{5}:")
+_ORACLE_HEADER_RE = re.compile(r"ORA-(?!20\d{3}:)\d{5}:")  # ORA-20xxx is raised by user code
 # What Oracle says after a trailing colon that is not a value.
 _ORACLE_FIXED_TAILS = frozenset(
-    ("character to number conversion error", "character string buffer too small")
+    (
+        "character to number conversion error",
+        "character string buffer too small",
+        "invalid identifier",
+        "table or view does not exist",
+    )
 )
 
 
@@ -165,7 +170,8 @@ def _mask_oracle_tail(line: str) -> str:
         elif depth <= 0 and line[i : i + 2] == ": ":
             cut = i + 2
     tail = line[cut:].strip() if cut > 0 else ""
-    if not tail or tail.lower() in _ORACLE_FIXED_TAILS:
+    # After a label that is already masked ("ORA-00904: ?: invalid identifier") comes no value.
+    if not tail or tail.lower() in _ORACLE_FIXED_TAILS or line[: cut - 2].endswith("?"):
         return line
     return line[:cut] + "?"
 

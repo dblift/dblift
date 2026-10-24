@@ -265,3 +265,31 @@ def test_known_oracle_texts_are_kept(message):
 )
 def test_oracle_quoted_identifiers_and_values_keep_their_masking(message, expected):
     assert redact(message) == expected
+
+
+def test_oracle_invalid_identifier_after_a_masked_name_is_kept():
+    assert redact('ORA-00904: "SECRET": invalid identifier') == "ORA-00904: ?: invalid identifier"
+
+
+def test_oracle_user_raised_errors_are_kept_whatever_their_punctuation():
+    colon = "ORA-20001: Order rejected: customer X is blocked"
+    plain = "ORA-20001: Order rejected for customer X"
+    assert redact(colon) == colon
+    assert redact(plain) == plain
+    assert redact("ORA-20999: a: b") == "ORA-20999: a: b"
+
+
+def test_oracle_codes_just_outside_the_user_range_are_not_exempt():
+    assert redact("ORA-19999: x: y") == "ORA-19999: x: ?"
+    assert redact("ORA-21000: x: y") == "ORA-21000: x: ?"
+
+
+def test_oracle_invalid_identifier_and_missing_table_are_fixed_phrases():
+    assert redact("ORA-00904: T.COL: invalid identifier") == "ORA-00904: T.COL: invalid identifier"
+    assert redact("ORA-00942: SCOTT.T: table or view does not exist") == (
+        "ORA-00942: SCOTT.T: table or view does not exist"
+    )
+
+
+def test_text_after_an_already_masked_label_is_not_masked_again():
+    assert redact('ORA-00999: "SECRET": some other detail') == "ORA-00999: ?: some other detail"
