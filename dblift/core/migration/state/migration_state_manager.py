@@ -399,8 +399,6 @@ class MigrationStateManager:
             self.logger, scripts_dir=scripts_dir, target_version=target_version
         )
         analysis_context = data_service._build_analysis_context(applied_migrations)
-        analysis_context["target_version"] = target_version
-        analysis_context["scripts_dir"] = scripts_dir
 
         history = self._analyse_history(applied_migrations, analysis_context)
 
