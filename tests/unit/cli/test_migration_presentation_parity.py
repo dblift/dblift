@@ -17,6 +17,23 @@ pytestmark = pytest.mark.unit
 
 _ROOT = Path(__file__).resolve().parents[3]
 
+_PROGRESS_PROBE = """
+import json
+import runpy
+from pathlib import Path
+import rich.progress
+
+class RecordingProgress(rich.progress.Progress):
+    def __exit__(self, *args):
+        Path('progress.json').write_text(json.dumps([
+            {'total': task.total, 'completed': task.completed} for task in self.tasks
+        ]))
+        return super().__exit__(*args)
+
+rich.progress.Progress = RecordingProgress
+runpy.run_module('dblift.cli.main', run_name='__main__')
+"""
+
 
 def _project(tmp_path: Path, sql: str = "CREATE TABLE items (id INTEGER PRIMARY KEY);\n") -> Path:
     scripts = tmp_path / "migrations"
@@ -25,7 +42,9 @@ def _project(tmp_path: Path, sql: str = "CREATE TABLE items (id INTEGER PRIMARY 
     return tmp_path
 
 
-def _run(project: Path, command: str, *options: str) -> subprocess.CompletedProcess[str]:
+def _run(
+    project: Path, command: str, *options: str, track_progress: bool = False
+) -> subprocess.CompletedProcess[str]:
     env = {key: value for key, value in os.environ.items() if not key.startswith("DBLIFT_")}
     env.update(
         PYTHONPATH=str(_ROOT),
@@ -36,8 +55,7 @@ def _run(project: Path, command: str, *options: str) -> subprocess.CompletedProc
     return subprocess.run(
         [
             sys.executable,
-            "-m",
-            "dblift.cli.main",
+            *(["-c", _PROGRESS_PROBE] if track_progress else ["-m", "dblift.cli.main"]),
             "--db-url",
             "sqlite:///app.db",
             "--scripts",
@@ -196,6 +214,118 @@ def test_show_query_results_renders_one_table_without_show_sql(tmp_path: Path) -
     assert len(re.findall(r"│\s*7\s*│", process.stderr)) == 1
     assert "SQL Statements:" not in process.stderr
     assert _table_exists(project)
+
+
+def test_json_query_and_callback_results_keep_one_table_each(tmp_path: Path) -> None:
+    project = _project(
+        tmp_path,
+        "CREATE TABLE items (id INTEGER PRIMARY KEY);\n"
+        "INSERT INTO items VALUES (7);\nSELECT id FROM items;\n",
+    )
+    (project / "migrations" / "beforeMigrate__query.sql").write_text(
+        "SELECT 11 AS callback_value;", encoding="utf-8"
+    )
+
+    process = _run(project, "migrate", "--show-query-results", "--format", "json")
+
+    assert process.returncode == 0, process.stderr
+    payload = _payload(process)
+    assert payload["success"] is True
+    assert payload["migrations_applied"] == ["1"]
+    assert len(re.findall(r"│\s*7\s*│", process.stderr)) == 1
+    assert len(re.findall(r"│\s*11\s*│", process.stderr)) == 1
+    assert process.stderr.count("Query executed successfully, 1 rows returned") == 1
+    assert "SQL Statements:" not in process.stderr
+    assert _table_exists(project)
+
+
+@pytest.mark.parametrize("fail_second", [False, True], ids=["success", "second-fails"])
+def test_cli_progress_counts_only_completed_scripts(tmp_path: Path, fail_second: bool) -> None:
+    project = _project(tmp_path)
+    (project / "migrations" / "V2__insert.sql").write_text(
+        "INSERT INTO absent VALUES (7);" if fail_second else "INSERT INTO items VALUES (7);",
+        encoding="utf-8",
+    )
+    (project / "migrations" / "V3__last.sql").write_text(
+        "INSERT INTO items VALUES (8);", encoding="utf-8"
+    )
+
+    process = _run(project, "migrate", track_progress=True)
+
+    assert process.returncode == (1 if fail_second else 0), process.stderr
+    assert json.loads((project / "progress.json").read_text()) == [
+        {"total": 3, "completed": 1 if fail_second else 3}
+    ]
+    assert (
+        process.stdout.count(
+            "Command MIGRATE failed" if fail_second else "Command MIGRATE completed successfully"
+        )
+        == 1
+    )
+    assert _history_outcomes(project) == (
+        [("1", 1), ("2", 0)] if fail_second else [("1", 1), ("2", 1), ("3", 1)]
+    )
+
+
+@pytest.mark.parametrize("raw_executor", [False, True], ids=["api", "raw-executor"])
+def test_batched_client_events_do_not_delay_explicit_logger_progress(
+    tmp_path: Path, raw_executor: bool, capsys
+) -> None:
+    from unittest.mock import patch
+
+    from rich.progress import Progress
+    from sqlalchemy import create_engine
+
+    from dblift.api import DBLiftClient
+    from dblift.core.logger import ConsoleLog
+
+    project = _project(tmp_path, "CREATE TABLE items (id INTEGER PRIMARY KEY); SELECT 7 AS value;")
+    engine = create_engine("sqlite:///:memory:")
+    completed = []
+    original_exit = Progress.__exit__
+
+    def record_exit(progress, *args):
+        completed.extend((task.total, task.completed) for task in progress.tasks)
+        return original_exit(progress, *args)
+
+    with patch.object(Progress, "__exit__", record_exit):
+        with DBLiftClient.from_sqlalchemy(
+            engine, migrations_dir=project / "migrations", logger=ConsoleLog("host")
+        ) as client:
+            client.events.start_batch()
+            result = (
+                client.executor.migrate(project / "migrations", show_query_results=True)
+                if raw_executor
+                else client.migrate(show_query_results=True)
+            )
+            assert result.success
+            assert completed == [(1, 1)]
+            client.events.stop_batch()
+    engine.dispose()
+    assert len(re.findall(r"│\s*7\s*│", capsys.readouterr().err)) == 1
+
+
+def test_cli_presentation_restores_nested_binding_after_preflight_failure(tmp_path: Path) -> None:
+    from sqlalchemy import create_engine
+
+    from dblift.api import DBLiftClient
+    from dblift.cli.presentation import command_presentation
+    from dblift.core.migration.commands.base_command import PreflightConnectionError
+
+    engine = create_engine("sqlite:///:memory:")
+    with DBLiftClient.from_sqlalchemy(engine, migrations_dir=tmp_path) as client:
+        execution = client.executor.execution_engine
+        assert "_presentation" not in vars(execution)
+        with command_presentation(client):
+            outer = execution._presentation
+            with pytest.raises(PreflightConnectionError, match="unavailable"):
+                with command_presentation(client):
+                    assert execution._presentation is not outer
+                    raise PreflightConnectionError("unavailable")
+            assert execution._presentation is outer
+        assert "_presentation" not in vars(execution)
+        assert client.migrate().success
+    engine.dispose()
 
 
 @pytest.mark.parametrize(

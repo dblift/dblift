@@ -397,11 +397,12 @@ class TestExecuteMigrationLoop(unittest.TestCase):
 
         with (
             patch(
-                "dblift.core.migration.commands.migrate_command.migration_progress",
-                return_value=nullcontext(sink),
-            ) as progress,
+                "dblift.core.migration.commands.migrate_command.presentation_for",
+            ) as select_presentation,
             patch("dblift.core.migration.commands.migrate_command.ScriptRunner") as runner_cls,
         ):
+            progress = select_presentation.return_value.migration_loop
+            progress.return_value = nullcontext(sink)
             runner_cls.return_value.run.side_effect = [True, False]
             cmd._execute_migration_loop(migrations, MigrateResult())
 

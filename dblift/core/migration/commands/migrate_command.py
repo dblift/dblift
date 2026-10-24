@@ -2,7 +2,7 @@
 Migrate command implementation.
 """
 
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
@@ -21,6 +21,7 @@ from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.migration_helpers import MigrationHelpers
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration, MigrationType
+from dblift.core.migration.presentation import presentation_for
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.lint import SAFE, lint_pending_scripts
@@ -29,7 +30,7 @@ from dblift.core.migration.state.migrate_plan import StrictModeError
 from dblift.core.migration.state.migration_state import MigrationReadSnapshot, MigrationState
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.ui.migration_ui import MigrationUI
-from dblift.core.migration.ui.progress import migration_progress
+from dblift.core.migration.ui.progress import NullProgress
 from dblift.core.migration.version_utils import compare_versions
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
@@ -257,7 +258,13 @@ class MigrateCommand(BaseCommand):
             f"Starting execution loop for {len(pending_migrations)} pending migration(s)"
         )
         runner = ScriptRunner(self, MIGRATE_POLICY)
-        with migration_progress(self.log, len(pending_migrations)) as progress:
+        presenter = presentation_for(self.execution_engine, self.log)
+        progress = (
+            presenter.migration_loop(self.log, len(pending_migrations))
+            if presenter is not None
+            else nullcontext(NullProgress())
+        )
+        with progress as sink:
             for migration in pending_migrations:
                 if self._migration_lock_lost():
                     # Another migrate may already be running; the migration in
@@ -269,7 +276,7 @@ class MigrateCommand(BaseCommand):
                     self.log.error(message)
                     result.set_error(message)
                     break
-                progress.describe(f"{migration.script_name}")
+                sink.describe(migration.script_name)
                 self.log.debug(
                     f"About to execute migration: {migration.script_name} (version: {migration.version})"
                 )
@@ -293,7 +300,7 @@ class MigrateCommand(BaseCommand):
                     # the bar would read "3/5 done" while only 2 actually
                     # completed. Stop without advancing.
                     break
-                progress.advance()
+                sink.advance()
 
     def _update_final_state(self, result: MigrateResult) -> None:
         """Update final schema version after migrations are applied."""
