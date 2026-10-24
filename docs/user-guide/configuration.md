@@ -363,6 +363,29 @@ export DBLIFT_ENV="prod"  # Optional: select the active environments: block (see
 !!! warning "Security Best Practice"
     Never commit passwords or sensitive credentials to version control. Always use environment variables for production deployments.
 
+## Logging Settings
+
+`log_level`, `log_format`, `log_dir` and `log_file` resolve like every other setting:
+command-line flag, then environment variable, then the configuration file, then the default.
+
+| Setting | Flag | Environment variable | YAML key | Default |
+| --- | --- | --- | --- | --- |
+| Level (`debug`, `info`, `warn`, `error`) | `--log-level` | `DBLIFT_LOG_LEVEL` | `log_level` or `logging.level` | `info` |
+| Format (`text`, `json`, `html`, comma-separated for several) | `--log-format` | `DBLIFT_LOG_FORMAT` | `log_format` | `text` |
+| Directory | `--log-dir` | `DBLIFT_LOG_DIR` | `log_dir` | `logs` |
+| File name | `--log-file` | `DBLIFT_LOG_FILE` | `log_file` | generated |
+
+```yaml
+log_level: warn
+log_format: text,json
+log_dir: build/logs
+```
+
+Level names are case-insensitive, `warning` is accepted for `warn` in the flag, the environment variable and the file, and `critical` for `error` in the environment variable and the file. An unknown level from any of them exits with status 2, as an unknown format does. A level hides everything
+below it on the console and in the log files: `error` shows only errors, `warn` shows warnings and
+errors. The command banners and result tables are not log lines and are always printed;
+`--quiet` hides log lines on the console only.
+
 ## File Encoding
 
 If you're using special characters (é, ñ, ö, etc.) in your SQL files, specify the encoding:
