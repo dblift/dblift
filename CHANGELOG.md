@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The HTML report of `migrate --dry-run --show-sql` and `undo --dry-run --show-sql` names the
+  object type and name of each statement, as the report of an applied run does; those columns
+  were empty. Each `MigrationSqlInfo` in `result.sql` carries the same per-statement
+  `annotations` (`operation`, `object_type`, `object_name`). Without object analysis
+  (`analysis_mode="execution"`) the columns stay empty, as they do for an applied run.
+
 ### Removed
 
 ## [5.0.0] - 2026-10-24

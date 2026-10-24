@@ -102,6 +102,7 @@ class MigrateCommand(BaseCommand):
                     version=migration.version,
                     description=migration.description,
                     statements=statements,
+                    annotations=self.execution_engine.annotate_sql_statements(statements),
                 )
             )
 

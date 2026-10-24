@@ -269,6 +269,17 @@ class ExecutionEngine:
             return []
         return executable
 
+    def annotate_sql_statements(self, statements: List[str]) -> List[Dict[str, str]]:
+        """The operation and first object of each statement, as an applied run reports them.
+
+        For ``--show-sql`` previews, which run nothing and so leave the journal empty.
+        """
+        keys = ("operation", "object_type", "object_name")
+        service = self.sql_execution_service
+        if service is None:
+            raise RuntimeError("annotating statements needs the SQL execution service")
+        return [dict(zip(keys, service.annotate_statement(s))) for s in statements]
+
     def _parse_sql_statements(
         self,
         migration: Migration,
