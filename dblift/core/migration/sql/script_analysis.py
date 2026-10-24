@@ -21,6 +21,7 @@ from dblift.core.exceptions import (
 )
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
+from dblift.core.sql_parser.redaction import bare_words
 from dblift.core.sql_parser.statement_facts import DmlEffect, StatementFacts
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import strip_leading_sql_comments
@@ -47,6 +48,19 @@ _ROW_FREE_DROP = re.compile(
     re.IGNORECASE,
 )
 _DROP_DEPENDENTS = re.compile(r"\b(?:CASCADE|FORCE)\b", re.IGNORECASE)
+# Named kinds whose CASCADE reaches no column, so a statement that names only these is not reported
+# for it (measured on PostgreSQL 16.14, see the lint-rule tests): CASCADE on a sequence drops the
+# DEFAULT that reads it, on an index the index alone (a constraint that needs it refuses the
+# drop), on a trigger or a procedure only itself. A type or a function can have a column depend on
+# it (a column of that type, a generated column).
+_COLUMN_FREE_DEPENDENTS = frozenset(
+    {
+        SqlObjectType.INDEX.value,
+        SqlObjectType.SEQUENCE.value,
+        SqlObjectType.PROCEDURE.value,
+        SqlObjectType.TRIGGER.value,
+    }
+)
 # Objects whose DROP discards rows; dropping an index, a sequence or a routine does not.
 _DATA_HOLDERS = frozenset(
     {
@@ -275,6 +289,8 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             # a plugin without a sqlglot dialect has no second reader to name an unread target
             name_target=not (analysed.names_unread and quirks.sqlglot_dialect is None),
         )
+        if caution is None and operation == "DROP":
+            caution = _dependents_caution(analysed, dialect)
         if caution is None and facts.opaque and facts.kind == "DML" and facts.target is None:
             # A data-changing CTE leaves no readable target; its outer table still changes.
             altered = tuple(
@@ -419,6 +435,21 @@ def _unnamed_drop_caution(stmt: AnalysedStatement, body: str) -> Optional[Cautio
         stmt.index,
         f"DROP {kind} discards a {kind.lower()} whose name could not be read, and its rows",
         code,
+    )
+
+
+def _dependents_caution(stmt: AnalysedStatement, dialect: str) -> Optional[Caution]:
+    """The caution of a named DROP of row-free objects whose CASCADE or FORCE may drop columns."""
+    named = tuple(o for o in stmt.objects if o.type not in _COLUMN_FREE_DEPENDENTS)
+    word = next((w for w in bare_words(stmt.sql, dialect) if _DROP_DEPENDENTS.fullmatch(w)), None)
+    if not named or word is None:
+        return None
+    return Caution(
+        DESTROYS,
+        stmt.index,
+        f"DROP … {word} also drops the objects that depend on {_names(named)}, "
+        "which can include columns and their data",
+        "drop-cascade",
     )
 
 

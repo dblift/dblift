@@ -568,6 +568,96 @@ def test_a_named_db2_drop_that_holds_no_rows_is_safe(sql):
     assert lint_script(sql, "db2").verdict == "SAFE"
 
 
+# Measured 2026-10-24 on PostgreSQL 16.14. Each DROP below was refused without CASCADE ("cannot
+# drop ... because other objects depend on it") and, with it, dropped a column of a table that
+# held a row (the row stayed, its value in that column was gone):
+#   DROP TYPE ty CASCADE                a column of type ty (an enum or a composite attribute too)
+#   DROP FUNCTION f(int) CASCADE        a stored generated column that calls f
+#   DROP DOMAIN / TEXT SEARCH CONFIGURATION / COLLATION ... CASCADE: a column of that domain,
+#     a generated tsvector column, a column with that collation (these three are not named by the
+#     reader, so the unread-drop rule already reports them)
+# DROP FUNCTION ... CASCADE also dropped a column DEFAULT, a CHECK, a trigger, an index and a view
+# that used f; DROP SERVER srv CASCADE dropped a foreign table (the data stays on the remote side).
+def test_a_named_drop_with_cascade_that_can_drop_a_column_asks_for_a_review():
+    result = lint_script("DROP TYPE ty CASCADE;", "postgresql")
+
+    assert [f.code for f in result.findings] == ["drop-cascade"]
+    assert result.verdict == "REVIEW"
+    assert analyse_script("DROP TYPE ty CASCADE", "postgresql").cautions[0].code == "drop-cascade"
+
+
+@pytest.mark.parametrize(
+    "dialect, sql",
+    [
+        ("postgresql", "DROP TYPE ty CASCADE;"),
+        ("postgresql", "DROP TYPE IF EXISTS s.ty cascade;"),
+        ("postgresql", "DROP FUNCTION f(int) CASCADE;"),
+        ("postgresql", "DROP TYPE ty /* why */ CASCADE -- done"),
+        ("postgresql", 'DROP TYPE "ty" CASCADE;'),
+        ("snowflake", "DROP FUNCTION f(int) CASCADE;"),
+    ],
+)
+def test_the_cascade_of_a_named_drop_is_reported_as_one_finding(dialect, sql):
+    result = lint_script(sql, dialect)
+
+    assert [f.code for f in result.findings] == ["drop-cascade"]
+    assert "CASCADE" in result.findings[0].message
+    assert SEVERITY["drop-cascade"] == WARNING
+
+
+# The same drops without CASCADE are refused by the engine while a column depends on the object.
+# CASCADE written inside a comment or a quoted name is not the keyword.
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DROP TYPE ty;",
+        "DROP FUNCTION f(int);",
+        "DROP TYPE ty -- CASCADE",
+        "DROP TYPE ty /* CASCADE */;",
+        'DROP TYPE "cascade";',
+        'DROP TYPE "force".ty;',
+    ],
+)
+def test_a_named_drop_without_the_cascade_keyword_stays_safe(sql):
+    assert lint_script(sql, "postgresql").verdict == "SAFE"
+
+
+# Measured 2026-10-24 on PostgreSQL 16.14: CASCADE on these reaches no column. DROP SEQUENCE sq
+# CASCADE dropped the DEFAULT nextval('sq') of the column using it (serial included) and kept
+# the column and its rows; DROP INDEX i CASCADE was refused while a constraint needed the index and
+# otherwise dropped the index alone; DROP TRIGGER and DROP PROCEDURE ... CASCADE dropped only
+# themselves. MySQL 8.4.11 refuses CASCADE on all of them (error 1064).
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DROP SEQUENCE sq CASCADE;",
+        "DROP INDEX i CASCADE;",
+        "DROP TRIGGER trg ON t CASCADE;",
+        "DROP PROCEDURE p(int) CASCADE;",
+    ],
+)
+def test_the_cascade_of_a_kind_no_column_depends_on_stays_safe(sql):
+    assert lint_script(sql, "postgresql").verdict == "SAFE"
+
+
+# CASCADE / FORCE do not change the verdict of a drop that already discards rows or that holds
+# none: the table and schema rules speak first, and a view drop (MySQL 8.4.11 accepts
+# DROP VIEW v CASCADE and ignores it) is judged as before.
+@pytest.mark.parametrize(
+    "dialect, sql, codes",
+    [
+        ("mysql", "DROP TABLE t CASCADE;", ["drop-table"]),
+        ("postgresql", "DROP SCHEMA s CASCADE;", ["drop-schema"]),
+        ("postgresql", "DROP DATABASE d FORCE;", ["drop-schema"]),
+        ("mysql", "DROP VIEW v CASCADE;", []),
+        ("postgresql", "DROP EXTENSION e CASCADE;", ["drop-unread-object"]),
+        ("postgresql", "DROP DOMAIN dm CASCADE;", ["drop-unread-object"]),
+    ],
+)
+def test_the_cascade_keyword_leaves_the_other_drop_rules_alone(dialect, sql, codes):
+    assert [f.code for f in lint_script(sql, dialect).findings] == codes
+
+
 # A database link and a materialized view log are definitions: Oracle's DROP DATABASE LINK removes
 # the link, DROP MATERIALIZED VIEW LOG removes the change log of a master table, not its rows.
 # Neither is a DROP DATABASE / DROP MATERIALIZED VIEW, which the keyword match used to take them for.

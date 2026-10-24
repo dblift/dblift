@@ -26,6 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   space with it, the lint reports a Db2 `DROP TABLESPACE` as `drop-table` (it was
   `drop-unread-object` while the statement was unread); the types whose drop discards rows are
   now a quirk of each dialect, `drop_discards_rows_types`.
+- The lint reports a `DROP` with `CASCADE` or `FORCE` of a named object that holds no rows, as the
+  new `drop-cascade` warning. `DROP TYPE ty CASCADE` and `DROP FUNCTION f(int) CASCADE` passed
+  with no finding, yet PostgreSQL drops every column of that type, or generated column calling
+  that function, with the object (measured on PostgreSQL 16.14: the column is gone, the row stays).
+  A statement that names only indexes, sequences, triggers or procedures is not reported, since
+  `CASCADE` reaches no column through them. `DROP TABLE`, `DROP SCHEMA` and the `DROP`
+  statements that could not be read are judged as before.
 - The HTML report of `migrate --dry-run --show-sql` and `undo --dry-run --show-sql` names the
   object type and name of each statement, as the report of an applied run does; those columns
   were empty. Each `MigrationSqlInfo` in `result.sql` carries the same per-statement
