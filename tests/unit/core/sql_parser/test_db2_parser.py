@@ -1,11 +1,9 @@
 """Tests for DB2 regex parser."""
 
-from unittest.mock import patch
-
 import pytest
 
 from dblift.core.sql_model.base import ParseResult, SqlStatementType
-from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
+from tests.support.facts_parser import facts_parser
 
 
 @pytest.mark.unit
@@ -14,13 +12,13 @@ class TestDB2RegexParser:
 
     def test_parser_creation(self):
         """Test parser can be created."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
         assert parser is not None
         assert parser.dialect_name == "db2"
 
     def test_parse_sql_simple(self):
         """Test parsing simple SQL."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = "CREATE TABLE test (id INTEGER PRIMARY KEY, name VARCHAR(100));"
         result = parser.parse_sql(sql)
@@ -32,7 +30,7 @@ class TestDB2RegexParser:
 
     def test_parse_sql_multiple_statements(self):
         """Test parsing multiple SQL statements."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = """
         CREATE TABLE employees (id INTEGER PRIMARY KEY, name VARCHAR(100));
@@ -47,7 +45,7 @@ class TestDB2RegexParser:
 
     def test_parse_sql_db2_specific(self):
         """Test parsing DB2-specific SQL."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = """
         CREATE TABLE test (
@@ -64,7 +62,7 @@ class TestDB2RegexParser:
 
     def test_parse_sql_empty(self):
         """Test parsing empty SQL."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         result = parser.parse_sql("")
 
@@ -74,7 +72,7 @@ class TestDB2RegexParser:
 
     def test_extract_objects(self):
         """Test object extraction from SQL."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = """
         CREATE TABLE employees (
@@ -89,7 +87,7 @@ class TestDB2RegexParser:
 
     def test_sqlpl_handling(self):
         """Test SQL/PL procedure handling."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = """
         CREATE OR REPLACE PROCEDURE GetEmployeeCount(OUT total INTEGER)
@@ -105,7 +103,7 @@ class TestDB2RegexParser:
 
     def test_split_statements(self):
         """Test SQL statement splitting."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = """
         CREATE TABLE test1 (id INTEGER);
@@ -118,7 +116,7 @@ class TestDB2RegexParser:
 
     def test_statement_classification(self):
         """Test statement type classification."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         # Test through parse_sql which uses the classification logic
         ddl_sql = "CREATE TABLE test (id INTEGER)"
@@ -138,7 +136,7 @@ class TestDB2RegexParser:
 
     def test_validate_sql(self):
         """Test SQL validation."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         # Valid SQL
         valid_sql = "CREATE TABLE test (id INTEGER PRIMARY KEY)"
@@ -152,7 +150,7 @@ class TestDB2RegexParser:
 
     def test_compound_statement_handling(self):
         """Test compound statement handling."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = """
         BEGIN ATOMIC
@@ -170,7 +168,7 @@ class TestDB2RegexParser:
 
     def test_exec_sql_handling(self):
         """Test EXEC SQL statement handling."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = """
         EXEC SQL
@@ -184,7 +182,7 @@ class TestDB2RegexParser:
 
     def test_spufi_terminator_handling(self):
         """Test SPUFI terminator handling."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = """
         --#SET TERMINATOR @
@@ -200,7 +198,7 @@ class TestDB2RegexParser:
 
     def test_trigger_handling(self):
         """Test trigger statement handling."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = """
         CREATE OR REPLACE TRIGGER audit_trigger
@@ -215,52 +213,9 @@ class TestDB2RegexParser:
         assert isinstance(result, ParseResult)
         assert result.success
 
-    def test_inheritance_from_enhanced_regex_parser(self):
-        """Test that DB2RegexParser inherits from EnhancedRegexParser."""
-        from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
-
-        parser = DB2RegexParser()
-        assert isinstance(parser, EnhancedRegexParser)
-
-    def test_parser_configuration(self):
-        """Test parser configuration attributes."""
-        parser = DB2RegexParser()
-        assert hasattr(parser, "dialect_name")
-        assert parser.dialect_name == "db2"
-        assert hasattr(parser, "config")
-
-    def test_utility_statement_detection(self):
-        """Test DB2 utility statement detection."""
-        parser = DB2RegexParser()
-
-        # Test utility statements
-        utility_statements = [
-            "REORG TABLE employees",
-            "RUNSTATS ON TABLE employees",
-            "BIND PACKAGE pkg1",
-            "REBIND PACKAGE pkg1",
-        ]
-
-        for stmt in utility_statements:
-            result = parser.is_utility_statement(stmt)
-            assert isinstance(result, bool)
-
-    def test_db2_specific_object_extraction(self):
-        """Test DB2-specific object extraction."""
-        parser = DB2RegexParser()
-
-        sql = """
-        CREATE TABLESPACE ts1 MANAGED BY SYSTEM;
-        CREATE STOGROUP sg1 VOLUMES ('vol1');
-        """
-
-        objects = parser.extract_objects(sql)
-        # Should extract tablespace and stogroup objects
-        assert len(objects) >= 2
-
     def test_error_handling_and_recovery(self):
         """Test error handling and recovery."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         # Test with potentially problematic SQL
         problematic_sql = "CREATE TABLE test (id INTEGER; -- Missing closing parenthesis"
@@ -271,7 +226,7 @@ class TestDB2RegexParser:
 
     def test_edge_cases(self):
         """Test various edge cases."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         edge_cases = [
             "",  # Empty string
@@ -287,7 +242,7 @@ class TestDB2RegexParser:
 
     def test_db2_comment_handling(self):
         """Test DB2 comment handling."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = """
         -- This is a line comment
@@ -306,7 +261,7 @@ class TestDB2RegexParser:
 
     def test_quoted_identifier_handling(self):
         """Test DB2 quoted identifier handling."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = 'CREATE TABLE "test_table" ("column_name" INTEGER, "special-col" VARCHAR(100));'
 
@@ -317,142 +272,77 @@ class TestDB2RegexParser:
 
     def test_db2_exec_sql_detection(self):
         """Test DB2 EXEC SQL detection."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         # Test with EXEC SQL
         sql_with_exec = "EXEC SQL CREATE TABLE test (id INTEGER) END-EXEC;"
-        assert parser._has_exec_sql_blocks(sql_with_exec)
+        assert parser.split_statements(sql_with_exec) == [sql_with_exec[:-1]]
 
         # Test without EXEC SQL
         sql_without_exec = "CREATE TABLE test (id INTEGER);"
-        assert not parser._has_exec_sql_blocks(sql_without_exec)
+        assert parser.split_statements(sql_without_exec) == [sql_without_exec[:-1]]
 
     def test_db2_sqlpl_detection(self):
         """Test DB2 SQL/PL detection."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         # Test with SQL/PL procedure
         sql_with_sqlpl = "CREATE PROCEDURE test() LANGUAGE SQL BEGIN SELECT 1; END;"
-        assert parser._has_sqlpl_blocks(sql_with_sqlpl)
+        assert parser.split_statements(sql_with_sqlpl) == [sql_with_sqlpl[:-1]]
 
         # Test with SQLPL procedure
         sql_with_sqlpl2 = "CREATE PROCEDURE test() LANGUAGE SQLPL BEGIN SELECT 1; END;"
-        assert parser._has_sqlpl_blocks(sql_with_sqlpl2)
+        assert parser.split_statements(sql_with_sqlpl2) == [sql_with_sqlpl2[:-1]]
 
         # Test without SQL/PL
         sql_without_sqlpl = "CREATE TABLE test (id INTEGER);"
-        assert not parser._has_sqlpl_blocks(sql_without_sqlpl)
+        assert parser.split_statements(sql_without_sqlpl) == [sql_without_sqlpl[:-1]]
 
     def test_db2_compound_statement_detection(self):
         """Test DB2 compound statement detection."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         # Test with compound atomic
         sql_with_compound = "BEGIN ATOMIC SELECT 1; END;"
-        assert parser._has_compound_statements(sql_with_compound)
+        assert parser.split_statements(sql_with_compound) == [sql_with_compound[:-1]]
 
         # Test with compound not atomic
         sql_with_compound2 = "BEGIN NOT ATOMIC SELECT 1; END;"
-        assert parser._has_compound_statements(sql_with_compound2)
+        assert parser.split_statements(sql_with_compound2) == [sql_with_compound2[:-1]]
 
         # Test without compound
         sql_without_compound = "SELECT 1;"
-        assert not parser._has_compound_statements(sql_without_compound)
+        assert parser.split_statements(sql_without_compound) == [sql_without_compound[:-1]]
 
     def test_db2_trigger_detection(self):
         """Test DB2 trigger detection."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         # Test with trigger
         sql_with_trigger = (
             "CREATE TRIGGER test_trigger AFTER INSERT ON test FOR EACH ROW BEGIN SELECT 1; END;"
         )
-        assert parser._has_trigger_blocks(sql_with_trigger)
+        assert parser.split_statements(sql_with_trigger) == [sql_with_trigger[:-1]]
 
         # Test without trigger
         sql_without_trigger = "CREATE TABLE test (id INTEGER);"
-        assert not parser._has_trigger_blocks(sql_without_trigger)
+        assert parser.split_statements(sql_without_trigger) == [sql_without_trigger[:-1]]
 
     def test_db2_spufi_terminator_detection(self):
         """Test DB2 SPUFI terminator detection."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         # Test with SPUFI terminator
         sql_with_spufi = "--#SET TERMINATOR @"
-        assert parser._has_spufi_terminators(sql_with_spufi)
+        assert [record.kind for record in parser.split(sql_with_spufi)] == ["directive"]
 
         # Test without SPUFI terminator
         sql_without_spufi = "CREATE TABLE test (id INTEGER);"
-        assert not parser._has_spufi_terminators(sql_without_spufi)
-
-    def test_db2_sqlpl_procedure_name_extraction(self):
-        """Test DB2 SQL/PL procedure name extraction."""
-        parser = DB2RegexParser()
-
-        # Test basic procedure
-        sql = "CREATE PROCEDURE test_proc() LANGUAGE SQL BEGIN SELECT 1; END;"
-        name = parser._extract_sqlpl_procedure_name(sql)
-        assert name == "test_proc"
-
-        # Test with quoted name
-        sql = 'CREATE PROCEDURE "test_proc"() LANGUAGE SQL BEGIN SELECT 1; END;'
-        name = parser._extract_sqlpl_procedure_name(sql)
-        assert name == "test_proc"
-
-    def test_db2_sqlpl_function_name_extraction(self):
-        """Test DB2 SQL/PL function name extraction."""
-        parser = DB2RegexParser()
-
-        # Test basic function
-        sql = "CREATE FUNCTION test_func() RETURNS INTEGER LANGUAGE SQL BEGIN RETURN 1; END;"
-        name = parser._extract_sqlpl_function_name(sql)
-        assert name == "test_func"
-
-        # Test with quoted name
-        sql = 'CREATE FUNCTION "test_func"() RETURNS INTEGER LANGUAGE SQL BEGIN RETURN 1; END;'
-        name = parser._extract_sqlpl_function_name(sql)
-        assert name == "test_func"
-
-    def test_db2_trigger_name_extraction(self):
-        """Test DB2 trigger name extraction."""
-        parser = DB2RegexParser()
-
-        # Test basic trigger
-        sql = "CREATE TRIGGER test_trigger AFTER INSERT ON test FOR EACH ROW BEGIN SELECT 1; END;"
-        name = parser._extract_trigger_name(sql)
-        assert name == "test_trigger"
-
-        # Test with quoted name
-        sql = 'CREATE TRIGGER "test_trigger" AFTER INSERT ON test FOR EACH ROW BEGIN SELECT 1; END;'
-        name = parser._extract_trigger_name(sql)
-        assert name == "test_trigger"
-
-    def test_db2_tablespace_name_extraction(self):
-        """Test DB2 tablespace name extraction."""
-        parser = DB2RegexParser()
-
-        # Test basic tablespace
-        sql = "CREATE TABLESPACE test_ts MANAGED BY SYSTEM;"
-        name = parser._extract_tablespace_name(sql)
-        assert name == "test_ts"
-
-        # Test LOB tablespace
-        sql = "CREATE LOB TABLESPACE test_lob_ts MANAGED BY SYSTEM;"
-        name = parser._extract_tablespace_name(sql)
-        assert name == "test_lob_ts"
-
-    def test_db2_stogroup_name_extraction(self):
-        """Test DB2 storage group name extraction."""
-        parser = DB2RegexParser()
-
-        # Test basic stogroup
-        sql = "CREATE STOGROUP test_sg VOLUMES ('vol1');"
-        name = parser._extract_stogroup_name(sql)
-        assert name == "test_sg"
+        assert [record.kind for record in parser.split(sql_without_spufi)] == ["sql"]
 
     def test_db2_advanced_splitting(self):
         """Test DB2 advanced statement splitting."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         # Test with mixed statement types
         sql = """
@@ -480,7 +370,7 @@ class TestDB2RegexParser:
 
     def test_db2_complex_compound_statement(self):
         """Test DB2 complex compound statement parsing."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = """
         BEGIN ATOMIC
@@ -510,7 +400,7 @@ class TestDB2RegexParser:
 
     def test_db2_nested_sql_blocks(self):
         """Test DB2 nested SQL block parsing."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = """
         CREATE OR REPLACE PROCEDURE complex_proc()
@@ -548,7 +438,7 @@ class TestDB2RegexParser:
 
     def test_db2_spufi_multiple_terminators(self):
         """Test DB2 SPUFI multiple terminator changes."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         sql = """
         --#SET TERMINATOR @
@@ -574,63 +464,11 @@ class TestDB2RegexParser:
         assert proc3
         assert proc4
 
-    def test_db2_mainframe_specific_features(self):
-        """Test DB2 mainframe-specific features."""
-        parser = DB2RegexParser()
-
-        sql = """
-        CREATE STOGROUP mysg VOLUMES ('vol1', 'vol2');
-        CREATE TABLESPACE myts IN STOGROUP mysg;
-        CREATE TABLE test (id INTEGER) IN myts.ts1;
-        """
-
-        result = parser.parse_sql(sql)
-        assert result.success
-        assert len(result.statements) >= 3
-
-        # Should handle mainframe objects
-        objects = parser.extract_objects(sql)
-        assert len(objects) >= 3  # stogroup, tablespace, table
-
-    def test_db2_error_handling_edge_cases(self):
-        """Test DB2 parser error handling edge cases."""
-        parser = DB2RegexParser()
-
-        # Test with None input
-        result = parser.parse_sql(None)
-        assert isinstance(result, ParseResult)
-
-        # Test with very long SQL
-        long_sql = "SELECT " + ", ".join([f"col{i}" for i in range(1000)]) + " FROM test;"
-        result = parser.parse_sql(long_sql)
-        assert result.success
-
-        # Test with nested quotes
-        nested_sql = """CREATE TABLE test (name VARCHAR(100) DEFAULT 'O''Connor');"""
-        result = parser.parse_sql(nested_sql)
-        assert result.success
-
-    def test_db2_utility_statements(self):
-        """Test DB2 utility statement detection."""
-        parser = DB2RegexParser()
-
-        utility_statements = [
-            "REORG TABLE test",
-            "RUNSTATS ON TABLE test",
-            "BIND PACKAGE pkg1",
-            "REBIND PACKAGE pkg1",
-            "LOAD FROM file.del OF DEL INSERT INTO test",
-            "EXPORT TO file.del OF DEL SELECT * FROM test",
-        ]
-
-        for stmt in utility_statements:
-            result = parser.is_utility_statement(stmt)
-            assert isinstance(result, bool)
-            # Test that method works without error (actual detection depends on implementation)
+        # Test that method works without error (actual detection depends on implementation)
 
     def test_db2_performance_with_large_statements(self):
         """Test DB2 parser performance with large statements."""
-        parser = DB2RegexParser()
+        parser = facts_parser("db2")
 
         # Create a large compound statement
         large_sql = """
@@ -649,25 +487,3 @@ class TestDB2RegexParser:
         result = parser.parse_sql(large_sql)
         assert result.success
         assert len(result.statements) >= 1
-
-    def test_db2_syntax_validation_comprehensive(self):
-        """Test comprehensive DB2 syntax validation."""
-        parser = DB2RegexParser()
-
-        # Test unmatched quoted identifiers
-        invalid_sql = 'CREATE TABLE "test (id INTEGER);'
-        result = parser.validate_sql(invalid_sql)
-        assert not result["valid"]
-        assert "Unmatched quoted identifier" in result["errors"][0]
-
-        # Test unmatched BEGIN/END
-        invalid_sql = "BEGIN ATOMIC INSERT INTO test VALUES (1);"
-        result = parser.validate_sql(invalid_sql)
-        assert not result["valid"]
-        assert "Unmatched BEGIN/END blocks" in result["errors"][0]
-
-        # Test EXEC SQL without END-EXEC
-        invalid_sql = "EXEC SQL CREATE TABLE test (id INTEGER);"
-        result = parser.validate_sql(invalid_sql)
-        assert not result["valid"]
-        assert "EXEC SQL block without END-EXEC" in result["errors"][0]

@@ -2,91 +2,73 @@
 
 from __future__ import annotations
 
-import inspect
 import logging as _logging
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Tuple, TypeVar, Union
 
-from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
+from dblift.core.exceptions import (
+    UnsafeStatementSplitError,
+    UnsupportedDialectError,
+    UnsupportedMetaCommandError,
+)
 from dblift.core.logger import Log
-from dblift.core.migration.sql.execution_statement import is_comment_only_statement
-from dblift.core.sql_parser.enhanced_regex_parser import EnhancedRegexParser
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
-from dblift.core.sql_parser.parser_interface import SqlParserInterface
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.core.sql_parser.statement import Statement, execution_strings
+from dblift.db.provider_registry import ProviderRegistry
 
-FallbackSplitter = Callable[[str], List[str]]
+_T = TypeVar("_T")
 
 
 class StatementSplitter:
-    """Split migration scripts without constructing rich schema-analysis parsers."""
+    """Split migration scripts with the dialect's authoritative scanner."""
 
     def __init__(
         self,
         dialect: str,
         logger: Optional[Union[Log, _logging.Logger]] = None,
     ):
-        """Pick a regex parser for the given ``dialect`` — lighter than full schema parsing."""
+        """Bind the dialect's lexical spec; a dialect without one is refused when it splits."""
         self.dialect = dialect.lower()
         self.logger = logger
-        self.parser_factory = SqlParserFactory(self.dialect, parser_type="regex")
-        self._parser: Optional[SqlParserInterface] = None
+        spec = ProviderRegistry.get_quirks(self.dialect).lexical_spec()
+        self._engine = LexicalEngine(spec) if spec is not None else None
+        self._last: Optional[Tuple[str, List[Statement]]] = None
 
-    def split_statements(
-        self,
-        sql: str,
-        *,
-        strict_tokenizer: bool = False,
-        fallback: Optional[FallbackSplitter] = None,
-    ) -> List[str]:
-        """Split SQL content into executable statement strings."""
+    def _refusing(self, split: Callable[[], _T]) -> _T:
+        """Run *split*; a refusal passes through, any other failure becomes one."""
         try:
-            parser = self._parser
-            if parser is None:
-                parser = self.parser_factory.get_parser()
-                self._parser = parser
-
-            split_signature = inspect.signature(parser.split_statements)
-            supports_strict = "strict_tokenizer" in split_signature.parameters
-            if supports_strict:
-                statements = parser.split_statements(sql, strict_tokenizer=strict_tokenizer)
-            else:
-                statements = parser.split_statements(sql)
-
-            if statements:
-                return list(statements)
-            # Nothing executable is a correct result for a blank or comment-only
-            # script; the permissive fallback would only reintroduce comment
-            # fragments (e.g. a stray ``*`` from a closing ``*/``).
-            # Whether ``/* a /* b */ c */`` is one comment is the dialect's
-            # call; its tokenizer already declares it.
-            nested = (
-                isinstance(parser, EnhancedRegexParser)
-                and parser.tokenizer_class.NESTED_BLOCK_COMMENTS
-            )
-            if is_comment_only_statement(sql, nested_block_comments=nested):
-                return []
-            if self.logger:
-                self.logger.warning(
-                    f"{self.dialect}-specific statement splitter returned no statements"
-                )
-        except TypeError:
-            if strict_tokenizer:
-                raise
-            if self.logger:
-                self.logger.warning(
-                    f"{self.dialect}-specific statement splitter did not accept strict mode"
-                )
+            return split()
         except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
-            # A deliberate refusal from the dialect parser, not a splitting
-            # failure -- the fallback below cannot be trusted to reproduce
-            # it, so it must not be swallowed here regardless of
-            # strict_tokenizer.
             raise
         except Exception as exc:
-            if strict_tokenizer:
-                raise
-            if self.logger:
-                self.logger.warning(f"{self.dialect}-specific statement splitter failed: {exc}")
+            raise UnsafeStatementSplitError(
+                f"{self.dialect} statement splitter failed: {exc}"
+            ) from exc
 
-        if fallback is None:
-            return []
-        return list(fallback(sql))
+    def split(self, sql: str) -> List[Statement]:
+        """The records of *sql* as the dialect's scanner cuts them, or its refusal."""
+        records = self._split(sql)
+        self._last = (sql, records)
+        return list(records)
+
+    def last_split(self, sql: str) -> List[Statement]:
+        """The records of the last ``split`` when it was of *sql*, else a fresh split.
+
+        A caller that needs the records of a script it has just split reads them here instead
+        of splitting, and so logging the scanner's notices, a second time.
+        """
+        last = self._last
+        if last is not None and last[0] == sql:
+            return list(last[1])
+        return self.split(sql)
+
+    def _split(self, sql: str) -> List[Statement]:
+        engine = self._engine
+        if engine is not None:
+            return self._refusing(lambda: engine.split(sql))
+        raise UnsupportedDialectError(
+            f"{self.dialect} has no lexical spec: a dialect is split by its LexicalSpec only"
+        )
+
+    def split_statements(self, sql: str) -> List[str]:
+        """Return executable units or refuse; never guess a second split."""
+        return execution_strings(self.split(sql))

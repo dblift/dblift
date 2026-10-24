@@ -2,10 +2,9 @@
 
 import pytest
 
-from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
 from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
+from tests.support.facts_parser import facts_parser
 
 
 class TestMySQLTokenizer:
@@ -121,17 +120,13 @@ class TestMySQLTokenizer:
         assert (tokens[0].pos, tokens[0].line, tokens[0].col) == (0, 1, 1)
 
 
-class TestMySQLStatementParser:
-    """Test MySQL-specific statement parsing."""
+class TestMySQLClientScanner:
+    """Test MySQL client statement boundaries through the public parser."""
 
     def test_simple_sql_split(self):
         """Test simple SQL statement splitting."""
         sql = "SELECT * FROM table1; SELECT * FROM table2;"
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = facts_parser("mysql").split_statements(sql)
 
         assert len(statements) == 2
 
@@ -143,11 +138,7 @@ BEGIN
   SELECT 1;
 END //
 DELIMITER ;"""
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should have: DELIMITER //, CREATE PROCEDURE (with //), DELIMITER ;
         assert len(statements) >= 1
@@ -163,9 +154,11 @@ BEGIN
   SELECT t;
 END$$
 DELIMITER ;"""
-        tokenizer = MySQLTokenizer(sql)
-        parser = MySQLStatementParser(tokenizer.tokenize())
-        proc = next(s for s in parser.split_statements() if "CREATE PROCEDURE" in s.upper())
+        proc = next(
+            s
+            for s in facts_parser("mysql").split_statements(sql)
+            if "CREATE PROCEDURE" in s.upper()
+        )
         assert "DECLARE" in proc and "INT;" in proc
         assert "SET" in proc and "SELECT" in proc and "t;" in proc
         assert "$$" not in proc
@@ -177,11 +170,7 @@ BEGIN
   SELECT 1;
   SELECT 2;
 END;"""
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should be one statement (entire procedure)
         assert len(statements) == 1
@@ -193,11 +182,7 @@ END;"""
        ELSE 'inactive' 
   END 
 FROM users;"""
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should be one statement
         assert len(statements) == 1
@@ -213,11 +198,7 @@ BEGIN
     SELECT 2;
   END;
 END;"""
-        tokenizer = MySQLTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = MySQLStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = facts_parser("mysql").split_statements(sql)
 
         # Should be one statement (entire procedure)
         assert len(statements) == 1

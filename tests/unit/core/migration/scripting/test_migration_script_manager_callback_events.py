@@ -31,8 +31,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.migration.migration import _CALLBACK_PREFIXES, Migration, MigrationType
+from dblift.core.migration.migration import _CALLBACK_PREFIXES, MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from tests.unit._migration_factory import make_migration
 
 pytestmark = [pytest.mark.unit]
 
@@ -196,7 +197,7 @@ def test_migration_type_does_not_classify_a_delimiterless_name_as_callback(filen
     (the validator reads ``Migration.type``); one answering CALLBACK while the
     other rejects the file is how a script ends up loaded but never run.
     """
-    assert Migration(script_name=filename).type is not MigrationType.CALLBACK
+    assert make_migration(script_name=filename).type is not MigrationType.CALLBACK
 
 
 @pytest.mark.parametrize("filename", MALFORMED_CALLBACK_NAMES)
@@ -298,7 +299,7 @@ def test_tagged_callback_does_not_reach_a_colliding_event(tmp_path: Path, filena
 @pytest.mark.parametrize("filename", TAGGED_CALLBACK_NAMES)
 def test_tagged_callback_type_agrees_between_model_and_manager(filename: str):
     """``Migration.type`` and ``parse_filename`` must not disagree about tags."""
-    assert Migration(script_name=filename).type is MigrationType.CALLBACK
+    assert make_migration(script_name=filename).type is MigrationType.CALLBACK
     assert _manager().parse_filename(filename)[0] is MigrationType.CALLBACK
 
 

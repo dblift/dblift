@@ -27,17 +27,18 @@ exactly as SQL*Plus buffers them.
 
 SQL*Plus is stricter still: ``DROP TABLE x; /* trailing */``, ``DROP TABLE
 x; -- trailing`` and ``a; b;`` on one line are also not terminated at the
-first ``;`` there. dblift keeps splitting those, where the text after the
-``;`` is only comments or complete statements; the tests pin that as well.
+first ``;`` there. The regex splitter keeps splitting those; the tokenizer
+splitter refuses every case where text follows a ``;`` on its line
+(docs/sql-parsing/oracle.md §4, rows 13, 16a, 16b), so ``REFUSED`` holds
+the cases it used to split.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from dblift.db.plugins.oracle.parser._plsql_block import extract_plsql_block
-from dblift.db.plugins.oracle.parser._statement_splitter import split_statements_regex
-from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
+from dblift.core.exceptions import UnsafeStatementSplitError
+from tests.support.facts_parser import facts_parser
 
 NESTED = (
     "CREATE TABLE keep_me (id NUMBER);\n"
@@ -133,40 +134,48 @@ LENIENT_CASES = {
 
 ALL_CASES = {**FAITHFUL_CASES, **LENIENT_CASES}
 
-
-def _normalise(statements):
-    """Drop the terminating ``;`` so both split paths compare alike."""
-    return [s[:-1].rstrip() if s.endswith(";") else s for s in statements]
+# Spec §4 (rows 13, 16a, 16b): a ";" that is not the last text on its line is
+# refused by the tokenizer splitter, which used to split or buffer these.
+REFUSED = {
+    "nested_comment_hides_nothing",
+    "stray_close_after_statement",
+    "stray_close_then_statement_same_line",
+    "continuation_ends_only_at_line_final_semicolon",
+    "trailing_block_comment",
+    "trailing_line_comment",
+    "two_statements_one_line",
+    "close_marker_in_string_after_semicolon",
+    "close_marker_in_q_quote_after_semicolon",
+    "close_marker_in_line_comment_after_semicolon",
+}
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("name", sorted(ALL_CASES))
+@pytest.mark.parametrize("name", sorted(set(ALL_CASES) - REFUSED))
 def test_tokenizer_split_matches_sqlplus(name):
     source, expected = ALL_CASES[name]
-    assert OracleParser().split_statements(source) == expected
+    assert facts_parser("oracle").split_statements(source) == expected
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("name", sorted(ALL_CASES))
-def test_regex_split_matches_sqlplus(name):
-    source, expected = ALL_CASES[name]
-    statements = split_statements_regex(source, extract_plsql_block=extract_plsql_block)
-    assert _normalise(statements) == _normalise(expected)
+@pytest.mark.parametrize("name", sorted(REFUSED))
+def test_tokenizer_split_refuses_text_after_a_semicolon(name):
+    source, _ = ALL_CASES[name]
+    with pytest.raises(UnsafeStatementSplitError, match="ORA-03405"):
+        facts_parser("oracle").split_statements(source)
 
 
 @pytest.mark.unit
 def test_nested_comment_never_yields_a_bare_drop():
-    for statements in (
-        OracleParser().split_statements(NESTED),
-        split_statements_regex(NESTED, extract_plsql_block=extract_plsql_block),
-    ):
-        assert not any(s.rstrip(";").strip() == "DROP TABLE keep_me" for s in statements)
+    # The authoritative splitter refuses the unsafe line (spec §4, row 13).
+    with pytest.raises(UnsafeStatementSplitError):
+        facts_parser("oracle").split_statements(NESTED)
 
 
 @pytest.mark.unit
 def test_close_marker_inside_string_is_not_stray():
     source = "INSERT INTO t VALUES ('*/');\nCREATE TABLE z (id NUMBER);\n"
-    assert OracleParser().split_statements(source) == [
+    assert facts_parser("oracle").split_statements(source) == [
         "INSERT INTO t VALUES ('*/');",
         "CREATE TABLE z (id NUMBER);",
     ]

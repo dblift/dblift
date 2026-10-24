@@ -2,9 +2,10 @@
 
 import pytest
 
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
+from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
 
 
@@ -75,17 +76,14 @@ END;
         assert len(delimiter_tokens) == 0
 
 
-class TestOracleStatementParser:
-    """Test Oracle-specific statement parsing."""
+class TestOracleStatementSplitting:
+    """Test Oracle statement splitting on the shared lexical engine."""
 
     def test_simple_sql_split(self):
         """Test simple SQL statement splitting."""
-        sql = "SELECT * FROM table1; SELECT * FROM table2;"
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = OracleStatementParser(tokens)
-        statements = parser.split_statements()
+        # Spec §4 row 16b: two statements on one line are refused, so one per line.
+        sql = "SELECT * FROM table1;\nSELECT * FROM table2;"
+        statements = LexicalEngine(ORACLE_SPEC).split_statements(sql)
 
         assert len(statements) == 2
 
@@ -96,11 +94,7 @@ BEGIN
   NULL;
 END;
 /"""
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = OracleStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = LexicalEngine(ORACLE_SPEC).split_statements(sql)
 
         # Should be one statement (procedure with slash)
         assert len(statements) == 1
@@ -116,11 +110,7 @@ BEGIN
   END IF;
 END;
 /"""
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = OracleStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = LexicalEngine(ORACLE_SPEC).split_statements(sql)
 
         # Should be one statement
         assert len(statements) == 1
@@ -134,26 +124,20 @@ END;
   NULL;
 END;
 /"""
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = OracleStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = LexicalEngine(ORACLE_SPEC).split_statements(sql)
 
         # Should be one statement
         assert len(statements) == 1
 
     def test_multiple_ddl_with_slash(self):
         """Test multiple DDL statements with slash delimiters."""
-        sql = """CREATE TABLE test1 (id NUMBER);
+        # Spec §4 row 22: "/" after a ";"-ended statement is a re-execution and is
+        # refused, so "/" alone ends statements that have no ";".
+        sql = """CREATE TABLE test1 (id NUMBER)
 /
-CREATE TABLE test2 (id NUMBER);
+CREATE TABLE test2 (id NUMBER)
 /"""
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = OracleStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = LexicalEngine(ORACLE_SPEC).split_statements(sql)
 
         # Should be two statements
         assert len(statements) == 2
@@ -172,11 +156,7 @@ CREATE TABLE test2 (id NUMBER);
   END proc2;
 END test_pkg;
 /"""
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = OracleStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = LexicalEngine(ORACLE_SPEC).split_statements(sql)
 
         # Should be one statement (entire package body)
         assert len(statements) == 1
@@ -184,11 +164,7 @@ END test_pkg;
     def test_sql_with_q_quotes(self):
         """Test SQL with Q-quotes containing semicolons."""
         sql = """SELECT q'[This; has; semicolons]' FROM dual;"""
-        tokenizer = OracleTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = OracleStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = LexicalEngine(ORACLE_SPEC).split_statements(sql)
 
         # Should be one statement
         assert len(statements) == 1

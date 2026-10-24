@@ -12,29 +12,17 @@ nesting is the same fact for them, not an inference. CockroachDB and
 YugabyteDB are separate implementations of the wire protocol, not
 PostgreSQL, so their nesting was checked directly against each engine
 rather than inferred — both nest the same way PostgreSQL does. Redshift is
-also a separate implementation, but has no local engine to check and no
-documentation addressing comment nesting in top-level SQL (its PL/pgSQL
-page says block comments don't nest inside a procedure's ``$$ ... $$``
-body, a different lexical context from the top-level SQL
-``split_statements`` scans, so it isn't evidence here) — it is kept
-non-nesting as the unverified, safer-by-default reading.
+also a separate implementation and was checked against Redshift Serverless
+1.0.485645 (docs/sql-parsing/redshift.md): it nests too.
 """
 
 import unittest
 
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
-from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
-from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
-from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
-from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
-    PostgreSqlRegexParser,
-)
-from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
-from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import (
-    SqlServerRegexParser,
-)
+from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 ISSUE_EXAMPLE = "/* outer /* inner */ DROP TABLE victim; still outer */\nSELECT 1;"
 
@@ -51,18 +39,15 @@ THREE_DEEP_UNTERMINATED_MIDDLE = "/* L1 /* L2 /* L3 */ DROP TABLE victim; still 
 
 
 def _regex_parser_for(dialect: str):
-    """Instantiate the dialect's registered regex parser via ProviderRegistry,
-    exactly as the runtime resolves it — not by importing a parser class
-    directly, so these tests catch a wrong quirks-level wiring too.
-    """
-    return ProviderRegistry.get_quirks(dialect).parser_class("regex")()
+    """The dialect's statement-facts parser, built from its registered plugin."""
+    return facts_parser(dialect)
 
 
 class TestPostgresNestedBlockComments(unittest.TestCase):
     """PostgreSQL nests block comments (documented explicitly)."""
 
     def setUp(self):
-        self.parser = PostgreSqlRegexParser()
+        self.parser = facts_parser("postgresql")
 
     def test_issue_example_keeps_drop_inside_the_comment(self):
         stmts = self.parser.split_statements(ISSUE_EXAMPLE)
@@ -77,12 +62,14 @@ class TestPostgresNestedBlockComments(unittest.TestCase):
         self.assertEqual(stmts, ["SELECT 1;"])
 
     def test_unterminated_inner_comment_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(UNTERMINATED_INNER)
-        self.assertEqual(stmts, [])
+        # an unterminated block comment is refused, not swallowed
+        with self.assertRaises(UnsafeStatementSplitError):
+            self.parser.split_statements(UNTERMINATED_INNER)
 
     def test_three_deep_with_unterminated_middle_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
-        self.assertEqual(stmts, [])
+        # an unterminated block comment is refused, not swallowed
+        with self.assertRaises(UnsafeStatementSplitError):
+            self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
 
     def test_slash_star_inside_string_literal_is_not_a_comment(self):
         sql = "SELECT '/*' AS marker; SELECT 2;"
@@ -122,26 +109,37 @@ class TestPostgresNestedBlockComments(unittest.TestCase):
 
 
 class TestSqlServerNestedBlockComments(unittest.TestCase):
-    """T-SQL documents that nested comments are supported."""
+    """The server nests block comments, sqlcmd's lexer does not (docs/sql-parsing/sqlserver.md §3).
+
+    The splitter reads as the client does: a batch ends at a ``GO`` line only, so a script
+    without ``GO`` is one batch and its text goes to the server verbatim. The server reads the
+    nested comment, so ``DROP TABLE victim`` never runs; an inner ``/*`` without its ``*/`` is
+    the server's ``Msg 113``. Extraction still reads nested comments
+    (``test_extraction_nested_block_comments.py``).
+    """
 
     def setUp(self):
-        self.parser = SqlServerRegexParser()
+        self.parser = facts_parser("sqlserver")
 
-    def test_issue_example_keeps_drop_inside_the_comment(self):
-        stmts = self.parser.split_statements(ISSUE_EXAMPLE)
-        self.assertEqual(stmts, ["SELECT 1;"])
+    def test_issue_example_is_one_batch_the_server_reads_as_a_comment_and_a_select(self):
+        self.assertEqual(self.parser.split_statements(ISSUE_EXAMPLE), [ISSUE_EXAMPLE])
 
     def test_three_deep(self):
-        stmts = self.parser.split_statements(THREE_DEEP)
-        self.assertEqual(stmts, ["SELECT 1;"])
+        self.assertEqual(self.parser.split_statements(THREE_DEEP), [THREE_DEEP])
 
-    def test_unterminated_inner_comment_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(UNTERMINATED_INNER)
-        self.assertEqual(stmts, [])
+    def test_unterminated_inner_comment_is_one_batch_the_server_rejects(self):
+        self.assertEqual(self.parser.split_statements(UNTERMINATED_INNER), [UNTERMINATED_INNER])
 
-    def test_three_deep_with_unterminated_middle_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
-        self.assertEqual(stmts, [])
+    def test_three_deep_with_unterminated_middle_is_one_batch_the_server_rejects(self):
+        self.assertEqual(
+            self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE),
+            [THREE_DEEP_UNTERMINATED_MIDDLE],
+        )
+
+    def test_a_go_cut_inside_a_comment_the_server_holds_open_leaves_it_unclosed(self):
+        # sqlcmd cuts at the second GO; the first half still has an open comment for the server
+        script = "SELECT 1 /* a\nGO\n/* b */\nGO\n*/"
+        self.assertEqual(self.parser.split_statements(script), ["SELECT 1 /* a\nGO\n/* b */", "*/"])
 
 
 class TestDuckDBNestedBlockComments(unittest.TestCase):
@@ -155,23 +153,23 @@ class TestDuckDBNestedBlockComments(unittest.TestCase):
     """
 
     def setUp(self):
-        self.parser = DuckDBRegexParser()
+        self.parser = facts_parser("duckdb")
 
     def test_issue_example_keeps_drop_inside_the_comment(self):
         stmts = self.parser.split_statements(ISSUE_EXAMPLE)
-        self.assertEqual(stmts, [ISSUE_EXAMPLE])
+        self.assertEqual(stmts, [ISSUE_EXAMPLE.removesuffix(";")])
 
     def test_three_deep(self):
         stmts = self.parser.split_statements(THREE_DEEP)
-        self.assertEqual(stmts, [THREE_DEEP])
+        self.assertEqual(stmts, [THREE_DEEP.removesuffix(";")])
 
-    def test_unterminated_inner_comment_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(UNTERMINATED_INNER)
-        self.assertEqual(stmts, [UNTERMINATED_INNER])
+    def test_unterminated_inner_comment_is_refused(self):
+        with self.assertRaises(UnsafeStatementSplitError):
+            self.parser.split_statements(UNTERMINATED_INNER)
 
-    def test_three_deep_with_unterminated_middle_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
-        self.assertEqual(stmts, [THREE_DEEP_UNTERMINATED_MIDDLE])
+    def test_three_deep_with_unterminated_middle_is_refused(self):
+        with self.assertRaises(UnsafeStatementSplitError):
+            self.parser.split_statements(THREE_DEEP_UNTERMINATED_MIDDLE)
 
 
 class TestNonNestingDialectsUnchanged(unittest.TestCase):
@@ -182,18 +180,18 @@ class TestNonNestingDialectsUnchanged(unittest.TestCase):
     """
 
     def test_mysql_stops_at_first_close(self):
-        stmts = MySqlRegexParser().split_statements(ISSUE_EXAMPLE)
+        stmts = facts_parser("mysql").split_statements(ISSUE_EXAMPLE)
         self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
 
     def test_oracle_stops_at_first_close(self):
-        # The first "*/" closes, but the ";" followed by a stray "*/" does
-        # not end the statement (SQL*Plus keeps buffering to a line-final
-        # ";"), so DROP TABLE victim is never sent on its own.
-        stmts = OracleParser().split_statements(ISSUE_EXAMPLE)
-        self.assertEqual(stmts, ["DROP TABLE victim; still outer */\nSELECT 1;"])
+        # The first "*/" closes, but the ";" followed by a stray "*/" is not the
+        # last text on its line: spec §4 row 13 refuses it, so DROP TABLE victim
+        # is never sent on its own.
+        with self.assertRaises(UnsafeStatementSplitError):
+            facts_parser("oracle").split_statements(ISSUE_EXAMPLE)
 
     def test_sqlite_stops_at_first_close(self):
-        stmts = SQLiteRegexParser().split_statements(ISSUE_EXAMPLE)
+        stmts = facts_parser("sqlite").split_statements(ISSUE_EXAMPLE)
         self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
 
 
@@ -207,10 +205,15 @@ class TestDb2NestedBlockComments(unittest.TestCase):
     """
 
     def setUp(self):
-        self.parser = DB2RegexParser()
+        self.parser = facts_parser("db2")
+
+    def _live(self, statement):
+        return strip_comments_preserving_quotes(
+            statement, line_prefixes=["--"], has_block_comments=True, nested_block_comments=True
+        )
 
     def test_tokenizer_declares_nesting(self):
-        self.assertTrue(self.parser.tokenizer_class.NESTED_BLOCK_COMMENTS)
+        self.assertTrue(ProviderRegistry.get_quirks("db2").lexical_spec().nested_comments)
 
     def test_issue_example_keeps_drop_inside_the_comment(self):
         stmts = self.parser.split_statements(ISSUE_EXAMPLE)
@@ -220,9 +223,10 @@ class TestDb2NestedBlockComments(unittest.TestCase):
         stmts = self.parser.split_statements(THREE_DEEP)
         self.assertEqual(stmts, [THREE_DEEP.rstrip(";")])
 
-    def test_unterminated_inner_comment_swallows_rest_of_file(self):
-        stmts = self.parser.split_statements(UNTERMINATED_INNER)
-        self.assertEqual(stmts, [])
+    def test_unterminated_inner_comment_is_refused(self):
+        # an unclosed block comment is refused, not swallowed (docs/sql-parsing/db2.md §4)
+        with self.assertRaises(UnsafeStatementSplitError):
+            self.parser.split_statements(UNTERMINATED_INNER)
 
     def test_comment_only_file_produces_no_statements(self):
         sql = "/* outer\n   /* inner */\n   still comment\n*/\n"
@@ -238,7 +242,7 @@ class TestDb2NestedBlockComments(unittest.TestCase):
         self.assertEqual(len(stmts), 2, stmts)
         self.assertTrue(stmts[0].endswith("CREATE TABLE t_after (x INT)"), stmts)
         self.assertEqual(stmts[1], "CREATE TABLE t_after2 (x INT)")
-        live = [self.parser._strip_comments_preserving_quotes(s) for s in stmts]
+        live = [self._live(s) for s in stmts]
         self.assertFalse(any("t_in" in s or "DROP" in s for s in live), live)
 
     def test_statement_ending_in_a_comment_is_kept(self):
@@ -254,11 +258,13 @@ class TestDb2NestedBlockComments(unittest.TestCase):
     def test_nested_comment_before_a_procedure_keeps_the_block_whole(self):
         sql = (
             "/* a /* b */ ; DROP TABLE t_keep; */\n"
+            "--#SET TERMINATOR @\n"
             "CREATE PROCEDURE p1() BEGIN DECLARE v INT; SET v = 1; END@\n"
+            "--#SET TERMINATOR ;\n"
             "CREATE TABLE t_after (x INT);"
         )
         stmts = self.parser.split_statements(sql)
-        live = [self.parser._strip_comments_preserving_quotes(s).strip() for s in stmts]
+        live = [self._live(s).strip() for s in stmts]
         self.assertEqual(
             live,
             [
@@ -335,21 +341,14 @@ class TestCockroachdbYugabytedbNestBlockComments(unittest.TestCase):
         self._assert_nests("yugabytedb")
 
 
-class TestRedshiftDoesNotNestBlockComments(unittest.TestCase):
-    """Kept non-nesting, unverified: no local Redshift engine, and no
-    documentation found that addresses comment nesting in top-level SQL.
-    The AWS "Structure of PL/pgSQL" page states block comments don't nest,
-    but that sentence describes comments inside a PL/pgSQL procedure body's
-    ``$$ ... $$`` — a different lexical context from the top-level SQL
-    ``split_statements`` scans (``ISSUE_EXAMPLE`` below is plain SQL, never
-    inside ``$$ ... $$``) — so it is not evidence for this scanner. Redshift
-    keeps the pre-#333, non-nesting reader (first ``*/`` closes) as the
-    safer default rather than an inherited, unverified claim.
-    """
+class TestRedshiftNestsBlockComments(unittest.TestCase):
+    """Measured on Redshift Serverless 1.0.485645: ``/* a /* b */ c */ SELECT 1`` runs and
+    ``/* a /* b */ SELECT 1`` is rejected as an unterminated comment, so the first ``*/``
+    does not close an outer comment."""
 
-    def test_redshift_does_not_nest(self):
+    def test_redshift_nests(self):
         stmts = _regex_parser_for("redshift").split_statements(ISSUE_EXAMPLE)
-        self.assertTrue(any("DROP TABLE victim" in s for s in stmts))
+        self.assertEqual(stmts, ["SELECT 1;"], "redshift should nest like PostgreSQL")
 
 
 class TestBaseTokenizerNestingFlag(unittest.TestCase):

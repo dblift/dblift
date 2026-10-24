@@ -20,13 +20,14 @@ from sqlglot.errors import ParseError, TokenError
 
 from dblift.core.migration.sql.execution_statement import (
     classify_execution_statement,
-    is_comment_only_statement,
+    execution_units,
 )
 from dblift.core.migration.sql.script_analysis import (
     AnalysedStatement,
     ScriptAnalysis,
     quiet_sqlglot,
 )
+from dblift.core.migration.sql.script_analysis import without_comments as _without_comments
 from dblift.core.sql_model.dialect import get_sqlglot_dialect
 from dblift.db.dml_analysis import strip_leading_sql_comments
 from dblift.db.provider_registry import ProviderRegistry
@@ -41,7 +42,9 @@ SEVERITY: Dict[str, str] = {
     "drop-schema": ERROR,
     "drop-column": ERROR,
     "truncate": ERROR,
+    "drop-unread-object": WARNING,
     "dml-no-where": WARNING,
+    "copy-server-side": WARNING,
     "add-not-null-no-default": WARNING,
     "rename-column": WARNING,
     "rename-table": WARNING,
@@ -57,6 +60,8 @@ SEVERITY: Dict[str, str] = {
 _MESSAGES: Dict[str, str] = {
     "add-not-null-no-default": "adds a NOT NULL column without a DEFAULT: existing rows need a value"
     + SIZE_NOTE,
+    "drop-unread-object": "drops an object whose kind or name could not be read: check by hand "
+    "that it holds no rows",
     "rename-column": "renames a column: the application already deployed still uses the old name",
     "rename-table": "renames a table: the application already deployed still uses the old name",
     "alter-column-type": "changes a column's type: the engine may rewrite the table" + SIZE_NOTE,
@@ -74,11 +79,7 @@ _MESSAGES: Dict[str, str] = {
     "statement-not-analysed": "this ALTER statement could not be analysed; review it by hand",
 }
 
-# ``ModifyColumn`` (MySQL MODIFY / CHANGE) exists from sqlglot 30.18; older releases
-# parse MODIFY as ``AlterColumn``.
-_TYPE_CHANGE = tuple(
-    node for node in (exp.AlterColumn, exp.__dict__.get("ModifyColumn")) if node is not None
-)
+_TYPE_CHANGE = (exp.AlterColumn, exp.ModifyColumn)
 # Findings about one table's rows or its users: not reported for a table new in the delta.
 _TABLE_CODES = frozenset(
     {
@@ -96,8 +97,10 @@ _TABLE_CODES = frozenset(
         "pg-missing-lock-timeout",
     }
 )
-# A table as (schema or None, name), lower-cased.
-_TableKey = Tuple[Optional[str], str]
+# One identifier as (text, quoted), the text as written.
+_Part = Tuple[str, bool]
+# A table as (schema or None, name).
+_TableKey = Tuple[Optional[_Part], _Part]
 _NOT_NULL_EXEMPT = (
     exp.DefaultColumnConstraint,
     exp.ComputedColumnConstraint,
@@ -107,6 +110,63 @@ _NOT_NULL_EXEMPT = (
 _RENAME_TABLE = re.compile(r"^\s*RENAME\s+TABLE\b", re.IGNORECASE)
 _SP_RENAME = re.compile(r"\bsp_rename\b(?P<rest>.*)", re.IGNORECASE | re.DOTALL)
 _LOCK_TIMEOUT = re.compile(r"^\s*SET\s+(?:LOCAL\s+|SESSION\s+)?lock_timeout\b", re.IGNORECASE)
+# sqlglot reads LOCK and VACUUM as opaque commands, so these are matched on the text.
+# LOCK TABLE queues behind conflicting locks unless NOWAIT; its default mode is ACCESS EXCLUSIVE,
+# and only SHARE and stronger make waiting writers queue behind it (ROW EXCLUSIVE conflicts with
+# SHARE).
+_LOCK_COMMAND = re.compile(r"^\s*LOCK\b(?P<rest>.*)$", re.IGNORECASE | re.DOTALL)
+_LOCK_MODE = re.compile(r"\bIN\s+(?P<mode>[A-Z ]+?)\s+MODE\b", re.IGNORECASE)
+_BLOCKING_LOCK_MODES = frozenset({"SHARE", "SHARE ROW EXCLUSIVE", "EXCLUSIVE", "ACCESS EXCLUSIVE"})
+_NOWAIT = re.compile(r"\bNOWAIT\s*$", re.IGNORECASE)
+# VACUUM FULL rewrites the table under an ACCESS EXCLUSIVE lock: ``VACUUM FULL``, or FULL among the
+# legacy leading keywords, or a FULL option of the parenthesised list not switched off.
+_VACUUM_FULL = re.compile(
+    r"^\s*VACUUM\s+(?:(?:FREEZE|VERBOSE|ANALYZE|ANALYSE)\s+)*FULL\b", re.IGNORECASE
+)
+_VACUUM_OPTIONS = re.compile(r"^\s*VACUUM\s*\((?P<options>[^)]*)\)", re.IGNORECASE)
+_FULL_OPTION = re.compile(r"(?:^|,)\s*FULL\b(?!\s+(?:FALSE|OFF|0)\b)", re.IGNORECASE)
+
+
+def _locks_table_by_text(body: str) -> bool:
+    """True for a LOCK TABLE that can queue behind writers, or a VACUUM FULL."""
+    body = _without_comments(body)
+    lock = _LOCK_COMMAND.match(body)
+    if lock is not None:
+        rest = lock.group("rest").rstrip(" \t\r\n;")
+        mode = _LOCK_MODE.search(rest)
+        if _NOWAIT.search(rest):
+            return False
+        return mode is None or " ".join(mode.group("mode").upper().split()) in _BLOCKING_LOCK_MODES
+    options = _VACUUM_OPTIONS.match(body)
+    if options is not None:
+        return _FULL_OPTION.search(options.group("options")) is not None
+    return _VACUUM_FULL.match(body) is not None
+
+
+_LOCK_TARGETS = re.compile(
+    r"^\s*LOCK\s+(?:TABLE\s+)?(?:ONLY\s+)?(?P<names>.*?)"
+    r"(?:\s+IN\s+[A-Z ]+?\s+MODE\b.*|\s+NOWAIT\s*)?;?\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+_VACUUM_TARGETS = re.compile(
+    r"^\s*VACUUM\s*(?:\([^)]*\)|(?:(?:FULL|FREEZE|VERBOSE|ANALYZE|ANALYSE)\s+)*)"
+    r"(?P<names>.*?);?\s*$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _text_targets(body: str) -> FrozenSet[_TableKey]:
+    """The tables a LOCK or VACUUM names; none when it names none (VACUUM FULL: every table)."""
+    body = _without_comments(body)
+    found = _LOCK_TARGETS.match(body) if _LOCK_COMMAND.match(body) else _VACUUM_TARGETS.match(body)
+    if found is None:
+        return frozenset()
+    names = re.sub(r"\([^)]*\)", "", found.group("names"))  # VACUUM a (col, ...)
+    return frozenset(
+        _key_from_text(name.strip().removesuffix("*").strip())
+        for name in names.split(",")
+        if name.strip().removesuffix("*").strip()
+    )
 
 
 @dataclass(frozen=True)
@@ -138,6 +198,7 @@ def find_issues(
     *,
     created_before: AbstractSet[str] = frozenset(),
     existing_tables: Optional[AbstractSet[str]] = None,
+    text: Optional[str] = None,
 ) -> List[Finding]:
     """Every finding for one analysed script, sorted by statement then code.
 
@@ -145,7 +206,7 @@ def find_issues(
     *existing_tables* the tables known to exist, as ``issues_and_created_tables`` reads them.
     """
     return issues_and_created_tables(
-        analysis, dialect, created_before, existing_tables=existing_tables
+        analysis, dialect, created_before, existing_tables=existing_tables, text=text
     )[0]
 
 
@@ -155,20 +216,28 @@ def issues_and_created_tables(
     created_before: AbstractSet[str] = frozenset(),
     *,
     existing_tables: Optional[AbstractSet[str]] = None,
+    text: Optional[str] = None,
 ) -> Tuple[List[Finding], FrozenSet[str]]:
     """The script's findings, and the tables it creates.
 
-    A table is named ``schema.name``, or ``name`` when the statement gives no schema,
-    lower-cased. A table in *created_before*, or created by an earlier statement of the
-    script, is new: a table-scoped finding on a statement whose target tables are all new
-    is not reported. A target is new when its name matches a new table and either side
+    A table is named ``schema.name``, or ``name`` when the statement gives no schema: an
+    unquoted part lower-cased, a quoted one as written between ``"``. A table in
+    *created_before*, or created by an earlier statement of the script, is new: a table-scoped
+    finding on a statement whose target tables are all new is not reported. A target is new
+    when its name matches a new table (both unquoted and equal ignoring case, both quoted
+    and byte-equal, or one quoted spelled as the engine stores the unquoted one) and either side
     names no schema or both name the same one: offline the search path is unknown, so
-    ``CREATE TABLE users`` also covers ``x.users``. ``CREATE TABLE IF NOT EXISTS`` creates
+    ``CREATE TABLE users`` also covers ``x.users``. A statement whose names the analysis
+    withheld (``names_unread``) is never exempted and creates no new table: the engine may read
+    another name than sqlglot does. ``CREATE TABLE IF NOT EXISTS`` creates
     nothing new, since the table may already exist with rows, and neither does a
     ``CREATE TABLE`` of a table matching *existing_tables*, the tables known to exist.
+    *text* is the script: a dialect that runs batches judges transaction modes per batch.
     """
     sqlglot_dialect = get_sqlglot_dialect(dialect)
-    pg_locks = ProviderRegistry.get_quirks(dialect).postgresql_lock_rules
+    quirks = ProviderRegistry.get_quirks(dialect)
+    pg_locks = quirks.postgresql_lock_rules
+    case = quirks.unquoted_identifier_case
     snippets = {s.index: s.snippet for s in analysis.statements}
     findings = [
         Finding(c.code, SEVERITY[c.code], c.statement, c.reason, snippets.get(c.statement, ""))
@@ -185,8 +254,16 @@ def issues_and_created_tables(
         body = strip_leading_sql_comments(stmt.sql)
         tree = _parse(body, sqlglot_dialect)
         targets = _targets(tree)
-        if targets and all(_matches(target, new) for target in targets):
+        if (
+            targets
+            and not stmt.names_unread
+            and all(_matches(target, new, case) for target in targets)
+        ):
             on_new_tables.add(stmt.index)
+        elif tree is None:
+            text_targets = _text_targets(body)
+            if text_targets and all(_matches(target, new, case) for target in text_targets):
+                on_new_tables.add(stmt.index)
         for code in _statement_codes(body, tree, pg_locks=pg_locks):
             findings.append(_finding(code, stmt))
         if stmt.operation == "ALTER" and tree is None:
@@ -196,25 +273,31 @@ def issues_and_created_tables(
         elif (
             not (lock_timeout_set or lock_timeout_reported)
             and stmt.index not in on_new_tables
-            and _locks_table(tree)
+            and (_locks_table(tree) or _locks_table_by_text(body))
         ):
             findings.append(_finding("pg-missing-lock-timeout", stmt))
             lock_timeout_reported = True
+        if stmt.unread and not any(f.statement == stmt.index for f in findings):
+            # The facts reader left it unread and nothing else speaks for it: silence is not safety.
+            findings.append(_finding("statement-not-analysed", stmt, stmt.unread))
         table = _created_table(tree)
-        if table and not _matches(table, existing):
+        if table and not stmt.names_unread and not _matches(table, existing, None):
             created.add(table)
             new.add(table)
     findings = [
         f for f in findings if not (f.code in _TABLE_CODES and f.statement in on_new_tables)
     ]
-    findings.extend(_mixed_transaction_modes(analysis.statements, dialect))
+    # A failed scan is already reported by analysis.errors. Do not scan the refused
+    # script again for transaction modes and turn its parse error into an exception.
+    if not analysis.errors:
+        findings.extend(_mixed_transaction_modes(analysis.statements, dialect, text))
     return sorted(findings, key=lambda f: (f.statement, f.code)), frozenset(
-        f"{schema}.{name}" if schema else name for schema, name in created
+        _text_of(key) for key in created
     )
 
 
-def _finding(code: str, stmt: AnalysedStatement) -> Finding:
-    return Finding(code, SEVERITY[code], stmt.index, _MESSAGES[code], stmt.snippet)
+def _finding(code: str, stmt: AnalysedStatement, message: Optional[str] = None) -> Finding:
+    return Finding(code, SEVERITY[code], stmt.index, message or _MESSAGES[code], stmt.snippet)
 
 
 def _parse(sql: str, sqlglot_dialect: Optional[str]) -> Optional[exp.Expression]:
@@ -230,19 +313,59 @@ def _parse(sql: str, sqlglot_dialect: Optional[str]) -> Optional[exp.Expression]
     return tree
 
 
+def _part_of(identifier: Any) -> _Part:
+    text = identifier.name
+    quoted = bool(identifier.args.get("quoted"))
+    return (text, quoted)
+
+
 def _key_of(table: exp.Table) -> _TableKey:
-    return (table.db.lower() or None, table.name.lower())
+    schema = table.args.get("db")
+    return (_part_of(schema) if schema is not None and schema.name else None, _part_of(table.this))
+
+
+_QUOTED_OR_BARE = re.compile(r'"((?:[^"]|"")*)"|([^.]+)')
 
 
 def _key_from_text(text: str) -> _TableKey:
-    schema, _, name = text.lower().rpartition(".")
-    return (schema or None, name)
+    """Read ``schema.name``, a quoted part written ``"Text"`` (a ``"`` doubled)."""
+    parts: List[_Part] = [
+        (m.group(1).replace('""', '"'), True) if m.group(2) is None else (m.group(2), False)
+        for m in _QUOTED_OR_BARE.finditer(text)
+    ]
+    return (parts[-2] if len(parts) > 1 else None, parts[-1] if parts else ("", False))
 
 
-def _matches(target: _TableKey, tables: AbstractSet[_TableKey]) -> bool:
+def _text_of(key: _TableKey) -> str:
+    def part(p: _Part) -> str:
+        return '"' + p[0].replace('"', '""') + '"' if p[1] else p[0].lower()
+
+    schema, name = key
+    return f"{part(schema)}.{part(name)}" if schema else part(name)
+
+
+def _same(a: _Part, b: _Part, case: Optional[str]) -> bool:
+    """Two unquoted parts equal ignoring case, two quoted ones byte-equal.
+
+    A quoted part matches an unquoted one only when it is spelled as the engine stores the
+    unquoted one (*case*: the dialect's ``unquoted_identifier_case``; any other value reads
+    the unquoted text as written). *case* ``None`` ignores quoting and case, for names known
+    to exist.
+    """
+    if case is None:
+        return a[0].lower() == b[0].lower()
+    if a[1] == b[1]:
+        return a[0] == b[0] if a[1] else a[0].lower() == b[0].lower()
+    quoted, bare = (a, b) if a[1] else (b, a)
+    folded = {"uppercase": bare[0].upper(), "lowercase": bare[0].lower()}.get(case, bare[0])
+    return quoted[0] == folded
+
+
+def _matches(target: _TableKey, tables: AbstractSet[_TableKey], case: Optional[str]) -> bool:
     schema, name = target
     return any(
-        name == other_name and (schema is None or other_schema is None or schema == other_schema)
+        _same(name, other_name, case)
+        and (schema is None or other_schema is None or _same(schema, other_schema, case))
         for other_schema, other_name in tables
     )
 
@@ -253,13 +376,22 @@ def _table_of(tree: exp.Expression) -> Optional[_TableKey]:
 
 
 def _targets(tree: Optional[exp.Expression]) -> FrozenSet[_TableKey]:
-    """The tables a statement acts on: every table a DROP or TRUNCATE names, else its first.
+    """The tables a statement acts on: every table a DROP or TRUNCATE names, every table a CTE
+    or the statement writes when a CTE writes, else its first.
 
     Read from the sqlglot tree only: the analysed objects keep the first table of
     ``DROP TABLE a, b``. A statement sqlglot cannot structure has no targets.
     """
     if isinstance(tree, (exp.Drop, exp.TruncateTable)):
         return frozenset(_key_of(t) for t in tree.find_all(exp.Table) if t.name)
+    writers = (exp.Insert, exp.Update, exp.Delete)
+    if tree is not None and any(isinstance(cte.this, writers) for cte in tree.find_all(exp.CTE)):
+        # A CTE that writes changes its own table: every one of them must be new to exempt.
+        written = [tree] if isinstance(tree, writers) else []
+        written += [cte.this for cte in tree.find_all(exp.CTE) if isinstance(cte.this, writers)]
+        return frozenset(
+            _key_of(t) for node in written if (t := node.this.find(exp.Table)) and t.name
+        )
     table = _table_of(tree) if tree is not None else None
     return frozenset({table}) if table else frozenset()
 
@@ -356,25 +488,31 @@ def _created_table(tree: Optional[exp.Expression]) -> Optional[_TableKey]:
 
 
 def _mixed_transaction_modes(
-    statements: Iterable[AnalysedStatement], dialect: str
+    statements: Iterable[AnalysedStatement], dialect: str, text: Optional[str] = None
 ) -> List[Finding]:
-    """The execution engine refuses a script mixing autocommit-only and transactional statements."""
-    modes = [
-        (stmt, classify_execution_statement(stmt.sql, dialect=dialect))
-        for stmt in statements
-        if stmt.sql and not is_comment_only_statement(stmt.sql)
-    ]
-    autocommit = [(stmt, mode) for stmt, mode in modes if not mode.can_execute_in_transaction]
+    """The execution engine refuses a script mixing autocommit-only and transactional units.
+
+    A unit is a statement, or a batch for a dialect that runs batches (*text* is the script).
+    """
+    statements = list(statements)
+    units = execution_units(text, dialect) if text else None
+    if units is None:
+        units = [stmt.sql for stmt in statements]
+    modes = [(unit, classify_execution_statement(unit, dialect=dialect)) for unit in units]
+    autocommit = [(unit, mode) for unit, mode in modes if not mode.can_execute_in_transaction]
     if not autocommit or len(autocommit) == len(modes):
         return []
-    stmt, mode = autocommit[0]
+    unit, mode = autocommit[0]
+    stmt = next((s for s in statements if s.sql == unit), None) or next(
+        (s for s in statements if s.sql in unit), None
+    )
     reason = f"{mode.transaction_reason}: " if mode.transaction_reason else ""
     return [
         Finding(
             "mixed-transaction-modes",
             ERROR,
-            stmt.index,
+            stmt.index if stmt else 0,
             reason + _MESSAGES["mixed-transaction-modes"],
-            stmt.snippet,
+            stmt.snippet if stmt else "",
         )
     ]

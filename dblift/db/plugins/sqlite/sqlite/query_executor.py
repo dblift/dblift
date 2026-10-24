@@ -9,7 +9,8 @@ import sqlite3
 from typing import Any, Dict, List, Optional
 
 from dblift.core.logger import Log, NullLog
-from dblift.core.sql_parser.redaction import describe_statement
+from dblift.core.sql_parser.redaction import mask_string_literals
+from dblift.db.error import redact_driver_error_text
 
 
 class SQLiteQueryExecutor:
@@ -48,7 +49,7 @@ class SQLiteQueryExecutor:
         """
         self._validate_connection(connection)
 
-        self.log.debug(f"Executing statement: {sql[:200]}...")
+        self.log.debug(f"Executing statement: {mask_string_literals(sql, 'sqlite')[:200]}...")
 
         try:
             cursor = connection.cursor()
@@ -67,12 +68,11 @@ class SQLiteQueryExecutor:
             return affected_rows if affected_rows >= 0 else 0
 
         except Exception as e:
-            error_msg = f"Error executing SQL statement: {str(e)}"
+            error_msg = f"Error executing SQL statement: {redact_driver_error_text(str(e))}"
             self.log.error(error_msg)
-            self.log.error(f"SQL: {describe_statement(sql)}")
-            self.log.debug(f"SQL: {sql}")
+            self.log.debug(f"SQL: {mask_string_literals(sql, 'sqlite')}")
             if params:
-                self.log.debug(f"Parameters: {params}")
+                self.log.debug(f"Parameters: {len(params)} bound")
             raise
 
     def execute_query(
@@ -90,7 +90,8 @@ class SQLiteQueryExecutor:
         """
         self._validate_connection(connection)
 
-        self.log.debug(f"Executing query: {sql[:200]}{'...' if len(sql) > 200 else ''}")
+        masked = mask_string_literals(sql, "sqlite")
+        self.log.debug(f"Executing query: {masked[:200]}{'...' if len(masked) > 200 else ''}")
 
         try:
             cursor = connection.cursor()
@@ -120,12 +121,11 @@ class SQLiteQueryExecutor:
             return results
 
         except Exception as e:
-            error_msg = f"Error executing query: {str(e)}"
+            error_msg = f"Error executing query: {redact_driver_error_text(str(e))}"
             self.log.error(error_msg)
-            self.log.error(f"SQL: {describe_statement(sql)}")
-            self.log.debug(f"SQL: {sql}")
+            self.log.debug(f"SQL: {mask_string_literals(sql, 'sqlite')}")
             if params:
-                self.log.debug(f"Parameters: {params}")
+                self.log.debug(f"Parameters: {len(params)} bound")
             raise
 
     def _convert_sqlite_to_python(self, value: Any) -> Any:

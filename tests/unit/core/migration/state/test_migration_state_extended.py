@@ -122,12 +122,21 @@ class TestMigrationState(unittest.TestCase):
         state.failed.append(failed)  # attribute is 'failed' not 'failed_migrations'
         self.assertTrue(state.has_failures)
 
-    def test_has_pending_with_pending(self):
-        from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+    def test_has_pending_with_eligible_catalog_record(self):
+        from dblift.core.migration.state.migration_state import (
+            CatalogMigration,
+            MigrationEligibility,
+            MigrationState,
+        )
 
-        state = MigrationState()
-        pending = MigrationEntry("V2.sql", "2", "test", "SQL", "Pending", None)
-        state.pending.append(pending)
+        state = MigrationState(
+            catalog=(
+                CatalogMigration(
+                    SimpleNamespace(script_name="V2.sql", version="2"),
+                    MigrationEligibility.PENDING,
+                ),
+            )
+        )
         self.assertTrue(state.has_pending)
 
     def test_to_dict_keys(self):
@@ -181,47 +190,48 @@ class TestMigrationState(unittest.TestCase):
         ]
         self.assertEqual(state.checksum_change_count, 2)
 
-    def _entry(self, script, version, status, type_="SQL"):
-        from dblift.core.migration.state.migration_state import MigrationEntry
-
-        return MigrationEntry(script, version, "test", type_, status, None)
-
-    def test_executable_pending_objects_returns_only_pending_status(self):
-        from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-        from dblift.core.migration.state.migration_state import MigrationState
+    def test_executable_pending_objects_returns_only_eligible_records(self):
+        from dblift.core.migration.state.migration_state import (
+            CatalogMigration,
+            MigrationEligibility,
+            MigrationState,
+        )
 
         below = SimpleNamespace(script_name="V1__a.sql")
         pending_obj = SimpleNamespace(script_name="V3__b.sql")
         above = SimpleNamespace(script_name="V5__c.sql")
         available = SimpleNamespace(script_name="U3__b.sql")
         state = MigrationState(
-            pending=[
-                self._entry("V1__a.sql", "1", MigrationDisplayState.BELOW_BASELINE.value),
-                self._entry("V3__b.sql", "3", MigrationDisplayState.PENDING.value),
-                self._entry("V5__c.sql", "5", MigrationDisplayState.ABOVE_TARGET.value),
-                self._entry("U3__b.sql", "3", MigrationDisplayState.AVAILABLE.value, "UNDO_SQL"),
-            ],
-            pending_objects=[below, pending_obj, above, available],
+            catalog=(
+                CatalogMigration(below, MigrationEligibility.BELOW_BASELINE),
+                CatalogMigration(pending_obj, MigrationEligibility.PENDING),
+                CatalogMigration(above, MigrationEligibility.ABOVE_TARGET),
+                CatalogMigration(available, MigrationEligibility.UNDO_AVAILABLE),
+            )
         )
 
         self.assertEqual(state.executable_pending_objects(), [pending_obj])
         self.assertTrue(state.has_pending)
 
     def test_has_pending_false_when_only_non_executable_statuses(self):
-        from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-        from dblift.core.migration.state.migration_state import MigrationState
+        from dblift.core.migration.state.migration_state import (
+            CatalogMigration,
+            MigrationEligibility,
+            MigrationState,
+        )
 
         state = MigrationState(
-            pending=[
-                self._entry("V1__a.sql", "1", MigrationDisplayState.BELOW_BASELINE.value),
-                self._entry("V5__c.sql", "5", MigrationDisplayState.ABOVE_TARGET.value),
-                self._entry("U3__b.sql", "3", MigrationDisplayState.AVAILABLE.value, "UNDO_SQL"),
-            ],
-            pending_objects=[
-                SimpleNamespace(script_name="V1__a.sql"),
-                SimpleNamespace(script_name="V5__c.sql"),
-                SimpleNamespace(script_name="U3__b.sql"),
-            ],
+            catalog=(
+                CatalogMigration(
+                    SimpleNamespace(script_name="V1__a.sql"), MigrationEligibility.BELOW_BASELINE
+                ),
+                CatalogMigration(
+                    SimpleNamespace(script_name="V5__c.sql"), MigrationEligibility.ABOVE_TARGET
+                ),
+                CatalogMigration(
+                    SimpleNamespace(script_name="U3__b.sql"), MigrationEligibility.UNDO_AVAILABLE
+                ),
+            )
         )
 
         self.assertFalse(state.has_pending)

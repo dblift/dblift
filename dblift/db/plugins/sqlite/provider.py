@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
+from dblift.core.exceptions import TransactionAbortedError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.base_provider import NativeProvider
@@ -249,6 +250,15 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
         if callable(get_url):
             return str(get_url())
         return super().get_display_url()
+
+    def check_transaction_state(self) -> None:
+        """Probe the transaction through the native query path."""
+        try:
+            self.execute_query(self.quirks.connection_probe_sql)
+        except sqlite3.Error as exc:
+            if "transaction is aborted" in str(exc).lower():
+                raise TransactionAbortedError(str(exc)) from exc
+            raise
 
     def begin_transaction(self) -> None:
         """Begin a database transaction."""

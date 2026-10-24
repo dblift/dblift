@@ -1,0 +1,3135 @@
+[
+[
+"SELECT 1\nGO\nSELECT 'open\n/* c */\nSELECT 'open",
+null
+],
+[
+"-- c\nSELECT 1 /* open\nSELECT [open",
+[
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 2, column 10"
+]
+],
+[
+"SELECT 1\nGO\nSELECT [open\nGO\nSELECT 1 /* open\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 3, column 8"
+]
+],
+[
+"SELECT 1\nSELECT \"open\n\nSELECT [open\nGO",
+[
+"UnsafeStatementSplitError",
+"unterminated quoted identifier opened at line 2, column 8"
+]
+],
+[
+"-- c\nSELECT [open\nSELECT 1 /* open",
+[
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 2, column 8"
+]
+],
+[
+"SELECT 1 /* open SELECT 1 /* open",
+[
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+]
+],
+[
+"SELECT 'open SELECT [open",
+[
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 8"
+]
+],
+[
+"SELECT 'open\nGO\nSELECT $(x)\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 3: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"-- c\nSELECT 1 /* open\nSELECT '$(x)'\n",
+[
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 2, column 10"
+]
+],
+[
+"SELECT 1\nGO\nSELECT [open\n\nSELECT \"$(x)\"\nGO",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 5: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nSELECT \"open\n\nGO $(n)\n",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(n) on line 4: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nGO\nSELECT [open\n/* c */\nSELECT '$(x)'\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 5: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1 /* open SELECT '$(x)'",
+[
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+]
+],
+[
+"SELECT 'open SELECT \"$(x)\"",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nGO\nSELECT 'open\n/* c */\n:setvar a b\nGO",
+[
+"UnsafeStatementSplitError",
+"unterminated string opened at line 3, column 8"
+]
+],
+[
+"SELECT 1\nSELECT 1 /* open\r\n:r f.sql",
+[
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 2, column 10"
+]
+],
+[
+"\nSELECT [open\n/* c */\n:exit\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 2, column 8"
+]
+],
+[
+"SELECT \"open\nGO\n:setvar a b\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"unterminated quoted identifier opened at line 1, column 8"
+]
+],
+[
+"SELECT 1\nGO\nSELECT [open\n/* c */\n:connect s\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 3, column 8"
+]
+],
+[
+"SELECT 1 /* open :connect s",
+[
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+]
+],
+[
+"SELECT 'open !!dir",
+[
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 8"
+]
+],
+[
+"-- c\nSELECT 'open\nEXIT",
+[
+"UnsafeStatementSplitError",
+"unterminated string opened at line 2, column 8"
+]
+],
+[
+"SELECT 1\nGO\nSELECT 1 /* open\n\nQUIT",
+[
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 3, column 10"
+]
+],
+[
+"SELECT 1\nGO\nSELECT [open\r\nED\n",
+[
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 3, column 8"
+]
+],
+[
+"-- c\nSELECT \"open\ned = 1\n",
+[
+"UnsafeStatementSplitError",
+"unterminated quoted identifier opened at line 2, column 8"
+]
+],
+[
+"SELECT [open\nGO\nQUIT\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 1, column 8"
+]
+],
+[
+"SELECT 1 /* open QUIT",
+[
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+]
+],
+[
+"SELECT 'open ED",
+[
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 8"
+]
+],
+[
+"SELECT 1\nSELECT 'open\nGO 5x\n",
+[
+"UnsafeStatementSplitError",
+"unterminated string opened at line 2, column 8"
+]
+],
+[
+"SELECT 1\nSELECT 1 /* open\n/* c */\nGO;\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 4: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT [open\n\nGO 2 3\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 1, column 8"
+]
+],
+[
+"\nSELECT \"open\nGO\nGO--c\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"unterminated quoted identifier opened at line 2, column 8"
+]
+],
+[
+"SELECT [open\nGO\nGO\u000b\n",
+[
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 1, column 8"
+]
+],
+[
+"SELECT 1 /* open GO\u000b",
+[
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+]
+],
+[
+"SELECT 'open GO 5x",
+[
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 8"
+]
+],
+[
+"\nSELECT 'open\nSELECT 1\n/* c */ GO",
+[
+"UnsafeStatementSplitError",
+"unterminated string opened at line 2, column 8"
+]
+],
+[
+"SELECT 1 /* open\nSELECT 1\n/* a */ /* b */ GO",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"-- c\nSELECT [open\n\nx /* a\n*/ GO\nGO",
+[
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 2, column 8"
+]
+],
+[
+"SELECT \"open\r\n/* a */ /* b */ GO",
+[
+"UnsafeStatementSplitError",
+"unterminated quoted identifier opened at line 1, column 8"
+]
+],
+[
+"SELECT [open\nGO\nx /* a\n*/ GO\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 1, column 8"
+]
+],
+[
+"SELECT 1 /* open x /* a\n*/ GO",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"SELECT 'open /* a */ /* b */ GO",
+[
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 8"
+]
+],
+[
+"-- c\nSELECT 'open\n\nx\rGO\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"unterminated string opened at line 2, column 8"
+]
+],
+[
+"-- c\nSELECT 1 /* open\nSELECT 1\n'a'\rGO\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 2, column 10"
+]
+],
+[
+"SELECT 1\nSELECT [open\n/* c */\nx\r\tGO\n",
+[
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 2, column 8"
+]
+],
+[
+"SELECT \"open\r\n'a'\rGO",
+[
+"UnsafeStatementSplitError",
+"unterminated quoted identifier opened at line 1, column 8"
+]
+],
+[
+"-- c\nSELECT [open\n\nx\r\tGO\nGO",
+[
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 2, column 8"
+]
+],
+[
+"SELECT 1 /* open x\r\tGO",
+[
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+]
+],
+[
+"SELECT 'open 'a'\rGO",
+[
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 16"
+]
+],
+[
+"SELECT 1\nGO\nSELECT 'open\nSELECT 1\nGO 1000001\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"unterminated string opened at line 3, column 8"
+]
+],
+[
+"\nSELECT 1 /* open\n\nGO 99999999\nGO",
+[
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 2, column 10"
+]
+],
+[
+"-- c\nSELECT [open\nGO 1000001",
+[
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 2, column 8"
+]
+],
+[
+"-- c\nSELECT \"open\n\nGO 000000000000001000001\n",
+[
+"UnsafeStatementSplitError",
+"unterminated quoted identifier opened at line 2, column 8"
+]
+],
+[
+"SELECT [open\n\nGO 99999999",
+[
+"UnsafeStatementSplitError",
+"unterminated bracketed identifier opened at line 1, column 8"
+]
+],
+[
+"SELECT 1 /* open GO 99999999",
+[
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 1, column 10"
+]
+],
+[
+"SELECT 'open GO 1000001",
+[
+"UnsafeStatementSplitError",
+"unterminated string opened at line 1, column 8"
+]
+],
+[
+"\nSELECT $(x)\n\nSELECT 'open",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nSELECT '$(x)'\nGO\nSELECT [open\n",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT '$(x)'\n\nSELECT \"open\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nSELECT $(a'b)'\n/* c */\nSELECT 1 /* open",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(a on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"-- c\nGO $(n)\nSELECT 1\nSELECT 'open\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it; $(n) is not substituted"
+]
+],
+[
+"SELECT '$(x)' SELECT [open",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT $(x) SELECT \"open",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT $(x)\nGO\nSELECT $(x)",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT '$(x)'\n/* c */\nSELECT '$(x)'\n",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT '$(x)'\r\nSELECT [$(x)]\nGO",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT $(a'b)'\r\nSELECT \"$(x)\"",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(a on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nGO\nGO $(n)\nGO\nSELECT $(a'b)'\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: only a count and a '--' comment may follow it; $(n) is not substituted"
+]
+],
+[
+"SELECT '$(x)' GO $(n)",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT $(x) SELECT $(x)",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nGO\nSELECT $(x)\n/* c */\n:setvar a b",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 3: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nGO\nSELECT '$(x)'\nGO\n:r f.sql\nGO",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 3: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nGO\nSELECT '$(x)'\n\n:connect s\n",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 3: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nGO\nSELECT $(a'b)'\r\n:exit",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(a on line 3: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"-- c\nGO $(n)\nSELECT 1\n!!dir\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it; $(n) is not substituted"
+]
+],
+[
+"SELECT '$(x)' :setvar a b",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT $(x) :r f.sql",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT $(x)\nSELECT 1\nEXIT\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"\nSELECT '$(x)'\nQUIT",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"\nSELECT '$(x)'\n\nRESET\nGO",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nSELECT $(a'b)'\nSELECT 1\nED\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(a on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"-- c\nGO $(n)\n/* c */\nexit foo\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it; $(n) is not substituted"
+]
+],
+[
+"SELECT '$(x)' ed = 1",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT $(x) EXIT",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"\nSELECT $(x)\nSELECT 1\nGO 5x",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"\nSELECT '$(x)'\nGO;\nGO",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"\nSELECT '$(x)'\r\nGO -1\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"-- c\nSELECT $(a'b)'\nSELECT 1\nGO 2 3\n",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(a on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"-- c\nGO $(n)\nGO /* c */\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it; $(n) is not substituted"
+]
+],
+[
+"SELECT '$(x)' GO--c",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT $(x) GO 2--c",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nSELECT $(x)\n\n/* c */ GO\n",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"\nSELECT '$(x)'\n\n/* a */ /* b */ GO",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nGO\nSELECT '$(x)'\n/* c */\n/* a\nb */ GO\nGO",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 3: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"-- c\nSELECT $(a'b)'\nGO\nx /* a\n*/ GO\n",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(a on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"GO $(n)\n/* c */\n/* c */ GO\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it; $(n) is not substituted"
+]
+],
+[
+"SELECT '$(x)' /* a */ /* b */ GO",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT $(x) /* a\nb */ GO",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT $(x)\nGO\nx\rGO\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"-- c\nSELECT '$(x)'\n\n'a'\rGO\nGO",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT '$(x)'\nSELECT 1\n[x]\rGO",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT $(a'b)'\nx\r\tGO\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(a on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nGO\nGO $(n)\nx\rGO\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: only a count and a '--' comment may follow it; $(n) is not substituted"
+]
+],
+[
+"SELECT '$(x)' 'a'\rGO",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT $(x) [x]\rGO",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"\nSELECT $(x)\n\nGO 1000001\n",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"-- c\nSELECT '$(x)'\n/* c */\nGO 99999999",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"-- c\nSELECT '$(x)'\r\nGO 000000000000001000001\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 2: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT $(a'b)'\r\nGO 1000001",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(a on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nGO $(n)\nGO 99999999\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it; $(n) is not substituted"
+]
+],
+[
+"SELECT '$(x)' GO 000000000000001000001",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT $(x) GO 1000001",
+[
+"UnsupportedMetaCommandError",
+"scripting variable $(x) on line 1: sqlcmd substitutes it before the batch is sent, dblift sends the text as it is"
+]
+],
+[
+"SELECT 1\nGO\n:setvar a b\nSELECT 1\nSELECT 'open\n",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':setvar' on line 3: dblift does not run client commands"
+]
+],
+[
+":connect s\r\nSELECT [open\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 1: dblift does not run client commands"
+]
+],
+[
+":exit\nSELECT 1\nSELECT \"open",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':exit' on line 1: dblift does not run client commands"
+]
+],
+[
+"-- c\n:connect s\n\nSELECT 'open",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 2: dblift does not run client commands"
+]
+],
+[
+"\n!!dir\r\nSELECT [open",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command '!!dir' on line 2: dblift does not run client commands"
+]
+],
+[
+":r f.sql SELECT \"open",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+":r f.sql SELECT 1 /* open",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+"-- c\n:setvar a b\n/* c */\nSELECT $(x)\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':setvar' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\n:connect s\nSELECT 1\nSELECT '$(x)'\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\n:exit\nSELECT [$(x)]\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':exit' on line 3: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\n:connect s\nSELECT 1\nSELECT $(a'b)'\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 3: dblift does not run client commands"
+]
+],
+[
+"\n!!dir\r\nGO $(n)",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command '!!dir' on line 2: dblift does not run client commands"
+]
+],
+[
+":r f.sql SELECT $(x)",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+":r f.sql SELECT '$(x)'",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+"\n:setvar a b\nSELECT 1\n:setvar a b\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':setvar' on line 2: dblift does not run client commands"
+]
+],
+[
+"\n:connect s\n\n:r f.sql\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\n:exit\n\n:connect s\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':exit' on line 3: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\n:connect s\nSELECT 1\n!!dir\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 3: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\n!!dir\n:setvar a b",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command '!!dir' on line 2: dblift does not run client commands"
+]
+],
+[
+":r f.sql :r f.sql",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+":r f.sql :connect s",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\n:setvar a b\nEXIT",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':setvar' on line 3: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\n:connect s\nQUIT\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 3: dblift does not run client commands"
+]
+],
+[
+"-- c\n:exit\n\nRESET\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':exit' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\n:connect s\n\nexit foo",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 3: dblift does not run client commands"
+]
+],
+[
+"\n!!dir\nGO\ned = 1\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command '!!dir' on line 2: dblift does not run client commands"
+]
+],
+[
+":r f.sql EXIT",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+":r f.sql QUIT",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\n:setvar a b\r\nGO 5x\n",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':setvar' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\n:connect s\n\nGO;\n",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\n:exit\r\nGO -1",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':exit' on line 3: dblift does not run client commands"
+]
+],
+[
+":connect s\nGO /* c */\n",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 1: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\n!!dir\nGO\nGO--c\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command '!!dir' on line 3: dblift does not run client commands"
+]
+],
+[
+":r f.sql GO 2--c",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+":r f.sql GO\u000b",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\n:setvar a b\nGO\n/* c */ GO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':setvar' on line 3: dblift does not run client commands"
+]
+],
+[
+"\n:connect s\n\n/* a */ /* b */ GO\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\n:exit\nSELECT 1\n/* a\nb */ GO\n",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':exit' on line 2: dblift does not run client commands"
+]
+],
+[
+"\n:connect s\nSELECT 1\n/* c */ GO\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 2: dblift does not run client commands"
+]
+],
+[
+"\n!!dir\nGO\n/* a */ /* b */ GO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command '!!dir' on line 2: dblift does not run client commands"
+]
+],
+[
+":r f.sql /* a\nb */ GO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+":r f.sql x /* a\n*/ GO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\n:setvar a b\nSELECT 1\nx\rGO\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':setvar' on line 3: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\n:connect s\n/* c */\n'a'\rGO\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 3: dblift does not run client commands"
+]
+],
+[
+"\n:exit\n[x]\rGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':exit' on line 2: dblift does not run client commands"
+]
+],
+[
+"\n:connect s\nx\rGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 2: dblift does not run client commands"
+]
+],
+[
+"\n!!dir\r\n'a'\rGO\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command '!!dir' on line 2: dblift does not run client commands"
+]
+],
+[
+":r f.sql [x]\rGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+":r f.sql x\r\tGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\n:setvar a b\n/* c */\nGO 1000001",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':setvar' on line 2: dblift does not run client commands"
+]
+],
+[
+"-- c\n:connect s\r\nGO 99999999\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 2: dblift does not run client commands"
+]
+],
+[
+"-- c\n:exit\nGO 000000000000001000001",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':exit' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\n:connect s\nGO 99999999\n",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':connect' on line 3: dblift does not run client commands"
+]
+],
+[
+"-- c\n!!dir\nSELECT 1\nGO 000000000000001000001",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command '!!dir' on line 2: dblift does not run client commands"
+]
+],
+[
+":r f.sql GO 1000001",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+":r f.sql GO 99999999",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command ':r' on line 1: dblift does not run client commands"
+]
+],
+[
+"-- c\nEXIT\n/* c */\nSELECT 'open",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\nQUIT\n/* c */\nSELECT [open\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 3: dblift does not run client commands"
+]
+],
+[
+"\nQUIT\nGO\nSELECT \"open",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nexit foo\nSELECT 1 /* open",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"-- c\ned = 1\n\nSELECT 'open\n",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'ED' on line 2: dblift does not run client commands"
+]
+],
+[
+"QUIT SELECT [open",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"EXIT SELECT \"open",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nEXIT\r\nSELECT $(x)\n",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"\nQUIT\nSELECT 1\nSELECT '$(x)'",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"-- c\nQUIT\nSELECT [$(x)]\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\nexit foo\nSELECT \"$(x)\"\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 3: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\ned = 1\n/* c */\nSELECT $(a'b)'\n",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'ED' on line 3: dblift does not run client commands"
+]
+],
+[
+"QUIT GO $(n)",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"EXIT SELECT $(x)",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"-- c\nEXIT\n\n:setvar a b\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"QUIT\nSELECT 1\n:r f.sql",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"\nQUIT\nGO\n:connect s\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nexit foo\nGO\n:exit",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"-- c\ned = 1\nSELECT 1\n!!dir\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'ED' on line 2: dblift does not run client commands"
+]
+],
+[
+"QUIT :setvar a b",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"EXIT :r f.sql",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nEXIT\r\nEXIT\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nQUIT\nGO\nQUIT\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nQUIT\nGO\nRESET\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"-- c\nexit foo\n/* c */\nED\n",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"-- c\ned = 1\nGO\nexit foo\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'ED' on line 2: dblift does not run client commands"
+]
+],
+[
+"QUIT ed = 1",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"EXIT EXIT",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"EXIT\nGO\nGO 5x\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"QUIT\n/* c */\nGO;\n",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\nQUIT\nGO -1",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 3: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nexit foo\n\nGO 2 3\n",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\ned = 1\nSELECT 1\nGO /* c */",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'ED' on line 2: dblift does not run client commands"
+]
+],
+[
+"QUIT GO--c",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"EXIT GO 2--c",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"-- c\nEXIT\r\n/* c */ GO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"-- c\nQUIT\r\n/* a */ /* b */ GO\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\nQUIT\nSELECT 1\n/* a\nb */ GO\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 3: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nexit foo\nGO\nx /* a\n*/ GO\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"ed = 1\nSELECT 1\n/* c */ GO\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'ED' on line 1: dblift does not run client commands"
+]
+],
+[
+"QUIT /* a */ /* b */ GO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"EXIT /* a\nb */ GO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"-- c\nEXIT\nx\rGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"\nQUIT\n\n'a'\rGO\n",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"\nQUIT\nGO\n[x]\rGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"exit foo\n/* c */\nx\r\tGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\ned = 1\r\nx\rGO\n",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'ED' on line 2: dblift does not run client commands"
+]
+],
+[
+"QUIT 'a'\rGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"EXIT [x]\rGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"SELECT 1\nGO\nEXIT\n/* c */\nGO 1000001\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 3: dblift does not run client commands"
+]
+],
+[
+"\nQUIT\nGO 99999999\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"QUIT\nGO\nGO 000000000000001000001\nGO",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"-- c\nexit foo\nGO\nGO 1000001\nSELECT 2",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 2: dblift does not run client commands"
+]
+],
+[
+"\ned = 1\nSELECT 1\nGO 99999999",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'ED' on line 2: dblift does not run client commands"
+]
+],
+[
+"QUIT GO 000000000000001000001",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'QUIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"EXIT GO 1000001",
+[
+"UnsupportedMetaCommandError",
+"sqlcmd command 'EXIT' on line 1: dblift does not run client commands"
+]
+],
+[
+"GO 5x\n/* c */\nSELECT 'open\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"-- c\nGO\u000b\nGO\nSELECT 'open",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO /* c */\nSELECT [open",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"-- c\nGO /* c */\r\nSELECT \"open\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"\nGO -1\nSELECT 1\nSELECT 1 /* open\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO /* c */ SELECT 1 /* open",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 5x SELECT 'open",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 5x\nGO\nSELECT $(x)",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO\nGO\u000b\n/* c */\nSELECT $(x)\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: only a count and a '--' comment may follow it"
+]
+],
+[
+"-- c\nGO /* c */\nGO\nSELECT '$(x)'\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"\nGO /* c */\r\nSELECT [$(x)]\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"-- c\nGO -1\nSELECT 1\nSELECT \"$(x)\"\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO /* c */ SELECT \"$(x)\"",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it; $(x) is not substituted"
+]
+],
+[
+"GO 5x SELECT $(a'b)'",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it; $(a'b) is not substituted"
+]
+],
+[
+"\nGO 5x\n\n:setvar a b\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"\nGO\u000b\n:setvar a b\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO /* c */\n:r f.sql",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"\nGO /* c */\n:connect s",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"-- c\nGO -1\nGO\n:exit\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO /* c */ :exit",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 5x !!dir",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO\nGO 5x\r\nEXIT",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO\u000b\nGO\nEXIT\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO /* c */\n\nQUIT\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO /* c */\n\nRESET",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"-- c\nGO -1\n\nED\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO /* c */ ED",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 5x exit foo",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"\nGO 5x\n\nGO 5x\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"\nGO\u000b\n/* c */\nGO 5x\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"-- c\nGO /* c */\n\nGO;\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"\nGO /* c */\nSELECT 1\nGO -1\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO -1\n/* c */\nGO 2 3\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO /* c */ GO 2 3",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 5x GO /* c */",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO\nGO 5x\r\n/* c */ GO\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: only a count and a '--' comment may follow it"
+]
+],
+[
+"-- c\nGO\u000b\n/* c */\n/* c */ GO\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"-- c\nGO /* c */\n/* c */\n/* a */ /* b */ GO\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO /* c */\n/* c */\n/* a\nb */ GO\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO -1\n/* c */\nx /* a\n*/ GO\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO /* c */ x /* a\n*/ GO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 5x /* c */ GO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO 5x\nSELECT 1\nx\rGO\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO\u000b\n/* c */\nx\rGO\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO\nGO /* c */\r\n'a'\rGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO /* c */\r\n[x]\rGO\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"\nGO -1\r\nx\r\tGO\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO /* c */ x\r\tGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 5x x\rGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO 5x\n/* c */\nGO 1000001\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"-- c\nGO\u000b\r\nGO 1000001\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO /* c */\r\nGO 99999999",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO\nGO /* c */\n/* c */\nGO 000000000000001000001\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO\nGO -1\r\nGO 1000001",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO /* c */ GO 1000001",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 5x GO 99999999",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO\n/* c */ GO\nGO\nSELECT 'open\n",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"-- c\nx /* a\n*/ GO\n\nSELECT [open\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"SELECT 1\n/* a */ /* b */ GO\nSELECT 1 /* open\n",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"-- c\n/* a\nb */ GO\nSELECT [open\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"SELECT 1\n/* a */ /* b */ GO\nSELECT 1 /* open\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"x /* a\n*/ GO SELECT 1 /* open",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"/* c */ GO SELECT [open",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO\n/* c */ GO\r\nSELECT $(x)",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"SELECT 1\nx /* a\n*/ GO\nGO\nSELECT '$(x)'\n",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"SELECT 1\nGO\n/* a */ /* b */ GO\n\nSELECT \"$(x)\"\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"\n/* a\nb */ GO\n/* c */\nGO $(n)\nGO",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"-- c\n/* a */ /* b */ GO\n/* c */\nSELECT '$(x)'",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"x /* a\n*/ GO SELECT '$(x)'",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it; $(x) is not substituted"
+]
+],
+[
+"/* c */ GO SELECT \"$(x)\"",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it; $(x) is not substituted"
+]
+],
+[
+"/* c */ GO\n/* c */\n:setvar a b\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 1: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"x /* a\n*/ GO\r\n:r f.sql",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"SELECT 1\nGO\n/* a */ /* b */ GO\n/* c */\n:exit\n",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"SELECT 1\n/* a\nb */ GO\nGO\n:setvar a b\n",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"/* a */ /* b */ GO\n:connect s\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 1: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"x /* a\n*/ GO :connect s",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"/* c */ GO !!dir",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"/* c */ GO\r\nEXIT",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 1: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"x /* a\n*/ GO\nSELECT 1\nQUIT",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"SELECT 1\n/* a */ /* b */ GO\nED\nGO",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"-- c\n/* a\nb */ GO\r\ned = 1\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"-- c\n/* a */ /* b */ GO\n\nQUIT\n",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"x /* a\n*/ GO QUIT",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"/* c */ GO ED",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\n/* c */ GO\n/* c */\nGO 5x",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"x /* a\n*/ GO\nGO\nGO;\n",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"/* a */ /* b */ GO\nGO 2 3",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 1: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"/* a\nb */ GO\n\nGO--c\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"-- c\n/* a */ /* b */ GO\nGO\nGO\u000b",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"x /* a\n*/ GO GO\u000b",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"/* c */ GO GO 5x",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO\n/* c */ GO\n\n/* c */ GO\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"SELECT 1\nx /* a\n*/ GO\n/* c */\n/* a */ /* b */ GO\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"SELECT 1\nGO\n/* a */ /* b */ GO\nSELECT 1\nx /* a\n*/ GO",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"SELECT 1\n/* a\nb */ GO\r\n/* a */ /* b */ GO",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"SELECT 1\nGO\n/* a */ /* b */ GO\r\nx /* a\n*/ GO",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"x /* a\n*/ GO x /* a\n*/ GO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"/* c */ GO /* a */ /* b */ GO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"-- c\n/* c */ GO\nx\rGO\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"\nx /* a\n*/ GO\r\n'a'\rGO\n",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"SELECT 1\nGO\n/* a */ /* b */ GO\n/* c */\nx\r\tGO\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"\n/* a\nb */ GO\n/* c */\n'a'\rGO\nGO",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"\n/* a */ /* b */ GO\n\nx\r\tGO\n",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"x /* a\n*/ GO x\r\tGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"/* c */ GO 'a'\rGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"-- c\n/* c */ GO\nGO 1000001\nGO",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"SELECT 1\nx /* a\n*/ GO\nGO 99999999\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"-- c\n/* a */ /* b */ GO\r\nGO 1000001\n",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 2: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"-- c\n/* a\nb */ GO\nSELECT 1\nGO 000000000000001000001\n",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 3: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"/* a */ /* b */ GO\r\nGO 99999999\nGO",
+[
+"UnsafeStatementSplitError",
+"GO after a comment on line 1: sqlcmd takes it as a command after one comment and as text after two; put it first on its line"
+]
+],
+[
+"x /* a\n*/ GO GO 99999999",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: only a count and a '--' comment may follow it"
+]
+],
+[
+"/* c */ GO GO 1000001",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"\nx\rGO\nSELECT 1\nSELECT 'open\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"-- c\nx\r\tGO\nSELECT [open\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"-- c\n'a'\rGO\n\nSELECT 1 /* open\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\n[x]\rGO\nSELECT 1\nSELECT [open\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\n'a'\rGO\nGO\nSELECT 1 /* open",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\r\tGO SELECT 1 /* open",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\rGO SELECT [open",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"-- c\nx\rGO\nSELECT 1\nSELECT $(x)\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\nGO\nx\r\tGO\nSELECT '$(x)'\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"\n'a'\rGO\r\nSELECT \"$(x)\"\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"\n[x]\rGO\nSELECT 1\nGO $(n)\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"\n'a'\rGO\nSELECT 1\nSELECT '$(x)'\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\r\tGO SELECT '$(x)'",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\rGO SELECT \"$(x)\"",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\nGO\nx\rGO\n:setvar a b",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\nx\r\tGO\nGO\n:r f.sql\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\n'a'\rGO\n\n:exit\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\n[x]\rGO\n/* c */\n:setvar a b\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"\n'a'\rGO\nGO\n:connect s\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\r\tGO :connect s",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\rGO !!dir",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\nx\rGO\nGO\nEXIT\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"-- c\nx\r\tGO\r\nQUIT\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\n'a'\rGO\nGO\nED\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"-- c\n[x]\rGO\ned = 1",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\nGO\n'a'\rGO\n/* c */\nQUIT\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\r\tGO QUIT",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\rGO ED",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"\nx\rGO\nGO\nGO 5x\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\r\tGO\r\nGO;\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\nGO\n'a'\rGO\n\nGO 2 3\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\nGO\n[x]\rGO\n/* c */\nGO--c\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\nGO\n'a'\rGO\r\nGO\u000b",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\r\tGO GO\u000b",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\rGO GO 5x",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"-- c\nx\rGO\n/* c */ GO\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"-- c\nx\r\tGO\n/* a */ /* b */ GO\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\nGO\n'a'\rGO\nGO\nx /* a\n*/ GO\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\n[x]\rGO\n/* a */ /* b */ GO\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"\n'a'\rGO\nSELECT 1\nx /* a\n*/ GO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\r\tGO x /* a\n*/ GO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\rGO /* a */ /* b */ GO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"\nx\rGO\r\nx\rGO\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"\nx\r\tGO\nGO\n'a'\rGO\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\nGO\n'a'\rGO\nGO\nx\r\tGO\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\n[x]\rGO\n\n'a'\rGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"'a'\rGO\nx\r\tGO\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\r\tGO x\r\tGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\rGO 'a'\rGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"\nx\rGO\nSELECT 1\nGO 1000001\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\r\tGO\nGO\nGO 99999999\n",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\nGO\n'a'\rGO\nGO 1000001\nGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 3: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"\n[x]\rGO\nGO 000000000000001000001\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"SELECT 1\n'a'\rGO\n/* c */\nGO 99999999\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 2: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\r\tGO GO 99999999",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"x\rGO GO 1000001",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: a lone carriage return is not a line break sqlcmd was measured on; end the line with a newline"
+]
+],
+[
+"GO 1000001\r\nSELECT 'open\n",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 1 exceeds the limit of 1000000"
+]
+],
+[
+"\nGO 99999999\nGO\nSELECT \"open\nGO",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"-- c\nGO 99999999\nSELECT 'open",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"-- c\nGO 99999999\r\nSELECT 1 /* open\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO\nGO 000000000000001000001\nGO\nSELECT [open\nGO",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 3 exceeds the limit of 1000000"
+]
+],
+[
+"GO 99999999 SELECT \"open",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 1000001 SELECT 'open",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO\nGO 1000001\r\nSELECT $(x)\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 3 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO\nGO 99999999\nSELECT [$(x)]\nGO",
+[
+"UnsafeStatementSplitError",
+"GO count on line 3 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO\nGO 99999999\n\nSELECT $(a'b)'\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO count on line 3 exceeds the limit of 1000000"
+]
+],
+[
+"-- c\nGO 99999999\nGO\nSELECT '$(x)'\n",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO\nGO 000000000000001000001\n\nSELECT \"$(x)\"\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 3 exceeds the limit of 1000000"
+]
+],
+[
+"GO 99999999 SELECT $(a'b)'",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it; $(a'b) is not substituted"
+]
+],
+[
+"GO 1000001 SELECT $(x)",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it; $(x) is not substituted"
+]
+],
+[
+"-- c\nGO 1000001\r\n:setvar a b\n",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO 99999999\n\n:connect s\n",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO\nGO 99999999\n\n!!dir",
+[
+"UnsafeStatementSplitError",
+"GO count on line 3 exceeds the limit of 1000000"
+]
+],
+[
+"-- c\nGO 99999999\nSELECT 1\n:connect s\nGO",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO\nGO 000000000000001000001\nSELECT 1\n!!dir\nGO",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 3 exceeds the limit of 1000000"
+]
+],
+[
+"GO 99999999 :setvar a b",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 1000001 :connect s",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO\nGO 1000001\nSELECT 1\nEXIT\nGO",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 3 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO 99999999\n/* c */\nRESET\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"\nGO 99999999\nexit foo\n",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"\nGO 99999999\nSELECT 1\nQUIT\n",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO 000000000000001000001\n/* c */\nED\nGO",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"GO 99999999 exit foo",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 1000001 EXIT",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"\nGO 1000001\nSELECT 1\nGO 5x",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"-- c\nGO 99999999\r\nGO -1\n",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO 99999999\nGO /* c */\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO 99999999\nSELECT 1\nGO\u000b",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"GO 000000000000001000001\nGO 5x\n",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 1 exceeds the limit of 1000000"
+]
+],
+[
+"GO 99999999 GO;",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 1000001 GO 2 3",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"\nGO 1000001\nSELECT 1\n/* c */ GO\n",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO 99999999\n\n/* a\nb */ GO\n",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"GO 99999999\n/* c */\n/* c */ GO\n",
+[
+"UnsafeStatementSplitError",
+"GO count on line 1 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO 99999999\n\nx /* a\n*/ GO\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"-- c\nGO 000000000000001000001\n/* c */\n/* a */ /* b */ GO\nGO",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"GO 99999999 /* a\nb */ GO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 1000001 /* c */ GO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"SELECT 1\nGO 1000001\nSELECT 1\nx\rGO\nGO",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO\nGO 99999999\n/* c */\n[x]\rGO\nGO",
+[
+"UnsafeStatementSplitError",
+"GO count on line 3 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO 99999999\n/* c */\nx\rGO\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"\nGO 99999999\r\nx\r\tGO\n",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO 000000000000001000001\nSELECT 1\n'a'\rGO\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"GO 99999999 [x]\rGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 1000001 x\rGO",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"-- c\nGO 1000001\nSELECT 1\nGO 1000001\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"-- c\nGO 99999999\n/* c */\nGO 000000000000001000001\nGO",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"\nGO 99999999\r\nGO 99999999",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"-- c\nGO 99999999\r\nGO 99999999\nSELECT 2",
+[
+"UnsafeStatementSplitError",
+"GO count on line 2 exceeds the limit of 1000000"
+]
+],
+[
+"SELECT 1\nGO\nGO 000000000000001000001\nSELECT 1\nGO 1000001\nGO",
+[
+"UnsafeStatementSplitError",
+"GO 1000001 on line 3 exceeds the limit of 1000000"
+]
+],
+[
+"GO 99999999 GO 99999999",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+],
+[
+"GO 1000001 GO 1000001",
+[
+"UnsafeStatementSplitError",
+"text after GO on line 1: only a count and a '--' comment may follow it"
+]
+]
+]

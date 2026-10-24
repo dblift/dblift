@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional
 
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.migration import Migration
-from dblift.core.migration.sql.sql_analyzer import is_select_into
+from dblift.core.migration.sql.statement_reader import is_select_into
 
 from .base_executor import BaseMigrationExecutor, MigrationExecutionResult
 

@@ -21,19 +21,12 @@ anywhere): 233ms for this pattern, against 9.6ms for the pattern it
 replaced, which stopped at the first ``]`` instead of reading a doubled one
 (#375/#380). Two ways to bound that cost were tried and both rejected, for
 the same reason: they cannot tell a legitimately short match from one that
-silently gave up partway through the real identifier, and this module's
-callers rely on that distinction to refuse rather than guess wrong --
+silently gave up partway through the real identifier --
 
 - An atomic/possessive quantifier stops backtracking once the greedy path
-  fails, which is exactly what breaks a caller's ambiguity check: for
-  ``[dbo].[t]](col)`` the plain pattern below backtracks to the shorter,
-  correct match ``[t]``, leaving a trailing ``]`` that
-  ``_extract_table_ref_from_create_index``
-  (dblift/core/migration/scripting/undo_script_generator/_extractors.py)
-  reads as "this looked truncated" and refuses on. An atomic group instead
-  fails the alternative outright and the search moves on, silently
-  collapsing the match to ``[dbo]`` alone with no signal that anything was
-  left over.
+  fails: for ``[dbo].[t]](col)`` the plain pattern below backtracks to
+  ``[t]``. An atomic group instead fails the alternative outright and the
+  search moves on, silently collapsing the match to ``[dbo]`` alone.
 - A length cap on the repeated group (``{1,256}``, matching every engine's
   real identifier limit -- SQL Server/Oracle/DB2 128, MySQL 64, PostgreSQL
   63) produces the identical hazard by a different route, and the premise
@@ -43,15 +36,12 @@ callers rely on that distinction to refuse rather than guess wrong --
   ``CREATE INDEX [idx] ON [dbo].[`` + 300 ``x`` s + ``](col)`` matches
   ``[dbo]`` as a complete ``_QUALIFIED_NAME`` on its own -- the second
   identifier fails to match at all once its content exceeds the cap, so
-  the ``(?:\.\s*_IDENTIFIER)*`` tail simply never extends, rather than
-  extending short. The character right after the match is ``.``, not the
-  closing delimiter the truncation guard watches for, so it does not fire:
-  ``_extract_table_ref_from_create_index`` returns ``(None, "dbo")`` --
-  the schema silently reported as the table, the real (very long) table
-  name silently dropped -- instead of refusing.
+  the repeated qualified-name tail simply never extends. An object
+  extractor could return only the schema, silently losing the real (very
+  long) table name.
 
 So the O(n^2) cost on a malformed, unterminated delimiter is an accepted
-trade-off, not a bug to keep chasing: dblift's regex-fallback path and
+trade-off, not a bug to keep chasing: dblift's regex paths and
 SQL Server's structured-parser id_token both run against migration SQL the
 person deploying it wrote (or a schema-diff tool generated, itself reading
 a real schema), not input from an untrusted, adversarial network caller --

@@ -12,7 +12,7 @@ of re-sorting by version number, otherwise migrations applied out of version ord
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -20,6 +20,16 @@ from dblift.core.migration.commands.undo_command import UndoCommand
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from tests.unit.core.migration.commands._plan_undo_wiring import (
+    patch_undo_script_lookup,
+    wire_plan_undo,
+)
+
+
+@pytest.fixture(autouse=True)
+def _stop_undo_script_lookup_patches():
+    yield
+    patch.stopall()
 
 
 def _make_migration(version, mtype=MigrationType.SQL, success=True):
@@ -35,12 +45,11 @@ def _make_migration(version, mtype=MigrationType.SQL, success=True):
 
 
 def _make_command(applied_migrations):
-    state_manager = MagicMock()
+    state_manager = wire_plan_undo(MagicMock())
     migration_state = MagicMock()
     migration_state.applied_objects = applied_migrations
     migration_state.all_applied_objects = list(applied_migrations)
-    migration_state.pending_objects = []
-    migration_state.pending = []
+    migration_state.catalog = ()
     state_manager.build_state.return_value = migration_state
     state_manager.get_current_version.return_value = None
     _filter_mgr = MigrationStateManager.__new__(MigrationStateManager)
@@ -120,7 +129,7 @@ def test_undo_planning_reads_each_history_rank_once():
 
     cmd = _make_command(rows)
     cmd.migration_rules = MigrationRules(MagicMock())
-    cmd._find_undo_script = MagicMock(return_value=MagicMock())
+    cmd._find_undo_script = patch_undo_script_lookup(MagicMock(return_value=MagicMock()))
 
     result = cmd.execute(scripts_dir=MagicMock(), dry_run=True)
 
@@ -252,7 +261,9 @@ class TestTargetVersionUndoWalksPastLowerRank:
         v3 = _make_migration(3)
         v2 = _make_migration(2)
         cmd = _make_command([v3, v2])
-        cmd._find_undo_script = MagicMock(return_value=MagicMock(script_name="U3__test.sql"))
+        cmd._find_undo_script = patch_undo_script_lookup(
+            MagicMock(return_value=MagicMock(script_name="U3__test.sql"))
+        )
 
         result = cmd.execute(scripts_dir=MagicMock(), target_version=2, dry_run=True)
 

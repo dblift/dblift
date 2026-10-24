@@ -15,6 +15,1200 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [5.0.0] - 2026-10-24
+
+### Breaking
+
+- **The Python API runs in execution mode by default and is silent.** `DBLiftClient`
+  (the constructor, `from_config`, `from_config_file`, `from_sqlalchemy`), `AsyncDBLiftClient`
+  and `MigrationExecutor` now default to `analysis_mode="execution"`, and a client built with no
+  logging argument writes nothing to stderr or stdout. `logger`, `log_level`, `log_format` or
+  `log_file`, or a logging option in the config (`log_level`, `log_format`, `log_file`,
+  `log_dir`, `logging.file`, `logging.directory`, or a `logging.level` other than `info`),
+  turns logging on; a config `logging.level` of `info` is the default and cannot be told from an
+  unset one, so pass `log_level="INFO"` to get output at that level. The `<config folder>/logs`
+  directory that `from_config_file(..., relative_to_config=True)` falls back to is a default, not
+  a logging option: it neither turns logging on nor creates the directory by itself. `from_sqlalchemy`'s
+  `log_level` and `log_format` now default to `None` (they were `"INFO"` and `"text"`).
+  Migrations still run, validate and undo as before; what changes is that `info()`/dry-run
+  results report pending script analysis as disabled, the journal does not capture object
+  operations, and a `WITH` statement that cannot be classified lexically is refused. Pass
+  `analysis_mode="full"` and install `dblift[analysis]` to keep SQL analysis cautions; an
+  explicit `"full"` without SQLGlot raises `ModuleNotFoundError` naming that extra before any
+  connection is opened or callback runs. The command line is unchanged and still analyses in
+  full, and the Flask and Django integrations and the pytest-dblift fixtures pass
+  `analysis_mode="full"` explicitly.
+- **Text-based undo generation is removed.** `generate_undo_script()` and `generate_undo_scripts()`
+  on `DBLiftClient` and `AsyncDBLiftClient`, and `GenerateUndoScriptResult`, no longer exist (they
+  have warned since 4.10). Write the matching `U*__.sql` or `U*__.py` undo script by hand; `undo`,
+  `info` and reapply run those files as before.
+- **`is_comment_only_statement` is removed.** No tagged 4.x release deprecated it (its
+  warning exists only in the unreleased 4.12.0), so this removal skips the
+  deprecation overlap, as `docs/semver-policy.md` section 3 allows when stated. Callers: read the
+  `kind` of the records from `StatementSplitter(dialect).split()`.
+- **The dialect arguments of five DML analysis functions are removed.** `analyze_dml`,
+  `dml_where_predicate`, `updates_restore_key` and `is_full_table_dml` no longer take
+  `sqlglot_dialect=`, and `statement_dml_table` no longer takes `dialect=` (keyword or second
+  positional argument). Their warnings exist only in the unreleased 4.12.0, so the deprecation
+  overlap is skipped. Callers: pass `quirks=` (the database plugin's quirks, for example
+  `ProviderRegistry.get_quirks("postgresql")`). The dialect options of `insert_value_rows` and
+  `cte_outer_statement_type` are unchanged.
+- **A dialect is split by its `LexicalSpec` only.** `StatementSplitter` no longer uses the
+  dialect's `parser_class`, whether it returns strings or `Statement` records: a plugin without a
+  lexical spec raises `UnsupportedDialectError` when it splits a script (MongoDB and CosmosDB
+  already had none). Plugin authors: return a `LexicalSpec` from `quirks.lexical_spec()`.
+- **The root configuration key `migrations_dir` is rejected.** Any occurrence, including an empty
+  or null value, raises an error (it was deprecated in 2.0.2). Move it to `migrations.directory`.
+  The `migrations_dir` argument of the Python API and the CLI is unchanged.
+- **The legacy regex, hybrid and SQLGlot parsers are removed.** `HybridParser`, `SqlGlotParser`,
+  `RegexBasedParser`, `RegexParser`, `EnhancedRegexParser` and `DialectConfig`, the per-dialect regex
+  parsers and their pattern tables (PostgreSQL, Redshift, MySQL, MariaDB, SQL Server, Db2, DuckDB,
+  Oracle) and `SnowflakeStatementParser` no longer exist. Scripts were already split by each
+  dialect's lexical spec; what goes is the text-based reading. What the plugin's statement facts
+  read is now the only reading: no model objects are built from text, no default schema is
+  invented, and the old bracket and quote validation heuristics are gone (the `validate-sql`
+  command, which lints through the script analysis, is unaffected). Migration:
+  split scripts with `StatementSplitter(dialect).split()`, read a statement with the plugin's
+  `quirks.statement_facts(sql)` (or `read_statement_facts(sql, dialect=...)` from
+  `dblift.core.sql_parser.sqlglot_statement_facts`, which takes a sqlglot dialect name such as
+  `"postgres"`), and get schema models from live database introspection. A plugin that subclassed one
+  of these parsers returns a `LexicalSpec` and a statement-facts reader instead, and a plugin that
+  keeps its own tokenizer for masking overrides `quirks.redaction_tokenizer()`.
+- **`strict_tokenizer` is removed** from `StatementSplitter` and the
+  parser interface. Drop the argument: the dialect's scanner decides how to read the script.
+- **Plugin hooks for the removed parsers are removed.** `sqlglot_unsupported_sql_patterns`,
+  `sqlglot_unsupported_sql_regex_patterns`, `preprocess_sql_for_sqlglot` and
+  `is_sqlglot_opaque_valid_ddl` on the quirks no longer exist, and the PostgreSQL, Oracle, SQL Server
+  and Redshift quirks no longer name a parser class. Delete overrides of them.
+- **`SqlParserFactory`, `SqlAnalyzer` and `parser_type` are removed.** `SqlParserFactory` (with its
+  `parse_sql`, `extract_objects`, `validate_sql`, `get_parser` and `parse` methods),
+  `SqlAnalyzer`, the `parser_type` argument, the `quirks.parser_class` hook of every plugin, the
+  MySQL, MariaDB, Db2, DuckDB, SQLite and Snowflake parser subclasses and their deprecation
+  notices no longer exist; nothing builds a parser by name any more. Migration: split a script with
+  `StatementSplitter(dialect).split_statements(sql)` (or `.split(sql)` for records), read a
+  statement with `read_statement_facts(sql, dialect=...)` from
+  `dblift.core.sql_parser.sqlglot_statement_facts` (`dialect` is a sqlglot dialect name) or the
+  plugin's `quirks.statement_facts(sql)`, and get
+  schema models from live database introspection. A plugin returns a `LexicalSpec` and a
+  statement-facts reader; it no longer defines `parser_class`. Reading statement facts without
+  SQLGlot raises a `ModuleNotFoundError` that names `pip install dblift[analysis]`.
+
+### Added
+
+- **`--analysis-mode {full,execution}` on `migrate`, `undo` and `info`.** The default, `full`, is
+  unchanged. `execution` only splits and runs the SQL and skips object tracking and the checks
+  and report details built on it, so it works without sqlglot. `migrate`, `undo` and `info` in
+  `full` mode, and `validate-sql`, now stop before any callback, file write or database connection
+  when sqlglot is not installed, and ask you to `install dblift[analysis]` (they used to fail
+  part-way with `No module named 'sqlglot'`).
+- **Db2 statement facts.** `info --format json`, `migrate --dry-run`, execution-time object
+  tracking and the DML helpers read Db2 statements through a head classifier: the statement kind
+  and the DDL or DML target are named for CREATE/ALTER/DROP TABLE, VIEW, INDEX, SEQUENCE, ALIAS,
+  SCHEMA, TRIGGER, PROCEDURE and FUNCTION, RENAME, COMMENT ON, TRUNCATE, GRANT/REVOKE,
+  INSERT/UPDATE/DELETE/MERGE, transaction control, CALL and SET; unquoted names fold to upper
+  case as Db2 does; column-level facts (declared columns, constraints, indexed columns) are
+  reported as unavailable.
+
+### Changed
+
+- **Statements the analyser cannot read are now marked for review instead of passing silently.**
+  `validate-sql`, `migrate --dry-run`, `info` and the MCP dry-run analysis rate a script `REVIEW`
+  with a `statement-not-analysed` finding naming the reason for any statement they could not
+  read: an unrecognised statement, a `CALL`, or an anonymous block or `EXECUTE IMMEDIATE`
+  ("procedural block: effects not modelled"). Before, only an unreadable `ALTER` was reported
+  and the rest came back `SAFE`. Statements that change no data (`SET`, transaction control,
+  `GRANT`, `COMMENT ON`, `PRAGMA`, `SHOW`, …) stay `SAFE`, as does comment-only text; a MySQL
+  executable comment (`/*! … */`, `/*M! … */`) is reported. `-- dblift:allow statement-not-analysed` accepts
+  the finding.
+
+- **A plugin without a statement-facts reader is no longer analysed from text.** Lint and the
+  script analysis behind `validate-sql` now report "statement facts unavailable for dialect" for
+  such a plugin and mark its scripts for review, instead of reading them with the text parser, so
+  a script is no longer rated UNSAFE for a `DROP TABLE` or an unfiltered `DELETE` there. Every
+  bundled dialect reads statement facts and is unaffected.
+- **Snowflake `TRUNCATE`, `MERGE` and `COMMENT ON` are read.** `TRUNCATE [TABLE] [IF EXISTS] t`
+  names the table it empties; `MERGE INTO t USING ...` names its target and sources and reports
+  the `INSERT`, `UPDATE` and `DELETE` its actions perform, so data-change analysis and object
+  tracking no longer miss a merge; `COMMENT ON TABLE`, `VIEW`, `MATERIALIZED VIEW`, `SEQUENCE` and
+  `COLUMN` name the object changed. Names follow the Snowflake rules (an unquoted ASCII name in
+  upper case, a quoted one exactly); `IDENTIFIER()` and `$variable` names, a list of tables,
+  `CASCADE`, a `MERGE` with a CTE and every other `COMMENT ON` kind stay unread.
+
+- **DuckDB 2 is supported.** The `duckdb` extra now accepts DuckDB 2.x as well as 1.x. DuckDB 1.x
+  and 2.x read one rare construct differently: a string on the line after an escape string
+  (`E'a'` newline `'b\'...'`), where 1.x lets the backslash escape the quote and 2.x does not. dblift
+  cannot know which one will run the script, so it now refuses it with an error naming the line
+  and column; write the text as a single literal.
+- **Lightweight base install.** `pip install dblift` no longer pulls Rich, Jinja2 or SQLGlot.
+  Install `dblift[cli]` for the command line and `dblift[analysis]` for full SQL analysis;
+  `dblift[all]` is unchanged for users (it now names both extras explicitly), as are the `mcp`,
+  `django`, `flask` and `fastapi` extras. A database-only install such as
+  `pip install "dblift[postgresql]"` must add `cli` and `analysis` to keep the `dblift` command working:
+  `pip install "dblift[cli,analysis,postgresql]"`, because the command line analyses SQL with
+  SQLGlot by default (`analysis_mode="full"`). The Python API defaults to `analysis_mode="execution"`
+  and runs on a base install, without Rich or SQLGlot. `pytest-dblift` now depends on `dblift[analysis]`.
+
+
+- **DML analysis no longer guesses from statement text.** `analyze_dml`, `statement_dml_table` and
+  the plugin quirks methods that call them read a plugin's statement facts or, for a dialect with no
+  reader, the sqlglot AST; a statement neither can read comes back unread (empty table,
+  `events=None`) instead of a table or events scanned out of the text. `extract_dml_table_name` is
+  removed. Signatures and return shapes are unchanged.
+- **Snowflake reads statement facts from the SQL grammar.** `info --format json`,
+  `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
+  statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical
+  splitter. `CREATE`/`DROP SCHEMA` name the schema, `CREATE`/`DROP MATERIALIZED VIEW` the
+  materialized view, and a `CLONE` source takes the type of the object it copies. Statements the
+  object model cannot name (`STAGE`, `FILE FORMAT`, `TAG`, `WAREHOUSE`, `TRIGGER`, `ALTER … RENAME
+  TO` and `SWAP WITH`, a `@stage` reference, a data-changing CTE, a relation with four name
+  parts) and every statement the grammar cannot parse are reported as unread instead of guessed.
+  An unquoted ASCII name is read in upper case, as Snowflake stores it, and a quoted name exactly
+  as written, so `CREATE SCHEMA app` and `CREATE SCHEMA "app"` name different objects (measured on
+  Snowflake 10.38.100 with `QUOTED_IDENTIFIERS_IGNORE_CASE = FALSE`, the default); an unquoted
+  name with a non-ASCII letter, which the engine rejects, a name
+  computed at run time (`IDENTIFIER(...)`, a `$variable`) or holding a keyword where a name belongs
+  is reported as unread.
+  `validate-sql` changes its Snowflake verdicts accordingly: a script is no longer sent to review
+  only because the grammar could not parse a statement; `DROP FUNCTION`, `DROP PROCEDURE` and
+  `DROP TRIGGER` (Snowflake has no triggers) are no longer reported as `drop-table`, since they
+  hold no rows; and a `DROP` of an object the reader cannot name (`STAGE`, `TAG`, `FILE FORMAT`,
+  `PIPE`, `TASK`, `STREAM`, a policy, a `DYNAMIC`, `EXTERNAL` or `EVENT` table) is reported as the
+  new `drop-unread-object` warning, a review rather than a pass. That warning applies to every
+  dialect whose statements are read from the grammar, except for kinds that only remove a
+  definition (index, sequence, routine, trigger, type, role, user, and for example policy, rule,
+  publication, server, collation, cast, aggregate, language, event, synonym, package, directory,
+  profile, login, default, assembly, macro, nickname, library, group); when the statement's name
+  could not be read, one holding `CASCADE` or `FORCE` is always a review (a named `DROP ... CASCADE`
+  is judged as before).
+  `validate-sql` no longer reports a script as invalid because the grammar cannot
+  parse a statement.
+- **Redshift reads statement facts from the SQL grammar.** `info --format json`,
+  `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
+  statement's kind, objects, target and predicate from the sqlglot AST after the shared lexical
+  splitter. `SELECT … INTO` is read as the table creation it is, `COPY … FROM` as a load into its
+  table, `TRUNCATE` as a single-table statement, `COMMENT ON TABLE`/`COLUMN`/`VIEW` as a change to
+  the commented relation, `CREATE`/`DROP SCHEMA` by a plain schema name, and `CREATE`/`DROP
+  MATERIALIZED VIEW` as a materialized view. Statements Redshift-only DDL cannot be proven for
+  (`CREATE EXTERNAL SCHEMA`, `CREATE LIBRARY`, `UNLOAD`, `GRANT`/`REVOKE` targets, a schema name
+  with a database part, a bracketed name) are reported as unread instead of guessed.
+- **YugabyteDB index facts remain opaque when `NONCONCURRENTLY` follows `CREATE [UNIQUE] INDEX`.**
+  Its reader no longer reports that modifier as an index name or guesses the affected table.
+- **Db2 CALL facts report unknown procedure effects.** The referenced routine remains named,
+  while a diagnostic marks the other effects as unread.
+- **DuckDB comment masking retains fewer tokens.** The shared segment scanner
+  records the same comment spans and refusals while `blank_comments()` drains
+  its tokens instead of keeping the full stream.
+- **SQL Server reads statement facts through the T-SQL grammar.** Object extraction, script
+  analysis and DML helpers use the plugin's facts reader after lexical `GO` batch splitting.
+  Unread names and effects are reported as opaque rather than guessed.
+- **MySQL and MariaDB read statement facts from the SQL grammar.** `info --format json`,
+  `migrate --dry-run`, object tracking during `migrate`, data-change analysis and lint read each
+  statement's kind, objects, target and predicate from the sqlglot AST after the client rules split
+  the script; executable comments (`/*! … */`, `/*M! … */`) are reported as unread statements,
+  since whether they run depends on the server version; a statement whose objects cannot be
+  established is reported as unread instead of guessed.
+- **Splitting a large script uses less memory.** Tokens no longer carry a per-instance
+  dictionary. Peak memory when splitting a 3 MiB INSERT script falls from 201 MB to 157 MB
+  on DuckDB, 197 MB to 152 MB on MySQL, 276 MB to 213 MB on Db2 and 200 MB to 155 MB on
+  PostgreSQL (about 22%), with no change in splitting time or results.
+- **Transactional provider health is provider-owned.** Custom transactional
+  providers must implement `check_transaction_state()`. The engine calls it
+  immediately before each executed SQL statement; the provider sends its
+  dialect's connection probe through its native query path, closes any
+  driver-owned resources, and maps an aborted transaction to
+  `TransactionAbortedError` while preserving other errors. This is a v5
+  provider contract break.
+- **Migration selection uses typed catalog eligibility.** Changing displayed state
+  labels no longer changes which scripts migrate or undo selects. Internal
+  `MigrationState` constructors now take `catalog` records instead of `pending`
+  and `pending_objects`; serialized state and CLI output keep their existing keys.
+- **Providers are discovered once per process.** A `dblift.providers` entry point that
+  becomes installed after the first database lookup is no longer picked up until the
+  process restarts; register it explicitly with `ProviderRegistry.register_plugin`.
+- **Requires sqlglot 30.23 or later.** Oracle q-quoted strings no longer prevent source-table
+  extraction, and MySQL named foreign keys in `ALTER TABLE` no longer report unmodelled grammar.
+  The declared range is now `sqlglot>=30.23.0,<31`.
+- **Unmodelled `DROP INDEX … ON …` syntax remains unread.** Where that relation form is not
+  modelled for the selected dialect, statement facts retain a diagnostic instead of treating
+  sqlglot's permissive parse as proof of a valid index operation.
+- **MySQL and MariaDB splitting moved onto the shared lexical engine.**
+  Splitting, analysis and extraction use the `mysql` and `mariadb` client rules
+  (the `DELIMITER` command, client commands, executable comments, optimizer
+  hints, the stored-program body rule) as specification data. The same scripts
+  give the same statements, records and execution strings, and the same
+  refusals (class, line and column).
+- **Unterminated-lexeme messages read `opened at`.** An unterminated string,
+  quoted identifier or block comment in a MySQL or MariaDB script now reads
+  `unterminated string opened at line L, column C` (`quoted identifier` and
+  `block comment` likewise); the line and column are unchanged.
+- **A `DELIMITER` line without a usable argument names the client that ran it**
+  (`mysql` or `mariadb`) in its refusal instead of describing both.
+- **Literal masking, object extraction and comment stripping are unchanged.**
+  They keep reading MySQL text as before.
+- **Splitting a large MySQL or MariaDB script takes longer and uses more
+  memory.** The time stays linear in the length of the script. Measured on one
+  machine, a 3 MiB script of `INSERT` statements went from 0.95 s and a 19 MB
+  peak to 2.9 s and a 176 MB peak, and a 132-byte migration from 42 to 81
+  microseconds.
+- **MySQL and MariaDB delimiter scripts use less memory while splitting.**
+  The engine scans without keeping a token list; the client still assembles the
+  same statement records. For one 3 MiB `INSERT` script on one machine, peak memory
+  fell from about 210 MiB to 70 MiB on MySQL and 70 MiB on MariaDB.
+- **Db2 splitting moved onto the shared lexical engine.** Splitting, analysis and
+  extraction use the command line processor's rules (the end-of-line terminator,
+  `--#SET TERMINATOR`, the client command list, the routine-body rule) as
+  specification data. The same scripts give the same statements, records and
+  execution strings, and the same refusals (class, line and message).
+- **Literal masking, object extraction and comment stripping are unchanged for Db2.**
+  They keep reading Db2 text as before.
+- **Splitting a large Db2 script takes longer and uses more memory.** The time
+  stays linear in the length of the script (4 times the input takes 4.0 to 4.5
+  times the time, 4.0 to 4.2 before). Measured on one machine, a 3 MiB script of
+  `INSERT` statements went from 1.70 s and a 20 MB peak to 1.97 s and a 226 MB
+  peak; a 1 MiB multi-line string literal went from 0.39 s and 18 MB to 1.33 s
+  and 189 MB, and the peak of a 1 MiB routine body from 16 MB to 102 MB. A
+  77-byte migration went from about 44 to about 50 microseconds.
+- **`undo` execution times include before-each callback time.** `undo` now measures each
+  script from before its before-each callbacks run, as `migrate` already does.
+- **`undo` takes the migration lock.** `undo` now takes the migration lock, as `migrate` does,
+  so an undo and a migration can no longer run on the same schema at the same time. A real
+  `undo` waits up to 60 seconds for the lock and fails with
+  `Could not acquire migration lock - another migration may be running` if it cannot get it.
+  `undo --dry-run` does not lock.
+- **`migrate` plans under the migration lock.** `migrate` now reads the schema state again after it
+  takes the migration lock and runs what is pending at that moment, with validation and strict
+  ordering checked again. A repeatable migration another process applied while this one waited is skipped even when
+  its stored checksum is unknown, as any later run would.
+- **`migrate --mark-as-executed` takes the migration lock.**
+- **`repair` and `baseline` take the migration lock.** `repair` and `baseline` now take the migration
+  lock, as `migrate` and `undo` do, so nothing that writes the schema history runs at the same time as
+  a migration. A real run waits up to 60 seconds and fails with
+  `Could not acquire migration lock - another migration may be running` if it cannot get the lock;
+  `baseline` checks again under the lock that the history is still empty. Dry runs do not lock.
+- **DuckDB splitting moved onto the shared lexical engine.** Splitting, analysis
+  and the statement segmentation that extraction and statement facts start from use the engine's lexeme rules (strings, escape
+  strings, dollar-quoted strings, nested comments, the blank characters DuckDB
+  reads) and the `duckdb` shell's dot-command rule as specification data. The
+  same scripts give the same statements, records, execution strings and
+  refusals (class, line and message).
+- **The objects parsed out of each DuckDB statement and comment stripping are unchanged.**
+  They keep reading DuckDB text as before; literal masking now reads it as the engine does (see Security).
+- **Splitting a large DuckDB script takes longer and uses more memory.** The
+  time stays linear in the length of the script (4 times the input takes 4.0 to
+  4.3 times the time). Measured on one machine, a 3 MiB script of `INSERT`
+  statements went from 0.65 s and a 26 MB peak to about 2 to 2.5 s and a 212 MB
+  peak, and a 66-byte migration from 12 to 39 microseconds; nested block
+  comments or one huge escape string take 4.5 to 8 times as long (depending on
+  the machine). Large literals and comments take much longer in proportion but
+  stay small in absolute terms: a 1 MiB string literal went from 0.0004 s to
+  0.045 s, and a 1 MiB block comment of `;` lines from 0.006 s to 0.39 s.
+- **Statement analysis uses the database plugin's own reader.** The data-change analysis
+  entry points, the dry-run target of a DML statement and object tracking during execution
+  read statements through the plugin's own statement facts reader; a plugin that provides a
+  reader also provides its facts parser. A plugin that declares no reader no longer inherits
+  another plugin's facts through a shared sqlglot dialect name, when `quirks=` is passed.
+- **`StatementSplitter.split` returns the records, and the statement lists are projections of
+  them.** `Statement` gains `execution_text` (the string execution sends when it is not `text`),
+  and `executable_records`, `execution_strings`, `execution_units` and `analysis_sql` in
+  `dblift.core.sql_parser.statement` select and project the records, positively on `kind`: a
+  record of an unknown kind is no statement. `split_statements` is the execution projection and
+  returns the same strings as before. The `GO 0` notice is logged where the record is cut.
+- **Db2 analysis kinds and DML targets.** `migrate --dry-run` reports CALL, COMMIT and SET as
+  `UNKNOWN` (CALL and SET were `DML`); DML targets are reported folded, with the schema when the statement gives one
+  (`APP.ORDERS`).
+- **PostgreSQL and its compatible engines read statement facts from the SQL grammar.**
+  PostgreSQL, CockroachDB, YugabyteDB, Aurora PostgreSQL, AlloyDB, Citus, Neon, Supabase and
+  TimescaleDB now take the objects, targets and predicates of each statement from the sqlglot
+  AST instead of regular expressions, in `info --format json`, `migrate --dry-run`, object
+  tracking during execution, object extraction and the DML analysis functions
+  (`analyze_dml`, `statement_dml_table`, `dml_where_predicate`, `is_full_table_dml`). `COMMENT ON`
+  targets, the trigger of `CREATE TRIGGER`, `DROP SCHEMA`, the table created by `SELECT … INTO`,
+  `CREATE FUNCTION/PROCEDURE … $$ … $$`, `CREATE EXTENSION`, `ALTER SEQUENCE`, `CREATE TYPE`
+  and `CREATE TABLE … TABLESPACE` are now named, and a DML caution no longer names a table
+  whose name ends in a non-ASCII blank. Redshift is unchanged. Known gaps: #666, #667, #668
+  and #669.
+- **Oracle reads statement facts from the SQL grammar.** `info --format json`,
+  `migrate --dry-run`, object tracking during execution, object extraction and the
+  DML analysis functions (`analyze_dml`, `statement_dml_table`, `dml_where_predicate`,
+  `is_full_table_dml`) take the objects, targets and predicates of each statement from the
+  sqlglot AST instead of regular expressions. Unquoted names are reported upper-cased letter by
+  letter, as Oracle 23.26 stores them (`create table emp` names `EMP`, `ı` becomes `I`, `ß`
+  stays), and quoted names exactly; a name with a letter whose upper-case form is longer than one
+  character is reported unread; an object reached through a database link (`emp@lnk`, `emp @
+  lnk`) is never named as a local one. `target_sql` and `predicate` keep the spelling written. `COMMENT ON TABLE/COLUMN/MATERIALIZED VIEW`, `TRUNCATE
+  TABLE`, materialized views, `DROP MATERIALIZED VIEW`, and the name of every PL/SQL unit
+  (`CREATE [OR REPLACE] PROCEDURE/FUNCTION/PACKAGE [BODY]/TRIGGER/TYPE`), synonym and database
+  link are now named; a `CREATE INDEX` that sqlglot cannot parse still names its index and its
+  table. A PL/SQL body is never read for names, `MERGE`, `GRANT`/`REVOKE`, `TRUNCATE … CASCADE`,
+  materialized view logs and partitioned table clauses are reported as unread, and a statement
+  whose objects cannot be established names none. The gaps are listed in
+  `docs/sql-parsing/oracle.md` section 13.
+
+### Fixed
+
+- **Oracle no longer repeats an unquoted value in a conversion error.** Inserting a string into
+  a `NUMBER` column gave a second `ORA-03302` line ending in the value, which reached the console, the
+  logs, the run result and events. The text after `value:`, `value is`, `invalid number:` and a
+  trailing `: ` on an `ORA-` line is now replaced with `?`; the error codes, constraint names and
+  Oracle's fixed phrases stay, and so does the text of an error your own code raises
+  (`ORA-20000` to `ORA-20999`).
+
+- **`dry_run`, `mark_as_executed`, `tags`, `exclude_tags`, `versions` and `exclude_versions` set in the
+  configuration (or by `DBLIFT_DRY_RUN` and the matching variables) are applied by the Python API.**
+  `DBLiftClient.from_config_file(...).migrate()` ignored them, so `dry_run: true` applied every
+  migration for real and a version or tag selection was not applied; `undo`, `info`, `validate`,
+  `clean`, `repair` and `import_flyway` ignored the keys that apply to them. The `migrate`, `undo`, `clean`
+  and `repair` results now have a `dry_run` attribute. An argument passed to the call still wins, then the
+  environment variable, then the YAML key, as on the command line.
+- **`target_version` set in the configuration is applied by the Python API.** A client built with
+  `DBLiftClient.from_config_file` or `from_sqlalchemy(config=...)` validated the configured
+  `target_version` but then ran `migrate`, `info`, `validate` and `undo` as if none were set, so every
+  pending migration was applied, and a configured target now also drives the API's `undo`. An explicit
+  `target_version` argument still wins. On the CLI the flag
+  wins over `DBLIFT_TARGET_VERSION`, which wins over the YAML key, and `target_version: ''` in the YAML
+  is refused (at the root or in an `environments:` block) like `--target-version ""` instead of being read
+  as unset.
+- **Large migration scripts now run in time proportional to their size.** Recording each statement in the
+  run journal re-scanned every statement already recorded, so a script's run time grew with the square of its
+  statement count; a script of 32 000 statements now runs roughly 5 times faster. The history rows and
+  reported results are unchanged.
+
+- **`log_dir` and `log_format` from the config file and `DBLIFT_LOG_DIR` / `DBLIFT_LOG_FORMAT` now
+  take effect.** The CLI used to honour only `--log-dir` and `--log-format`; the parser's
+  `logs` and `text` defaults always won over the other sources. They now follow the usual
+  flag, environment, configuration file, default order, and an invalid format from the
+  environment or the file is rejected like an invalid flag.
+- **The log level is honoured wherever it is set.** `DBLIFT_LOG_LEVEL=ERROR` or `WARNING`,
+  `log_level: ERROR` and `logging.level: ERROR` in the CLI's configuration file used to fall back to
+  `info`, and the Python API's `log_level="ERROR"` still wrote every `info` line to the console
+  and the log file. `error` now shows only errors and `warn` warnings and errors; `warning` is
+  accepted as `warn`, and an unknown level from the flag, the environment or the file now exits
+  with status 2 instead of silently running at `info`; `critical` is accepted and means `error`. `DBLiftClient.from_config(cfg,
+  log_level=...)` (and `log_format`, `log_file`) no longer ignores the argument.
+- **The driver's detail lines and quoted values are removed from error text.** PostgreSQL's
+  `DETAIL:`, `CONTEXT:` and `LINE n:` lines, MySQL's `Duplicate entry '...'` and `near '...'`,
+  SQLite's `near "..."` and a CHECK constraint's text, and SQLAlchemy's `[SQL: ...]` and
+  `[parameters: ...]` blocks no longer reach the console, the text, JSON and HTML logs, the run
+  result or the statement journal; text in quotes is replaced with `?`, names included. The statement
+  number and error class stay. Statements printed at debug level have
+  their string literals masked.
+
+- **`info` now lists a failed undo.** After an undo script failed, `dblift info` (console, `--format json`, the Python API and the MCP `info` tool) showed a clean schema while `validate`, `migrate` and `undo` refused to run because of the failed history row. The failed undo now appears as an `Undo` row in the `Failed` state and is counted in the summary's failed total. Completed undos are still not listed.
+
+- **An Oracle procedure, function, package, trigger, type or `FORCE` view that is still INVALID at the end of
+  its migration now fails the migration.** Oracle reports a `CREATE [OR REPLACE]` or `ALTER ... COMPILE` with
+  compile errors as a success (ORA-24344) and leaves the object INVALID, so `migrate` used to exit 0 with a
+  successful history row, and an INVALID trigger then failed every INSERT/UPDATE/DELETE on its table. Each such
+  unit is checked once the last statement of the migration has run, and recompiled if it is INVALID, so a unit
+  may reference one created later in the same file, and packages may reference each other. `migrate` exits 1
+  and records the migration as failed only for units that are still INVALID, including ones a later statement
+  of the file invalidated, listing each with its first `PLS-` error, line and column. DML run after the migration's
+  last DDL statement is rolled back; DML before a DDL statement is already committed by Oracle's DDL
+  auto-commit. Oracle DDL auto-commits, so the unit stays created and INVALID
+  until a corrected `CREATE OR REPLACE` is applied.
+- **A PostgreSQL statement with a `WITH` now names every table it changes.** `WITH d AS (DELETE FROM src
+  ...) INSERT INTO log SELECT * FROM d`, `INSERT INTO t WITH x AS (...) SELECT ...` and `WITH u AS (UPDATE a
+  ...) DELETE FROM b ...` used to leave the outer target and its events unread behind a diagnostic. The statement
+  now reports its own table, predicate and events, and each `INSERT`, `UPDATE` or `DELETE` inside a CTE adds the
+  table it changes with its own events (`StatementFacts.cte_writes`, `DmlMutation.cte_writes`); a `SELECT` led by
+  such a CTE is data-changing. A name in a CTE body is a CTE only where PostgreSQL's scoping says so
+  (`RECURSIVE`, shadowing, an inner `WITH`, quoted names). `validate-sql` reports `dml-no-where` for an `UPDATE` or
+  `DELETE` in a CTE that has no `WHERE`, and the check no longer treats the statement as safe when only the first of
+  its tables was created earlier in the script. A CTE `MERGE` body, `CREATE ... AS` with a CTE that writes, and a
+  data-modifying `WITH` below the top level (which PostgreSQL rejects) stay unread, each with a diagnostic that says
+  why. Redshift reads `INSERT INTO t WITH ... SELECT` too, and says that it rejects a CTE that writes.
+
+- **A Snowflake `MERGE` behind a `WITH` is read.** The target, the sources the CTEs read and the events of its actions
+  are reported, and the CTE names are not taken for tables. The statement stays unread when a CTE is named like the
+  target.
+
+- **PostgreSQL `COPY ... FROM` with options or `STDIN` is read as a load.** `COPY t FROM 'file' (FORMAT CSV, HEADER)`,
+  `COPY t (a, b) FROM STDIN`, `FROM PROGRAM '...'` and `FROM $$file$$` report `t` as changed by an `INSERT`, and
+  `COPY t TO ...` reports it as read; the options are ignored because none of them changes the table. `validate-sql` now asks
+  for review (`copy-server-side`) when such a `COPY` runs a command (`PROGRAM`) or writes a file on the database
+  server. A query source (`COPY (SELECT ...) TO ...`) and the old `COPY BINARY t` spelling stay unread, without a
+  caution.
+
+- **`CREATE TABLE ... TABLESPACE` on PostgreSQL says why it is unread.** The grammar has no `TABLESPACE` clause, so the
+  statement still names only the object from its first words, and the diagnostic now names the clause instead of
+  reporting an unreadable command.
+
+- **`validate-sql` no longer calls dropping a database link or a materialized view log a destructive drop.**
+  On Oracle, `DROP DATABASE LINK` was reported as `drop-schema` and `DROP MATERIALIZED VIEW LOG ON t` as
+  `drop-table`, both UNSAFE. Both remove a definition, not rows, and now pass; `DROP DATABASE` and
+  `DROP MATERIALIZED VIEW` are reported as before.
+- **`validate-sql` now asks for a `lock_timeout` before `LOCK TABLE` and `VACUUM FULL` on PostgreSQL.**
+  `pg-missing-lock-timeout` covers `LOCK TABLE` in `SHARE` mode or stronger (the default mode is
+  `ACCESS EXCLUSIVE`; `NOWAIT` is exempt) and `VACUUM FULL`, in both its keyword and option-list forms.
+- **DuckDB `CREATE MACRO` is now tracked as a created object.** Dry-run and analysis reports named no
+  object for `CREATE MACRO name(...) AS ...` (or its `CREATE FUNCTION` alias); they now list the macro as
+  a function, with its schema when one is given.
+- **A Python API client in `analysis_mode="full"` no longer prints a sqlglot warning to stderr.**
+  A client built without logging arguments printed `... contains unsupported syntax. Falling back to
+  parsing as a 'Command'.` for statements such as `CREATE TRIGGER`; it now writes nothing, as in the
+  default mode. A logger or handler you configure still receives the message.
+- **A `--target-version` that is not a migration's version is now refused.** `migrate --target-version v1`,
+  `abc`, an empty value or `99` used to apply every pending migration and exit 0, and `-1` or `1a` applied
+  a prefix of them. `migrate`, `undo`, `validate` and `info` now exit 2 before connecting, listing the available
+  versions (`undo` with a value that starts with a digit is checked after connecting, against the
+  applied history too), unless the value is the version of a script (`1`, `1.0.0` and `1_0_0` are the same version; a `V`
+  prefix is not part of a version; `undo` also accepts `0` and an applied version whose script was deleted). The Python API also checks
+  the `target_version` set in the configuration, and raises
+  `dblift.core.exceptions.InvalidTargetVersionError` (a `ValueError`) from `migrate`, `undo`, `validate` and
+  `info`. A target at or below the current version applies nothing and says so.
+
+- **An explicit analysis mode is always honoured by registered client classes.** `from_config`,
+  `from_config_file` and `from_sqlalchemy` (and `dblift migrate --analysis-mode execution`) now
+  always pass `analysis_mode` to the client class, including `"execution"`. A registered class
+  whose own default is `"full"` used to run full analysis when `"execution"` was asked for. A
+  registered class must accept the `analysis_mode` keyword; one that does not now raises
+  `TypeError` instead of being built without it.
+- **`dblift --help` and `dblift --version` work without the presentation packages.** They
+  failed with `ModuleNotFoundError: rich` when Rich was not installed. The default console
+  logger now falls back to plain text, `migrate`, `undo`, `validate` and `clean` run without
+  Rich or Jinja2, and the commands that draw tables (`info` outside `--format json`,
+  `config`, `--show-query-results`) or write an HTML report (`--log-format html`) stop before
+  doing anything with "install dblift[cli]".
+- **A keyword is no longer reported as an object name on a malformed statement.** For every
+  dialect whose statements are read from the grammar, `ALTER TABLE ADD COLUMN x int`,
+  `DROP TABLE IF`, `DROP TABLE CASCADE` and `CREATE TABLE IF` no longer name `ADD`, `IF` or
+  `CASCADE` as the object, and a name continued by a `{...}` template brace (`CREATE TABLE s{c}.t`)
+  is no longer cut at the brace; such a statement is reported as unread. The Db2 reader refuses the
+  same keywords. `UPDATE ONLY t` and `DELETE FROM ONLY t` are likewise reported as unread on
+  MySQL, MariaDB, Oracle and SQL Server.
+
+- **Statement facts no longer shorten four-part relation names.** When the parsed name has more
+  qualifiers than the facts can represent, that relation is left unnamed and dependent effects
+  remain opaque. A separately proven outer program name remains readable. A leading source
+  fragment such as a NUL before `CREATE` or `DROP` no longer proves an affected object.
+- **`info` and `migrate --dry-run` no longer guess affected objects from uncertain SQL names.**
+  Incomplete names, names joined across comments, and quotes that do not name identifiers in the
+  selected dialect leave the affected object unread. SQL execution is unchanged.
+- **A name inside a nested block comment is no longer read as an object.** On PostgreSQL,
+  Redshift and DuckDB, a statement such as `INSERT INTO /* a /* b */ c */ t ...` that dblift
+  could not fully read was reported as writing to `c`; the comment is now skipped as the engine
+  skips it, so the target is `t`. A script that only opens a block comment is reported as an
+  unterminated comment instead of an empty statement.
+- **Redshift scripts are split the way Redshift reads them.** Block comments nest, so
+  `/* a /* b */ c */ SELECT 1` is one statement, and `/* a /* b */ x` is now refused as an
+  unterminated comment, as Redshift does; a script that relied on a comment ending at its first
+  `*/` must close every opened comment. `COPY … FROM STDIN` is a syntax error on Redshift, so its
+  data lines are no longer swallowed as data: the `\.` line that ends them now raises an
+  "unsupported meta-command" error instead of being sent. A function body `BEGIN ATOMIC … END` no
+  longer holds statements together, since Redshift rejects it. Each rule was measured on Redshift
+  Serverless 1.0.485645.
+- **Oracle scripts refuse an invalid blank before a client command.** A no-break
+  space or U+001C before `EXIT`, `PROMPT` or `/` no longer makes the splitter
+  recognize it as a client command; unsafe scripts are explicitly refused.
+
+- **DuckDB splits adjacent strings at the engine's boundaries.** An `E'...'`
+  string carries its backslash escape mode into the next literal only across a
+  CR or LF; a literal on the same line is plain. A non-ASCII digit before `E`
+  remains part of a name, so it does not open an escape string. Statement cuts
+  and literal masking now follow those rules.
+
+- **A NUL byte in a PostgreSQL-family script is refused instead of silently cutting the statement
+  (PostgreSQL, CockroachDB, YugabyteDB and the other engines of the family; Redshift as a precaution).** Everything
+  after a NUL byte was silently ignored: `CREATE TABLE a (i int);<NUL>DROP TABLE a;` ran only the
+  `CREATE`, so a migration could run partly and report success. The script is now refused whole,
+  naming the line and column of the NUL, and nothing runs. Remove the NUL byte; it often comes from
+  a file saved in another encoding such as UTF-16.
+- **The refusal of a NUL character in a MySQL or MariaDB script names its column as well as
+  its line.** The script is still refused whole, as the `mysql` and `mariadb` clients refuse it.
+
+- **MySQL and MariaDB statement facts read more of the grammar.** `TRUNCATE` names its table,
+  `CREATE SCHEMA` / `DROP SCHEMA` name the schema, `RENAME TABLE` names each source table,
+  `CREATE FULLTEXT INDEX` and `CREATE SPATIAL INDEX` name the index and its table, and a DML
+  statement that starts with `LOW_PRIORITY`, `HIGH_PRIORITY`, `DELAYED`, `QUICK` or `IGNORE`
+  names its target table instead of the modifier. An unquoted or backticked name holding a
+  character outside the Basic Multilingual Plane is no longer reported (MySQL stores it as `?`,
+  MariaDB rejects it); a double-quoted name is still read as a string, as it is without
+  `ANSI_QUOTES`.
+- **Statements are split correctly after a name that holds a non-ASCII space or symbol (PostgreSQL,
+  CockroachDB, YugabyteDB, Redshift).** These engines read every character above U+007F, such as a
+  no-break space, as part of a name, so `SELECT 1 AS a<NBSP>$x$` is one alias. dblift opened a dollar
+  quote there (and, except on Redshift, an escape string) and could run a different set of statements than the engine
+  reads. The name now continues through the character, and a script such as `COPY ... FROM
+  STDIN<NBSP>;` is refused instead of read as a COPY header.
+- **A dollar-quoted string whose tag holds a non-ASCII character is read as the engine reads it
+  (PostgreSQL, CockroachDB, YugabyteDB, Redshift).** A tag such as `$é$` or one holding a
+  no-break space was cut at the first character or refused as a malformed tag; the string is now
+  kept whole, so a `;` inside it no longer splits the statement. A tag holding a space, a hyphen,
+  a dot or a control character is still refused.
+- **DuckDB refuses a script with an unclosed block comment.** A script holding a
+  `/*` that is never closed (nested comments count) is now refused before anything
+  runs, as on the other engines. The statements before the comment used to be executed
+  first and the migration then failed in the engine; now nothing runs.
+- **A plugin can declare `statement_facts_class` without a `parser_class` of its own.** The parser
+  factory now serves such a plugin a parser built from its facts reader and `lexical_spec()`, instead
+  of the hybrid parser, or a subclass of it, refusing it. Script analysis no longer raises for
+  it. Script analysis reports a facts parser that cannot be built (a missing
+  `lexical_spec()`, or a reader that does not accept `(dialect, spec)`) as an error; a reader raising
+  while it reads a statement still propagates.
+- **Linting no longer skips cautions on a quoted name.** A table created earlier in a
+  script or delta exempts later statements from the table-scoped cautions (`drop-table`,
+  `truncate`, `drop-column`, ...) only when the names are the same table. A quoted name
+  matches an unquoted one only when it is spelled the way the engine stores the unquoted
+  name (`"users"` on PostgreSQL, `"USERS"` on Oracle); `CREATE TABLE t; DROP TABLE "T";`
+  is now reported. Unquoted names equal ignoring case, and quoted names that are
+  byte-equal, still match.
+- **Redshift reads a form feed between statements as a blank.** A page break in a script no longer
+  becomes a statement of its own, and a form feed at the start of a statement is no longer sent with it.
+- **`migrate` sends a statement that starts or ends with a character the engine does not read as a
+  blank.** On PostgreSQL, CockroachDB and YugabyteDB, a statement that starts or ends with a
+  no-break space, an ideographic space, a control character, U+2028 or a similar character, or a piece
+  made only of one, used to be sent without it, or skipped. It is now sent with the character and
+  fails with a syntax error, as it does under `psql`. A migration indented with no-break spaces, for
+  example one pasted from a web page, now fails where it used to run: replace those characters with
+  ordinary spaces. A form feed is still a blank.
+- **SQL Server: a batch that opens a nested comment and never closes it is sent.** A batch such as
+  `/* a /* b */` is not a closed comment to the server, which nests block comments and
+  answers "Missing end comment mark"; migrate used to skip it as comment-only and report
+  success. It is now sent and fails as the server does, while `/* a /* b */ */` and `/* a */`
+  are still skipped as comments.
+- **`info`, `migrate --dry-run` and the parsers' listings list the statements `migrate` sends,
+  on every engine.** A trailing comment is no longer listed as a statement on SQLite and DuckDB
+  (`validate_sql` of their parsers and `Migration.sql_statements` follow), a statement made of
+  a character MySQL, MariaDB or Db2 keep is listed, and a listed statement is the text that is
+  sent, with no characters trimmed from its edges.
+- **`migrate` sends every statement the splitter returns.** SQLite and DuckDB no longer skip
+  a statement made only of a character the engine rejects (such as U+001C): it is sent and
+  fails as the engine does. On DuckDB a comment that ends at a carriage return no longer hides
+  the statement after it. A `GO 0` batch is now reported once, not twice, when a migration is
+  prepared.
+- **A piece of a script with no code is no longer a statement, in every dialect.**
+  On SQLite and DuckDB, a segment made only of comments no longer shows up as an
+  `UNKNOWN` statement in `info` or linting, and a nested comment counts as a comment on
+  DuckDB. On SQL Server, a batch holding only `;` and blanks (a no-break space, a form feed, a
+  vertical tab, a zero-width space and the other blanks of the dialect), in any order, is no
+  longer returned as a statement. The
+  `mariadb` client sends nothing for a piece made only of a control character and
+  comments, and neither does the MariaDB splitter now; the MySQL splitter still sends it,
+  as the `mysql` client does.
+- **A Snowflake statement ending in an en space (U+2002) is now read as Snowflake reads it.**
+  The en space at a statement edge is trimmed like any blank and the object name before it is
+  recognised; the other Unicode blanks stay in the text, as Snowflake rejects them. A SQL Server
+  name followed by a no-break space at the end of a script is read the same way.
+- **Oracle names followed by a blank and a terminator are read.** `DROP TABLE t<U+3000>;`
+  now names `t` and its undo is generated, as the engine drops `t`; before, the name was
+  reported as unreadable and the undo went to manual review.
+- **Comment detection reads comments in source order.** A `--` or `#` comment holding `/*` no
+  longer hides the code after it from the comment-only check, a carriage return ends a `--`
+  comment, `-/**/-` is code rather than a `--` comment, and an unclosed block comment is never
+  comment-only, so it fails as the engine does.
+- **SQLite execution errors show one failed SQL preview in CLI logs.**
+  For versioned migrations and SQL callbacks, the execution service reports the
+  failed statement while SQLite still reports the database error.
+- **The current schema version reflects successful migrations still in effect.**
+  `info`, migration state, migrate/undo plans and results now agree on the highest
+  active SQL or Python migration version or baseline. Undoing every version clears it.
+- **Statements keep the characters at their edges that the engine reads as part of the text.**
+  Only the engine's own blanks are trimmed, so a name ending in a no-break space is executed
+  and analysed as written. On Oracle, a statement whose edge character the driver would strip
+  is refused, naming the character, line and column.
+  On DuckDB the trimmed blanks are the ones its engine replaces (the ASCII blanks and 18
+  Unicode ones), except a final U+00A0 in the last two bytes of a script, which the engine
+  keeps as part of the name before it, and a blank inside a stretch its pass keeps (after
+  a quote it never sees closed), which stays part of the name; a segment of only such
+  blanks between two `;` is no longer an analysis statement.
+- **DuckDB scripts with non-ASCII blanks are cut where DuckDB cuts them, and a statement
+  that would read differently alone is refused.** DuckDB replaces its Unicode blanks (such
+  as U+00A0) with spaces in one pass over the whole script before parsing, and the pass
+  stops at a dollar tag or a quote it never sees closed (an apostrophe in a block comment,
+  an escape string with a backslash before its quote, a name such as `a$$`). Past that point
+  a blank is a letter, so `e<U+00A0>$t$x` is one name and the statements that follow are
+  separate. dblift read a dollar-quoted string there and ran those statements as one; it now
+  cuts the same statements DuckDB runs. Because dblift runs each statement on its own, DuckDB
+  runs its blank pass again over that statement, and the two passes can disagree: a blank kept
+  in the script can be replaced alone (`DROP TABLE t<U+00A0>CASCADE` after such a stop is
+  rejected by DuckDB and leaves `t`, but alone it read `DROP TABLE t CASCADE` and dropped it),
+  and a blank replaced in the script can be kept alone (`DROP TABLE IF EXISTS t<U+00A0>CASCADE`
+  after a block comment holding `$t$` that closes a tag opened earlier drops `t`, but alone it
+  named another table and did nothing). A statement with a blank read either way is now
+  refused before anything runs, naming the character, its line and its column, and asking you
+  to remove the character.
+- **DuckDB runs the statements it needlessly refused, and refuses a stray no-break space
+  after the last statement.** A blank at the edge of a statement that DuckDB's pass replaces
+  is trimmed before the statement is compared with its script, so `DROP TABLE t<U+00A0>;`,
+  `SELECT 1 AS x<U+00A0>;` and the same with a trailing space or blank line now run what
+  DuckDB runs; they were refused because the blank, still on the statement, would be kept
+  when run alone. A statement is refused only for a blank inside its text that the two
+  readings treat differently, or for a U+00A0 just before the last line ending of the script,
+  which the `duckdb` shell keeps and the driver replaces. A U+00A0 that ends the script after
+  its last statement (`DROP TABLE t;<U+00A0>`) is now refused, naming the character, its line
+  and its column: DuckDB rejects the whole script, and dblift used to drop the blank and run
+  the statement.
+- **A DuckDB migration no longer succeeds after skipping a statement the engine rejects.**
+  A statement made only of a non-ASCII blank DuckDB keeps, or of a control character it does
+  not count as a blank (a vertical tab, U+0085, U+2028, U+001F), was skipped as empty, so
+  `/* ' */ DROP TABLE t;<U+00A0>` reported success and dropped `t` although DuckDB rejects the
+  whole script and keeps `t`. The statement is now sent and the migration fails at it.
+- **A Db2 statement made only of characters such as a no-break space or a form feed is executed.**
+  It was skipped and the migration succeeded; the command line processor sends it and the server
+  rejects it (SQL0104N, SQL0007N), and dblift now fails at that statement the same way. The same
+  holds when a comment stands beside such a character.
+- **A Db2 statement with a nested comment keeps a no-break space at its edge.** A table named
+  with a trailing no-break space, dropped with a nested comment after it, was not the one
+  dropped (`t` went instead); it is now, as with the command line processor.
+- **A MySQL or MariaDB statement made only of characters such as a no-break space is executed.**
+  It was skipped and the migration succeeded; the `mysql` and `mariadb` clients send it and the
+  server rejects it (error 1064), and dblift now fails at that statement the same way. A
+  `DELIMITER` block ending with such a character before its delimiter sends it too.
+  A control character at the end of a statement (such as U+0001 or U+001B) is stripped as the
+  clients strip it; it was sent and the server rejected it. A control character followed by a
+  comment (`<U+001C> -- c`, `/* c */` or `# c`) is sent on MySQL, which rejects it as with its
+  client (a migration holding one after `--` or `/* */`, skipped before, now fails there), and
+  skipped on MariaDB, as its client skips it. A MariaDB database needs a `mariadb+pymysql://`
+  URL for the MariaDB rules.
+- **`migrate` runs a fixed repeatable migration whose last run failed.** Before, a repeatable
+  migration that failed and was then corrected was reported as ready by `validate` but never
+  run by `migrate`, which succeeded without applying it. A failed run now counts as failed
+  whatever its recorded execution time. `validate` and `info` match a repeatable migration
+  recorded under a directory-qualified name by its file name, as `migrate` does.
+
+- **A DuckDB script where a `$` sits inside a word and a dollar tag follows a Unicode blank is split as DuckDB reads it.**
+  `SELECT 1 AS a$$` U+00A0 `$t$x; DROP TABLE t; SELECT 3;` (also U+3000 and the other 16 blanks DuckDB reads)
+  was read as one statement hiding the `DROP TABLE`, while DuckDB keeps the blank inside the word and runs the
+  three statements. A `$` inside a word now continues the word, and a dollar tag opens only after a word ends.
+
+- **A DuckDB script where a number is followed by letters and a dollar-quoted string is split as DuckDB reads it.**
+  `SELECT 1a$$x; DROP TABLE t; SELECT 3 AS y$$;` (also `1_000a`, `1.5a`, `1e5a`, `0x1g` and a
+  positional parameter such as `$1a`) was read as one statement hiding the `DROP TABLE`, while DuckDB
+  reads the number, then a name, and runs the three statements. The number now ends where DuckDB ends it.
+
+- **`repair` now finds exactly the checksum drift `validate` reports for versioned
+  migrations.** Before, an unsigned checksum returned by some drivers was treated as drift and
+  rewritten, a history row recorded under a directory-qualified script name was reported by
+  `validate` but marked as missing by `repair` instead of fixed, and failed rows were compared too.
+- **`validate-sql` no longer hides a `DROP TABLE` whose name could not be read.** For files
+  passed together with `--files`, a `DROP TABLE t<no-break space>;` after `CREATE TABLE t` was
+  exempted as a drop of a new table, although the engine may read another name than `t`. The
+  same held for `TRUNCATE`, `ALTER ... DROP COLUMN`, and a `CREATE TABLE` under an unreadable
+  name followed by `DROP TABLE t`; the finding is now kept.
+- **On SQLite and DuckDB, statement analysis no longer names the wrong object.** A name touching
+  an invisible or zero-width character (a no-break or ideographic space, a zero-width space, a
+  byte-order mark, a combining accent) could be reported under a different name, so a generated
+  undo script could drop an existing table or trigger. Such statements are now reported without
+  object names and their undo needs manual review; an `UPDATE` or `DELETE` whose condition cannot
+  be read is flagged as possibly changing every row, and DuckDB scripts with such spaces between
+  tokens are reported unreadable for now; `CREATE INDEX ... USING` without columns no longer stops
+  statement analysis.
+- **Generated undo scripts no longer drop an existing object that looks like the migrated one.** On
+  PostgreSQL and its compatible engines (CockroachDB, Redshift), MySQL, MariaDB, SQL Server, Oracle,
+  Db2 and Snowflake, a name touching a no-break or zero-width space, a byte-order mark or a
+  combining accent, even at the end of a statement, could be read as a shorter name, so the undo
+  dropped an existing `t` for `CREATE TABLE t<NBSP>(...)`. Such statements now have no object
+  names and their undo needs manual review, as does a name with a non-ASCII letter (`tété`) on
+  PostgreSQL-compatible engines, MySQL, MariaDB and Db2 until their statement analysis reads names
+  the way the engine does.
+- **Statement facts on older sqlglot.** With sqlglot 30.0 to 30.14 installed, an `INSERT` made
+  statement analysis fail silently (a DEBUG "Could not analyse" line), so `migrate --dry-run`
+  lost its `[SAFE]` label and data-plan analysis skipped the statement. An absent `WHERE` is
+  stored as `False` there and is now read as no predicate.
+- **Faster provider lookup without installed entry points.** Running dblift from a checkout, or next
+  to a foreign install, no longer rescans every installed distribution on each database lookup.
+- **`repair` no longer reports success when it cannot read state.** It now fails with
+  `Repair operation failed: <error>` when the schema history or the migration scripts cannot be
+  read. It used to report that nothing needed repairing.
+- **`baseline` rolls back when writing the baseline row fails.** It now rolls back its
+  transaction instead of leaving it open.
+- **`migrate` reports a migration that raises an error.** It now emits
+  `migration.script.failed` when a migration raises an error. A failing before-each
+  callback no longer closes a journal entry that was never opened.
+- **`undo` and `clean` always print their closing summary after connecting.** They now print the
+  closing summary, and write the completion line to JSON and HTML log files, on every exit after
+  they connect. Before, `undo` with nothing to undo or with a failing `beforeUndo` callback, and
+  `clean` when preparing the target or a `beforeClean` callback failed, ended without one.
+- **Strict validation judges migration order the way `migrate` does.** After an `undo`, a
+  strict `migrate` or `validate` refused a pending migration whose version was lower than the
+  undone one, because the undone migration still counted as applied. Order is now measured
+  against the schema's current version, with the same rule `migrate` applies.
+- **Strict validation accepts a script that `repair` marked as deleted.** A strict `validate` or
+  `migrate` failed with "applied migration(s) without corresponding script files" for a script
+  `repair` had marked as intentionally deleted, and listed it twice. `validate`, `migrate` and
+  `repair` now share one rule for missing scripts, which honours the deleted marker and matches a
+  row recorded under a directory-qualified name by its file name.
+
+### Removed
+
+- The `blanks=` and `hash_comments=` keywords of `is_comment_only_statement`, the quirks hooks
+  `empty_statement_blanks()` and `hash_line_comments()` and the `ExecutionEngine`
+  `_is_comment_only_statement` alias (none was in a release). The migration layer decides nothing
+  about a statement the splitter returned.
+- **The internal module `dblift.db.plugins.duckdb.parser._script`.** Use
+  `DuckDBFactsParser().split()`.
+- **The internal module `dblift.db.plugins.db2.parser._script`.** Use
+  `DB2RegexParser().split()`.
+- `dblift.db.plugins.mysql.parser._script` (an internal module; use
+  `MySqlRegexParser().split()`) and the `MARIADB` class attribute of the MySQL
+  and MariaDB regex parsers.
+
+### Security
+
+- **DuckDB: dollar-quoted strings are now redacted in logs and reports.** A value written as
+  `$$…$$` or `$tag$…$tag$`, an escape string with a backslash (`E'…\'…'`), and a quoted name or
+  block comment that is never closed are replaced by `'?'` in failure messages and reports
+  instead of appearing in the clear.
+
+## [4.12.0] - 2026-10-14
+
+### Added
+
+- Scanner records can carry optional half-open Python string offsets into the
+  original script, including consumed client terminators. Their analysis
+  constituents distinguish a single derived statement from a deliberate
+  empty analysis projection.
+- `Statement` records for Oracle (`OracleParser.split()`): the text
+  without its terminator, its line, and the terminator (`;`, `/` or none).
+- `Statement` records from `PostgreSQLStatementParser.split()`: the text
+  without its terminator, its line, the terminator, a kind (`sql`,
+  `directive` or `copy_stdin`), and `multi` for statements combined by
+  psql's `\;`.
+- `Statement` records for SQL Server (`SqlServerRegexParser.split()`): the
+  batch, its first line, `terminator="GO"` or none, and `repeat` for `GO n`.
+- `SqlAnalyzer.split_statements_for_analysis`: the statements of a script for
+  callers that read it statement by statement (T-SQL batches divided, `GO n`
+  not repeated). `SqlServerRegexParser.validate_sql` counts statements, not
+  batches.
+- `Statement` records for MySQL and MariaDB (`MySqlRegexParser.split()`): the
+  text without its delimiter, its line, the delimiter that ended it, and
+  `DELIMITER` lines as `directive` records. MariaDB has its own parser class
+  (`MariaDbRegexParser`).
+- `Statement` records for Db2 (`DB2RegexParser.split()`): the text without its
+  terminator, its line, the terminator (`;`, one declared with
+  `--#SET TERMINATOR`, or none) and a kind (`sql` or `directive`).
+- `Statement` records for SQLite (`SQLiteFactsParser.split()`): the text without
+  its terminator, its line, and the terminator (`;` or none).
+- `Statement` records for DuckDB (`DuckDBRegexParser.split()`): the text without
+  its terminator, its line, and the terminator (`;` or none).
+
+### Changed
+
+- **Script correctness:** the updated dialect splitters refuse scripts the vendor client
+  would reject or misread, naming the construct and its line, instead of guessing
+  another split or silently losing text. The dialect notes below describe the
+  supported client commands and the deliberate extensions to client behavior.
+- **Library API: `split_statements()` keeps comments inside statements.** MySQL,
+  MariaDB, Db2, SQLite and DuckDB strings omit their consumed trailing delimiter.
+  PostgreSQL and Redshift strings keep their trailing `;`; Oracle SQL strings
+  keep `;` but omit a terminating `/` line, retaining the `;` inside PL/SQL bodies.
+  SQL Server returns batches without the `GO` line and keeps their semicolons.
+  Callers that compare or concatenate statement text should account for these
+  dialect-specific projections; `split()` records carry the consumed terminator
+  separately.
+- **Snowflake retains its previous statement splitter.** Its splitter migration
+  is deferred. Redshift inherits the PostgreSQL scanner with its existing
+  non-nesting block comments and backslash escapes in plain string literals;
+  these rules have not been verified against a live Redshift engine.
+- **SQL Server: statement splitting, analysis and extraction run on the shared
+  lexical engine** (as PostgreSQL, SQLite and Oracle do), with the sqlcmd rules as
+  data: the same scripts give the same batches and the same refusals (class, line
+  and message). The four refusals for an unterminated lexeme now read
+  `unterminated string|bracketed identifier|quoted identifier|block comment opened
+  at line L, column C` (they read `unterminated string literal|... starting at ...`);
+  class, line and column are unchanged. The same text appears in the errors of
+  `validate_sql` and `parse_sql` and in the log record `parse_sql` writes.
+- **SQL Server: the notice about `GO 0` is logged by
+  `dblift.core.sql_parser.lexical_engine`** (INFO); its message is unchanged.
+- **SQL Server: splitting a large script takes longer and uses more memory.** On one
+  development machine a 2.9 MB script of `INSERT` statements takes 4.7 s where it
+  took 0.64 s, with a peak of 284 MiB where it was 109 MiB (about two and a half
+  times); a roughly 100 KiB script made by repeating the 99-byte median corpus
+  file takes 0.105 s where it took 0.019 s, with a peak of 4.7 MiB where it was
+  0.7 MiB. The cost grows linearly with script size.
+- SQL Server error-message redaction, object extraction and the check that a
+  statement holds only comments are unchanged: they still read block comments the
+  way the server does (they nest), while the splitter cuts batches the way `sqlcmd`
+  does (a comment ends at the first `*/`).
+- **Oracle: the warning about the text ignored after `EXIT` or `QUIT` is logged by
+  `dblift.core.sql_parser.lexical_engine`**; its message is unchanged.
+- **Oracle: `strict_tokenizer` has no effect.** A character no rule claims is passed
+  through verbatim with a `TokenizerWarning` in both modes; `strict_tokenizer=True`
+  on `OracleParser.split`, `OracleParser.split_statements` and
+  `SqlAnalyzer("oracle").split_statements` no longer raises `TokenizerError` for it.
+- **Oracle: statement splitting, analysis and extraction run on the shared
+  lexical engine** (as PostgreSQL and SQLite do), with the Oracle rules as data.
+  The same scripts give the same statements, with the corrections listed under
+  Fixed. SQL*Plus directive masking for comments keeps its own scanner and is
+  not changed.
+- Oracle error-message redaction now reads quoting the way the statement splitter
+  does: alternative quotes (`q'[...]'`) are one literal, an identifier that contains
+  a comment marker or an apostrophe is not a literal, and an unterminated
+  alternative quote falls back to the first word of the statement.
+- **SQLite: object extraction reads statement facts from the SQLGlot AST instead of
+  regular expressions.** `parse_sql` and `extract_objects` report the table an
+  `INSERT`, `UPDATE` or `DELETE` writes as an affected object, including behind a
+  `WITH` clause, where script analysis now reports the write (`UPDATE`, `DELETE`,
+  `INSERT`) rather than `WITH`, and a `WITH ... SELECT` as `SELECT`. Foreign key
+  targets, view and `CREATE TABLE AS` sources and `INSERT ... SELECT` sources are
+  read as referenced tables, and `CHECK` constraints as declared constraints;
+  referenced tables are not reported as affected objects. Schema-qualified
+  indexes (`CREATE INDEX main.ix ON t(c)`) are extracted with their schema.
+  Statements the grammar does not model (triggers, `PRAGMA`, `VACUUM`,
+  `REPLACE INTO`, virtual tables) are classified from their leading words and are
+  not errors. Text that does not tokenize, such as an unterminated string, is now
+  an error in `parse_sql().errors`, `validate_sql()`, script analysis and the
+  `validate-sql` REVIEW verdict; the message names no SQL text.
+- Script execution, analysis, object extraction, and transaction checks now
+  use each dialect's authoritative scanner records. Client-skipped batches
+  contribute no statements or objects; scanner refusals no longer trigger a
+  second semicolon split. Parser base classes now require dialect subclasses
+  to provide script splitting. SQLGlot analyzes scanner-selected SQL fragments
+  and does not choose script boundaries.
+- Scanner-selected constituents prevent `GO 0` batches from appearing in undo
+  or analysis and expose non-transactional SQL inside combined execution units.
+  Transaction controls inside a psql-combined unit are refused. PostgreSQL
+  `COPY` preserves empty and trailing-empty data rows with their original line
+  endings. Oracle `EXIT` ignores trailing text, and repeated parser calls reset
+  substitution state. MySQL delimiter scanning avoids pathological backtracking;
+  DuckDB continued string literals retain their execution boundaries.
+- **SQLite and DuckDB: a migration that opens with `BEGIN` and closes with
+  `COMMIT` or `END` now runs.** `BEGIN [TRANSACTION]` (and `START TRANSACTION`
+  or `BEGIN WORK` on DuckDB) as the first statement and `COMMIT` or `END [TRANSACTION]` as the
+  last are the transaction dblift already opens for the migration, so both are
+  dropped and a warning says so. The body applies or rolls back as one unit, as
+  in the `sqlite3` and `duckdb` shells. Before, the `BEGIN` failed the
+  migration.
+- **SQLite and DuckDB: any other `BEGIN`, `COMMIT`, `END` or `ROLLBACK` (and
+  `ABORT` on DuckDB, and the `WORK` spellings on DuckDB) in a migration or
+  callback is refused before any of its statements run**, naming the statement
+  and its line. A comment inside the statement (`COMMIT /* c */;`) does not hide
+  it. Before, a `COMMIT` or `END` ended dblift's transaction early, so a later
+  failure left part of the migration applied, and a lone `COMMIT` or a `ROLLBACK`
+  that discarded earlier statements was recorded as a successful migration.
+  `SAVEPOINT`, `RELEASE` and `ROLLBACK TO` run as written. A `BEGIN` with options
+  (`BEGIN EXCLUSIVE`, `BEGIN TRANSACTION READ ONLY`) is not accepted as the opening
+  statement, and neither is an opening `BEGIN` around a statement that cannot run
+  in a transaction (`VACUUM`): the migration is refused.
+- **SQL Server: a script is cut into batches at `GO` lines, as `sqlcmd` cuts
+  it.** A `;` no longer ends a statement for execution: `DECLARE @x INT = 1;
+  SELECT @x;` runs as one request and `@x` stays declared. `CREATE PROCEDURE`,
+  `CREATE VIEW`, `CREATE FUNCTION`, `CREATE TRIGGER` and `CREATE SCHEMA` must
+  be the first statement of their batch, as in `sqlcmd` and SSMS (SQL Server
+  answers `Msg 111`): put a `GO` before them.
+- **SQL Server: a script with a `sqlcmd` command or a `$(variable)` is
+  refused.** `:setvar`, `:r`, `:connect`, `:on error`, `!!`, and `EXIT`,
+  `QUIT`, `RESET` or `ED` as the first word of a line, and any `$(` outside a
+  comment, now fail with the command or text and its line named, instead of
+  being sent to the server with the directive glued onto the next statement.
+  Use `-- ` comments or a placeholder service instead of `$(name)`.
+- **SQL Server: `GO` follows the `sqlcmd` grammar.** Only a count and a `--`
+  comment may follow it; `GO 3` runs the batch three times, `GO 0` never;
+  `GO;`, `GO foo`, `GO /* c */`, and a `GO` after a comment on its line are
+  refused with the line number.
+- **SQL Server: block comments end at the first `*/` when the splitter looks
+  for `GO`**, as in `sqlcmd`; SQL Server itself still nests them, and the text
+  is passed through unchanged.
+- **SQL Server: an unterminated string, identifier or comment is refused**
+  with its line and column instead of falling back to a regex split.
+- **SQL Server: statements the server refuses inside a transaction run in
+  autocommit.** `ALTER FULLTEXT`, `CREATE`, `ALTER` and `DROP DATABASE` (not the
+  `SCOPED CREDENTIAL`, `ENCRYPTION KEY` and `AUDIT SPECIFICATION` forms),
+  `BACKUP DATABASE`, `BACKUP LOG`, `RESTORE DATABASE`, `RESTORE LOG`,
+  `RESTORE VERIFYONLY`, `RECONFIGURE`, `KILL`, `ALTER SERVER
+  CONFIGURATION`, `ALTER SERVER AUDIT`, `DROP FULLTEXT STOPLIST` and `DROP SEARCH PROPERTY LIST` make
+  their batch non-transactional,
+  wherever they stand among the `;`-terminated statements of the batch. A
+  statement of this kind must start a `;`-terminated statement or its own
+  batch; otherwise the server reports the error (Msg 226, 574 or 3021) and the
+  batch rolls back.
+- **Oracle: text after a `;` on the same line is refused.** `CREATE TABLE t
+  (...); -- note` and two statements on one line are no longer accepted;
+  SQL*Plus rejects them with ORA-03405. Move the comment or the second
+  statement to its own line.
+- **Oracle: `&name` is a SQL*Plus substitution variable everywhere on a line,
+  comments inside a statement included, when `SET DEFINE` is on (the
+  default).** `SELECT 1 -- R&D` + newline + `FROM dual` or `'a&b'` without a
+  `DEFINE` is refused because SQL*Plus would prompt for the value; write `SET
+  DEFINE OFF` first, or define the variable. A comment-only line before a
+  statement is not substituted, as in SQL*Plus. `DEFINE b = &a` stores the
+  value of `a`.
+- **Oracle: SQL*Plus directives are recorded or refused, never dropped.**
+  `@file`, `@@file`, `START`, `HOST`, `!`, `ACCEPT`, `PAUSE`, `CONNECT`,
+  `CONN`, `DISCONNECT`, `PASSWORD` and `SET SQLTERMINATOR`, `BLOCKTERMINATOR`,
+  `SQLBLANKLINES`, `SQLPREFIX`, `CMDSEP` now fail the script with an error
+  naming the directive and line instead of being silently skipped. `EXIT` and
+  `QUIT` end the script as in SQL*Plus: the statements after them are not run
+  and a warning names the first one. A directive after a `;` on the same line
+  is refused. Directives may be abbreviated as SQL*Plus allows (`SET
+  SERVEROUT ON`, `SET FEED OFF`), and a directive line ending in `-` continues
+  on the next line, and a `--` or trailing `-` inside quotes is text. A
+  directive may follow a block comment on its line. `SET ESCAPE` and `SET
+  CONCAT` are refused because they change how `&` and `.` are read, and `SET
+  SCAN` acts as `SET DEFINE`. An exit status on `EXIT` / `QUIT` (`EXIT
+  FAILURE`, `EXIT 3`) is recorded and not modelled: migration status is
+  dblift's.
+- `WHENEVER SQLERROR` is still recorded and handed to execution, which applies
+  its policy to the statements that follow; an unrecognised `WHENEVER SQLERROR`
+  action is refused instead of being ignored. `EXEC` / `EXECUTE` is rewritten
+  to `BEGIN ...; END;`.
+- The PostgreSQL family (including Redshift) has no regex fallback: a script
+  the splitter cannot read is an error naming the construct. A script of
+  only `\restrict` / `\unrestrict` lines yields no statement.
+  `split_statements()` strings for a `COPY ... FROM STDIN` no longer carry
+  the `\.` line. The lexical rules are documented in
+  `docs/sql-parsing/postgresql.md`, whose conformance table is compiled into
+  the unit tests.
+- The Oracle splitter has no regex fallback: a script it cannot read is an
+  error naming the construct (the regex path remains for object extraction
+  only). Its statement-text projection is described above; the corrections
+  under Fixed also change the affected strings.
+- SQL Server and Oracle refuse an unterminated string or block comment with
+  `UnsafeStatementSplitError` and its position. SQL Server previously
+  dropped the rest of the file silently for an unterminated comment.
+- MySQL, MariaDB, Db2 and SQLite refuse an unterminated block comment with
+  `UnsafeStatementSplitError`. DuckDB is unchanged: it returns the remainder as
+  one statement, without a warning.
+- **Db2: a script is cut the way the command line processor cuts it.** A
+  statement ends at a line whose last non-blank characters are the terminator:
+  `;`, or the one or two characters a `--#SET TERMINATOR` line declared
+  (upper case only). `@` ends a statement only after that directive; `MY@TBL`
+  is a name. A `;` at the end of a line inside a block comment does not end the
+  statement (commented-out SQL stays whole, where the processor would cut it and
+  reject both halves). A comment after a `;` on its line is dropped and the
+  statement ends at the `;`. Comment-only lines of either form after the last
+  statement are dropped.
+- **Db2: a line that ends with the terminator inside a string or a quoted
+  identifier is refused** with the line named. The processor cuts there and the
+  server rejects both halves; the previous splitter read the literal across the
+  line break and ran it, so a script with a multi-line literal whose line ends in
+  `;` must end the literal on the same line or use another terminator.
+- **Db2: two statements on one line, or code after a `;` in the middle of a
+  line, are refused** with the line named. The processor rejects such a line and
+  the `ibm_db` driver executes only the text before the `;`. The previous
+  splitter cut at that `;` and ran both halves; put each statement on its own
+  line.
+- **Db2: a `--#SET TERMINATOR` line inside a string, a quoted identifier or a
+  block comment is refused.** The processor honours it there and misreads the
+  statement.
+- **Db2: processor commands are refused by name.** `CONNECT TO`, `QUIT`, `ECHO`,
+  `!command`, `?`, `UPDATE COMMAND OPTIONS`, `CHANGE ISOLATION`, `REORG`,
+  `RUNSTATS`, `EXPORT`, `IMPORT`, `LOAD`, `LIST`, `GET` (`GET DIAGNOSTICS` is SQL and passes) and the
+  rest of the processor's own command list, and `(=` comment blocks, stop the
+  script with the command and its line instead of being sent to the server or
+  skipped silently. A command's words are read across line breaks, as the
+  processor reads them. `CONNECT RESET`, `TERMINATE` and `QUIT` as the last
+  statement of a script are dropped when each is the bare command alone on its
+  line, and refused otherwise. `CREATE DATABASE` and `DROP DATABASE` are sent to
+  the server, which rejects them.
+- **Db2: a malformed `--#SET TERMINATOR` line is refused**; a value of more than
+  two characters used to be accepted and ignored.
+- **Db2: a routine body that is never closed and an unterminated block comment
+  are refused** instead of reaching the server. A comment alone before a
+  terminator is still not a statement.
+- **Db2: a body is kept whole under `;`** for `CREATE [OR REPLACE] PROCEDURE`,
+  `FUNCTION`, `TRIGGER`, `METHOD`, `ALTER MODULE … ADD` and a compound
+  statement; `PACKAGE` bodies follow the same rule (not tested against a
+  server). The processor cuts such a body at every line that ends in `;`, so a
+  file that holds one needs a `--#SET TERMINATOR` line to run under `db2 -tvf`;
+  dblift runs it either way, and also runs a last statement that has no
+  terminator, which the processor drops.
+- **SQLite: a script is cut the way the `sqlite3` shell cuts it.** A statement
+  ends at a `;` outside strings, quoted identifiers (`"…"`, `[…]`, `` `…` ``) and
+  comments; a `CREATE [TEMP] TRIGGER` body ends at the `END` that follows a `;`,
+  which is the rule `sqlite3.complete_statement` applies. A transaction block
+  (`BEGIN; … COMMIT;`) and a word such as `begin_at` no longer swallow the
+  statements after them. The text of a statement no longer ends with its `;`,
+  an empty statement (`;;`) and a segment of comments only are not statements
+  for execution (script readers such as linting still see the latter), and a
+  leading byte order mark is dropped.
+- **SQLite: lines the shell would run itself are refused.** A line that starts
+  with a dot when no statement is pending (`.mode`, `.read`, `.exit`, `.shell`,
+  `.open`, …) stops the script with the command and its line instead of being
+  glued onto the next statement. A line the shell ends the statement at (a line
+  that holds only `go` or `/`, blanks and a trailing comment allowed, when the
+  text so far is a complete statement once a `;` is added) is refused too: the
+  driver reads it as part of the statement (`SELECT 6` / `/` / `2` is 3 through
+  the driver). Move the terminator onto the statement.
+- `parse_sql` reports a script the SQLite splitter refuses as an error in
+  `errors`, as for the other dialects, instead of splitting it silently; the
+  statements and objects it returns are unchanged.
+- **DuckDB: a script is cut the way the engine cuts it.** A `;` inside a
+  dollar-quoted string (`$$ … $$`, `$tag$ … $tag$`, closing on the identical tag)
+  no longer splits the statement, a `$$` inside a word (`a$$b`) opens nothing,
+  `$1` and `$name` are parameters, an `E` that follows a quote, a digit or a
+  dollar-quoted string opens an escape string, a dollar quote or an `E` right after one
+  of the 18 Unicode blanks the engine reads (no-break space, em space, ideographic space,
+  U+FEFF, …) still opens, and block comments nest. A segment of
+  comments only is no longer sent to the engine as a statement (script analysis
+  still sees it), and the text of a statement no longer ends with its `;`.
+- DuckDB scripts written for the `duckdb` shell: a line that starts with `.` while
+  no statement text is pending (`.mode`, `.read`, `.exit`, …) is refused with its
+  line instead of being glued onto the next statement, and a NUL character, which
+  the driver would turn into a silently shortened script, is refused with its line.
+  `parse_sql` reports such a refusal in `errors`; the statements and objects it
+  returns are unchanged.
+
+### Removed
+
+- `dblift.db.plugins.sqlserver.parser._batches` (an internal module): the batch scanner
+  is replaced by the shared lexical engine.
+- The unused wrapped-PL/SQL detector on the Oracle tokenizer is gone.
+- The `terminate_script_directives` and `apply_script_substitution` quirks
+  hooks are gone: SQL*Plus directives are handled by the Oracle splitter
+  itself, which records, rewrites or refuses them.
+- `SqlplusContext` (`dblift.db.plugins.oracle.parser`) no longer carries
+  `define_on` or `defines`, and `apply_define_substitution` and
+  `terminate_sqlplus_directives` are gone; `DEFINE` is resolved by the splitter,
+  line by line.
+
+### Fixed
+
+- SQLite `extract_objects()` now propagates scanner refusals, preserving their
+  exception class and source line. Refused scripts no longer report partial
+  object lists or mistake quoted SQL text for changed objects.
+
+- **Oracle: a line whose first text is a `/` is refused where the buffer holds no
+  statement text.** After a statement completed by `;`, SQL*Plus runs `/ SELECT 2
+  FROM dual;` (and `/* c */ /`, with blanks and block comments before the slash) as
+  the `/` command: it re-executes the previous statement and ignores the rest of the
+  line. The splitter used to strip the slash or drop the line, so a script ran
+  differently from SQL*Plus; it now raises `UnsafeStatementSplitError` naming the
+  line and column of the `/`, like a `/` alone after a completed statement. A `/`
+  with no blank before the text that follows it (`/x`) is refused as an unknown
+  command. A `/` followed by text in an open buffer stays statement text, and a
+  statement that ends in a comment keeps the closing slash of that comment (`*/`, or
+  the last character of a `--` comment), which was cut off before and left an
+  unterminated comment.
+- **Oracle: a refusal for an undefined substitution variable names the line of the
+  reference** in the script; one case was miscounted before.
+- **Oracle: a `/` that ends the script on a line with other text stays statement
+  text** (`SELECT 4 /`). It was stripped and read as a terminator before.
+- **Oracle: a record made only of slashes and comments** no longer ends in an
+  internal error; the `/` line is refused with the slash message described above.
+- DuckDB: a lone `INSERT`, `UPDATE` or `DELETE` run through the provider no longer
+  loses the blank lines, the lines starting with `--` or `/*`, and the `CR` of a
+  `CRLF` inside a string literal. The statement is sent as written; only its
+  shape is read with the comments blanked.
+- SQLite: `VACUUM` (with or without `INTO`) runs outside a transaction, like
+  `PRAGMA foreign_keys`. Alone in a migration it now runs, with the autocommit
+  warning; before, it failed with `cannot VACUUM from within a transaction`.
+  Mixed with transactional statements the migration is refused before anything
+  runs, instead of failing partway.
+- DuckDB: a `COMMIT` with no open transaction was reported as success, because
+  `duckdb_engine` turns the bare word into `connection.commit()` and hides the
+  error. A migration's `COMMIT` no longer reaches the driver.
+
+- MySQL and MariaDB: a unit holding several statements (for example
+  `INSERT ... ; INSERT ...` under `DELIMITER //`) runs as one query, as the
+  `mysql` and `mariadb` clients run it, instead of failing with error 1064. An
+  error in a later statement of the unit is reported, and a unit that starts
+  with a `SELECT` runs too. This holds for the connection DBLift opens; an
+  engine passed to `from_sqlalchemy` needs `CLIENT_MULTI_STATEMENTS` enabled
+  (see the SQLAlchemy guide).
+
+- SQLite: a quoted name with a `;` or an apostrophe in it (`"a;b"`, `[it's]`,
+  `` `it's` ``), `""` and ``` `` ``` escapes, comment markers inside a quoted
+  name, a column called `end$` or a quoted `"end"` inside a trigger body, and a
+  transaction statement (`BEGIN`, `COMMIT`) are no longer cut or merged with the
+  statements around them.
+- DuckDB: a migration that defines a macro or a literal with a dollar-quoted body
+  that contains `;` was cut inside the body and failed with `unterminated
+  dollar-quoted string`.
+- Db2: a name with `@` in it (`MY@TBL`) and a quoted name with a `;` in it
+  (`"a;b"`) are no longer cut; a label after `END` (`END P1`), a comment between
+  `END` and `IF`, a compound statement without `ATOMIC`, a body in
+  `ALTER MODULE … ADD PROCEDURE`, a routine without a `BEGIN` next to a trigger,
+  and a `--#SET TERMINATOR` of two characters (`%%`) in a script that also holds
+  a procedure are read as the command line processor reads them.
+- Oracle: `DEFINE`, `SET DEFINE` and `UNDEFINE` apply from the line where they
+  stand, not to the whole script; `&x`, `&&x` and `&x.suffix` are replaced
+  (inside string literals too, as SQL*Plus does), and a reference to an
+  undefined variable is refused instead of being sent as it stands. `EXEC` /
+  `EXECUTE` runs the call as `BEGIN ... END;` instead of dropping it and the
+  statement after it.
+- A dialect without a statement parser splits through the generic scanner again instead of raising "Unsupported dialect" (regression from the PostgreSQL splitter change in this release).
+- PostgreSQL splitting matches psql on: `$1` positional parameters (not
+  dollar-quote tags); a `;` inside parentheses; psql's `\;` combinator; the
+  COPY end-of-data `\.` line (exact line only, consumed as the terminator;
+  a data line with blanks before `\.` is data); psql meta-commands anywhere
+  on a line (refused by name and line); a bare `;` is dropped.
+- An unterminated comment, string, quoted identifier or dollar quote raises
+  `UnsafeStatementSplitError` with line and column instead of swallowing the
+  rest of the script.
+- Oracle: `nq'...'` literals are recognised.
+- Oracle splitting follows SQL*Plus. A `/` terminates only when alone on its
+  line; a `;` must be the last text on its line (text after it is refused,
+  as SQL*Plus rejects it with ORA-03405; see Changed). A PL/SQL unit (DECLARE, BEGIN,
+  labelled blocks, CREATE [OR REPLACE] FUNCTION, PROCEDURE, PACKAGE [BODY],
+  TYPE [BODY], TRIGGER or LIBRARY, JAVA SOURCE, CLASS or RESOURCE, MLE
+  MODULE) ends only at `/`, with no `BEGIN`/`END` counting, so cursors,
+  `CASE ... END`, nested blocks and keyword-named columns cannot confuse the
+  split. A unit without a closing `/` is an error instead of being merged
+  with the next statement. A `/` that would re-execute the previous
+  statement and a `.` alone are refused. A whitespace `q'...'` delimiter and
+  an unterminated q-quote or quoted identifier are refused with their
+  position. A `""` inside a quoted identifier is no longer read as an
+  escape.
+- Oracle: a `/`-ended statement without a `;` no longer merges with the next
+  statement, and a `;` inside parentheses does not end a statement.
+- `validate-sql` and lint report the refusal message for an Oracle script
+  the splitter refuses; object extraction treats
+  an already-split statement as one statement, so a PL/SQL unit without its
+  `/` is still recorded.
+- SQL Server: `SELECT 1 AS go;`, `SELECT go INT FROM t;` and `SELECT 1 GO` no
+  longer lose their `GO` column or alias; `GO 5` no longer leaves `5` glued
+  onto the next statement; a procedure body without `BEGIN` is no longer cut
+  at its first `;`; `DECLARE`d variables survive to the statements after them.
+- **MySQL and MariaDB: a script is cut where the `mysql` / `mariadb` client
+  cuts it.** The client's rules are now followed: `DELIMITER` is a command
+  only as the first word of a line (its argument is the first word, quotes
+  removed; longer than 15 characters, empty, containing a backslash, after a
+  terminator on the same line, or holding a carriage return that is not part
+  of a CRLF pair is refused); the delimiter is matched as plain text, so
+  `DELIMITER GO` also splits inside a word; `--` starts a comment only before
+  a blank, tab or end of line; `#` is a comment after an identifier;
+  `/*! ... */` is kept in the statement and a delimiter inside it splits;
+  `/*+ ... */` hides the delimiter (on MySQL on the line that opens the hint
+  only); `/*M! ... */` is code on MariaDB and a plain comment on MySQL; a
+  backslash is not an escape inside backticks.
+- **MySQL and MariaDB: a comment line that holds a carriage return which is
+  not part of a CRLF pair is refused.** The clients read a `#` or `--` comment
+  to the next line feed, so the statement after the carriage return would be
+  swallowed without an error; statements separated by a carriage return alone
+  are still cut at their delimiters.
+- **MySQL and MariaDB: statements read from content with CRLF line ends have
+  line feeds only,** as the client sends them: a multi-line string literal or
+  a stored-program body is stored with line feeds, as `mysql < file` stores
+  it. This matters for content passed through the API: migration files are
+  read with newline normalisation, so a file never reaches the splitter with a
+  carriage return. The migration checksum is unchanged.
+- **MySQL and MariaDB: an unterminated string, backtick identifier, block
+  comment or optimizer hint is refused** with its line and column instead of
+  being returned as a statement (the client swallows an unterminated comment
+  and exits 0). A stored-program body still open at the end of the script is
+  refused with the line it opened on.
+- **MySQL and MariaDB: stored programs.** `CREATE [OR REPLACE] [DEFINER = ...]
+  [AGGREGATE] PROCEDURE|FUNCTION|TRIGGER|EVENT` and `ALTER EVENT` keep their
+  `BEGIN ... END` body whole under the `;` delimiter, including `REPEAT`,
+  `CASE`, labels, handlers and MariaDB `FOR` loops. A `;` inside the body of
+  the `DEFINER`, `OR REPLACE`, `AGGREGATE`, `FOR` and `ALTER EVENT` forms no
+  longer splits it (a plain `CREATE PROCEDURE ... BEGIN ... END` was already
+  kept whole). The `mysql` client itself rejects such a file unless the
+  body is wrapped in `DELIMITER`, so a migration that runs here still needs
+  `DELIMITER` lines to run with `mysql < file`.
+- Objects and statements extracted from a MariaDB script carry the dialect
+  `mariadb` instead of `mysql`.
+- `parse_sql` reports a script the splitter refuses as an error in `errors` on
+  Oracle, SQL Server, MySQL and MariaDB, instead of failing the parse (PostgreSQL
+  already reported it that way), also when the script declares objects. A refused
+  script returns no statements or objects from the public parser; public object
+  extraction raises the scanner refusal. `validate_sql` reports the same refusal
+  as an error, and execution refuses the script.
+- **MySQL and MariaDB: a script with a client command is refused.** `source`,
+  `exit`, `quit`, `status`, `system`, `connect`, `tee`, `charset`, `prompt`,
+  `pager`, `go`, `help x` and `use db` without a terminator, `status;;` and the
+  other command words followed by several terminators, and every backslash command
+  (`\G`, `\g`, `\c`, `\d`, ...) outside a string or comment now fail with the
+  command and its line named, instead of being sent to the server glued to the
+  next statement or silently dropped (the client ends the script at `exit` and
+  clears the statement at `\c`). A command word after a comment on its line is
+  refused too, and so is a script that sets `NO_BACKSLASH_ESCAPES`. Instead of
+  `source file`, put the statements of that file into a migration file of
+  their own (dblift runs migration files in version order); instead of
+  `system` or `\!`, run the command outside the migration, or write the value
+  it produced as a `${VAR}` placeholder.
+
 ## [4.11.1] - 2026-10-10
 
 ### Fixed
@@ -4209,3 +5403,6 @@ All additions are backward compatible (MINOR): two new modules, two new
 - Configuration via YAML files, environment variables, or CLI arguments.
 - Cross-platform distributions (Windows, Linux, macOS).
 - Modular provider architecture for easy database support extension.
+
+[Unreleased]: https://github.com/dblift/dblift/compare/v4.12.0...develop
+[4.12.0]: https://github.com/dblift/dblift/compare/v4.11.1...v4.12.0

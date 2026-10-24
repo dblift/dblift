@@ -22,7 +22,9 @@ def _clean_state(monkeypatch):
 
 
 def _ctx(commands):
-    return SimpleNamespace(commands=commands, config=SimpleNamespace(), log=None)
+    return SimpleNamespace(
+        commands=commands, config=SimpleNamespace(), log=None, args=SimpleNamespace()
+    )
 
 
 def _marked_handler():
@@ -46,7 +48,7 @@ def test_unmarked_command_gets_resolved_client(monkeypatch):
 
     class _SeamClient:
         @classmethod
-        def from_config(cls, config, logger=None):
+        def from_config(cls, config, logger=None, **kwargs):
             built.append(config)
             return cls()
 
@@ -61,7 +63,7 @@ def test_unmarked_command_gets_resolved_client(monkeypatch):
 def test_multi_command_run_never_goes_config_only(monkeypatch):
     class _SeamClient:
         @classmethod
-        def from_config(cls, config, logger=None):
+        def from_config(cls, config, logger=None, **kwargs):
             return cls()
 
     monkeypatch.setattr(
@@ -75,7 +77,7 @@ def test_multi_command_run_never_goes_config_only(monkeypatch):
 def test_unknown_command_defaults_to_resolved_client(monkeypatch):
     class _SeamClient:
         @classmethod
-        def from_config(cls, config, logger=None):
+        def from_config(cls, config, logger=None, **kwargs):
             return cls()
 
     monkeypatch.setattr(cli_main, "_COMMAND_HANDLERS", {})

@@ -6,23 +6,20 @@ These tests guard against re-introduction of the following bugs:
   → Fixed: now uses DELETE FROM ... WHERE success = FALSE
 - get_database_url missing on PostgreSQL/MySQL providers
   → Fixed: added delegation to connection_manager.get_database_url()
-- validate-sql must work without DB (config-only client)
-  → Fixed: ValidateSqlConfigClient when command is standalone validate-sql; full client otherwise
-- generate_undo_script error handling
-  → Fixed: ValueError/FileExistsError return result with success=False; FileNotFoundError
-    emits failure then re-raises for exception-based callers / batch flows
 - InfoCommand current_schema_version never populated
-  → Fixed: populated from applied_migrations via state_manager.get_current_version
+  → Fixed: populated from the built migration state
 - InfoCommand status normalized to "APPLIED" instead of "SUCCESS"
   → Fixed: "APPLIED" maps to "SUCCESS"; "BASELINE" stays distinct as "BASELINE"
 - SQLite CASE...END inside triggers confused BEGIN/END detection
-  → Fixed: added case_depth tracking in SQLiteRegexParser
+  → Fixed: added case_depth tracking in SQLiteFactsParser
 """
 
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
+
+from tests.unit.core.migration.commands._plan_repairs_wiring import wire_plan_repairs
 
 pytestmark = [pytest.mark.unit]
 
@@ -59,9 +56,8 @@ class TestRepairDeletesFailedMigrations:
 
     def test_repair_failed_migration_calls_delete(self):
         """repair execute() must issue DELETE for failed migrations."""
-        from dblift.core.logger.results import RepairResult
         from dblift.core.migration.commands.repair_command import RepairCommand
-        from dblift.core.migration.migration import MigrationType
+        from dblift.core.migration.state.migration_state import MigrationState
 
         config = Mock()
         config.database.schema = "public"
@@ -75,7 +71,7 @@ class TestRepairDeletesFailedMigrations:
         # Ensure supports_transactions returns True (default for SQL providers)
         provider.supports_transactions.return_value = True
 
-        state_manager = Mock(get_grouped_migrations=Mock(return_value={}))
+        state_manager = Mock()
         history_manager = Mock()
         history_manager.create_schema_and_history_table = Mock()
         history_manager.history_table = "dblift_schema_history"
@@ -86,16 +82,11 @@ class TestRepairDeletesFailedMigrations:
         failed.version = "1.0.0"
         failed.description = "broken"
 
-        state = Mock()
-        state.checksum_changes = []
-        state.deleted_scripts = set()
-        state.applied_objects = []
-        state.failed_objects = [failed]
-        state.grouped_objects = None
+        state = MigrationState(failed_objects=[failed], grouped_objects={})
 
-        post_state = Mock()
-        post_state.checksum_changes = []
+        post_state = MigrationState()
         state_manager.build_state = Mock(side_effect=[state, post_state])
+        wire_plan_repairs(state_manager)
 
         command = RepairCommand(
             config=config,
@@ -141,120 +132,30 @@ class TestProviderGetDatabaseUrl:
 
 
 # ════════════════════════════════════════════════════════════
-# validate-sql must use config-only client (no DB connect)
-# ════════════════════════════════════════════════════════════
-class TestValidateSqlClientInit:
-    """Regression: standalone validate-sql uses ValidateSqlConfigClient, not full DBLiftClient."""
-
-    @staticmethod
-    def _make_mock_provider():
-        provider = Mock()
-        provider.config = Mock()
-        provider.config.log_format = "text"
-        provider.config.log_level = "INFO"
-        provider.config.log_file = None
-        provider.config.logging = None
-        return provider
-
-    @patch("dblift.api.client.MigrationExecutor")
-    @patch("dblift.api._client_factory.DbliftLogger")
-    def test_file_not_found_raises_after_event(self, mock_logger_class, mock_executor_class):
-        """Missing migration path: MIGRATION_FAILED then FileNotFoundError (for try/except flow)."""
-        from dblift.api.client import DBLiftClient
-
-        mock_logger_class.return_value = Mock()
-        mock_executor = Mock()
-        mock_executor.provider = Mock()
-        mock_executor.provider.dialect = "postgresql"
-        mock_executor.history_manager = Mock()
-        mock_executor.history_manager.provider = Mock()
-        mock_executor.sql_execution_service = Mock()
-        mock_executor.sql_execution_service.provider = Mock()
-        mock_executor_class.return_value = mock_executor
-
-        client = DBLiftClient(provider=self._make_mock_provider(), migrations_dir="/tmp")
-        with pytest.raises(FileNotFoundError):
-            client.generate_undo_script("/nonexistent/V1__test.sql")
-
-    @patch("dblift.api.client.MigrationExecutor")
-    @patch("dblift.api._client_factory.DbliftLogger")
-    def test_non_versioned_returns_result(self, mock_logger_class, mock_executor_class, tmp_path):
-        """ValueError for non-versioned files must return result, not raise."""
-        from dblift.api.client import DBLiftClient
-
-        mock_logger_class.return_value = Mock()
-        mock_executor = Mock()
-        mock_executor.provider = Mock()
-        mock_executor.provider.dialect = "postgresql"
-        mock_executor.history_manager = Mock()
-        mock_executor.history_manager.provider = Mock()
-        mock_executor.sql_execution_service = Mock()
-        mock_executor.sql_execution_service.provider = Mock()
-        mock_executor_class.return_value = mock_executor
-
-        non_versioned = tmp_path / "R__repeatable.sql"
-        non_versioned.write_text("SELECT 1;")
-
-        client = DBLiftClient(provider=self._make_mock_provider(), migrations_dir="/tmp")
-        result = client.generate_undo_script(str(non_versioned))
-        assert not result.success
-        assert "not a versioned migration" in result.error_message
-
-    @patch("dblift.api.client.MigrationExecutor")
-    @patch("dblift.api._client_factory.DbliftLogger")
-    @patch("dblift.core.migration.scripting.undo_script_generator.UndoScriptGenerator")
-    def test_file_exists_returns_result(
-        self, mock_gen_class, mock_logger_class, mock_executor_class, tmp_path
-    ):
-        """FileExistsError (overwrite=False) must return result, not raise."""
-        from dblift.api.client import DBLiftClient
-
-        mock_logger_class.return_value = Mock()
-        mock_executor = Mock()
-        mock_executor.provider = Mock()
-        mock_executor.provider.dialect = "postgresql"
-        mock_executor.history_manager = Mock()
-        mock_executor.history_manager.provider = Mock()
-        mock_executor.sql_execution_service = Mock()
-        mock_executor.sql_execution_service.provider = Mock()
-        mock_executor_class.return_value = mock_executor
-
-        migration = tmp_path / "V1_0_0__test.sql"
-        migration.write_text("CREATE TABLE t (id INT);")
-
-        # Make the generator raise FileExistsError
-        mock_gen = Mock()
-        mock_gen.generate_undo_script_for_migration.side_effect = FileExistsError(
-            "Undo script already exists"
-        )
-        mock_gen_class.return_value = mock_gen
-
-        client = DBLiftClient(provider=self._make_mock_provider(), migrations_dir="/tmp")
-        result = client.generate_undo_script(str(migration), overwrite=False)
-        assert not result.success
-        assert "already exists" in result.error_message
-
-
-# ════════════════════════════════════════════════════════════
 # InfoCommand version and status normalization
 # ════════════════════════════════════════════════════════════
 class TestInfoCommandRegressions:
     """Regression: InfoCommand must populate current_schema_version and normalize status."""
 
-    def test_current_schema_version_populated(self):
-        """InfoCommand must populate current_schema_version from applied migrations."""
-        import inspect
+    def test_current_schema_version_populated(self, tmp_path):
+        """InfoCommand reports the effective version in a real SQLite history."""
+        from sqlalchemy import create_engine
 
-        from dblift.core.migration.commands.info_command import InfoCommand
+        from dblift.api import DBLiftClient
 
-        source = inspect.getsource(InfoCommand.execute)
-        # Must resolve current version from state manager and set result.current_schema_version
-        assert (
-            "get_current_version" in source
-        ), "InfoCommand.execute must call state_manager.get_current_version"
-        assert (
-            "result.current_schema_version" in source
-        ), "InfoCommand.execute must set result.current_schema_version"
+        scripts = tmp_path / "migrations"
+        scripts.mkdir()
+        (scripts / "V3__create_t.sql").write_text("CREATE TABLE t (id INTEGER);")
+        engine = create_engine(f"sqlite:///{tmp_path / 'app.db'}")
+        client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=str(scripts))
+        try:
+            assert client.migrate().success
+            info = client.info()
+            assert info.success, info.error_message
+            assert info.current_schema_version == "3"
+        finally:
+            client.close()
+            engine.dispose()
 
     def test_status_applied_maps_to_success(self):
         """Status 'APPLIED' must be normalized to 'SUCCESS'."""
@@ -307,9 +208,9 @@ class TestSqliteCaseEndInTrigger:
 
     def test_trigger_with_case_expression(self):
         """Trigger containing CASE...END must be parsed as single statement."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteRegexParser()
+        parser = facts_parser("sqlite")
 
         sql = """
         CREATE TRIGGER set_status
@@ -335,9 +236,9 @@ class TestSqliteCaseEndInTrigger:
 
     def test_trigger_with_nested_case(self):
         """Trigger with nested CASE expressions."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteRegexParser()
+        parser = facts_parser("sqlite")
 
         sql = """
         CREATE TRIGGER complex_trigger
@@ -365,9 +266,9 @@ class TestSqliteCaseEndInTrigger:
 
     def test_trigger_with_multiple_case_expressions(self):
         """Trigger with multiple CASE expressions in same statement."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteRegexParser()
+        parser = facts_parser("sqlite")
 
         sql = """
         CREATE TRIGGER multi_case
@@ -389,9 +290,9 @@ class TestSqliteCaseEndInTrigger:
 
     def test_case_outside_trigger_is_fine(self):
         """CASE...END outside trigger should not affect statement splitting."""
-        from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
+        from tests.support.facts_parser import facts_parser
 
-        parser = SQLiteRegexParser()
+        parser = facts_parser("sqlite")
 
         sql = """
         SELECT CASE WHEN x > 0 THEN 'pos' ELSE 'neg' END FROM t;
@@ -518,6 +419,9 @@ class TestTransactionalDdlSupport:
 
         # Create a minimal concrete subclass to test the default
         class DummyProvider(TransactionalProvider):
+            def check_transaction_state(self):
+                pass
+
             def begin_transaction(self):
                 pass
 

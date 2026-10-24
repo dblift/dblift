@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests.unit._migration_factory import make_migration
+
 # ---------------------------------------------------------------------------
 # checksum (CRC32 per line)
 # ---------------------------------------------------------------------------
@@ -189,9 +191,8 @@ class TestStatementSplitting:
         return _build
 
     def test_split_10_statements_postgresql(self, benchmark, content_with_n_statements):
-        from dblift.core.migration.migration import Migration
 
-        m = Migration(
+        m = make_migration(
             script_name="V1__test.sql",
             content=content_with_n_statements(10),
             version="1",
@@ -202,9 +203,8 @@ class TestStatementSplitting:
         assert len(result) == 10
 
     def test_split_100_statements_postgresql(self, benchmark, content_with_n_statements):
-        from dblift.core.migration.migration import Migration
 
-        m = Migration(
+        m = make_migration(
             script_name="V1__test.sql",
             content=content_with_n_statements(100),
             version="1",

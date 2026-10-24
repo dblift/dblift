@@ -29,7 +29,8 @@ import pytest
 
 from dblift.core.migration._type_match import is_versioned
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
-from dblift.core.migration.migration import AppliedMigration, Migration, MigrationType
+from dblift.core.migration.migration import AppliedMigration, MigrationType
+from tests.unit._migration_factory import make_migration
 
 # The persisted vocabulary, spelled out literally rather than derived from
 # ``MigrationType`` itself. A parametrization built from ``list(MigrationType)``
@@ -111,7 +112,7 @@ def test_path_constructed_migration_type(
     later phase must not treat ``PYTHON`` as tidy-away-able: it is still the
     value on disk in existing history tables.
     """
-    migration = Migration(script_path=_write(tmp_path, filename))
+    migration = make_migration(script_path=_write(tmp_path, filename))
     assert migration.type is expected
 
 
@@ -141,7 +142,7 @@ def test_name_constructed_migration_type_is_not_format_overridden(
     "unify" the two branches without noticing that it changes which string gets
     persisted.
     """
-    migration = Migration(script_name=filename, content="-- noop\n")
+    migration = make_migration(script_name=filename, content="-- noop\n")
     assert migration.type is expected
 
 
@@ -172,7 +173,7 @@ def test_recorded_migration_info_carries_enum_member_name(
     """
     provider = RecordingProvider()
     manager = MigrationHistoryManager(provider=provider, schema="public", installed_by="tester")
-    migration = Migration(script_path=_write(tmp_path, filename))
+    migration = make_migration(script_path=_write(tmp_path, filename))
 
     manager.record_migration(migration, success=True, execution_time=1)
 

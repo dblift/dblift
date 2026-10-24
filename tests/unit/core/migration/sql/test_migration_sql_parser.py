@@ -6,39 +6,113 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.exceptions import UnsupportedMetaCommandError
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.logger import NullLog
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.migration import Migration
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
+from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
 
 
-def test_helper_splits_with_dialect_and_filters_empty_statements():
+def test_helper_splits_with_dialect_and_returns_the_splitters_list_as_it_is():
     helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
     assert helper.parse_migration_sql(
-        SqlAnalyzer("sqlite"), "SELECT 'a;b'; SELECT 2;", NullLog()
-    ) == ["SELECT 'a;b';", "SELECT 2;"]
+        StatementReader("sqlite"), "SELECT 'a;b'; SELECT 2;", NullLog()
+    ) == ["SELECT 'a;b'", "SELECT 2"]
     analyzer = MagicMock()
     analyzer.split_statements.return_value = ["", "  ", "SELECT 3"]
-    assert helper.parse_migration_sql(analyzer, "SELECT 3;", NullLog()) == ["SELECT 3"]
+    assert helper.parse_migration_sql(analyzer, "SELECT 3;", NullLog()) == ["", "  ", "SELECT 3"]
 
 
-def test_helper_split_failure_logs_and_uses_semicolon_fallback():
+def test_helper_keeps_a_statement_made_of_characters_the_dialect_does_not_strip():
+    helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
+    assert helper.parse_migration_sql(
+        StatementReader("db2"), "VALUES 1;\n\xa0;\nVALUES 2;", NullLog(), dialect="db2"
+    ) == ["VALUES 1", "\xa0", "VALUES 2"]
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+def test_helper_keeps_a_mysql_statement_made_only_of_characters_the_server_does_not_read_as_blank(
+    dialect,
+):
+    helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
+    script = "CREATE TABLE a (x INT);\xa0;CREATE TABLE b (x INT);"
+    assert helper.parse_migration_sql(
+        StatementReader(dialect), script, NullLog(), dialect=dialect
+    ) == [
+        "CREATE TABLE a (x INT)",
+        "\xa0",
+        "CREATE TABLE b (x INT)",
+    ]
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "mariadb"])
+@pytest.mark.parametrize(
+    "script, expected",
+    [
+        (
+            "CREATE TABLE a (x INT)\x1c;\nCREATE TABLE b (x INT);",
+            ["CREATE TABLE a (x INT)", "CREATE TABLE b (x INT)"],
+        ),
+        (
+            "CREATE TABLE a (x INT);\n\x1c;\nCREATE TABLE b (x INT);",
+            ["CREATE TABLE a (x INT)", "CREATE TABLE b (x INT)"],
+        ),
+        ("CREATE TABLE a (x INT);\n\x7f", ["CREATE TABLE a (x INT)"]),
+    ],
+)
+def test_helper_strips_the_control_characters_the_mysql_clients_strip(dialect, script, expected):
+    helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
+    assert (
+        helper.parse_migration_sql(StatementReader(dialect), script, NullLog(), dialect=dialect)
+        == expected
+    )
+
+
+@pytest.mark.parametrize(
+    "dialect, text",
+    [
+        ("sqlite", "\x0b"),
+        ("mysql", "\x0b"),
+        ("mariadb", "\x0c"),
+        ("postgresql", "\xa0"),
+    ],
+)
+def test_helper_does_not_strip_what_the_splitter_returned(dialect, text):
+    helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
+    analyzer = MagicMock()
+    analyzer.split_statements.return_value = ["SELECT 1", text, "SELECT 2"]
+    assert helper.parse_migration_sql(analyzer, "x", NullLog(), dialect=dialect) == [
+        "SELECT 1",
+        text,
+        "SELECT 2",
+    ]
+
+
+@pytest.mark.parametrize("text", ["\x0b", "\u2028", "\x85", "\x1f"])
+def test_helper_keeps_a_duckdb_statement_the_driver_rejects(text):
+    """``SELECT 1;<text>;SELECT 2;`` is a ParserException for the driver (measured, duckdb 1.5.5)."""
+    helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
+    analyzer = MagicMock()
+    analyzer.split_statements.return_value = ["SELECT 1", text, "SELECT 2"]
+    assert helper.parse_migration_sql(analyzer, "x", NullLog(), dialect="duckdb") == [
+        "SELECT 1",
+        text,
+        "SELECT 2",
+    ]
+
+
+def test_helper_split_failure_refuses_instead_of_guessing():
     helper = importlib.import_module("dblift.core.migration.sql.migration_sql_parser")
     analyzer, log = MagicMock(), MagicMock()
     analyzer.split_statements.side_effect = ValueError("bad parser")
-    assert helper.parse_migration_sql(analyzer, " SELECT 1; ; SELECT 2;", log) == [
-        "SELECT 1",
-        "SELECT 2",
-    ]
-    log.warning.assert_called_once_with(
-        "Error using SqlAnalyzer: bad parser. Falling back to simple semicolon-based parser."
-    )
+    with pytest.raises(UnsafeStatementSplitError, match="bad parser"):
+        helper.parse_migration_sql(analyzer, " SELECT 1; ; SELECT 2;", log)
+    log.warning.assert_not_called()
 
 
 def test_helper_unsupported_meta_command_is_not_swallowed_by_the_fallback():
@@ -59,8 +133,10 @@ def test_helper_unsupported_meta_command_is_not_swallowed_by_the_fallback():
 def test_execution_paths_do_not_call_model_sql_parser(operation, monkeypatch):
     provider = MagicMock()
     provider.execute_statement.return_value = 0
-    engine = ExecutionEngine(provider, SqlAnalyzer("sqlite"), NullLog())
-    migration = Migration(script_name="V1__example.sql", content="CREATE TABLE example (id INT);")
+    engine = ExecutionEngine(provider, StatementReader("sqlite"), NullLog())
+    migration = make_migration(
+        script_name="V1__example.sql", content="CREATE TABLE example (id INT);"
+    )
     migration._sql_statements = ["canonical cache"]
     monkeypatch.setattr(
         Migration, "parse_sql_statements", MagicMock(side_effect=AssertionError("model parser"))
@@ -72,34 +148,47 @@ def test_execution_paths_do_not_call_model_sql_parser(operation, monkeypatch):
         engine.execute_callback(migration)
     else:
         assert engine.get_executable_sql_statements(migration, result) == [
-            "CREATE TABLE example (id INT);"
+            "CREATE TABLE example (id INT)"
         ]
     assert not result.error, result.error
     if operation != "preview":
-        provider.execute_statement.assert_called_once_with("CREATE TABLE example (id INT);")
+        provider.execute_statement.assert_called_once_with("CREATE TABLE example (id INT)")
     else:
         provider.execute_statement.assert_not_called()
     assert migration._sql_statements == ["canonical cache"]
 
 
 def test_resolved_config_dialect_replaces_mismatched_analyzer(monkeypatch):
-    wrong = SqlAnalyzer("sqlite")
+    wrong = StatementReader("sqlite")
     monkeypatch.setattr(
         wrong, "split_statements", MagicMock(side_effect=AssertionError("wrong dialect"))
     )
     config = SimpleNamespace(database=SimpleNamespace(type="mssql"))
     engine = ExecutionEngine(MagicMock(), wrong, NullLog(), config=config)
-    migration = Migration(script_name="V1__x.sql", content="SELECT 1\nGO\nSELECT 2\nGO")
+    migration = make_migration(script_name="V1__x.sql", content="SELECT 1\nGO\nSELECT 2\nGO")
     monkeypatch.setattr(
         Migration, "parse_sql_statements", MagicMock(side_effect=AssertionError("model parser"))
     )
     assert engine._prepare_sql_statements(migration) == ["SELECT 1", "SELECT 2"]
 
 
+def test_execution_refuses_analyzer_construction_failure(monkeypatch):
+    config = SimpleNamespace(database=SimpleNamespace(type="sqlserver"))
+    engine = ExecutionEngine(MagicMock(), StatementReader("sqlite"), NullLog(), config=config)
+    migration = make_migration(script_name="V1__x.sql", content="SELECT 'a;b';")
+
+    def fail(*args, **kwargs):
+        raise ValueError("analyzer bug")
+
+    monkeypatch.setattr("dblift.core.migration.executor.execution_engine.StatementReader", fail)
+    with pytest.raises(UnsafeStatementSplitError, match="analyzer bug"):
+        engine._prepare_sql_statements(migration)
+
+
 def test_sqlplus_order_and_context_reset_without_model_parsing(monkeypatch):
-    engine = ExecutionEngine(MagicMock(), SqlAnalyzer("oracle"), MagicMock())
+    engine = ExecutionEngine(MagicMock(), StatementReader("oracle"), MagicMock())
     placeholders = PlaceholderService({"owner": "APP"}, NullLog())
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__x.sql",
         content="DEFINE owner = ${owner}\nPROMPT Ready\nCREATE TABLE &owner..example (id INT);",
     )
@@ -113,64 +202,48 @@ def test_sqlplus_order_and_context_reset_without_model_parsing(monkeypatch):
     )
     assert engine._current_sqlplus_ctx is not None
     engine.log.info.assert_any_call("[PROMPT] Ready")
-    engine.sql_analyzer = SqlAnalyzer("sqlite")
+    engine.sql_analyzer = StatementReader("sqlite")
     assert engine._prepare_sql_statements(
-        Migration(script_name="V2__x.sql", content="SELECT 2;")
-    ) == ["SELECT 2;"]
+        make_migration(script_name="V2__x.sql", content="SELECT 2;")
+    ) == ["SELECT 2"]
     assert engine._current_sqlplus_ctx is None
-
-
-@pytest.mark.parametrize("success", [False, True])
-def test_undo_fallback_does_not_call_model_sql_parser(success, monkeypatch):
-    generator = UndoScriptGenerator("sqlite", logger=NullLog())
-    generator.parser = SimpleNamespace(
-        parse_sql=lambda *args, **kwargs: SimpleNamespace(success=success, statements=[])
-    )
-    migration = Migration(
-        script_name="V1__x.sql",
-        content="CREATE TABLE first (id INT); CREATE TABLE second (id INT);",
-    )
-    monkeypatch.setattr(
-        Migration, "parse_sql_statements", MagicMock(side_effect=AssertionError("model parser"))
-    )
-    statements = generator._generate_undo_statements(migration)
-    assert len(statements) == 2
-    assert "second" in statements[0].sql
-    assert "first" in statements[1].sql
 
 
 @pytest.mark.parametrize("dialect", [None, "sqlite"])
 @pytest.mark.parametrize("failure", ["construction", "splitting"])
-def test_shim_falls_back_safely_for_known_and_default_dialects(dialect, failure, monkeypatch):
+def test_shim_refuses_parser_failures_for_known_and_default_dialects(dialect, failure, monkeypatch):
     monkeypatch.delenv("DBLIFT_DATABASE_TYPE", raising=False)
     analyzer = MagicMock()
     if failure == "construction":
         analyzer.side_effect = ValueError("bad parser")
     else:
         analyzer.return_value.split_statements.side_effect = ValueError("bad parser")
-    monkeypatch.setattr("dblift.core.migration.sql.sql_analyzer.SqlAnalyzer", analyzer)
-    migration = Migration(script_name="V1__x.sql", content="SELECT 1; SELECT 2;", logger=NullLog())
-    assert migration.parse_sql_statements(dialect) == ["SELECT 1", "SELECT 2"]
-    assert migration._sql_statements == ["SELECT 1", "SELECT 2"]
+    monkeypatch.setattr("dblift.core.migration.sql.statement_reader.StatementReader", analyzer)
+    migration = make_migration(
+        script_name="V1__x.sql", content="SELECT 1; SELECT 2;", logger=NullLog()
+    )
+    with pytest.raises(UnsafeStatementSplitError, match="bad parser"):
+        migration.parse_sql_statements(dialect)
+    assert migration._sql_statements is None
 
 
 def test_shim_recomputes_canonical_cache_and_leaves_overrides_uncached():
-    migration = Migration(script_name="V1__x.sql", content="SELECT 1;", dialect="sqlite")
+    migration = make_migration(script_name="V1__x.sql", content="SELECT 1;", dialect="sqlite")
     migration._sql_statements = ["stale"]
-    assert migration.parse_sql_statements() == ["SELECT 1;"]
+    assert migration.parse_sql_statements() == ["SELECT 1"]
     cache = migration._sql_statements
     assert migration.parse_sql_statements(content_override="") == []
-    assert migration.parse_sql_statements(content_override="SELECT 2;") == ["SELECT 2;"]
+    assert migration.parse_sql_statements(content_override="SELECT 2;") == ["SELECT 2"]
     assert migration._sql_statements is cache
     migration.content = "SELECT 3;"
-    assert migration.parse_sql_statements() == ["SELECT 3;"]
-    assert migration._sql_statements == ["SELECT 3;"]
+    assert migration.parse_sql_statements() == ["SELECT 3"]
+    assert migration._sql_statements == ["SELECT 3"]
 
 
 @pytest.mark.parametrize("source", ["migration", "config", "environment", "default"])
 def test_empty_analyzer_dialect_uses_legacy_split_fallbacks(source, monkeypatch):
     monkeypatch.setenv("DBLIFT_DATABASE_TYPE", "mysql")
-    migration = Migration(script_name="V1__x.sql", content="SELECT 1\nGO\nSELECT 2\nGO")
+    migration = make_migration(script_name="V1__x.sql", content="SELECT 1\nGO\nSELECT 2\nGO")
     if source == "migration":
         migration.dialect = "sqlserver"
         migration.config = SimpleNamespace(database=SimpleNamespace(type="mysql"))
@@ -182,7 +255,7 @@ def test_empty_analyzer_dialect_uses_legacy_split_fallbacks(source, monkeypatch)
         monkeypatch.delenv("DBLIFT_DATABASE_TYPE")
         migration.content = "SELECT 1; SELECT 2;"
     original_dialect = migration.dialect
-    analyzer = SqlAnalyzer("")
+    analyzer = StatementReader("")
     analyzer.split_statements = MagicMock(side_effect=AssertionError("empty dialect reused"))
     log = MagicMock()
     engine = ExecutionEngine(MagicMock(), analyzer, log)
@@ -197,17 +270,17 @@ def test_empty_analyzer_dialect_uses_legacy_split_fallbacks(source, monkeypatch)
     assert migration.dialect == original_dialect
     if source == "default":
         log.warning.assert_called_once_with(
-            "No dialect available from config, defaulting to simple parser"
+            "No dialect available from config, using a registered dialect scanner"
         )
 
 
 def test_execution_dialect_is_available_to_subsequent_compatibility_parse(monkeypatch):
-    migration = Migration(
+    migration = make_migration(
         script_name="V1__x.sql", content="SELECT 1\nGO\nSELECT 2\nGO", dialect="mysql"
     )
     engine = ExecutionEngine(
         MagicMock(),
-        SqlAnalyzer("sqlite"),
+        StatementReader("sqlite"),
         NullLog(),
         config=SimpleNamespace(database=SimpleNamespace(type="mssql")),
     )
@@ -221,8 +294,8 @@ def test_execution_dialect_is_available_to_subsequent_compatibility_parse(monkey
 
 
 def test_split_fallback_does_not_retroactively_enable_sqlplus_preprocessing(monkeypatch):
-    engine = ExecutionEngine(MagicMock(), SqlAnalyzer(""), MagicMock())
-    migration = Migration(
+    engine = ExecutionEngine(MagicMock(), StatementReader(""), MagicMock())
+    migration = make_migration(
         script_name="V1__x.sql",
         content="DEFINE owner = APP\nSELECT * FROM &owner.users;",
         dialect="oracle",
@@ -236,7 +309,7 @@ def test_split_fallback_does_not_retroactively_enable_sqlplus_preprocessing(monk
 
 
 def test_empty_execution_content_keeps_legacy_no_dialect_mutation():
-    engine = ExecutionEngine(MagicMock(), SqlAnalyzer("sqlserver"), NullLog())
-    migration = Migration(script_name="V1__x.sql", content="", dialect="mysql")
+    engine = ExecutionEngine(MagicMock(), StatementReader("sqlserver"), NullLog())
+    migration = make_migration(script_name="V1__x.sql", content="", dialect="mysql")
     assert engine._prepare_sql_statements(migration) == []
     assert migration.dialect == "mysql"

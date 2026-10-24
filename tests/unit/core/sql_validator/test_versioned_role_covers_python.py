@@ -13,15 +13,16 @@ predicate fails here rather than in production.
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy import create_engine
 
+from dblift.api import DBLiftClient
+from dblift.core.logger import NullLog
 from dblift.core.migration.migration import AppliedMigration, Migration
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_selector import prune_baseline_migrations
-from dblift.core.sql_validator._strict_mode_validator import validate_strict_mode_rules
-from dblift.core.sql_validator.migration_validator import MigrationValidator, ValidationResult
+from tests.unit._migration_factory import make_migration
 
 VERSIONED_EXTENSIONS = (".sql", ".py")
 
@@ -32,7 +33,7 @@ def _script(tmp_path: Path, name: str) -> Migration:
     """Build a real ``Migration`` from a file so ``type`` is derived, not asserted."""
     path = tmp_path / name
     path.write_text(_CONTENT[path.suffix])
-    return Migration(script_path=path)
+    return make_migration(script_path=path)
 
 
 def _applied(script_name: str, version: str) -> Migration:
@@ -50,15 +51,6 @@ def _applied(script_name: str, version: str) -> Migration:
     ).to_migration()
 
 
-def _validator() -> MigrationValidator:
-    validator = MigrationValidator.__new__(MigrationValidator)
-    validator.log = MagicMock()
-    validator.script_manager = SimpleNamespace(
-        compare_versions=lambda left, right: int(left) - int(right)
-    )
-    return validator
-
-
 @pytest.mark.unit
 @pytest.mark.parametrize("extension", VERSIONED_EXTENSIONS)
 def test_baseline_filtering_drops_pre_baseline_versioned_script(tmp_path: Path, extension: str):
@@ -67,7 +59,7 @@ def test_baseline_filtering_drops_pre_baseline_versioned_script(tmp_path: Path, 
     A surviving script is re-executed against a schema that was baselined
     precisely to declare it already applied.
     """
-    baseline = Migration.create_baseline_migration("-- baseline", "2", "baselined")
+    baseline = MigrationScriptManager(NullLog()).baseline_marker("2", "baselined")
     old = _script(tmp_path, f"V1__old{extension}")
     new = _script(tmp_path, f"V3__new{extension}")
 
@@ -93,11 +85,20 @@ def test_strict_mode_detects_out_of_order_pending_script(
     later = _script(tmp_path, f"V2__new{applied_extension}")
     applied = _applied(later.script_name, "2")
 
-    result = ValidationResult()
-    issues: list[str] = []
+    engine = create_engine(f"sqlite:///{tmp_path / 'app.db'}")
+    client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=str(tmp_path))
+    try:
+        snapshot = client.executor.state_manager.build_validation_snapshot(
+            None,
+            "validate",
+            strict_mode=True,
+            resolved_migrations=[pending, later],
+            applied_migrations=[applied],
+        )
+        result = client.executor.validator.validate_snapshot(snapshot, "validate")
+    finally:
+        client.close()
+        engine.dispose()
 
-    passed = validate_strict_mode_rules(_validator(), [pending, later], [applied], result, issues)
-
-    assert passed is False
     assert result.success is False
-    assert any(pending.script_name in issue for issue in issues)
+    assert any(pending.script_name in issue for issue in result.issues)

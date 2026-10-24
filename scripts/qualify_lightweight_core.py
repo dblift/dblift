@@ -115,7 +115,10 @@ def qualify(
             result["python"] = checked_run([str(python), "--version"], work).stdout.strip()
             # Installation output can contain index credentials; record only its status.
             try:
-                checked_run([str(python), "-m", "pip", "install", str(wheel)], work)
+                # The qualified profile carries the command-line and analysis extras,
+                # so the installed probe finds Rich, Jinja2 and SQLGlot.
+                requirement = f"dblift[cli,analysis] @ {wheel.resolve().as_uri()}"
+                checked_run([str(python), "-m", "pip", "install", requirement], work)
                 checked_run([str(python), "-m", "pip", "check"], work)
             except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
                 result["error"] = f"wheel installation failed ({type(exc).__name__})"

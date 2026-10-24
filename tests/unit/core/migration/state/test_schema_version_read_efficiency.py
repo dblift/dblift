@@ -106,19 +106,17 @@ def test_missing_rank_undo_still_excludes_version(manager):
 
 
 @pytest.mark.parametrize(
-    "rows,header_version,public_version",
+    "rows,expected",
     [
-        ([row("3", "BASELINE")], "3", None),
-        ([row("1"), row("2", rank=2), row("2", "UNDO_SQL", 3)], "1", "2"),
+        ([row("3", "BASELINE")], "3"),
+        ([row("1"), row("2", rank=2), row("2", "UNDO_SQL", 3)], "1"),
     ],
 )
-def test_public_state_version_and_payload_remain_distinct(
-    manager, rows, header_version, public_version
-):
+def test_public_state_version_and_header_agree(manager, rows, expected):
     manager.history_manager.get_applied_migrations.return_value = rows
     before = manager.build_state(None).to_dict()
-    assert before["current_version"] == public_version
-    assert manager.resolve_current_schema_version() == header_version
+    assert before["current_version"] == expected
+    assert manager.resolve_current_schema_version() == expected
     after = manager.build_state(None).to_dict()
     before.pop("generated_at")
     after.pop("generated_at")

@@ -49,7 +49,10 @@ only the deltas.
 from __future__ import annotations
 
 import re
-from typing import Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Optional, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 
 @runtime_checkable
@@ -65,6 +68,10 @@ class DdlQuirks(Protocol):
 @runtime_checkable
 class ParserQuirks(Protocol):
     """Parser / tokenizer factory hooks."""
+
+    def lexical_spec(self) -> Optional[LexicalSpec]:
+        """Return shared lexical-engine rules once the dialect is migrated."""
+        ...
 
 
 @runtime_checkable

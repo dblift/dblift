@@ -8,7 +8,7 @@ from dblift.core.exceptions import TransactionAbortedError
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.migration import Migration
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.plugins.oracle.parser.sqlplus_context import SqlplusContext
 
 
@@ -55,30 +55,17 @@ class TestSqlplusContextExtraction:
 
         assert engine._current_sqlplus_ctx is None
 
-    def test_define_substitution_applied_before_parsing(self):
+    def test_script_text_reaches_the_splitter_unsubstituted(self):
         engine = _make_engine("oracle")
         migration = _make_sql_migration("DEFINE owner = APP_SCHEMA\nSELECT * FROM &owner.users;")
         result = MagicMock()
 
         engine._parse_sql_statements(migration, result)
 
-        # The analyzer receives script text after SQLPlus substitution.
+        # Variables are the splitter's (positional, docs/sql-parsing/oracle.md section 6),
+        # not a whole-script pre-pass.
         content_arg = engine.sql_analyzer.split_statements.call_args.args[0]
-        assert content_arg is not None
-        assert "&owner" not in content_arg
-        assert "APP_SCHEMA" in content_arg
-
-    def test_define_off_skips_substitution(self):
-        engine = _make_engine("oracle")
-        migration = _make_sql_migration(
-            "SET DEFINE OFF\nDEFINE owner = APP\nSELECT * FROM &owner.t;"
-        )
-        result = MagicMock()
-
-        engine._parse_sql_statements(migration, result)
-
-        ctx = engine._current_sqlplus_ctx
-        assert ctx.define_on is False
+        assert content_arg == migration.content
 
     def test_prompt_messages_logged(self):
         engine = _make_engine("oracle")
@@ -93,6 +80,8 @@ class TestSqlplusContextExtraction:
 
 # The directive-stripping script from the release test protocol, with
 # apostrophes in the free-text directives.
+# PAUSE is not in the block: it waits for a keypress, which a migration cannot give
+# (docs/sql-parsing/oracle.md section 6: refused, not dropped).
 SQLPLUS_DIRECTIVES_SCRIPT = """SET SERVEROUTPUT ON
 SET LINESIZE 200
 SET PAGESIZE 0
@@ -116,7 +105,6 @@ TTITLE 'Migration Report'
 BTITLE 'End'
 REPHEADER 'Header'
 REPFOOTER 'Footer'
-PAUSE
 VARIABLE v_count NUMBER
 PRINT v_count
 BREAK ON username
@@ -132,7 +120,7 @@ CREATE TABLE DBLIFT_TEST.sp_b (v VARCHAR2(20) DEFAULT q'[--]');
 
 def _oracle_statements(content: str) -> list:
     engine = _make_engine("oracle")
-    engine.sql_analyzer = SqlAnalyzer(dialect="oracle", logger=engine.log)
+    engine.sql_analyzer = StatementReader(dialect="oracle", logger=engine.log)
     return engine._parse_sql_statements(_make_sql_migration(content), MagicMock())
 
 
@@ -206,11 +194,10 @@ class TestSqlplusDirectiveApostrophes:
             "PROMPT Loading -- don't\n"
             "SELECT * FROM &owner..t;\n"
         )
-        engine.sql_analyzer = SqlAnalyzer(dialect="oracle", logger=engine.log)
+        engine.sql_analyzer = StatementReader(dialect="oracle", logger=engine.log)
 
         statements = engine._parse_sql_statements(migration, MagicMock())
 
-        assert engine._current_sqlplus_ctx.defines == {"OWNER": "APP"}
         assert engine._current_sqlplus_ctx.prompts == ["Loading"]
         assert statements == ["WHENEVER SQLERROR CONTINUE;", "SELECT * FROM APP.t;"]
 
@@ -246,6 +233,40 @@ class TestSqlplusDirectiveApostrophes:
         statements = _oracle_statements(f"{insert}\nCREATE TABLE y (id NUMBER);\n")
 
         assert statements == [insert, "CREATE TABLE y (id NUMBER);"]
+
+
+class TestDirectivesAreTheSplittersNotThePrePass:
+    """Directive lines reach the splitter intact: it records, rewrites or refuses them."""
+
+    def test_include_directive_fails_the_migration_instead_of_being_dropped(self):
+        """Section 6: `@@file` is rejected, naming the directive and line, never dropped."""
+        engine = _make_engine("oracle")
+        engine.sql_analyzer = StatementReader(dialect="oracle", logger=engine.log)
+        result = MagicMock()
+
+        statements = engine._parse_sql_statements(
+            _make_sql_migration("@@setup.sql\nCREATE TABLE a (id NUMBER);\n"), result
+        )
+
+        assert statements is None
+        assert "'@@'" in result.set_error.call_args.args[0]
+
+    def test_statements_after_exit_are_not_executed(self):
+        """Section 6: everything after `EXIT` is not executed (row 17)."""
+        statements = _oracle_statements("CREATE TABLE a (id NUMBER);\nEXIT\nDROP TABLE a;\n")
+
+        assert statements == ["CREATE TABLE a (id NUMBER);"]
+
+    def test_serveroutput_still_read_from_the_context(self):
+        """Section 6: `SET SERVEROUTPUT` (abbreviated as SQL*Plus allows) is recorded; execution reads it."""
+        engine = _make_engine("oracle")
+        engine.sql_analyzer = StatementReader(dialect="oracle", logger=engine.log)
+
+        engine._parse_sql_statements(
+            _make_sql_migration("SET SERVEROUT ON\nSELECT 1 FROM DUAL;"), MagicMock()
+        )
+
+        assert engine._current_sqlplus_ctx.serveroutput is True
 
 
 class TestWheneverSqlerrorContinue:

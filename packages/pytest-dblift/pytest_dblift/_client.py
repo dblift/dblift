@@ -68,4 +68,5 @@ def create_dblift_client(
         engine,
         migrations_dir=migrations_dir,
         schema=schema,
+        analysis_mode="full",
     )

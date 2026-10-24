@@ -7,6 +7,7 @@ to use specialized components for better separation of concerns.
 
 from __future__ import annotations
 
+import importlib
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
@@ -30,7 +31,7 @@ from dblift.core.migration.history.migration_history_manager import MigrationHis
 from dblift.core.migration.journals.migration_journal import MigrationJournal
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.ui.migration_ui import MigrationUI
 from dblift.core.sql_validator.migration_validator import MigrationValidator
@@ -39,6 +40,24 @@ from dblift.db.base_provider import BaseProvider
 from .execution_engine import ExecutionEngine
 from .migration_helpers import MigrationHelpers
 from .placeholder_manager import PlaceholderManager
+
+
+def require_analysis_support(analysis_mode: str, feature: Optional[str] = None) -> None:
+    """Fail clearly when ``analysis_mode="full"`` (or *feature*) needs SQLGlot and it is absent."""
+    if analysis_mode != "full":
+        return
+    try:
+        importlib.import_module("sqlglot")
+    except ImportError as exc:
+        raise ModuleNotFoundError(
+            (
+                f"{feature} needs SQLGlot: install it with `pip install dblift[analysis]`"
+                if feature
+                else "analysis_mode='full' needs SQLGlot: install it with "
+                "`pip install dblift[analysis]`, or use analysis_mode='execution'"
+            ),
+            name="sqlglot",
+        ) from exc
 
 
 class MigrationExecutor:
@@ -54,7 +73,7 @@ class MigrationExecutor:
         provider: "BaseProvider",
         config: DbliftConfig,
         log: Log,
-        analysis_mode: Literal["full", "execution"] = "full",
+        analysis_mode: Literal["full", "execution"] = "execution",
     ):
         """Initialize the executor with injected provider.
 
@@ -69,6 +88,7 @@ class MigrationExecutor:
             raise ValueError("config and log are required")
         if analysis_mode not in ("full", "execution"):
             raise ValueError("analysis_mode must be 'full' or 'execution'")
+        require_analysis_support(analysis_mode)
         self.analysis_mode = analysis_mode
 
         # Store injected provider
@@ -139,7 +159,9 @@ class MigrationExecutor:
         self.migration_ui = self.ui  # Alias for backward compatibility/consistency
 
         # Initialize SQL analyzer and execution engine
-        self.sql_analyzer = SqlAnalyzer(dialect=config.database.type, analysis_mode=analysis_mode)
+        self.sql_analyzer = StatementReader(
+            dialect=config.database.type, analysis_mode=analysis_mode
+        )
         # In-process statement journal is always on (not user-configurable).
         self.journal = MigrationJournal(enabled=True, capture_objects=analysis_mode == "full")
 

@@ -15,7 +15,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from dblift.core.migration.commands.base_command import BaseCommand
+from dblift.core.migration.commands.base_command import BaseCommand, PreflightConnectionError
+from tests.unit.core.migration.commands._plan_repairs_wiring import wire_plan_repairs
 
 
 def _make_command_stub() -> BaseCommand:
@@ -96,23 +97,70 @@ class TestCommandLifecycleRunner:
 
 
 @pytest.mark.unit
-class TestCommandLifecycleIntentionalDeviations:
-    """Source-level guardrails for commands not migrated to the runner yet."""
+class TestLifecycleErrorHandler:
+    """``on_error`` runs after the error is set and before the footer."""
 
-    def _source(self, relative_path: str) -> str:
-        return Path(relative_path).read_text(encoding="utf-8")
+    def test_on_error_runs_after_error_and_before_footer(self):
+        command = _make_command_stub()
+        result = _make_result()
+        calls: list[str] = []
+        original_set_error = result.set_error
 
-    def test_clean_retains_custom_dry_run_connection_handling(self):
-        source = self._source("dblift/core/migration/commands/clean_command.py")
-        assert "dry_run" in source
-        assert "list_droppable_objects" in source
-        assert "_run_command_lifecycle" not in source
+        def recording_set_error(message: str) -> None:
+            calls.append("set_error")
+            original_set_error(message)
 
-    def test_undo_retains_multiple_early_completion_paths(self):
-        source = self._source("dblift/core/migration/commands/undo_command.py")
-        assert "should_undo_version" in source
-        assert source.count('_log_command_completion("undo"') >= 3
-        assert "_run_command_lifecycle" not in source
+        result.set_error = recording_set_error
+        command._log_command_completion.side_effect = lambda *_a, **_k: calls.append("completion")
+
+        def body() -> None:
+            raise RuntimeError("x")
+
+        command._run_command_lifecycle(
+            "info", result, body, on_error=lambda: calls.append("on_error")
+        )
+
+        assert calls == ["set_error", "on_error", "completion"]
+
+    def test_on_error_failure_is_swallowed(self):
+        command = _make_command_stub()
+        result = _make_result()
+
+        def body() -> None:
+            raise RuntimeError("x")
+
+        def on_error() -> None:
+            raise ValueError("handler broke")
+
+        command._run_command_lifecycle("info", result, body, on_error=on_error)
+
+        command._log_command_completion.assert_called_once_with("info", result)
+        command.log.debug.assert_called_once_with("Error handler for info failed: handler broke")
+
+    def test_preflight_connection_error_in_body_propagates(self):
+        command = _make_command_stub()
+        result = _make_result()
+
+        def body() -> None:
+            raise PreflightConnectionError("down")
+
+        with pytest.raises(PreflightConnectionError):
+            command._run_command_lifecycle("migrate", result, body)
+
+        command._log_command_completion.assert_not_called()
+
+
+@pytest.mark.unit
+class TestCommandBodiesNeverLogTheFooter:
+    """The lifecycle owns the footer; a command body that logs it would double it."""
+
+    @pytest.mark.parametrize("command", ["migrate", "undo", "clean"])
+    def test_command_runs_through_the_lifecycle_and_leaves_the_footer_to_it(self, command):
+        source = Path(f"dblift/core/migration/commands/{command}_command.py").read_text(
+            encoding="utf-8"
+        )
+        assert "_run_command_lifecycle" in source
+        assert "_log_command_completion" not in source
 
 
 @pytest.mark.unit
@@ -194,3 +242,402 @@ class TestPrintMainHeaderOnceRouting:
         captured = capsys.readouterr()
         assert captured.out == "", "banner must NOT appear on stdout"
         assert "DBLIFT" in captured.err, "banner must appear on stderr"
+
+
+def _build_command(command_class, **collaborators):
+    """Build *command_class* with MagicMock collaborators, overridable by keyword."""
+    deps = {
+        "config": SimpleNamespace(database=SimpleNamespace(schema="public", type="postgresql")),
+        "log": MagicMock(),
+        "provider": MagicMock(),
+        "script_manager": MagicMock(),
+        "history_manager": MagicMock(),
+        "validator": MagicMock(),
+        "execution_engine": MagicMock(),
+        "migration_helpers": MagicMock(),
+        "state_manager": MagicMock(),
+        "migration_ui": MagicMock(),
+        "migration_rules": MagicMock(),
+    }
+    deps.update(collaborators)
+    command = command_class(**deps)
+    command._run_preflight = MagicMock()
+    command._log_command_header_update = MagicMock()
+    command._log_command_completion = MagicMock()
+    return command
+
+
+def _validate_case(fail_body: bool):
+    from dblift.core.migration.commands.validate_command import ValidateCommand
+
+    command = _build_command(ValidateCommand)
+    verdict = MagicMock(success=True, error_message="", issues=[])
+    command.validator.validate_snapshot.return_value = verdict
+    if fail_body:
+        command.state_manager.build_validation_snapshot.side_effect = RuntimeError("x")
+    return command, lambda: command.execute(Path("/migrations")), "validate"
+
+
+def _baseline_case(fail_body: bool):
+    from dblift.core.migration.commands.baseline_command import BaselineCommand
+    from dblift.db.provider_interfaces import TransactionalProvider
+
+    provider = MagicMock()
+    provider.__class__ = TransactionalProvider
+    command = _build_command(BaselineCommand, provider=provider)
+    command.state_manager.get_applied_migration_records.return_value = []
+    if fail_body:
+        command.history_manager.record_migration.side_effect = RuntimeError("x")
+    return command, lambda: command.execute("1.0", "initial"), "baseline"
+
+
+def _import_flyway_case(fail_body: bool):
+    from dblift.core.migration.commands.import_flyway_command import ImportFlywayCommand
+
+    command = _build_command(ImportFlywayCommand)
+    command.state_manager.resolve_flyway_source_table.return_value = "flyway_schema_history"
+    command.state_manager.history_source_exists.return_value = True
+    command.state_manager.read_history_rows.return_value = []
+    if fail_body:
+        command.state_manager.resolve_flyway_source_table.side_effect = RuntimeError("x")
+    return command, lambda: command.execute(Path("/scripts")), "import-flyway"
+
+
+def _repair_case(fail_body: bool):
+    from dblift.core.migration.commands.repair_command import RepairCommand
+    from dblift.core.migration.state.migration_state import MigrationState
+
+    command = _build_command(RepairCommand)
+    wire_plan_repairs(command.state_manager)
+    command.state_manager.build_state.return_value = MigrationState(grouped_objects={})
+    if fail_body:
+        command.state_manager.build_state.side_effect = RuntimeError("x")
+    return command, lambda: command.execute(Path("/migrations")), "repair"
+
+
+_LIFECYCLE_COMMANDS = {
+    "validate": (_validate_case, "Validation operation failed"),
+    "baseline": (_baseline_case, "Baseline operation failed"),
+    "import-flyway": (_import_flyway_case, "Import Flyway operation failed"),
+    "repair": (_repair_case, "Repair operation failed"),
+}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("name", list(_LIFECYCLE_COMMANDS))
+class TestMigrationCommandsShareTheLifecycle:
+    """validate, baseline, import-flyway and repair log one footer on every exit."""
+
+    def test_footer_logged_once_on_success(self, name):
+        build, _prefix = _LIFECYCLE_COMMANDS[name]
+        command, run, command_name = build(fail_body=False)
+
+        result = run()
+
+        assert result.success is True
+        command._log_command_completion.assert_called_once_with(command_name, result)
+
+    def test_footer_logged_once_on_body_error(self, name):
+        build, prefix = _LIFECYCLE_COMMANDS[name]
+        command, run, command_name = build(fail_body=True)
+
+        result = run()
+
+        assert result.success is False
+        assert result.error_message == f"{prefix}: x"
+        command._log_command_completion.assert_called_once_with(command_name, result)
+
+    def test_preflight_error_propagates(self, name):
+        build, _prefix = _LIFECYCLE_COMMANDS[name]
+        command, run, _command_name = build(fail_body=False)
+        command._run_preflight.side_effect = PreflightConnectionError("down")
+
+        with pytest.raises(PreflightConnectionError):
+            run()
+
+        command._log_command_completion.assert_not_called()
+
+
+@pytest.mark.unit
+def test_repair_safety_error_has_no_prefix():
+    from dblift.core.migration.commands.repair_command import RepairSafetyError
+
+    command, run, _name = _repair_case(fail_body=False)
+    command.state_manager.plan_repairs = MagicMock(side_effect=RepairSafetyError("refusing"))
+
+    result = run()
+
+    assert result.success is False
+    assert result.error_message == "refusing"
+    command._log_command_completion.assert_called_once_with("repair", result)
+
+
+@pytest.mark.unit
+class TestBaselineHeader:
+    """The baseline header is logged once per run; only a dry run carries ``dry_run``."""
+
+    def test_dry_run_header_marks_dry_run(self):
+        from dblift.core.migration.commands.baseline_command import BaselineCommand
+
+        command = _build_command(BaselineCommand)
+        command.history_manager.has_history_table = False
+
+        command.execute("1.0", "initial", dry_run=True)
+
+        command._log_command_header_update.assert_called_once_with(
+            "baseline", baseline_version="1.0", dry_run=True
+        )
+
+    def test_real_run_header_has_no_dry_run(self):
+        command, run, _name = _baseline_case(fail_body=False)
+
+        run()
+
+        command._log_command_header_update.assert_called_once_with(
+            "baseline", baseline_version="1.0"
+        )
+
+
+# ---------------------------------------------------------------------------
+# migrate, undo and clean: one footer rule for every exit
+# ---------------------------------------------------------------------------
+
+
+def _quiet(command):
+    """Stub the header/footer/connection so the tests count footer calls only."""
+    command._run_preflight = MagicMock()
+    command._log_command_header_update = MagicMock()
+    command._log_command_completion = MagicMock()
+    command._log_current_schema_version = MagicMock()
+    return command
+
+
+def _migrate_command(pending=None):
+    from tests.unit.core.migration.commands.test_migrate_command_lock_refusal import (
+        _cmd,
+        _repeatable,
+    )
+
+    return _quiet(_cmd([_repeatable()] if pending is None else pending))
+
+
+def _migrate_no_pending():
+    command = _migrate_command(pending=[])
+    return command, lambda: command.execute(Path("/migrations"))
+
+
+def _migrate_dry_run():
+    command = _migrate_command()
+    return command, lambda: command.execute(Path("/migrations"), dry_run=True)
+
+
+def _migrate_strict_mode_error():
+    from dblift.core.migration.state.migrate_plan import StrictModeError
+
+    command = _migrate_command()
+    command.state_manager.plan_migrate = MagicMock(side_effect=StrictModeError("out of order"))
+    return command, lambda: command.execute(Path("/migrations"))
+
+
+def _migrate_validation_failure():
+    command = _migrate_command()
+    command.validator = MagicMock()
+    command.migration_helpers.validate_migrations_for_migrate.return_value = (
+        False,
+        ["bad checksum"],
+        0.0,
+    )
+    return command, lambda: command.execute(Path("/migrations"))
+
+
+def _migrate_lock_refused():
+    command = _migrate_command()
+    command.provider.acquire_migration_lock.return_value = False
+    return command, lambda: command.execute(Path("/migrations"))
+
+
+def _migrate_success():
+    command = _migrate_command()
+    return command, lambda: command.execute(Path("/migrations"))
+
+
+def _undo_command():
+    from dblift.core.migration.migration import MigrationType
+    from tests.unit.core.migration.commands.test_undo_command_undone_count_not_doubled import (
+        _make_applied_migration,
+        _make_command,
+        _make_undo_script,
+    )
+
+    applied = [_make_applied_migration("1", MigrationType.SQL)]
+    return _quiet(_make_command(applied, [_make_undo_script("1")]))
+
+
+def _undo_nothing_to_undo():
+    command = _undo_command()
+    command.migration_rules._is_currently_undone.return_value = True
+    return command, lambda: command.execute(scripts_dir=MagicMock())
+
+
+def _undo_no_history_table():
+    command = _undo_command()
+    command.history_manager.has_history_table = False
+    return command, lambda: command.execute(scripts_dir=MagicMock())
+
+
+def _undo_before_undo_failure():
+    command = _undo_command()
+
+    def fire(event: str) -> None:
+        if event == "beforeUndo":
+            raise RuntimeError("callback broke")
+
+    command._fire = MagicMock(side_effect=fire)
+    return command, lambda: command.execute(scripts_dir=MagicMock())
+
+
+def _undo_success():
+    command = _undo_command()
+    return command, lambda: command.execute(scripts_dir=MagicMock())
+
+
+def _clean_command(**kwargs):
+    from tests.unit.core.migration.commands.test_clean_command_extended import _make_cmd
+
+    return _quiet(_make_cmd(**kwargs))
+
+
+def _clean_prepare_target_failure():
+    from dblift.db.provider_interfaces import CleanTargetProvider
+
+    provider = MagicMock(spec=CleanTargetProvider)
+    provider.validate_clean_target.return_value = "public"
+    provider.prepare_clean_target.side_effect = RuntimeError("no such target")
+    command = _clean_command(provider=provider)
+    return command, lambda: command.execute(clean_enabled=True)
+
+
+def _clean_before_clean_failure():
+    command = _clean_command()
+
+    def fire(event: str) -> None:
+        if event == "beforeClean":
+            raise RuntimeError("callback broke")
+
+    command._fire = MagicMock(side_effect=fire)
+    return command, lambda: command.execute(clean_enabled=True)
+
+
+def _clean_dry_run():
+    command = _clean_command()
+    return command, lambda: command.execute(dry_run=True)
+
+
+def _clean_success():
+    command = _clean_command()
+    return command, lambda: command.execute(clean_enabled=True)
+
+
+_CONNECTED_EXITS = {
+    "migrate: no pending": (_migrate_no_pending, "migrate"),
+    "migrate: dry run": (_migrate_dry_run, "migrate"),
+    "migrate: StrictModeError": (_migrate_strict_mode_error, "migrate"),
+    "migrate: validation failure": (_migrate_validation_failure, "migrate"),
+    "migrate: lock refused": (_migrate_lock_refused, "migrate"),
+    "migrate: success": (_migrate_success, "migrate"),
+    "undo: nothing to undo": (_undo_nothing_to_undo, "undo"),
+    "undo: no history table": (_undo_no_history_table, "undo"),
+    "undo: beforeUndo failure": (_undo_before_undo_failure, "undo"),
+    "undo: success": (_undo_success, "undo"),
+    "clean: prepare_clean_target failure": (_clean_prepare_target_failure, "clean"),
+    "clean: beforeClean failure": (_clean_before_clean_failure, "clean"),
+    "clean: dry run": (_clean_dry_run, "clean"),
+    "clean: success": (_clean_success, "clean"),
+}
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("exit_name", list(_CONNECTED_EXITS))
+def test_footer_logged_once_on_every_connected_exit(exit_name):
+    build, command_name = _CONNECTED_EXITS[exit_name]
+    command, run = build()
+
+    result = run()
+
+    command._log_command_completion.assert_called_once_with(command_name, result)
+
+
+def _clean_disabled():
+    command = _clean_command(clean_disabled=True)
+    return command, lambda: command.execute()
+
+
+def _clean_target_invalid():
+    from dblift.db.provider_interfaces import CleanTargetProvider
+
+    provider = MagicMock(spec=CleanTargetProvider)
+    provider.validate_clean_target.side_effect = RuntimeError("bad target")
+    command = _clean_command(provider=provider)
+    return command, lambda: command.execute(clean_enabled=True)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("build", [_clean_disabled, _clean_target_invalid])
+def test_no_header_no_footer_before_connecting(build):
+    command, run = build()
+
+    result = run()
+
+    assert result.success is False
+    command._run_preflight.assert_not_called()
+    command._log_command_header_update.assert_not_called()
+    command._log_command_completion.assert_not_called()
+
+
+@pytest.mark.unit
+def test_migrate_history_preflight_error_propagates():
+    command = _migrate_command()
+
+    def preflight(_result, **kwargs):
+        if kwargs.get("ensure_history"):
+            raise PreflightConnectionError("history table down")
+
+    command._run_preflight = MagicMock(side_effect=preflight)
+
+    with pytest.raises(PreflightConnectionError):
+        command.execute(Path("/migrations"))
+
+    command._log_command_completion.assert_not_called()
+
+
+def _undo_first_collaborator_raises():
+    command = _undo_command()
+    command.migration_helpers.setup_migration_parameters.side_effect = RuntimeError("x")
+    command._fire = MagicMock()
+    return command, lambda: command.execute(scripts_dir=MagicMock()), "afterUndoError"
+
+
+def _clean_first_collaborator_raises():
+    command = _clean_command()
+    command.provider.list_droppable_objects.side_effect = RuntimeError("x")
+    command._fire = MagicMock()
+    return command, lambda: command.execute(clean_enabled=True), "afterCleanError"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "build, prefix",
+    [
+        (_undo_first_collaborator_raises, "Undo operation failed"),
+        (_clean_first_collaborator_raises, "Clean operation failed"),
+    ],
+    ids=["undo", "clean"],
+)
+def test_error_callback_fired_once_on_body_exception(build, prefix):
+    command, run, event = build()
+
+    result = run()
+
+    assert result.error_message == f"{prefix}: x"
+    fired = [c for c in command._fire.call_args_list if c.args == (event,)]
+    assert len(fired) == 1

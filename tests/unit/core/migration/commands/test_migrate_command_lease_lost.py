@@ -9,7 +9,7 @@ migration may start.
 from types import SimpleNamespace
 
 from dblift.core.migration.migration import MigrationType
-from tests.unit.core.migration.commands.test_migrate_command_repeatable_lock_race import (
+from tests.unit.core.migration.commands.test_migrate_command_lock_refusal import (
     _cmd,
     _run,
 )
@@ -26,7 +26,7 @@ def _versioned(version: str) -> SimpleNamespace:
 
 
 def test_lost_lease_stops_before_the_next_migration() -> None:
-    cmd = _cmd([_versioned("1"), _versioned("2")], applied_after_lock=[])
+    cmd = _cmd([_versioned("1"), _versioned("2")])
     cmd.provider.migration_lock_lost.side_effect = [False, True, True]
 
     result = _run(cmd)
@@ -39,7 +39,7 @@ def test_lost_lease_stops_before_the_next_migration() -> None:
 
 
 def test_held_lease_runs_every_migration() -> None:
-    cmd = _cmd([_versioned("1"), _versioned("2")], applied_after_lock=[])
+    cmd = _cmd([_versioned("1"), _versioned("2")])
     cmd.provider.migration_lock_lost.return_value = False
 
     result = _run(cmd)
@@ -50,7 +50,7 @@ def test_held_lease_runs_every_migration() -> None:
 
 
 def test_lost_lease_is_not_reported_as_released() -> None:
-    cmd = _cmd([_versioned("1"), _versioned("2")], applied_after_lock=[])
+    cmd = _cmd([_versioned("1"), _versioned("2")])
     cmd.provider.migration_lock_lost.side_effect = [False, True, True]
     cmd.provider.release_migration_lock.return_value = False
 

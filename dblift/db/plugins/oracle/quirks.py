@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Type
 
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
 
 if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
+    from dblift.core.sql_parser.statement_facts import StatementFactsReader
     from dblift.db.version import DatabaseVersion
 
 
@@ -70,6 +73,7 @@ class OracleQuirks(BaseQuirks):
     uppercase_identifiers = True
     clean_strategy = "native"
     sqlglot_dialect = "oracle"
+    statement_facts_class: Optional[Type["StatementFactsReader"]] = SqlglotStatementFactsReader
     # import-flyway reads the verbatim-cased Flyway source table directly,
     # because get_applied_migrations would uppercase the name and miss it.
     flyway_source_table_case_sensitive = True
@@ -84,11 +88,9 @@ class OracleQuirks(BaseQuirks):
             return True
         return super().is_schema_history_race_error(error_message)
 
-    sqlglot_unsupported_sql_patterns = (
-        "PARTITION BY REFERENCE",
-        "PARTITION BY RANGE",
-        "PARTITION BY LIST",
-        "INTERVAL (",
+    leading_word_statement_types = (
+        ("DDL", ("ANALYZE", "AUDIT", "NOAUDIT")),
+        ("DML", ("CALL",)),
     )
     connection_probe_sql = "SELECT 1 FROM DUAL"
     boolean_false_literal = "0"
@@ -155,24 +157,11 @@ class OracleQuirks(BaseQuirks):
 
         return extract_sqlplus_context(sql)
 
-    def terminate_script_directives(self, sql: str) -> str:
-        """Keep SQL*Plus directive lines from merging with the next statement."""
-        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
+    def lexical_spec(self) -> "LexicalSpec":
+        """The lexical specification the shared engine splits Oracle scripts with."""
+        from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 
-        return terminate_sqlplus_directives(sql)
-
-    def apply_script_substitution(self, sql: str, ctx: Optional[object]) -> str:
-        """Apply SQL*Plus ``&var`` / ``&&var`` substitution using *ctx*."""
-        if ctx is None:
-            return sql
-        from dblift.db.plugins.oracle.parser.sqlplus_context import (
-            SqlplusContext,
-            apply_define_substitution,
-        )
-
-        if not isinstance(ctx, SqlplusContext):
-            return sql
-        return apply_define_substitution(sql, ctx)
+        return ORACLE_SPEC
 
     def parse_error_policy_directive(self, stmt: str) -> Optional[str]:
         """Return the Oracle ``WHENEVER SQLERROR`` policy encoded in *stmt*, or ``None``."""
@@ -191,23 +180,6 @@ class OracleQuirks(BaseQuirks):
         from dblift.db.plugins.oracle.oracle.dbms_output import read_dbms_output
 
         read_dbms_output(connection, log)
-
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """Oracle parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
-        :class:`SqlGlotParser` (``oracle`` dialect), regex → :class:`OracleParser`."""
-        if parser_type == "hybrid":
-            from dblift.core.sql_parser.hybrid_parser import HybridParser
-
-            return HybridParser
-        if parser_type == "sqlglot":
-            from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-
-            return SqlGlotParser
-        if parser_type == "regex":
-            from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
-
-            return OracleParser
-        return None
 
     def type_equivalents(self) -> "dict[str, str]":
         """Oracle alias → canonical type map.

@@ -2,7 +2,7 @@
 
 import pytest
 
-from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
+from tests.support.facts_parser import facts_parser
 
 pytestmark = pytest.mark.unit
 
@@ -17,9 +17,7 @@ pytestmark = pytest.mark.unit
     ],
 )
 def test_conditional_ddl_does_not_swallow_following_statement(ddl):
-    statements = OracleParser().split_statements(
-        ddl + ";\nINSERT INTO probe VALUES(1);", strict_tokenizer=True
-    )
+    statements = facts_parser("oracle").split_statements(ddl + ";\nINSERT INTO probe VALUES(1);")
     assert len(statements) == 2
     assert "INSERT" not in statements[0]
     assert statements[1].rstrip(";") == "INSERT INTO probe VALUES(1)"
@@ -38,7 +36,7 @@ def test_conditional_procedure_header_preserves_nested_if_and_following_sql():
     /
     INSERT INTO probe VALUES(1);
     """
-    statements = OracleParser().split_statements(sql, strict_tokenizer=True)
+    statements = facts_parser("oracle").split_statements(sql)
     assert len(statements) == 2
     assert statements[0].count("END IF") == 2
     assert "INSERT" not in statements[0]
@@ -56,7 +54,7 @@ def test_anonymous_if_and_sql_case_keep_their_own_boundaries():
     SELECT CASE WHEN 1 = 1 THEN 2 ELSE 3 END FROM dual;
     INSERT INTO probe VALUES(1);
     """
-    statements = OracleParser().split_statements(sql, strict_tokenizer=True)
+    statements = facts_parser("oracle").split_statements(sql)
     assert len(statements) == 3
     assert "END IF" in statements[0]
     assert "CASE WHEN" in statements[1]

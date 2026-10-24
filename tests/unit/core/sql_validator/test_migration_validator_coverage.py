@@ -5,6 +5,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+from dblift.core.migration.state.checksum_drift import find_checksum_drift
+from dblift.core.migration.state.missing_scripts import missing_applied
+from dblift.core.migration.state.ordering import out_of_order
+from dblift.core.migration.state.repeatable_status import repeatable_runs
+
 # ---------------------------------------------------------------------------
 # Helper factories
 # ---------------------------------------------------------------------------
@@ -958,7 +963,14 @@ class TestValidateChecksums(unittest.TestCase):
         result = ValidationResult()
         issues = []
         applied = self._make_applied("V1__x.sql", MigrationType.UNKNOWN)
-        v._validate_checksums([], [applied], result, issues)
+        v._validate_checksums(
+            [],
+            [applied],
+            result,
+            issues,
+            drift=find_checksum_drift([], [applied]),
+            missing=missing_applied([], [applied]),
+        )
         self.assertEqual(issues, [])
 
     def test_skip_delete_type(self):
@@ -969,7 +981,14 @@ class TestValidateChecksums(unittest.TestCase):
         result = ValidationResult()
         issues = []
         applied = self._make_applied("V1__x.sql", MigrationType.DELETE)
-        v._validate_checksums([], [applied], result, issues)
+        v._validate_checksums(
+            [],
+            [applied],
+            result,
+            issues,
+            drift=find_checksum_drift([], [applied]),
+            missing=missing_applied([], [applied]),
+        )
         self.assertEqual(issues, [])
 
     def test_skip_undo_sql_type(self):
@@ -980,7 +999,14 @@ class TestValidateChecksums(unittest.TestCase):
         result = ValidationResult()
         issues = []
         applied = self._make_applied("V1__x.sql", MigrationType.UNDO_SQL)
-        v._validate_checksums([], [applied], result, issues)
+        v._validate_checksums(
+            [],
+            [applied],
+            result,
+            issues,
+            drift=find_checksum_drift([], [applied]),
+            missing=missing_applied([], [applied]),
+        )
         self.assertEqual(issues, [])
 
     def test_skip_baseline_type(self):
@@ -991,7 +1017,14 @@ class TestValidateChecksums(unittest.TestCase):
         result = ValidationResult()
         issues = []
         applied = self._make_applied("V1__x.sql", MigrationType.BASELINE)
-        v._validate_checksums([], [applied], result, issues)
+        v._validate_checksums(
+            [],
+            [applied],
+            result,
+            issues,
+            drift=find_checksum_drift([], [applied]),
+            missing=missing_applied([], [applied]),
+        )
         self.assertEqual(issues, [])
 
     def test_missing_script_strict_mode_adds_issue(self):
@@ -1003,7 +1036,15 @@ class TestValidateChecksums(unittest.TestCase):
         issues = []
         applied = self._make_applied("V1__missing.sql", MigrationType.SQL, version="1")
         sm.has_script_changed.return_value = False
-        v._validate_checksums([], [applied], result, issues, strict_mode=True)
+        v._validate_checksums(
+            [],
+            [applied],
+            result,
+            issues,
+            strict_mode=True,
+            drift=find_checksum_drift([], [applied]),
+            missing=missing_applied([], [applied]),
+        )
         self.assertTrue(any("missing" in i.lower() for i in issues))
 
     def test_missing_script_not_strict_mode_logs_warning(self):
@@ -1015,7 +1056,15 @@ class TestValidateChecksums(unittest.TestCase):
         issues = []
         applied = self._make_applied("V1__missing.sql", MigrationType.SQL, version="1")
         sm.has_script_changed.return_value = False
-        v._validate_checksums([], [applied], result, issues, strict_mode=False)
+        v._validate_checksums(
+            [],
+            [applied],
+            result,
+            issues,
+            strict_mode=False,
+            drift=find_checksum_drift([], [applied]),
+            missing=missing_applied([], [applied]),
+        )
         # Issues should be empty (only warning logged)
         self.assertEqual(issues, [])
 
@@ -1029,7 +1078,15 @@ class TestValidateChecksums(unittest.TestCase):
         applied = self._make_applied("V1__deleted.sql", MigrationType.SQL, version="1")
         delete_record = self._make_applied("V1__deleted.sql", MigrationType.DELETE, version="1")
         sm.has_script_changed.return_value = False
-        v._validate_checksums([], [applied, delete_record], result, issues, strict_mode=True)
+        v._validate_checksums(
+            [],
+            [applied, delete_record],
+            result,
+            issues,
+            strict_mode=True,
+            drift=find_checksum_drift([], [applied, delete_record]),
+            missing=missing_applied([], [applied, delete_record]),
+        )
         # Should not add issue because it's marked as deleted
         self.assertEqual(issues, [])
 
@@ -1050,7 +1107,15 @@ class TestValidateChecksums(unittest.TestCase):
             path=None,
         )
         sm.has_script_changed.return_value = False
-        v._validate_checksums([alt_script], [applied], result, issues, strict_mode=True)
+        v._validate_checksums(
+            [alt_script],
+            [applied],
+            result,
+            issues,
+            strict_mode=True,
+            drift=find_checksum_drift([alt_script], [applied]),
+            missing=missing_applied([alt_script], [applied]),
+        )
         self.assertTrue(any("repair" in i.lower() for i in issues))
 
     def test_changed_script_not_repeatable_adds_issue(self):
@@ -1073,7 +1138,14 @@ class TestValidateChecksums(unittest.TestCase):
         # _last_successful_non_delete_record will be called; we need applied to have script_name set
         applied.success = True
         applied.type = MigrationType.SQL
-        v._validate_checksums([script], [applied], result, issues)
+        v._validate_checksums(
+            [script],
+            [applied],
+            result,
+            issues,
+            drift=find_checksum_drift([script], [applied]),
+            missing=missing_applied([script], [applied]),
+        )
         # Either adds issue or logs debug - depends on path/script_path
         # with path=None, current_checksum stays None, so false positive check passes
         # Actually it should add to checksum_mismatches but not add issue since both None
@@ -1097,7 +1169,14 @@ class TestValidateChecksums(unittest.TestCase):
             content="SELECT 1;",
             path=None,
         )
-        v._validate_checksums([script], [applied], result, issues)
+        v._validate_checksums(
+            [script],
+            [applied],
+            result,
+            issues,
+            drift=find_checksum_drift([script], [applied]),
+            missing=missing_applied([script], [applied]),
+        )
         self.assertEqual(issues, [])
         self.assertTrue(result.success)
 
@@ -1138,7 +1217,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         v, sm, *_ = _make_validator()
         result = ValidationResult()
         rep = self._rep_script()
-        v._check_repeatable_migrations([rep], [], result)
+        v._check_repeatable_migrations([rep], [], result, runs=repeatable_runs([rep], []))
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 1)
         self.assertEqual(result.repeatable_migrations_to_reapply[0]["database_checksum"], "")
 
@@ -1147,7 +1226,13 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
 
         v, _, _, log = _make_validator()
         result = ValidationResult()
-        v._check_repeatable_migrations([self._rep_script()], [], result, command="migrate")
+        v._check_repeatable_migrations(
+            [self._rep_script()],
+            [],
+            result,
+            command="migrate",
+            runs=repeatable_runs([self._rep_script()], []),
+        )
         messages = [call.args[0] for call in log.info.call_args_list]
         self.assertTrue(any("pending repeatable" in msg for msg in messages), messages)
         self.assertFalse(any("need to be reapplied" in msg for msg in messages), messages)
@@ -1157,11 +1242,14 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
 
         v, sm, _, log = _make_validator()
         result = ValidationResult()
+        scripts = [self._rep_script(checksum=200)]
+        applied = [self._applied_rep(success=True, checksum=100)]
         v._check_repeatable_migrations(
-            [self._rep_script(checksum=200)],
-            [self._applied_rep(success=True, checksum=100)],
+            scripts,
+            applied,
             result,
             command="migrate",
+            runs=repeatable_runs(scripts, applied),
         )
         messages = [call.args[0] for call in log.info.call_args_list]
         self.assertTrue(any("need to be reapplied" in msg for msg in messages), messages)
@@ -1174,7 +1262,9 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         result = ValidationResult()
         rep = self._rep_script(checksum=200)
         applied = self._applied_rep(success=True, checksum=100)
-        v._check_repeatable_migrations([rep], [applied], result)
+        v._check_repeatable_migrations(
+            [rep], [applied], result, runs=repeatable_runs([rep], [applied])
+        )
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 1)
 
     def test_applied_and_unchanged_no_reapply(self):
@@ -1184,7 +1274,9 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         result = ValidationResult()
         rep = self._rep_script(checksum=100)
         applied = self._applied_rep(success=True, checksum=100)
-        v._check_repeatable_migrations([rep], [applied], result)
+        v._check_repeatable_migrations(
+            [rep], [applied], result, runs=repeatable_runs([rep], [applied])
+        )
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 0)
 
     def test_failed_applied_same_checksum_sets_error(self):
@@ -1195,7 +1287,9 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         rep = self._rep_script(checksum=100)
         # failed with execution_time > 0 and same checksum
         applied = self._applied_rep(success="0", checksum=100, execution_time=100)
-        v._check_repeatable_migrations([rep], [applied], result)
+        v._check_repeatable_migrations(
+            [rep], [applied], result, runs=repeatable_runs([rep], [applied])
+        )
         self.assertFalse(result.success)
         self.assertIn("previously failed", result.error_message)
 
@@ -1206,7 +1300,9 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         result = ValidationResult()
         rep = self._rep_script(checksum=200)
         applied = self._applied_rep(success="0", checksum=100, execution_time=100)
-        v._check_repeatable_migrations([rep], [applied], result)
+        v._check_repeatable_migrations(
+            [rep], [applied], result, runs=repeatable_runs([rep], [applied])
+        )
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 1)
 
     def test_non_repeatable_skipped(self):
@@ -1218,7 +1314,9 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         sql_script = SimpleNamespace(
             type=MigrationType.SQL, version="1", script_name="V1__t.sql", checksum=100, path=None
         )
-        v._check_repeatable_migrations([sql_script], [], result)
+        v._check_repeatable_migrations(
+            [sql_script], [], result, runs=repeatable_runs([sql_script], [])
+        )
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 0)
         self.assertTrue(result.success)
 
@@ -1234,7 +1332,9 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
             {"script": "R__rep.sql", "database_checksum": "100", "filesystem_checksum": 200}
         ]
         # Just call to ensure no exception
-        v._check_repeatable_migrations([rep], [applied], result, command="migrate")
+        v._check_repeatable_migrations(
+            [rep], [applied], result, command="migrate", runs=repeatable_runs([rep], [applied])
+        )
 
     def test_info_command_logs_info(self):
         from dblift.core.sql_validator.migration_validator import ValidationResult
@@ -1243,7 +1343,9 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         result = ValidationResult()
         rep = self._rep_script(checksum=100)
         applied = self._applied_rep(success=True, checksum=50)
-        v._check_repeatable_migrations([rep], [applied], result, command="info")
+        v._check_repeatable_migrations(
+            [rep], [applied], result, command="info", runs=repeatable_runs([rep], [applied])
+        )
         # Should have one entry
         self.assertEqual(len(result.repeatable_migrations_to_reapply), 1)
 
@@ -1253,7 +1355,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
         v, sm, *_ = _make_validator()
         result = ValidationResult()
         rep = self._rep_script(checksum=None)
-        v._check_repeatable_migrations([rep], [], result)
+        v._check_repeatable_migrations([rep], [], result, runs=repeatable_runs([rep], []))
         # checksum is None so uses 0
         self.assertEqual(result.repeatable_migrations_to_reapply[0]["filesystem_checksum"], 0)
 
@@ -1298,7 +1400,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         a1 = self._applied("V1__a.sql", "1")
-        r = v._validate_strict_mode_rules([s1], [a1], result, issues)
+        r = v._validate_strict_mode_rules(result, issues, missing_applied([s1], [a1]), ())
         self.assertTrue(r)
 
     def test_missing_applied_script_returns_false(self):
@@ -1309,7 +1411,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         a1 = self._applied("V0__old.sql", "0")
-        r = v._validate_strict_mode_rules([s1], [a1], result, issues)
+        r = v._validate_strict_mode_rules(result, issues, missing_applied([s1], [a1]), ())
         self.assertFalse(r)
         self.assertTrue(any("Strict mode" in i for i in issues))
 
@@ -1322,7 +1424,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         baseline = self._applied("B1__base.sql", "1", mtype=MigrationType.BASELINE)
-        r = v._validate_strict_mode_rules([s1], [baseline], result, issues)
+        r = v._validate_strict_mode_rules(result, issues, missing_applied([s1], [baseline]), ())
         self.assertTrue(r)
 
     def test_undo_applied_skipped(self):
@@ -1334,7 +1436,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         undo = self._applied("U1__undo.sql", "1", mtype=MigrationType.UNDO_SQL)
-        r = v._validate_strict_mode_rules([s1], [undo], result, issues)
+        r = v._validate_strict_mode_rules(result, issues, missing_applied([s1], [undo]), ())
         self.assertTrue(r)
 
     def test_out_of_order_migration_fails(self):
@@ -1355,7 +1457,9 @@ class TestValidateStrictModeRules(unittest.TestCase):
         # V2 is applied successfully
         a2 = self._applied("V2__new.sql", "2")
         sm.compare_versions.side_effect = lambda a, b: int(a) - int(b)
-        r = v._validate_strict_mode_rules([s1, s2], [a2], result, issues)
+        r = v._validate_strict_mode_rules(
+            result, issues, missing_applied([s1, s2], [a2]), out_of_order([s1], "2")
+        )
         self.assertFalse(r)
         self.assertTrue(any("lower" in i.lower() or "strict mode" in i.lower() for i in issues))
 
@@ -1366,7 +1470,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
         result = ValidationResult()
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
-        r = v._validate_strict_mode_rules([s1], [], result, issues)
+        r = v._validate_strict_mode_rules(result, issues, missing_applied([s1], []), ())
         self.assertTrue(r)
 
     def test_all_pending_applied_returns_true(self):
@@ -1378,97 +1482,8 @@ class TestValidateStrictModeRules(unittest.TestCase):
         issues = []
         s1 = self._sql_script("V1__a.sql", "1")
         a1 = self._applied("V1__a.sql", "1")
-        r = v._validate_strict_mode_rules([s1], [a1], result, issues)
+        r = v._validate_strict_mode_rules(result, issues, missing_applied([s1], [a1]), ())
         self.assertTrue(r)
-
-
-# ---------------------------------------------------------------------------
-# Lines 1624-1669: validate_out_of_order
-# ---------------------------------------------------------------------------
-
-
-class TestValidateOutOfOrder(unittest.TestCase):
-    def _sql_migration(self, name, version):
-        from dblift.core.migration.migration import MigrationType
-
-        return SimpleNamespace(
-            type=MigrationType.SQL,
-            version=version,
-            script_name=name,
-            success=True,
-            checksum=100,
-            installed_rank=5,
-            path=None,
-        )
-
-    def test_not_applied_returns_false(self):
-        v, sm, *_ = _make_validator()
-        migration = self._sql_migration("V2__new.sql", "2")
-        # migration not in executed_migrations
-        self.assertFalse(v.validate_out_of_order(migration, []))
-
-    def test_not_versioned_returns_false(self):
-        from dblift.core.migration.migration import MigrationType
-
-        v, sm, *_ = _make_validator()
-        rep = SimpleNamespace(
-            type=MigrationType.REPEATABLE,
-            version=None,
-            script_name="R__rep.sql",
-            success=True,
-        )
-        applied_rep = SimpleNamespace(
-            type=MigrationType.REPEATABLE,
-            script_name="R__rep.sql",
-            success=True,
-            installed_rank=1,
-        )
-        self.assertFalse(v.validate_out_of_order(rep, [applied_rep]))
-
-    def test_in_order_returns_false(self):
-        v, sm, *_ = _make_validator()
-        sm.compare_versions.return_value = 1  # higher version migration has rank 10
-        migration = self._sql_migration("V3__new.sql", "3")
-        applied_v3 = SimpleNamespace(
-            script_name="V3__new.sql",
-            type="SQL",
-            version="3",
-            success=True,
-            installed_rank=5,
-        )
-        applied_v2 = SimpleNamespace(
-            script_name="V2__old.sql",
-            type="SQL",
-            version="2",
-            success=True,
-            installed_rank=10,
-        )
-        # compare_versions("2", "3") > 0 is False
-        sm.compare_versions.side_effect = lambda a, b: int(a) - int(b)
-        result = v.validate_out_of_order(migration, [applied_v3, applied_v2])
-        # No higher version has lower rank
-        self.assertFalse(result)
-
-    def test_out_of_order_detected(self):
-        v, sm, *_ = _make_validator()
-        migration = self._sql_migration("V1__old.sql", "1")
-        applied_v1 = SimpleNamespace(
-            script_name="V1__old.sql",
-            type="SQL",
-            version="1",
-            success=True,
-            installed_rank=10,  # applied at rank 10
-        )
-        applied_v2 = SimpleNamespace(
-            script_name="V2__new.sql",
-            type="SQL",
-            version="2",
-            success=True,
-            installed_rank=5,  # applied at rank 5, which is lower than V1's rank
-        )
-        sm.compare_versions.side_effect = lambda a, b: int(a) - int(b)
-        result = v.validate_out_of_order(migration, [applied_v1, applied_v2])
-        self.assertTrue(result)
 
 
 # ---------------------------------------------------------------------------

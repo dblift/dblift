@@ -1,0 +1,17 @@
+{
+  "floor": "30.23.0",
+  "inputs": 1625,
+  "newest": "30.23.0",
+  "newest_differing_rows": {
+    "db2": 0,
+    "duckdb": 0,
+    "mysql": 0,
+    "oracle": 0,
+    "postgresql": 0,
+    "redshift": 0,
+    "snowflake": 0,
+    "sqlite": 0,
+    "sqlserver": 0
+  },
+  "size_bytes": 4049970
+}

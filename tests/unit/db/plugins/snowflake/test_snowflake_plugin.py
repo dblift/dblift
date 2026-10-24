@@ -14,7 +14,6 @@ from dblift.config.database_config import BaseDatabaseConfig
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.logger import NullLog
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
-from dblift.core.sql_parser.parser_factory import SqlParserFactory
 from dblift.db.plugins.snowflake.config import SnowflakeConfig
 from dblift.db.plugins.snowflake.plugin import PLUGIN as SNOWFLAKE_PLUGIN
 from dblift.db.plugins.snowflake.provider import (
@@ -27,6 +26,7 @@ from dblift.db.plugins.snowflake.quirks import SnowflakeQuirks
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+from tests.support.facts_parser import facts_parser
 
 
 def test_snowflake_extra_rejects_unqualified_sqlalchemy_21() -> None:
@@ -608,15 +608,15 @@ def test_snowflake_quoted_identifiers_keep_catalog_case() -> None:
     assert params == ["MixedCase", "order"]
 
 
-def test_snowflake_sqlglot_parser_handles_ddl_for_lint_and_preflight() -> None:
-    parser = SqlParserFactory("snowflake", parser_type="hybrid")
+def test_snowflake_facts_parser_handles_ddl_for_lint_and_preflight() -> None:
+    parser = facts_parser("snowflake")
 
     result = parser.parse_sql('CREATE TABLE "QA"."Orders" ("Amount" NUMBER(18,4))')
 
     assert result.success
     assert len(result.statements) == 1
-    assert result.statements[0].statement_type.value == "CREATE"
-    assert result.statements[0].objects
+    assert result.statements[0].statement_type.value == "DDL"
+    assert [(o.name, o.schema) for o in result.statements[0].objects] == [("Orders", "QA")]
 
 
 def test_snowflake_migration_split_preserves_quoted_sql() -> None:
@@ -640,9 +640,7 @@ def test_snowflake_migration_split_refuses_unquoted_scripting_block() -> None:
     sql = "BEGIN LET x INT := 1; RETURN x; END;"
 
     with pytest.raises(UnsafeStatementSplitError, match="Snowflake Scripting"):
-        StatementSplitter("snowflake").split_statements(
-            sql, fallback=lambda value: value.split(";")
-        )
+        StatementSplitter("snowflake").split_statements(sql)
 
 
 def test_snowflake_clean_schema_and_droppable_objects_use_catalogs() -> None:
@@ -1556,9 +1554,9 @@ def test_snowflake_statement_splitter_splits_without_a_fallback() -> None:
 
 
 def test_snowflake_sql_analyzer_splits_statements() -> None:
-    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+    from dblift.core.migration.sql.statement_reader import StatementReader
 
-    statements = SqlAnalyzer(dialect="snowflake").split_statements("SELECT 1; SELECT 2;")
+    statements = StatementReader(dialect="snowflake").split_statements("SELECT 1; SELECT 2;")
 
     assert statements == ["SELECT 1", "SELECT 2"]
 
@@ -1569,10 +1567,10 @@ def test_snowflake_statement_splitter_fails_explicitly_on_unterminated_string() 
 
 
 def test_snowflake_sql_analyzer_fails_explicitly_on_unterminated_string() -> None:
-    from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+    from dblift.core.migration.sql.statement_reader import StatementReader
 
     with pytest.raises(UnsafeStatementSplitError):
-        SqlAnalyzer(dialect="snowflake").split_statements("SELECT 'open; SELECT 2;")
+        StatementReader(dialect="snowflake").split_statements("SELECT 'open; SELECT 2;")
 
 
 # ---------------------------------------------------------------------------
@@ -2105,7 +2103,7 @@ def test_snowflake_lock_refusal_reaches_the_user_through_migrate() -> None:
     from pathlib import Path
     from unittest.mock import patch
 
-    from tests.unit.core.migration.commands.test_migrate_command_repeatable_lock_race import (
+    from tests.unit.core.migration.commands.test_migrate_command_lock_refusal import (
         _cmd,
         _repeatable,
     )
@@ -2113,7 +2111,7 @@ def test_snowflake_lock_refusal_reaches_the_user_through_migrate() -> None:
     connection = _FakeConnection(
         fail_on="MERGE", error=_ProgrammingError(f"ProgrammingError: {_LOCK_LIMIT_ERROR}")
     )
-    cmd = _cmd([_repeatable()], applied_after_lock=[])
+    cmd = _cmd([_repeatable()])
     cmd.provider = _SnowflakeProvider(engine=_FakeEngine(connection))
 
     with (

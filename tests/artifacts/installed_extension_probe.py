@@ -65,7 +65,11 @@ def main() -> None:
     )
     log = NullLog()
     first = DBLiftClient(
-        ProviderRegistry.create_provider(config, log=log), migrations, config=config, logger=log
+        ProviderRegistry.create_provider(config, log=log),
+        migrations,
+        config=config,
+        logger=log,
+        analysis_mode="execution",  # the bare install has no SQLGlot
     )
     try:
         result = first.migrate()
@@ -110,7 +114,11 @@ def main() -> None:
         "INSERT INTO missing_table VALUES (1);\n", encoding="utf-8"
     )
     second = DBLiftClient(
-        ProviderRegistry.create_provider(config, log=log), migrations, config=config, logger=log
+        ProviderRegistry.create_provider(config, log=log),
+        migrations,
+        config=config,
+        logger=log,
+        analysis_mode="execution",  # the bare install has no SQLGlot
     )
     try:
         # This client must receive exactly one event per registrar after the first closes.

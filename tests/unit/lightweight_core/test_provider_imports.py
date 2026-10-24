@@ -104,13 +104,16 @@ def test_sqlglot_absence_is_not_swallowed_as_parse_failure():
             analyze_dml, cte_outer_statement_type, dml_where_predicate,
             insert_value_rows, is_full_table_dml, statement_dml_table,
         )
+        from dblift.db.provider_registry import ProviderRegistry
         cases = (
             lambda: analyze_dml('UPDATE t SET x = 1'),
             lambda: cte_outer_statement_type('WITH c AS (SELECT 1) SELECT * FROM c'),
             lambda: dml_where_predicate('UPDATE t SET x = 1 WHERE id = 2'),
             lambda: insert_value_rows('INSERT INTO t (id) VALUES (1)'),
             lambda: is_full_table_dml('DELETE FROM t'),
-            lambda: statement_dml_table('UPDATE t SET x = 1', dialect='postgres'),
+            lambda: statement_dml_table(
+                'UPDATE t SET x = 1', quirks=ProviderRegistry.get_quirks('postgres')
+            ),
         )
         for call in cases:
             try:

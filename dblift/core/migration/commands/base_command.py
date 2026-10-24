@@ -7,9 +7,10 @@ from __future__ import annotations
 import re
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Iterator, List, Optional
 
 from dblift.config import DbliftConfig
 from dblift.config.database_config import BaseDatabaseConfig
@@ -17,12 +18,14 @@ from dblift.config.database_config import BaseDatabaseConfig
 if TYPE_CHECKING:
     from dblift.core.logger.results import OperationResult
     from dblift.core.migration.journals.migration_journal import MigrationJournal
+    from dblift.core.migration.migration import Migration
     from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
     from rich.panel import Panel
     from rich.text import Text
 
 from dblift.core.exceptions import CallbackExecutionError
 from dblift.core.logger import Log, NullLog
+from dblift.core.logger.console import rich_available
 from dblift.core.logger.log import LogFormat
 from dblift.core.logger.results import CallbackExecution
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
@@ -37,6 +40,7 @@ from dblift.core.migration.ui.migration_ui import MigrationUI
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.core.utils.url_masking import mask_database_url
 from dblift.db.base_provider import BaseProvider
+from dblift.db.error import redact_driver_error_text
 from dblift.db.provider_capabilities import (
     ensure_provider_connection,
     get_provider_display_url,
@@ -50,6 +54,9 @@ from ._script_events import emit_script_event as _emit_script_event
 # Message text for a schema-history DDL failure during preflight. The
 # raised type is PreflightConnectionError; the wording stays stable.
 SCHEMA_HISTORY_CREATE_ERROR_PREFIX = "Could not create the schema-history table"
+
+# Error reported by the commands that hold the migration lock when they cannot get it.
+MIGRATION_LOCK_REFUSAL = "Could not acquire migration lock - another migration may be running"
 
 # Shared by the CLI config validation and the command preflight.
 SCHEMA_REQUIRED_ERROR = (
@@ -149,7 +156,7 @@ def _render_main_header_panel(raw_header: str) -> str:
     """
     from dblift.core.migration.ui.command_panels import render_main_header_panel
 
-    return render_main_header_panel(raw_header)
+    return render_main_header_panel(raw_header) if rich_available() else raw_header
 
 
 # Maps ``_execute_callbacks``' ``event_prefix`` argument to the matching
@@ -179,12 +186,25 @@ _CALLBACK_LIFECYCLE_EVENTS: Dict[str, str] = {
 }
 
 
+@dataclass(frozen=True)
+class _CallbackBinding:
+    """Directory arguments a command passes to every callback dispatch."""
+
+    scripts_dir: Optional[Path]
+    recursive: bool
+    additional_dirs: Optional[List[Path]]
+    dir_recursive_map: Optional[Dict[Path, bool]]
+    result: Optional["OperationResult"]
+
+
 class BaseCommand:
     """Base class for migration commands with shared helper methods."""
 
     # Subclasses that render their own rich summary panel set this True
     # to skip the generic console footer and avoid duplication.
     _has_own_console_footer: bool = False
+
+    _callback_binding: Optional[_CallbackBinding] = None
 
     def __init__(
         self,
@@ -269,8 +289,64 @@ class BaseCommand:
         return getattr(self.journal, "capture_objects", True)
 
     def _reset_callback_catalog(self) -> None:
-        """Discard the manager snapshot reference before a command execution."""
+        """Discard the snapshot reference and callback binding before a command execution."""
         self._callback_snapshot = None
+        self._callback_binding = None
+
+    def _bind_callbacks(
+        self,
+        scripts_dir: Optional[Path],
+        recursive: bool,
+        additional_dirs: Optional[List[Path]],
+        dir_recursive_map: Optional[Dict[Path, bool]],
+        result: Optional["OperationResult"],
+    ) -> None:
+        """Remember the callback directory arguments for ``_fire``/``_callbacks_for``."""
+        self._callback_binding = _CallbackBinding(
+            scripts_dir, recursive, additional_dirs, dir_recursive_map, result
+        )
+
+    def _bound_callbacks(self) -> _CallbackBinding:
+        binding = self._callback_binding
+        if binding is None:
+            raise RuntimeError("callbacks are not bound")
+        return binding
+
+    def _fire(self, event: str) -> None:
+        """Run the callbacks of ``event`` with the arguments given to ``_bind_callbacks``.
+
+        Does nothing when the command has no scripts directory.
+        """
+        binding = self._bound_callbacks()
+        if binding.scripts_dir is None:
+            return
+        self._execute_callbacks(
+            binding.scripts_dir,
+            event,
+            binding.recursive,
+            binding.additional_dirs,
+            binding.dir_recursive_map,
+            result=binding.result,
+        )
+
+    def _callbacks_for(self, events: Iterable[str]) -> List[Migration]:
+        """List the bound callbacks of ``events``, in event order, from one fresh snapshot."""
+        binding = self._bound_callbacks()
+        if binding.scripts_dir is None:
+            return []
+        snapshot = self.state_manager.new_callback_snapshot()
+        return [
+            callback
+            for event in events
+            for callback in self.state_manager.get_callbacks_by_event(
+                binding.scripts_dir,
+                event,
+                read_snapshot=snapshot,
+                recursive=binding.recursive,
+                additional_dirs=binding.additional_dirs,
+                dir_recursive_map=binding.dir_recursive_map,
+            )
+        ]
 
     def _execute_callbacks(
         self,
@@ -353,19 +429,20 @@ class BaseCommand:
                     record.status = "OK"
                 except Exception as e:
                     record.status = "FAILED"
+                    reason = redact_driver_error_text(str(e))
                     _emit_script_event(
-                        "callback.failed", {"name": callback.script_name, "error": str(e)}
+                        "callback.failed", {"name": callback.script_name, "error": reason}
                     )
                     # Error callbacks (afterMigrateError, afterCleanError, afterUndoError) should only log warnings
                     # Regular callbacks should fail the entire operation
                     if "Error" in event_prefix:
-                        self.log.warning(f"Error callback {callback.script_name} failed: {e}")
+                        self.log.warning(f"Error callback {callback.script_name} failed: {reason}")
                         # Don't raise - error callbacks failing should not stop execution
                     else:
                         # Regular callback failure should fail the entire operation
-                        self.log.error(f"Callback {callback.script_name} failed: {e}")
+                        self.log.error(f"Callback {callback.script_name} failed: {reason}")
                         raise CallbackExecutionError(
-                            f"Callback {callback.script_name} failed: {e}"
+                            f"Callback {callback.script_name} failed: {reason}"
                         ) from e
                 finally:
                     record.duration_ms = int((time.perf_counter() - started) * 1000)
@@ -531,7 +608,10 @@ class BaseCommand:
         if should_print_footer and not self._has_own_console_footer:
             from dblift.core.logger.console import get_stdout_console
 
-            get_stdout_console().print(self._build_footer_panel(**footer_args))
+            if rich_available():
+                get_stdout_console().print(self._build_footer_panel(**footer_args))
+            else:
+                sys.stdout.write(self._format_command_footer(**footer_args) + "\n")
         self._log_text_block(self._format_command_footer(**footer_args))
 
     def _build_footer_panel(
@@ -583,6 +663,16 @@ class BaseCommand:
         """
         from dblift.core.logger.console import render_panel_to_str
 
+        if not rich_available():
+            lines = [
+                f"{command_name} {'completed successfully' if success else 'FAILED'}"
+                f" in {execution_time}"
+            ]
+            if schema_version:
+                lines.append(f"Schema Version: {schema_version}")
+            if error_message and not success:
+                lines.append(f"Error: {error_message}")
+            return "\n".join(lines)
         return render_panel_to_str(
             self._build_footer_panel(
                 command_name,
@@ -812,12 +902,57 @@ class BaseCommand:
                 except Exception:
                     formatted = ""
                 if not formatted:
-                    formatted = strip_sql_statement_block(str(exc))
+                    formatted = redact_driver_error_text(strip_sql_statement_block(str(exc)))
                 raise PreflightConnectionError(
                     f"{SCHEMA_HISTORY_CREATE_ERROR_PREFIX}: {formatted or exc}",
                     result,
                 ) from exc
         self._populate_database_info(result)
+
+    @contextmanager
+    def _migration_lock(self) -> Iterator[bool]:
+        """Hold the cross-process migration lock for the duration of the block.
+
+        Yields whether the lock was acquired; the caller reports a refusal. The
+        lock is released on every exit, including exceptions, and only when it
+        was acquired.
+        """
+        acquired = self.provider.acquire_migration_lock(
+            self.config.database.schema, wait_timeout_seconds=60
+        )
+        # The guard starts on the very next statement: a signal turned into
+        # SystemExit anywhere after the acquire must still reach the release.
+        try:
+            if not acquired:
+                yield False
+                return
+            self.log.info("Migration lock acquired successfully")
+            yield True
+        finally:
+            if acquired:
+                try:
+                    released = self.provider.release_migration_lock(self.config.database.schema)
+                    if released is False:
+                        self.log.warning(
+                            "The migration lock was no longer held by this run "
+                            "(lost or already released); nothing to release"
+                        )
+                    else:
+                        self.log.debug("Migration lock released successfully")
+                except Exception as release_e:
+                    self.log.warning(f"Could not release migration lock: {release_e}")
+
+    def _migration_lock_lost(self) -> bool:
+        """Whether the provider reports the migration lock it holds as lost."""
+        lock_lost = getattr(self.provider, "migration_lock_lost", None)
+        return callable(lock_lost) and lock_lost() is True
+
+    def _run_error_handler(self, command_name: str, handler: Callable[[], None]) -> None:
+        """Run an error handler; a failure is logged at debug level, never raised."""
+        try:
+            handler()
+        except Exception as handler_error:
+            self.log.debug(f"Error handler for {command_name} failed: {handler_error}")
 
     def _run_command_lifecycle(
         self,
@@ -829,6 +964,7 @@ class BaseCommand:
         before_body: Optional[Callable[[], None]] = None,
         error_message_prefix: Optional[str] = None,
         header_kwargs: Optional[Dict[str, Any]] = None,
+        on_error: Optional[Callable[[], None]] = None,
     ) -> Any:
         """Run the common command skeleton while preserving legacy semantics.
 
@@ -838,6 +974,13 @@ class BaseCommand:
         Preflight and header exceptions still propagate, matching existing
         command behavior; only body exceptions are converted to ``result``
         errors for commands that previously did that locally.
+
+        Once preflight has run, the footer is logged exactly once on every exit.
+        When the body raises, the error is set, ``on_error`` runs (a failure in
+        it is only logged at debug level), then the footer is logged. A
+        ``PreflightConnectionError`` raised by the body, such as a second
+        connection or history check, propagates without a footer, as one from
+        ``preflight`` does.
         """
         if preflight is not None:
             preflight()
@@ -847,10 +990,14 @@ class BaseCommand:
 
         try:
             body()
+        except PreflightConnectionError:
+            raise
         except Exception as e:
             message = f"{error_message_prefix}: {e}" if error_message_prefix else str(e)
             self.log.error(message)
             result.set_error(message)
+            if on_error is not None:
+                self._run_error_handler(command_name, on_error)
 
         self._log_command_completion(command_name, result)
         return result
@@ -928,6 +1075,14 @@ class BaseCommand:
         """
         from dblift.core.logger.console import render_panel_to_str
 
+        if not rich_available():
+            lines = [f"Command: {command_name}"]
+            lines.extend(filters or [])
+            if schema_version:
+                lines.append(f"Schema Version: {schema_version}")
+            if connection_info:
+                lines.append(f"Connection: {connection_info}")
+            return "\n".join(lines)
         return render_panel_to_str(
             self._build_command_header_panel(
                 command_name,
@@ -1173,15 +1328,27 @@ class BaseCommand:
         if should_print_header:
             from dblift.core.logger.console import get_stdout_console
 
-            get_stdout_console().print(
-                self._build_command_header_panel(
-                    command_name=command_name,
-                    filters=filters,
-                    schema_version=schema_version,
-                    database_url=database_url,
-                    connection_info=connection_info,
+            if rich_available():
+                get_stdout_console().print(
+                    self._build_command_header_panel(
+                        command_name=command_name,
+                        filters=filters,
+                        schema_version=schema_version,
+                        database_url=database_url,
+                        connection_info=connection_info,
+                    )
                 )
-            )
+            else:
+                sys.stdout.write(
+                    self._format_command_header(
+                        command_name=command_name,
+                        filters=filters,
+                        schema_version=schema_version,
+                        database_url=database_url,
+                        connection_info=connection_info,
+                    )
+                    + "\n"
+                )
         self._log_text_block(
             self._format_command_header(
                 command_name=command_name,

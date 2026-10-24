@@ -1,12 +1,11 @@
-"""Dialect-agnostic SQL scanning for data undo-safety analysis.
+"""Dialect-agnostic DML analysis for data undo-safety.
 
-Pure mechanics only — quote/comment/parenthesis tracking, SET-clause
-extraction and DML classification. No dialect names or vendor SQL
-literals live here: the dialect-specific markers (upsert clauses,
-identifier quoting) are owned by the plugin's
-:class:`~db.base_quirks.BaseQuirks` and passed in by the caller. This
-keeps the paid data layer free of per-database
-knowledge while the scanning algorithm stays in one shared place.
+Classifies a DML statement (table, events, updated columns, WHERE predicate) from a plugin's
+statement facts or, for a plugin with no reader, the sqlglot AST. A statement neither can read
+comes back unread; nothing is guessed from the text. Quote/comment/parenthesis scanning helpers
+live here too. No dialect names or vendor SQL literals: the plugin's
+:class:`~db.base_quirks.BaseQuirks` owns the dialect knowledge. The upsert-marker parameters and
+quirks attributes are kept for signature compatibility; nothing consumes them any more.
 """
 
 from __future__ import annotations
@@ -15,8 +14,12 @@ import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Set, Tuple
 
+from dblift.core.sql_parser.dml_modifiers import MYSQL_DML_MODIFIER, MYSQL_DML_MODIFIER_WORDS
+
 if TYPE_CHECKING:
     from sqlglot import exp
+
+    from dblift.db.base_quirks import BaseQuirks
 
 #: Quote delimiters understood by the scanner: opening char -> closing char.
 #: Union of every dialect's string/identifier quoting so the mechanics are
@@ -31,27 +34,9 @@ DEFAULT_UPSERT_SET_MARKERS: Tuple[str, ...] = ("ON DUPLICATE KEY UPDATE",)
 #: standard ``... DO UPDATE SET`` clause (PostgreSQL / SQLite upsert).
 DEFAULT_UPSERT_MARKER_PAIRS: Tuple[Tuple[str, str], ...] = (("ON CONFLICT", "DO UPDATE"),)
 
-_IDENTIFIER = (
-    r'(?:`[^`]+`|"[^"]+"|\[[^\]]+\]|[A-Za-z_][\w$]*)'
-    r'(?:\s*\.\s*(?:`[^`]+`|"[^"]+"|\[[^\]]+\]|[A-Za-z_][\w$]*))*'
-)
-
 _DML_VERB = re.compile(r"(?:UPDATE|DELETE|INSERT)\b", re.IGNORECASE)
-# MySQL words valid after each verb, and Oracle optimizer hints, before the target.
-# A word that continues an identifier (``quick.t``, ``ignore$x``) or is followed by
-# the next clause keyword is the table itself, not a modifier.
-_DML_MODIFIER_WORDS = {
-    "UPDATE": "LOW_PRIORITY|IGNORE",
-    "DELETE": "LOW_PRIORITY|QUICK|IGNORE",
-    "INSERT": "LOW_PRIORITY|HIGH_PRIORITY|DELAYED|IGNORE",
-}
-_DML_MODIFIER = {
-    verb: re.compile(
-        rf"\s*(?:/\*.*?\*/|(?:{words})(?![\w$#])(?!\s*(?:\.|SET\b|WHERE\b|VALUES\b|\(|;|$)))",
-        re.IGNORECASE | re.DOTALL,
-    )
-    for verb, words in _DML_MODIFIER_WORDS.items()
-}
+_DML_MODIFIER_WORDS = MYSQL_DML_MODIFIER_WORDS
+_DML_MODIFIER = MYSQL_DML_MODIFIER
 # The ONLY keyword right after ``UPDATE`` / ``DELETE FROM``; ``only.t`` is a qualified name.
 _DML_ONLY = re.compile(
     r"(?:UPDATE|DELETE(?:\s|/\*.*?\*/)+FROM)(?:\s|/\*.*?\*/)*ONLY(?![\w$#]|\s*\.)",
@@ -72,31 +57,44 @@ class DmlMutation:
     table: str
     events: Optional[Set[str]]
     updated_columns: List[str]
+    #: The tables a statement also changes through writing CTEs, each with its own events.
+    cte_writes: Tuple["DmlMutation", ...] = ()
 
 
 def analyze_dml(
     statement: str,
     *,
-    sqlglot_dialect: Optional[str] = None,
+    quirks: Optional["BaseQuirks"] = None,
     quote_pairs: Dict[str, str] = DEFAULT_QUOTE_PAIRS,
     upsert_set_markers: Sequence[str] = DEFAULT_UPSERT_SET_MARKERS,
     upsert_marker_pairs: Sequence[Tuple[str, str]] = DEFAULT_UPSERT_MARKER_PAIRS,
 ) -> DmlMutation:
     """Classify a DML statement for undo-safety: table, events, updated columns.
 
-    Prefers the ``sqlglot`` AST (dialect-correct, no hand-rolled SQL knowledge)
-    and falls back to the regex scanner only when sqlglot cannot parse the
-    statement or does not recognise it as DML — mirroring the hybrid-parser
-    philosophy used elsewhere.
+    A plugin's own statement facts reader, when ``quirks`` has one, answers.
+    Without one the ``sqlglot`` AST does; a statement it cannot parse, or does
+    not recognise as DML, comes back unread (empty table, ``events=None``), never
+    guessed from the text.
     """
-    mutation = _analyze_dml_sqlglot(statement, sqlglot_dialect)
-    if mutation is not None:
-        return mutation
-    return DmlMutation(
-        table=statement_dml_table(statement),
-        events=_statement_dml_events(statement, upsert_set_markers, upsert_marker_pairs),
-        updated_columns=_updated_column_names(statement, quote_pairs, upsert_set_markers),
+    if quirks is not None and quirks.supports_statement_facts:
+        facts = quirks.statement_facts(statement)
+        return DmlMutation(
+            facts.target or "",
+            set(facts.events) if facts.events else None,
+            list(facts.affected_columns) if facts.events and "UPDATE" in facts.events else [],
+            tuple(
+                DmlMutation(w.target, set(w.events), list(w.affected_columns))
+                for w in facts.cte_writes
+            ),
+        )
+
+    from dblift.core.sql_parser.unread_names import names_unreadable
+
+    dialect = quirks.sqlglot_dialect if quirks is not None else None
+    mutation = (
+        None if names_unreadable(statement, dialect) else _analyze_dml_sqlglot(statement, dialect)
     )
+    return mutation or DmlMutation(table="", events=None, updated_columns=[])
 
 
 def _without_dml_modifiers(text: str) -> str:
@@ -127,7 +125,7 @@ def _without_dml_modifiers(text: str) -> str:
 
 
 def _analyze_dml_sqlglot(statement: str, dialect: Optional[str]) -> Optional[DmlMutation]:
-    """AST-based analysis via sqlglot, or ``None`` to defer to the regex scanner."""
+    """AST-based analysis via sqlglot, or ``None`` when it cannot read the statement as DML."""
     text = _without_dml_modifiers(strip_leading_sql_comments(statement).lstrip())
     if not text:
         return DmlMutation(table="", events=set(), updated_columns=[])
@@ -246,16 +244,20 @@ def _eq_target_columns(expressions: Any) -> List[str]:
     for assignment in expressions or []:
         if isinstance(assignment, exp.EQ):
             target = assignment.this
-            name = getattr(target, "name", "") or target.sql()
-            if name:
-                columns.append(name)
+            targets = target.expressions if isinstance(target, exp.Tuple) else [target]
+            for column in targets:
+                if isinstance(column, exp.Paren):
+                    column = column.this
+                name = getattr(column, "name", "") or column.sql()
+                if name:
+                    columns.append(name)
     return columns
 
 
 def dml_where_predicate(
     statement: str,
     *,
-    sqlglot_dialect: Optional[str] = None,
+    quirks: Optional["BaseQuirks"] = None,
 ) -> Optional[str]:
     """Return the WHERE condition of an UPDATE/DELETE, without the keyword.
 
@@ -264,8 +266,12 @@ def dml_where_predicate(
     the statement is not a parseable single UPDATE/DELETE, or it has no WHERE
     (a full-table mutation) — callers must treat ``None`` conservatively (the
     statement may touch every row). The predicate is rendered by ``sqlglot``
-    for ``sqlglot_dialect`` so it round-trips into a dialect-correct SELECT.
+    for the plugin's dialect so it round-trips into a dialect-correct SELECT.
     """
+    if quirks is not None and quirks.supports_statement_facts:
+        return quirks.statement_facts(statement).predicate
+    dialect = quirks.sqlglot_dialect if quirks is not None else None
+
     text = strip_leading_sql_comments(statement).lstrip()
     if not text:
         return None
@@ -273,15 +279,15 @@ def dml_where_predicate(
     from sqlglot import exp
 
     try:
-        ast = sqlglot.parse_one(text, read=sqlglot_dialect)
+        ast = sqlglot.parse_one(text, read=dialect)
     except Exception:
         return None
     if not isinstance(ast, (exp.Update, exp.Delete)):
         return None
     where = ast.args.get("where")
-    if where is None or where.this is None:
+    if not isinstance(where, exp.Where) or where.this is None:
         return None
-    return str(where.this.sql(dialect=sqlglot_dialect))
+    return str(where.this.sql(dialect=dialect))
 
 
 _UNRESOLVED = object()
@@ -367,27 +373,32 @@ def updates_restore_key(
     statement: str,
     restore_key_columns: Sequence[str],
     *,
-    sqlglot_dialect: Optional[str] = None,
+    quirks: Optional["BaseQuirks"] = None,
     quote_pairs: Dict[str, str] = DEFAULT_QUOTE_PAIRS,
     upsert_set_markers: Sequence[str] = DEFAULT_UPSERT_SET_MARKERS,
 ) -> bool:
-    """Whether the statement assigns any of ``restore_key_columns``."""
+    """Whether the statement may assign any of ``restore_key_columns``.
+
+    A statement that cannot be read (``events is None``) answers ``True``: unread is not untouched.
+    """
     keys = {str(column).strip().strip('"`[]').lower() for column in restore_key_columns}
     if not keys:
         return False
-    columns = analyze_dml(
+    mutation = analyze_dml(
         statement,
-        sqlglot_dialect=sqlglot_dialect,
+        quirks=quirks,
         quote_pairs=quote_pairs,
         upsert_set_markers=upsert_set_markers,
-    ).updated_columns
-    return any(column.lower() in keys for column in columns)
+    )
+    if mutation.events is None and statement.strip():
+        return True  # unread: assume the key may be assigned
+    return any(column.lower() in keys for column in mutation.updated_columns)
 
 
 def is_full_table_dml(
     statement: str,
     *,
-    sqlglot_dialect: Optional[str] = None,
+    quirks: Optional["BaseQuirks"] = None,
     quote_pairs: Dict[str, str] = DEFAULT_QUOTE_PAIRS,
 ) -> bool:
     """Whether the statement is an UPDATE/DELETE with no top-level ``WHERE``.
@@ -399,6 +410,14 @@ def is_full_table_dml(
     scanner — ``sqlglot`` parsed with the wrong dialect can mis-read a quoted
     column named ``where`` as a clause.
     """
+    if quirks is not None and quirks.supports_statement_facts:
+        facts = quirks.statement_facts(statement)
+        return (facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)) or any(
+            write.operation in ("UPDATE", "DELETE") and not write.predicate
+            for write in facts.cte_writes
+        )
+    dialect = quirks.sqlglot_dialect if quirks is not None else None
+
     text = strip_leading_sql_comments(statement).lstrip()
     if not text:
         return False
@@ -406,7 +425,7 @@ def is_full_table_dml(
     from sqlglot import exp
 
     try:
-        ast = sqlglot.parse_one(text, read=sqlglot_dialect)
+        ast = sqlglot.parse_one(text, read=dialect)
     except Exception:
         ast = None
     if ast is not None:
@@ -544,68 +563,33 @@ def _cte_scan_is_balanced(text: str, quote_pairs: Dict[str, str]) -> bool:
     return not quote and depth == 0
 
 
-def extract_dml_table_name(statement: str) -> str:
-    """Best-effort table extraction when the dialect parser cannot provide one."""
-    # The table is followed by whitespace, ``;``, ``(`` (INSERT column list) or
-    # end-of-string. A trailing ``\b`` fails when the identifier ends in a quote
-    # char (``"`` / `` ` `` / ``]``), so use an explicit lookahead instead — this
-    # is what lets quoted/bracketed INSERT and DELETE targets resolve (the UPDATE
-    # pattern is unaffected because it ends in ``SET``).
-    _after = r"(?=\s|;|\(|$)"
-    statement = _without_dml_modifiers(statement.lstrip())
-    patterns = (
-        # ``UPDATE a SET … FROM t AS a`` / ``DELETE a FROM t a``: the table behind the alias.
-        rf"^\s*(?:UPDATE|DELETE)\s+([A-Za-z_][\w$]*)\s+(?:SET|FROM)\b[\s\S]*?(?<![\w$.`\]\"])"
-        rf"(?!(?:FROM|JOIN|ON|AND|OR|WHERE|SET|AS)\b)({_IDENTIFIER})\s+(?:AS\s+)?\1(?=[\s;,)]|$)",
-        rf"^\s*UPDATE\s+(?:ONLY\s+)?({_IDENTIFIER})\s+SET\b",
-        rf"^\s*DELETE\s+FROM\s+(?:ONLY\s+(?!WHERE\b))?({_IDENTIFIER}){_after}",
-        rf"^\s*DELETE\s+({_IDENTIFIER})\s+FROM\s+{_IDENTIFIER}{_after}",
-        # No FROM (Oracle, T-SQL): ``DELETE t [alias] WHERE ...``.
-        rf"^\s*DELETE\s+(?!(?:FROM|WHERE)\b)({_IDENTIFIER})(?:\s+(?:AS\s+)?(?!WHERE\b)[A-Za-z_][\w$]*)?"
-        r"\s*(?:WHERE\b|;|$)",
-        rf"^\s*INSERT\s+INTO\s+({_IDENTIFIER}){_after}",
-    )
-    for pattern in patterns:
-        match = re.search(pattern, statement, flags=re.IGNORECASE)
-        if match:
-            return re.sub(r"\s*\.\s*", ".", match.group(match.lastindex or 1))
-    return ""
-
-
-def statement_dml_table(statement: str, dialect: Optional[str] = None) -> str:
+def statement_dml_table(statement: str, *, quirks: Optional["BaseQuirks"] = None) -> str:
     """Table targeted by a DML statement, including ``MERGE INTO``.
 
-    When *dialect* is given, the dialect-correct sqlglot AST is preferred: it
-    resolves quoted / bracketed / schema-qualified targets that the regex
-    scanner can mishandle, and ``Table.sql`` re-emits the verbatim-quoted form
-    so the result stays a valid SQL reference for downstream raw interpolation.
-    Falls back to the regex scanner when no dialect is known or sqlglot cannot
-    parse the statement — mirroring the hybrid-parser philosophy used by
-    :func:`analyze_dml`.
+    A plugin's statement facts reader answers when it has one. Otherwise the
+    dialect-correct sqlglot AST does, and ``Table.sql`` re-emits the
+    verbatim-quoted form so the result stays a valid SQL reference for
+    downstream raw interpolation. A statement sqlglot cannot parse gives ``""``,
+    never a guess from the text.
     """
+    if quirks is not None and quirks.supports_statement_facts:
+        return quirks.statement_facts(statement).target_sql or ""
+
+    from dblift.core.sql_parser.unread_names import names_unreadable
+
+    sqlglot_dialect = quirks.sqlglot_dialect if quirks is not None else None
+    if names_unreadable(statement, sqlglot_dialect):
+        return ""
     text = _without_dml_modifiers(strip_leading_sql_comments(statement).lstrip())
-    if dialect:
-        from dblift.core.sql_model.dialect import get_sqlglot_dialect
-
-        ast_table = _sqlglot_dml_table_sql(text, get_sqlglot_dialect(dialect) or dialect)
-        if ast_table:
-            return ast_table
-    table = extract_dml_table_name(text)
-    if table:
-        return table
-    match = re.search(rf"^\s*MERGE\s+INTO\s+({_IDENTIFIER})\b", text, flags=re.IGNORECASE)
-    if match:
-        return re.sub(r"\s*\.\s*", ".", match.group(1))
-    return ""
+    return _sqlglot_dml_table_sql(text, sqlglot_dialect)
 
 
-def _sqlglot_dml_table_sql(text: str, dialect: str) -> str:
+def _sqlglot_dml_table_sql(text: str, dialect: Optional[str]) -> str:
     """Dialect-quoted table reference for a DML statement via the sqlglot AST.
 
     Returns the quoted ``schema.table`` (any table alias and, for a joined
     DELETE naming the FROM-anchor, its JOIN clause stripped) or ``""`` when
-    sqlglot cannot parse *text* or it is not DML, letting the caller fall
-    back to the regex scanner. Unlike :func:`_sqlglot_table` — which returns the
+    sqlglot cannot parse *text* or it is not DML. Unlike :func:`_sqlglot_table` — which returns the
     bare unquoted name for table *matching* — this preserves quoting because the
     result is interpolated into raw SQL (e.g. a capture ``SELECT ... FROM``).
     """
@@ -653,126 +637,6 @@ def strip_leading_sql_comments(statement: str, *, strict: bool = False) -> str:
         return stripped
 
 
-def _statement_dml_events(
-    statement: str,
-    upsert_set_markers: Sequence[str],
-    upsert_marker_pairs: Sequence[Tuple[str, str]],
-) -> Optional[Set[str]]:
-    text = strip_leading_sql_comments(statement).lstrip()
-    if not text:
-        return set()
-    upper = text.upper()
-    if re.match(r"^INSERT\b", upper):
-        events = {"INSERT"}
-        if _is_upsert_with_update(upper, upsert_set_markers, upsert_marker_pairs):
-            # Upsert clauses take the UPDATE path on a key collision and
-            # fire UPDATE triggers too.
-            events.add("UPDATE")
-        return events
-    if re.match(r"^UPDATE\b", upper):
-        return {"UPDATE"}
-    if re.match(r"^DELETE\b", upper):
-        return {"DELETE"}
-    if re.match(r"^MERGE\b", upper):
-        merge_events = {
-            match.group(1).upper()
-            for match in re.finditer(r"\bTHEN\s+(INSERT|UPDATE|DELETE)\b", upper)
-        }
-        return merge_events or None
-    return None
-
-
-def _is_upsert_with_update(
-    upper_statement: str,
-    upsert_set_markers: Sequence[str],
-    upsert_marker_pairs: Sequence[Tuple[str, str]],
-) -> bool:
-    if any(marker.upper() in upper_statement for marker in upsert_set_markers):
-        return True
-    for first, second in upsert_marker_pairs:
-        pattern = _phrase_regex(first) + r".*?" + _phrase_regex(second)
-        if re.search(pattern, upper_statement, flags=re.DOTALL):
-            return True
-    return False
-
-
-def _phrase_regex(phrase: str) -> str:
-    return r"\b" + r"\s+".join(re.escape(word) for word in phrase.split()) + r"\b"
-
-
-def _updated_column_names(
-    statement: str,
-    quote_pairs: Dict[str, str],
-    upsert_set_markers: Sequence[str],
-) -> List[str]:
-    # dollar_quote_aware=False throughout: this is the regex fallback for a
-    # statement sqlglot couldn't parse, including a `DO $$ BEGIN UPDATE ...
-    # END $$;` procedural block, where the columns to find are the nested
-    # UPDATE's own SET clause, textually *inside* the dollar-quoted body.
-    columns: List[str] = []
-    for marker in upsert_set_markers:
-        marker_pos = _find_top_level_keyword(
-            statement, marker, quote_pairs, dollar_quote_aware=False
-        )
-        if marker_pos >= 0:
-            assignment_start = marker_pos + len(marker)
-            columns.extend(
-                _updated_column_names_from_clause(statement, quote_pairs, assignment_start)
-            )
-
-    search_start = 0
-    while True:
-        update_pos = _find_top_level_keyword(
-            statement, "UPDATE", quote_pairs, start=search_start, dollar_quote_aware=False
-        )
-        if update_pos < 0:
-            break
-        set_pos = _find_top_level_keyword(
-            statement, "SET", quote_pairs, start=update_pos + 6, dollar_quote_aware=False
-        )
-        if set_pos < 0:
-            search_start = update_pos + 6
-            continue
-        assignment_start = set_pos + 3
-        columns.extend(_updated_column_names_from_clause(statement, quote_pairs, assignment_start))
-        search_start = assignment_start
-    return columns
-
-
-def _updated_column_names_from_clause(
-    statement: str, quote_pairs: Dict[str, str], assignment_start: int
-) -> List[str]:
-    end_pos = _find_update_assignment_end(statement, quote_pairs, start=assignment_start)
-    set_clause = statement[assignment_start : end_pos if end_pos >= 0 else len(statement)]
-    columns: List[str] = []
-    for assignment in _split_top_level_commas(set_clause, quote_pairs):
-        eq_pos = _find_top_level_char(assignment, "=", quote_pairs)
-        if eq_pos <= 0:
-            continue
-        column = _normalize_assignment_target(assignment[:eq_pos])
-        if column:
-            columns.append(column)
-    return columns
-
-
-def _find_update_assignment_end(statement: str, quote_pairs: Dict[str, str], start: int) -> int:
-    # dollar_quote_aware=False: same DO $$ ... $$ reason as _updated_column_names
-    # above — this finds where a SET clause nested inside a dollar-quoted
-    # procedural block ends, so it must not skip over that body.
-    positions = [
-        _find_top_level_keyword(
-            statement, keyword, quote_pairs, start=start, dollar_quote_aware=False
-        )
-        for keyword in ("FROM", "WHERE", "RETURNING", "OUTPUT", "ORDER", "LIMIT")
-    ]
-    positions.append(_find_top_level_when_outside_case(statement, quote_pairs, start=start))
-    semicolon_pos = _find_top_level_char(statement[start:], ";", quote_pairs)
-    if semicolon_pos >= 0:
-        positions.append(start + semicolon_pos)
-    candidates = [pos for pos in positions if pos >= 0]
-    return min(candidates) if candidates else -1
-
-
 def _skip_quote(text: str, i: int, quote: str) -> Tuple[int, str]:
     """Advance one position inside an open quote, returning (index, quote)."""
     ch = text[i]
@@ -795,59 +659,13 @@ def _skip_comment(text: str, i: int) -> int:
     return -1
 
 
-def _find_top_level_when_outside_case(
-    statement: str, quote_pairs: Dict[str, str], start: int = 0
-) -> int:
-    depth = 0
-    quote = ""
-    case_depth = 0
-    i = start
-    while i < len(statement):
-        if quote:
-            i, quote = _skip_quote(statement, i, quote)
-            continue
-        comment_end = _skip_comment(statement, i)
-        if comment_end >= 0:
-            i = comment_end
-            continue
-        ch = statement[i]
-        if ch in quote_pairs:
-            quote = quote_pairs[ch]
-        elif ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth = max(0, depth - 1)
-        elif depth == 0:
-            if _matches_keyword_at(statement, i, "CASE"):
-                case_depth += 1
-                i += 4
-                continue
-            if _matches_keyword_at(statement, i, "END") and case_depth > 0:
-                case_depth -= 1
-                i += 3
-                continue
-            if _matches_keyword_at(statement, i, "WHEN") and case_depth == 0:
-                return i
-        i += 1
-    return -1
-
-
 def _find_top_level_keyword(
     statement: str,
     keyword: str,
     quote_pairs: Dict[str, str],
     start: int = 0,
-    dollar_quote_aware: bool = True,
 ) -> int:
-    """Index of ``keyword`` outside quotes/comments/parens, or -1.
-
-    ``dollar_quote_aware`` defaults on: a dollar-quoted value's contents are
-    ordinary data to most callers. The regex-fallback scan in
-    ``_updated_column_names``/``_find_update_assignment_end`` is the one
-    exception — it deliberately reaches *inside* a ``DO $$ ... $$``
-    procedural block to find the ``UPDATE``/``SET`` it wraps — and passes
-    ``dollar_quote_aware=False`` explicitly there.
-    """
+    """Index of ``keyword`` outside quotes/comments/dollar quotes/parens, or -1."""
     depth = 0
     quote = ""
     i = start
@@ -859,7 +677,7 @@ def _find_top_level_keyword(
         if comment_end >= 0:
             i = comment_end
             continue
-        if dollar_quote_aware and statement[i] == "$":
+        if statement[i] == "$":
             dollar_end = _skip_dollar_quote(statement, i)
             if dollar_end >= 0:
                 i = dollar_end
@@ -884,58 +702,3 @@ def _matches_keyword_at(statement: str, position: int, keyword: str) -> bool:
     after_pos = position + len(keyword)
     after = statement[after_pos] if after_pos < len(statement) else " "
     return not (before.isalnum() or before == "_") and not (after.isalnum() or after == "_")
-
-
-def _split_top_level_commas(text: str, quote_pairs: Dict[str, str]) -> List[str]:
-    parts: List[str] = []
-    start = 0
-    depth = 0
-    quote = ""
-    i = 0
-    while i < len(text):
-        if quote:
-            i, quote = _skip_quote(text, i, quote)
-            continue
-        ch = text[i]
-        if ch in quote_pairs:
-            quote = quote_pairs[ch]
-        elif ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth = max(0, depth - 1)
-        elif ch == "," and depth == 0:
-            parts.append(text[start:i].strip())
-            start = i + 1
-        i += 1
-    tail = text[start:].strip()
-    if tail:
-        parts.append(tail)
-    return parts
-
-
-def _find_top_level_char(text: str, target: str, quote_pairs: Dict[str, str]) -> int:
-    depth = 0
-    quote = ""
-    i = 0
-    while i < len(text):
-        if quote:
-            i, quote = _skip_quote(text, i, quote)
-            continue
-        ch = text[i]
-        if ch in quote_pairs:
-            quote = quote_pairs[ch]
-        elif ch == "(":
-            depth += 1
-        elif ch == ")":
-            depth = max(0, depth - 1)
-        elif ch == target and depth == 0:
-            return i
-        i += 1
-    return -1
-
-
-def _normalize_assignment_target(target: str) -> str:
-    token = target.strip()
-    if "." in token:
-        token = token.rsplit(".", 1)[-1].strip()
-    return token.strip('"`[]').strip()

@@ -1,14 +1,12 @@
 """A real migrate may create its target schema without baseline semantics."""
 
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.commands.base_command import BaseCommand
-from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 
 pytestmark = pytest.mark.unit
@@ -53,31 +51,16 @@ def test_dry_run_preflight_does_not_bootstrap_schema_or_history():
 
 @pytest.mark.parametrize("dry_run", [False, True])
 def test_migrate_preflight_requests_schema_bootstrap_and_preserves_dry_run(dry_run):
-    command = MigrateCommand.__new__(MigrateCommand)
-    command.journal = SimpleNamespace(capture_objects=False)
-    command.migration_helpers = MagicMock()
-    command.migration_helpers.setup_migration_parameters.return_value = (True, [])
-    command.placeholder_service = MagicMock()
-    command._log_command_header_update = MagicMock()
+    from tests.unit.core.migration.commands.test_migrate_command_lock_refusal import _cmd
+
+    command = _cmd([])
     preflight = MagicMock()
     command._run_preflight = preflight
+    command._log_command_header_update = MagicMock()
+    command._log_command_completion = MagicMock()
 
-    command._initialize_migration_execution(
-        MigrateResult(),
-        Path("migrations"),
-        None,
-        dry_run,
-        None,
-        None,
-        None,
-        None,
-        False,
-        False,
-        None,
-        None,
-        None,
-    )
+    command.execute(Path("migrations"), dry_run=dry_run)
 
-    preflight.assert_called_once()
-    assert preflight.call_args.kwargs["ensure_schema"] is True
-    assert preflight.call_args.kwargs["dry_run"] is dry_run
+    first = preflight.call_args_list[0]
+    assert first.kwargs["ensure_schema"] is True
+    assert first.kwargs["dry_run"] is dry_run

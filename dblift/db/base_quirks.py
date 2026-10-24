@@ -8,13 +8,16 @@ provides their default bodies.
 
 from __future__ import annotations
 
+import inspect
 import re
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
     Dict,
     Optional,
     Tuple,
+    Type,
 )
 
 from dblift.core.dialect_boundary import DialectQuirks
@@ -24,9 +27,15 @@ from dblift.db.dml_analysis import (
     DEFAULT_UPSERT_SET_MARKERS,
     DmlMutation,
     analyze_dml,
+    dml_where_predicate,
     is_full_table_dml,
+    statement_dml_table,
 )
 from dblift.db.feature_gate import FeatureGate
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
+    from dblift.core.sql_parser.statement_facts import StatementFacts, StatementFactsReader
 
 
 class BaseQuirks:
@@ -75,19 +84,32 @@ class BaseQuirks:
     #: ``sqlglot`` dialect name (or ``None`` if sqlglot has no match).
     #: Used by formatters/parsers that delegate to sqlglot.
     sqlglot_dialect: Optional[str] = None
-    #: Upper-cased SQL patterns that signal sqlglot can't parse the
-    #: statement faithfully. When *any* pattern appears in the
-    #: uppercased SQL text, ``HybridParser`` falls back to regex-only.
-    #: Plugins override to declare dialect-specific incompatibilities.
-    sqlglot_unsupported_sql_patterns: "tuple[str, ...]" = ()
-    #: Same purpose as ``sqlglot_unsupported_sql_patterns``, but each entry
-    #: is a regex matched against the upper-cased SQL text instead of a
-    #: fixed literal phrase — for an unsupported *shape* that spans a
-    #: variable identifier a literal substring can't express (e.g. "DROP
-    #: INDEX ... ON <schema>.<table>", where an arbitrary index name sits
-    #: between the two fixed keywords). When *any* pattern matches,
-    #: ``HybridParser`` falls back to regex-only, the same as above.
-    sqlglot_unsupported_sql_regex_patterns: "tuple[str, ...]" = ()
+    #: Plugin-owned reader class for statement facts.
+    statement_facts_class: Optional[Type["StatementFactsReader"]] = None
+
+    @property
+    def supports_statement_facts(self) -> bool:
+        """Whether this plugin has an authoritative statement facts reader."""
+        return self.statement_facts_class is not None
+
+    def statement_facts_reader(self) -> "StatementFactsReader":
+        """Construct the plugin's reader; its class must accept ``(dialect, spec)``."""
+        reader_class = self.statement_facts_class
+        if reader_class is None:
+            raise NotImplementedError("This dialect has no statement facts reader")
+        args = (self.sqlglot_dialect, self.lexical_spec())
+        try:
+            inspect.signature(reader_class).bind(*args)
+        except (TypeError, ValueError):
+            raise TypeError(
+                f"{type(self).__name__} statement facts reader {reader_class.__name__} "
+                "must accept (dialect, spec)"
+            ) from None
+        return reader_class(*args)
+
+    def statement_facts(self, statement: str) -> "StatementFacts":
+        """Return plugin statement facts when ``supports_statement_facts`` is true."""
+        return self.statement_facts_reader().read(statement)
 
     # ------------------------------------------------------------------
     # DML undo-safety scanning (data corrections). The scanning mechanics
@@ -111,7 +133,7 @@ class BaseQuirks:
         """Classify a DML statement for undo-safety (table, events, updated columns)."""
         return analyze_dml(
             statement,
-            sqlglot_dialect=self.sqlglot_dialect,
+            quirks=self,
             quote_pairs=self.sql_scan_quote_pairs,
             upsert_set_markers=self.upsert_update_set_markers,
             upsert_marker_pairs=self.upsert_update_marker_pairs,
@@ -121,24 +143,17 @@ class BaseQuirks:
         """Whether the statement is an UPDATE/DELETE with no top-level WHERE."""
         return is_full_table_dml(
             statement,
-            sqlglot_dialect=self.sqlglot_dialect,
+            quirks=self,
             quote_pairs=self.sql_scan_quote_pairs,
         )
 
-    def is_sqlglot_opaque_valid_ddl(self, sql_content: str) -> bool:
-        """Return True if *sql_content* is valid DDL that sqlglot cannot parse
-        without raising, so a caller validating SQL can skip a
-        false-positive syntax error. Plugins override for dialect-specific
-        patterns (e.g. PostgreSQL ``DROP TRIGGER … ON table``, which sqlglot
-        rejects only when the table is schema-qualified — see the override
-        for exactly which forms that covers)."""
-        return False
+    def dml_where_predicate(self, statement: str) -> "Optional[str]":
+        """The WHERE condition of an UPDATE/DELETE, or ``None`` (see ``dml_analysis``)."""
+        return dml_where_predicate(statement, quirks=self)
 
-    def preprocess_sql_for_sqlglot(self, sql_content: str) -> str:
-        """Transform SQL before passing it to sqlglot. Default: pass-through.
-        Plugins override to normalize dialect-specific syntax that sqlglot
-        can't handle natively."""
-        return sql_content
+    def statement_dml_table(self, statement: str) -> str:
+        """Table a DML statement writes to, quoted as written (see ``dml_analysis``)."""
+        return statement_dml_table(statement, quirks=self)
 
     def derive_schema_name(self, database_config: Any) -> "Optional[str]":
         """Return a schema name derived from dialect defaults, or ``None``.
@@ -182,11 +197,6 @@ class BaseQuirks:
     #: ``DROP TABLE / VIEW / INDEX / ... IF EXISTS`` is supported.
     #: Oracle has no native ``IF EXISTS``; everyone else does.
     drop_supports_if_exists: bool = False
-    #: ``DROP TABLE`` defaults to ``CASCADE`` (drop dependents).
-    #: PostgreSQL is the historical only-True here. Most other
-    #: dialects either don't support CASCADE in DROP TABLE or default
-    #: to RESTRICT.
-    drop_table_default_cascade: bool = False
     #: ``TINYINT(1)`` is an alias for BOOLEAN (MySQL convention).
     tinyint1_is_boolean: bool = False
     #: SQL literal for ``False`` in DML predicates. Oracle (NUMBER(1)),
@@ -215,7 +225,7 @@ class BaseQuirks:
     #: the last-resort fallback when a dialect declares no ``sqlglot_dialect``
     #: of its own (e.g. DB2, CosmosDB). Exactly one native plugin (PostgreSQL,
     #: whose ``sqlglot_dialect`` is ``"postgres"``) advertises this so the
-    #: undo-script generators resolve the fallback from the registry rather
+    #: script analysis cautions resolve the fallback from the registry rather
     #: than hardcoding ``"postgres"``.
     is_default_sqlglot_read_fallback: bool = False
     #: This dialect is the ANSI/generic rendering reference when a model
@@ -371,30 +381,11 @@ class BaseQuirks:
 
         The returned object is opaque to core; it exposes (at most) the
         generic attributes ``wants_session_output: bool`` and
-        ``prompts: list[str]`` that core reads via ``getattr``. Plugins
-        may attach additional state used by their own
-        :meth:`terminate_script_directives` /
-        :meth:`apply_script_substitution` overrides.
+        ``prompts: list[str]`` that core reads via ``getattr``.
 
         Default: ``None`` (dialect has no script-level execution context).
         """
         return None
-
-    def terminate_script_directives(self, sql: str) -> str:
-        """Append statement terminators to dialect-specific directive lines.
-
-        Default: pass-through. Oracle overrides for SQL*Plus directives
-        that are line-terminated rather than ``;``-terminated.
-        """
-        return sql
-
-    def apply_script_substitution(self, sql: str, ctx: Optional[object]) -> str:
-        """Substitute dialect-specific script variables in *sql* using *ctx*.
-
-        Default: pass-through. Oracle overrides for SQL*Plus ``&var`` /
-        ``&&var`` substitution.
-        """
-        return sql
 
     def parse_error_policy_directive(self, stmt: str) -> Optional[str]:
         """Parse a positional error-handling directive and return its policy.
@@ -443,25 +434,6 @@ class BaseQuirks:
     def engine_pool_options(self) -> "dict[str, Any]":
         """Default: no dialect-specific engine/pool kwargs."""
         return {}
-
-    # ------------------------------------------------------------------
-    # ParserQuirks
-    # ------------------------------------------------------------------
-
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """Return the parser class for ``parser_type``, or ``None``.
-
-        ``parser_type`` is one of ``"hybrid"``, ``"regex"``, or
-        ``"sqlglot"``. Default returns None for every type. Plugins
-        override to return their own parser class via lazy import
-        (parser modules pull in heavy deps like ``sqlglot``, so we
-        avoid importing them at quirks-class load time).
-
-        Parser classes are owned by the plugin via this hook, not via
-        static ``PARSER_MAP`` / ``REGEX_PARSER_MAP`` / ``SQLGLOT_PARSER_MAP``
-        dicts in ``core/sql_parser/parser_factory.py``.
-        """
-        return None
 
     #: Vendor-specific table-name prefixes that identify objects
     #: created by the engine to support its own materialized-view
@@ -532,6 +504,42 @@ class BaseQuirks:
     #: ``classify_execution_statement()``; first match wins.
     #: Default: empty — no dialect-specific non-transactional statements.
     non_transactional_sql_patterns: "tuple[tuple[str, str], ...]" = ()
+
+    #: Leading words that fix a statement's type (``"DDL"``, ``"DML"`` or ``"QUERY"``) where the
+    #: generic keyword rules know none, as ordered ``(type, words)`` pairs: the first pair holding
+    #: the statement's first word (leading comments aside) decides. PostgreSQL and Oracle declare
+    #: theirs; the default is empty.
+    leading_word_statement_types: "tuple[tuple[str, tuple[str, ...]], ...]" = ()
+
+    #: Statements that open (``"begin"``), end (``"end"``) or abandon (``"abort"``) the
+    #: connection's transaction, as ``(regex, kind)`` matched like
+    #: ``non_transactional_sql_patterns``. dblift runs each migration in a transaction of its
+    #: own, so a dialect declaring both ``"begin"`` and ``"end"`` can have an exact
+    #: ``BEGIN ... COMMIT`` envelope dropped. Other matched controls are refused. A
+    #: ``"begin_other"`` entry is a BEGIN with options that cannot stand in for dblift's
+    #: own: never dropped.
+    #: Default: empty -- the script is run as written (``COMMIT`` after DML, nested ``BEGIN``).
+    transaction_control_sql_patterns: "tuple[tuple[str, str], ...]" = ()
+
+    def lexical_spec(self) -> "Optional[LexicalSpec]":
+        """The plugin's shared-scanner rules, when migrated."""
+        return None
+
+    def redaction_tokenizer(self) -> "Optional[type]":
+        """The tokenizer class literal masking reads, when the spec does not (see ``LexicalSpec``).
+
+        Used only where the spec sets ``redaction_reads_engine=False``; ``None`` is the generic
+        tokenizer.
+        """
+        return None
+
+    def blank_comments(self, sql: str) -> str:
+        """*sql* with its comments blanked, as the dialect's scanner reads them.
+
+        Used to match ``transaction_control_sql_patterns`` on ``COMMIT /* c */;``.
+        Default: unchanged (only leading comments are stripped by the caller).
+        """
+        return sql
 
     # ------------------------------------------------------------------
     # Provider display / credential hooks.

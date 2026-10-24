@@ -4,16 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dblift"
-version = "4.11.1"
+version = "5.0.0"
 description = "Flyway-style raw-SQL migrations for Python teams. No JVM, and you see the exact SQL before it runs."
 keywords = ["flyway", "migrations", "python", "sql", "postgresql", "mysql"]
 readme = "README.md"
 requires-python = ">=3.11"
+# The base install is the execution path only. Presentation (Rich, Jinja2) and
+# full SQL analysis (SQLGlot) are the ``cli`` and ``analysis`` extras below.
 dependencies = [
     "PyYAML>=6.0.1",
-    "rich>=13.3.0",
-    "Jinja2>=3.1.0",
-    "sqlglot>=30.0.0,<31",
     # Security floor: Python 3.11 minimum (see CHANGELOG).
     "SQLAlchemy>=2.0.0",
 ]
@@ -111,6 +110,8 @@ snowflake = "dblift.db.plugins.snowflake.descriptor:DESCRIPTOR"
 
 [project.optional-dependencies]
 dev = [
+    # The test suite exercises the command line and full analysis.
+    "dblift[cli,analysis]",
     "pytest>=7.3.1",
     "packaging>=23.0",
     "pytest-cov>=4.1.0",
@@ -152,13 +153,17 @@ dev = [
     # specifier as the ``mcp`` extra so the two cannot drift.
     "mcp>=2.2,<3",
 ]
+# Command line: terminal rendering (Rich) and report templates (Jinja2).
+cli = ["rich>=13.3.0", "Jinja2>=3.1.0"]
+# Full SQL analysis: statement facts and lint read SQLGlot.
+analysis = ["sqlglot>=30.23.0,<31"]
 postgresql = ["psycopg[binary]>=3.1"]
 mysql = ["PyMySQL>=1.1"]
 mariadb = ["PyMySQL>=1.1"]
 oracle = ["oracledb>=2.0"]
 sqlserver = ["pymssql>=2.3"]
 db2 = ["ibm_db>=3.2", "ibm_db_sa>=0.4"]
-duckdb = ["duckdb>=1.0", "duckdb_engine>=0.13"]
+duckdb = ["duckdb>=1.0,<3", "duckdb_engine>=0.13"]
 # Cosmos DB talks to the account plane through the Azure SDK, not a DBAPI
 # driver. It is an optional extra like every other engine's driver: a bare
 # ``pip install dblift`` must not pull one engine's SDK for all 19 dialects.
@@ -181,13 +186,13 @@ citus = ["psycopg[binary]>=3.1"]
 cockroachdb = ["psycopg[binary]>=3.1"]
 redshift = ["sqlalchemy-redshift>=1.0.0", "redshift-connector>=2.1.0"]
 snowflake = ["snowflake-sqlalchemy>=1.11.0,<2", "SQLAlchemy>=2.0,<2.1"]
-fastapi = ["fastapi>=0.100"]
-flask = ["flask>=2.3"]
-django = ["Django>=4.2"]
+fastapi = ["fastapi>=0.100", "dblift[cli,analysis]"]
+flask = ["flask>=2.3", "dblift[cli,analysis]"]
+django = ["Django>=4.2", "dblift[cli,analysis]"]
 otel = ["opentelemetry-api>=1.20"]
 # Capped below the next major: the server targets ``mcp.server.mcpserver``, an
 # API surface introduced in 2.x, so a major bump would break only at runtime.
-mcp = ["mcp>=2.2,<3"]
+mcp = ["mcp>=2.2,<3", "dblift[cli,analysis]"]
 # ``all`` must name *every* engine extra, not a hand-picked subset: users read
 # it as "whatever dblift can talk to". Enforced by
 # ``tests/unit/test_oss_public_surface.py::
@@ -201,6 +206,7 @@ mcp = ["mcp>=2.2,<3"]
 # needs its own package (as redshift and snowflake already do); naming them
 # keeps the coverage claim mechanically checkable instead of argued.
 all = [
+    "dblift[cli,analysis]",
     "dblift[postgresql,mysql,mariadb,oracle,sqlserver,db2,duckdb,cosmosdb,mongodb]",
     "dblift[redshift,snowflake]",
     "dblift[neon,supabase,aurora-postgresql,alloydb]",
@@ -330,15 +336,14 @@ no_implicit_reexport = true
 strict_equality = true
 
 # PR-F1: extend the strict zone to the rest of ``api/``. Same flag set as
-# above except ``no_implicit_reexport`` — enforcing it on these two
-# modules would require touching ``core.logger.results`` to add explicit
+# above except ``no_implicit_reexport`` — enforcing it on this
+# module would require touching ``core.logger.results`` to add explicit
 # ``__all__`` re-exports, which
 # is scope creep beyond the ``api/`` package. When Phase F+ extends the
 # strict zone into ``core/``, those re-exports become a one-shot fix and
 # this carve-out can be removed.
 [[tool.mypy.overrides]]
 module = [
-    "dblift.api._client_operations",
     "dblift.api.client",
 ]
 disallow_any_generics = true
@@ -366,8 +371,6 @@ module = [
     "dblift.core.migration.executor.transaction_policy",
     "dblift.core.migration.commands.validate_command",
 
-    "dblift.core.migration.scripting.undo_script_generator._extractors",
-    "dblift.core.migration.scripting.undo_script_generator._helpers",
     "dblift.core.migration.rules.migration_rules",
 ]
 disallow_any_generics = true
@@ -385,9 +388,14 @@ strict_equality = true
 # Same flag set as the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
-    "dblift.core.sql_parser.hybrid_parser",
-    "dblift.core.sql_parser.enhanced_regex_parser",
-    "dblift.core.sql_parser.unified_regex_parser",
+    "dblift.core.sql_parser.routine_body",
+    "dblift.core.sql_parser.segment_script",
+    "dblift.core.sql_parser.terminator_lines",
+    "dblift.core.sql_parser.terminator_script",
+    "dblift.db.plugins.db2.parser.lexical_spec",
+    "dblift.db.plugins.duckdb.parser.lexical_spec",
+    "dblift.db.plugins.mysql.parser.lexical_spec",
+    "dblift.db.plugins.mariadb.lexical_spec",
     "dblift.core.normalization",
     "dblift.core.sql_model.view_options",
     "dblift.cli.handlers._shared",
@@ -501,7 +509,7 @@ strict_equality = true
 # ``migration: Any`` annotations on duck-typed helper parameters, generic
 # parameters on ``List[Dict[str, Any]]`` / ``Dict[str, Any]``, ``Optional``
 # wrappers on default-``None`` params, return-type annotations on two
-# ``SqlAnalyzer`` methods, and explicit ``-> None`` / ``-> str`` on inner
+# ``StatementReader`` methods, and explicit ``-> None`` / ``-> str`` on inner
 # functions. Same flag set as the api/* carve-outs above.
 [[tool.mypy.overrides]]
 module = [
@@ -515,7 +523,7 @@ module = [
     "dblift.core.migration.scripting.migration_script_manager",
     "dblift.core.migration.sql",
     "dblift.core.migration.sql.execution_statement",
-    "dblift.core.migration.sql.sql_analyzer",
+    "dblift.core.migration.sql.statement_reader",
     "dblift.core.migration.sql.sql_execution_service",
 
     "dblift.core.migration.sql.statement_splitter",
@@ -601,8 +609,6 @@ module = [
     "dblift.db.plugins.sqlite.sqlite.query_executor",
     "dblift.db.plugins.sqlite.sqlite.schema_operations",
     "dblift.db.plugins.sqlite.parser",
-    "dblift.db.plugins.sqlite.parser.parser_config",
-    "dblift.db.plugins.sqlite.parser.sqlite_regex_parser",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -704,8 +710,6 @@ module = [
     "dblift.db.plugins.postgresql.postgresql",
     "dblift.db.plugins.postgresql.postgresql.schema_operations",
     "dblift.db.plugins.postgresql.postgresql._lock_key",
-    "dblift.db.plugins.postgresql.parser.parser_config",
-    "dblift.db.plugins.postgresql.parser.postgresql_regex_parser",
     "dblift.db.plugins.postgresql.parser.postgresql_statement_parser",
     "dblift.db.plugins.postgresql.parser.postgresql_tokenizer",
 ]
@@ -733,8 +737,6 @@ module = [
     "dblift.db.plugins.mysql.quirks",
     "dblift.db.plugins.mysql.mysql",
     "dblift.db.plugins.mysql.mysql.schema_operations",
-    "dblift.db.plugins.mysql.parser.parser_config",
-    "dblift.db.plugins.mysql.parser.mysql_regex_parser",
     "dblift.db.plugins.mysql.parser.mysql_statement_parser",
     "dblift.db.plugins.mysql.parser.mysql_tokenizer",
 ]
@@ -764,15 +766,14 @@ module = [
     "dblift.db.plugins.oracle.oracle",
     "dblift.db.plugins.oracle.oracle.dbms_output",
     "dblift.db.plugins.oracle.parser",
-    "dblift.db.plugins.oracle.parser.oracle_parser",
-    "dblift.db.plugins.oracle.parser.oracle_statement_parser",
     "dblift.db.plugins.oracle.parser.oracle_tokenizer",
     "dblift.db.plugins.oracle.parser.sqlplus_context",
     "dblift.db.plugins.oracle.parser._comments",
-    "dblift.db.plugins.oracle.parser._object_extractor",
+    "dblift.db.plugins.oracle.parser._directives",
     "dblift.db.plugins.oracle.parser._plsql_block",
     "dblift.db.plugins.oracle.parser._sqlplus",
     "dblift.db.plugins.oracle.parser._statement_splitter",
+    "dblift.db.plugins.oracle.parser._unit_heads",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -799,8 +800,6 @@ module = [
     "dblift.db.plugins.sqlserver.quirks",
     "dblift.db.plugins.sqlserver.sqlserver",
     "dblift.db.plugins.sqlserver.sqlserver.schema_operations",
-    "dblift.db.plugins.sqlserver.parser.parser_config",
-    "dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser",
     "dblift.db.plugins.sqlserver.parser.sqlserver_statement_parser",
     "dblift.db.plugins.sqlserver.parser.sqlserver_tokenizer",
     "dblift.db.plugins.sqlserver.parser.tsql_batch_separator",
@@ -815,13 +814,9 @@ no_implicit_optional = true
 warn_unused_ignores = true
 strict_equality = true
 
-# PR-H9g: strict db/plugins/db2 — complete DB2 plugin (provider, quirks, plugin
-# entry, db2/ subsystem, regex-based parser, generator). DB2's parser is
-# regex-based and lacks a separate tokenizer/statement parser (unlike
-# PostgreSQL/MySQL/Oracle/SQL Server), but its parser_config.py is the largest
-# single parser config in the codebase at 1,147 LOC. Db2Quirks extends
-# BaseQuirks (strict via the dialect_boundary block above); the H8 manager bases
-# (BaseHistoryManager, BaseLockingManager, BaseQueryExecutor,
+# Strict db/plugins/db2: the complete Db2 plugin (provider, quirks, plugin entry, db2/ subsystem,
+# generator). Db2Quirks extends BaseQuirks (strict via the dialect_boundary block above); the
+# manager bases (BaseHistoryManager, BaseLockingManager, BaseQueryExecutor,
 # BaseSchemaOperations) are likewise strict, so the full strict flag set
 # including disallow_subclassing_any is safe here.
 [[tool.mypy.overrides]]
@@ -833,8 +828,6 @@ module = [
     "dblift.db.plugins.db2.quirks",
     "dblift.db.plugins.db2.db2",
     "dblift.db.plugins.db2.db2.schema_operations",
-    "dblift.db.plugins.db2.parser.parser_config",
-    "dblift.db.plugins.db2.parser.db2_regex_parser",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -1002,10 +995,6 @@ module = [
     "dblift.core.migration.journals.migration_journal",
     "dblift.core.migration.executor",
     "dblift.core.migration.executor.migration_executor",
-    "dblift.core.migration.scripting.undo_script_generator",
-    "dblift.core.migration.scripting.undo_script_generator._generator",
-    "dblift.core.migration.scripting.undo_script_generator._models",
-    "dblift.core.migration.scripting.undo_script_generator._reversers",
     "dblift.core.migration.executors",
     "dblift.core.migration.executors.base_executor",
     "dblift.core.migration.executors.executor_factory",

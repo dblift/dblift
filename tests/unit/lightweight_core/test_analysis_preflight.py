@@ -1,14 +1,13 @@
 """Required journal analysis must be ready before any migration write."""
 
+import sys
 from unittest.mock import Mock
 
 import pytest
 
-from dblift.core.exceptions import ParserNotAvailableError
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.base_quirks import BaseQuirks
-from dblift.db.dml_analysis import DmlMutation
 from tests.unit.lightweight_core._support import run_python
 
 
@@ -61,117 +60,18 @@ def test_preparation_retries_after_failure_and_then_caches_success():
     assert analyzer.prepare_object_analysis.call_count == 2
 
 
-def test_parser_preparation_exposes_missing_dependency_without_exception_cycle():
-    dependency_error = ModuleNotFoundError("No module named 'driver_parser'", name="driver_parser")
-    factory = Mock()
-    factory.get_parser.side_effect = ParserNotAvailableError("parser unavailable")
-    factory.get_parser.side_effect.__cause__ = dependency_error
-    analyzer = SqlAnalyzer("sqlite", parser_factory=factory)
-
-    with pytest.raises(ModuleNotFoundError) as raised:
-        analyzer.prepare_object_analysis()
-
-    assert raised.value is dependency_error
-    assert raised.value.name == "driver_parser"
-    assert raised.value.__cause__ is None
-    assert raised.value.__suppress_context__
-
-
-def test_parser_preparation_preserves_ordinary_unavailable_error():
-    unavailable = ParserNotAvailableError("unsupported parser")
-    factory = Mock()
-    factory.get_parser.side_effect = unavailable
-    analyzer = SqlAnalyzer("sqlite", parser_factory=factory)
-
-    with pytest.raises(ParserNotAvailableError) as raised:
-        analyzer.prepare_object_analysis()
-
-    assert raised.value is unavailable
-
-
-def test_opaque_factory_and_instance_dml_override_do_not_require_sqlglot(monkeypatch):
-    import builtins
-
-    original_import = builtins.__import__
-
-    def block_sqlglot(name, *args, **kwargs):
-        if name.split(".")[0] == "sqlglot":
-            raise ModuleNotFoundError("contract blocked: sqlglot", name="sqlglot")
-        return original_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", block_sqlglot)
-    factory = object()  # No preparation protocol; the injected factory is opaque.
-    analyzer = SqlAnalyzer("sqlite", parser_factory=factory)
-    quirks = BaseQuirks()
-    quirks.analyze_dml = lambda statement: None
+def test_full_analysis_without_sqlglot_names_the_extra_before_any_statement_runs(monkeypatch):
+    monkeypatch.setitem(sys.modules, "sqlglot", None)
+    provider = Mock()
     service = SqlExecutionService(
-        Mock(), analyzer, journal=Mock(spec=["record_object_changes"]), quirks=quirks
-    )
-
-    service.prepare_analysis()
-    assert analyzer.parser_factory is factory
-
-
-def test_inherited_dml_requires_sqlglot_even_with_opaque_parser(monkeypatch):
-    import builtins
-
-    original_import = builtins.__import__
-
-    def block_sqlglot(name, *args, **kwargs):
-        if name.split(".")[0] == "sqlglot":
-            raise ModuleNotFoundError("contract blocked: sqlglot", name="sqlglot")
-        return original_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", block_sqlglot)
-    service = SqlExecutionService(
-        Mock(),
-        SqlAnalyzer("sqlite", parser_factory=object()),
+        provider,
+        StatementReader("sqlite"),
         journal=Mock(spec=["record_object_changes"]),
         quirks=BaseQuirks(),
     )
-    with pytest.raises(ModuleNotFoundError, match="sqlglot"):
+    with pytest.raises(ModuleNotFoundError, match=r"dblift\[analysis\]"):
         service.prepare_analysis()
-
-
-def test_complete_injected_parser_and_instance_dml_quirk_execute_without_sqlglot(monkeypatch):
-    import builtins
-
-    original_import = builtins.__import__
-
-    def block_sqlglot(name, *args, **kwargs):
-        if name.split(".")[0] == "sqlglot":
-            raise ModuleNotFoundError("contract blocked: sqlglot", name="sqlglot")
-        return original_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", block_sqlglot)
-
-    class ExternalFactory:
-        def get_parser(self):
-            return self
-
-        def extract_objects(self, statement, schema):
-            return [{"object_name": "t", "object_type": "TABLE", "schema": schema}]
-
-    provider = Mock()
-    provider.execute_statement.return_value = 1
-    journal = Mock(
-        spec=["record_statement_start", "record_statement_complete", "record_object_changes"]
-    )
-    analyzer = SqlAnalyzer("sqlite", parser_factory=ExternalFactory())
-    quirks = BaseQuirks()
-    quirks.analyze_dml = lambda statement: DmlMutation("t", {"INSERT"}, [])
-    service = SqlExecutionService(provider, analyzer, journal=journal, quirks=quirks)
-
-    service.execute_statement("CREATE TABLE t (id INTEGER)", stmt_index=0)
-    service.execute_statement("INSERT INTO t (id) VALUES (1)", stmt_index=1)
-
-    assert provider.execute_statement.call_count == 2
-    assert journal.record_statement_start.call_count == 2
-    assert journal.record_statement_complete.call_count == 2
-    assert journal.record_object_changes.call_count == 2
-    assert [
-        call.args[2][0]["object_name"] for call in journal.record_object_changes.call_args_list
-    ] == ["t", "t"]
+    provider.execute_statement.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -200,16 +100,20 @@ migrations.mkdir()
 with sqlite3.connect(db_path) as observer:
     before = list(observer.execute("SELECT name FROM sqlite_master WHERE type='table'"))
 engine = create_engine(f'sqlite:///{{db_path}}')
-client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations, logger=NullLog())
+client = None
 try:
     try:
+        client = DBLiftClient.from_sqlalchemy(
+            engine, migrations_dir=migrations, logger=NullLog(), analysis_mode='full'
+        )
         {migrate_call}
     except ModuleNotFoundError as exc:
         assert exc.name == 'sqlglot'
     else:
         raise AssertionError('missing required analysis did not fail')
 finally:
-    client.close()
+    if client is not None:
+        client.close()
     engine.dispose()
 with sqlite3.connect(db_path) as observer:
     after = list(observer.execute("SELECT name FROM sqlite_master WHERE type='table'"))
@@ -266,16 +170,20 @@ db_path = Path('app.db')
 with sqlite3.connect(db_path) as observer:
     before = list(observer.execute("SELECT name FROM sqlite_master WHERE type='table'"))
 engine = create_engine(f'sqlite:///{{db_path}}')
-client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations, logger=NullLog())
+client = None
 try:
     try:
+        client = DBLiftClient.from_sqlalchemy(
+            engine, migrations_dir=migrations, logger=NullLog(), analysis_mode='full'
+        )
         {command}
     except ModuleNotFoundError as exc:
         assert exc.name == 'sqlglot'
     else:
         raise AssertionError('SQL callback dependency did not fail')
 finally:
-    client.close()
+    if client is not None:
+        client.close()
     engine.dispose()
 with sqlite3.connect(db_path) as observer:
     after = list(observer.execute("SELECT name FROM sqlite_master WHERE type='table'"))
@@ -320,16 +228,20 @@ migrations = Path('migrations')
 with sqlite3.connect('app.db') as observer:
     before = list(observer.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"))
 engine = create_engine('sqlite:///app.db')
-client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations, logger=NullLog())
+client = None
 try:
     try:
+        client = DBLiftClient.from_sqlalchemy(
+            engine, migrations_dir=migrations, logger=NullLog(), analysis_mode='full'
+        )
         client.undo()
     except ModuleNotFoundError as exc:
         assert exc.name == 'sqlglot'
     else:
         raise AssertionError('undo dependency did not fail')
 finally:
-    client.close()
+    if client is not None:
+        client.close()
     engine.dispose()
 with sqlite3.connect('app.db') as observer:
     after = list(observer.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"))

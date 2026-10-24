@@ -67,8 +67,9 @@ class LogLevel(Enum):
         Raises:
             ValueError: If the string is not a valid log level
         """
+        name = {"WARNING": "WARN", "CRITICAL": "ERROR"}.get(value.upper(), value.upper())
         try:
-            return cls(value.upper())
+            return cls(name)
         except ValueError:
             raise ValueError(
                 f"Invalid log level: {value}. Valid levels are: {', '.join(l.name for l in cls)}"

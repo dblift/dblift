@@ -13,13 +13,14 @@ from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.exceptions import ExecutionError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
-from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
-from dblift.db.plugins.postgresql._provider_query_executor import ProviderQueryExecutor
-from dblift.db.plugins.postgresql.parser.postgresql_tokenizer import (
-    PostgreSQLTokenizer,
+from dblift.core.sql_parser.lexical_tokenizer import (
+    LexicalTokenizer,
     copy_header_reads,
 )
+from dblift.core.sql_parser.tokens import Token, TokenType
+from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
+from dblift.db.plugins.postgresql._provider_query_executor import ProviderQueryExecutor
+from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 from dblift.db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
 from dblift.db.plugins.postgresql.postgresql.schema_operations import PostgreSqlSchemaOperations
 from dblift.db.plugins.postgresql.search_path import search_path_schemas
@@ -32,33 +33,39 @@ def _quote_identifier(identifier: str) -> str:
 
 
 def _split_copy_from_stdin(sql: str) -> Optional[Tuple[str, str]]:
-    """Split a ``COPY ... FROM stdin`` statement into ``(header, data)``.
+    """Split a ``COPY ... FROM STDIN`` statement into ``(header, data)``.
 
-    The statement splitter keeps a COPY header and its data block together;
-    the tokenizer's ``COPY_DATA`` token says where the data starts. The
-    header loses its ``;`` and the data its ``\\.`` end-of-data line, which
-    is psql framing rather than rows. Returns ``None`` for anything else.
+    The splitter hands over the header, its ``;`` and the rows; the ``\\.``
+    line was its terminator and is not in the text. The header loses its
+    ``;``; the rows retain their exact line endings. A header with no rows
+    yields empty data.
     """
     if sql.lstrip()[:4].upper() != "COPY":
         return None
-    data_token = next(
-        (t for t in PostgreSQLTokenizer(sql).tokenize() if t.type == TokenType.COPY_DATA),
-        None,
-    )
-    if data_token is None:
+    tokens = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC).tokenize()
+    header_tokens: list[Token] = []
+    for token in tokens:
+        if token.type == TokenType.DELIMITER:
+            break
+        header_tokens.append(token)
+    else:
         return None
-    header = sql[: data_token.pos].strip().rstrip(";").rstrip()
-    lines = data_token.text.splitlines(keepends=True)
-    if lines and lines[-1].startswith("\\."):
-        lines.pop()
-    return header, "".join(lines)
+    if not copy_header_reads(header_tokens, "FROM", "STDIN"):
+        return None
+    data_token = next((t for t in tokens if t.type == TokenType.COPY_DATA), None)
+    header = sql[: token.pos].strip(POSTGRESQL_SPEC.text_blanks)
+    data = data_token.text if data_token else ""
+    return header, data
 
 
 def _is_copy_to_stdout(sql: str) -> bool:
     """Whether *sql* is a ``COPY ... TO STDOUT`` statement."""
     if sql.lstrip()[:4].upper() != "COPY":
         return False
-    header = takewhile(lambda t: t.type != TokenType.DELIMITER, PostgreSQLTokenizer(sql).tokenize())
+    header = takewhile(
+        lambda t: t.type != TokenType.DELIMITER,
+        LexicalTokenizer(sql, spec=POSTGRESQL_SPEC).tokenize(),
+    )
     return copy_header_reads(header, "TO", "STDOUT")
 
 
