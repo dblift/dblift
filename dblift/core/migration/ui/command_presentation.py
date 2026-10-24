@@ -32,7 +32,8 @@ def _render_command_header_update(
     read_snapshot: Optional[MigrationReadSnapshot] = None,
     **kwargs: Any,
 ) -> None:
-    """Update command header with schema version and connection info after connection is established.
+    """Update command header with schema version and connection info after
+    connection is established.
 
     Orchestrates five focused helpers:
     1. :meth:`_build_filters_list` — CLI filter flags
