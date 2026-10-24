@@ -100,7 +100,7 @@ def _dialect_tokenizer(dialect: Optional[str]) -> Type[BaseTokenizer]:
     return BaseTokenizer
 
 
-def bare_words(sql: str, dialect: Optional[str] = None) -> List[str]:
+def bare_words(sql: str, dialect: str) -> List[str]:
     """The upper-cased words of *sql* that are not in a string, a quoted name or a comment."""
     return [token.text.upper() for token in _tokens(sql, dialect) if token.type in _WORD_TYPES]
 
