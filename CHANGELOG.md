@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [5.0.0] - 2026-10-24
+
 ### Breaking
 
 - **The Python API runs in execution mode by default and is silent.** `DBLiftClient`
@@ -333,6 +343,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   materialized view logs and partitioned table clauses are reported as unread, and a statement
   whose objects cannot be established names none. The gaps are listed in
   `docs/sql-parsing/oracle.md` section 13.
+
 ### Fixed
 
 - **Oracle no longer repeats an unquoted value in a conversion error.** Inserting a string into
@@ -718,13 +729,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `repair` now share one rule for missing scripts, which honours the deleted marker and matches a
   row recorded under a directory-qualified name by its file name.
 
-### Security
-
-- **DuckDB: dollar-quoted strings are now redacted in logs and reports.** A value written as
-  `$$…$$` or `$tag$…$tag$`, an escape string with a backslash (`E'…\'…'`), and a quoted name or
-  block comment that is never closed are replaced by `'?'` in failure messages and reports
-  instead of appearing in the clear.
-
 ### Removed
 
 - The `blanks=` and `hash_comments=` keywords of `is_comment_only_statement`, the quirks hooks
@@ -738,6 +742,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `dblift.db.plugins.mysql.parser._script` (an internal module; use
   `MySqlRegexParser().split()`) and the `MARIADB` class attribute of the MySQL
   and MariaDB regex parsers.
+
+### Security
+
+- **DuckDB: dollar-quoted strings are now redacted in logs and reports.** A value written as
+  `$$…$$` or `$tag$…$tag$`, an escape string with a backslash (`E'…\'…'`), and a quoted name or
+  block comment that is never closed are replaced by `'?'` in failure messages and reports
+  instead of appearing in the clear.
 
 ## [4.12.0] - 2026-10-14
 
