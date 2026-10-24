@@ -185,7 +185,9 @@ token. DBLift removes the driver's `DETAIL`, `HINT`, `QUERY`, `CONTEXT` and `LIN
 SQLAlchemy's `[SQL: ...]` and `[parameters: ...]` blocks from the error text before it reaches the
 console, the log files, the run result and the statement journal. In what remains, anything in
 single or double quotes (from the first quote to the last on the line) and every `=(...)` group is
-replaced with `?`.
+replaced with `?`. An unquoted value after `value:`, `value is` or `invalid number:`, and the
+unquoted tail of an Oracle `ORA-` line that follows a colon (except Oracle's fixed phrases), are
+replaced too.
 
 The statement number, the script name, the error class and error codes stay. Because a name cannot
 be told from a value, quoted names are replaced too: PostgreSQL's `relation "orders"`, a constraint
@@ -194,7 +196,8 @@ database client. Statements printed at `--log-level debug` have their string lit
 
 Two things are not masked. `--show-sql` prints the statements it is asked to show verbatim, and a
 message you raise yourself (`RAISE EXCEPTION '...'` in PostgreSQL, `SIGNAL ... MESSAGE_TEXT` in
-MySQL) is your own text and is kept.
+MySQL, `RAISE_APPLICATION_ERROR` in Oracle, whose `ORA-20000` to `ORA-20999` text is kept as
+written) is your own text and is kept.
 
 ## SQL Server: Full-text Catalog and Index Fail in Transactional Migration
 

@@ -113,6 +113,22 @@ _DRIVER_FIELD_RE = re.compile(
 # MySQL's syntax error quotes the rest of the statement, newlines and quotes included.
 _MYSQL_NEAR_RE = re.compile(r"\bnear '.*?' at line (\d+)", re.DOTALL)
 _VALUE_GROUP_RE = re.compile(r"=\(.*\)|\bvalue is \(.*\)", re.IGNORECASE)
+# An unquoted value after a label (Oracle: ``ORA-03302: ... invalid string value: <value>``).
+_VALUE_TAIL_RE = re.compile(
+    r"((?:\b(?:invalid\s+)?(?:string\s+)?(?:value|number)\s*:|\bvalue is"
+    r"|:\s+value(?!\s+(?:or|too|is)\b))[ \t]+)(?![(?])\S[^\n]*",
+    re.IGNORECASE,
+)
+_ORACLE_HEADER_RE = re.compile(r"ORA-(?!20\d{3}:)\d{5}:")  # ORA-20xxx is raised by user code
+# What Oracle says after a trailing colon that is not a value.
+_ORACLE_FIXED_TAILS = frozenset(
+    (
+        "character to number conversion error",
+        "character string buffer too small",
+        "invalid identifier",
+        "table or view does not exist",
+    )
+)
 
 
 # An apostrophe between two word characters (can't, doesn't) is text, not a delimiter.
@@ -140,6 +156,26 @@ def _mask_quoted(text: str, quote: str) -> str:
     return "\n".join(masked)
 
 
+def _mask_oracle_tail(line: str) -> str:
+    """Mask what follows the last top-level ``: `` of an ``ORA-`` line, unless it is fixed text."""
+    header = _ORACLE_HEADER_RE.match(line)
+    if not header:
+        return line
+    depth, cut = 0, -1
+    for i in range(header.end(), len(line) - 1):
+        if line[i] == "(":
+            depth += 1
+        elif line[i] == ")":
+            depth -= 1
+        elif depth <= 0 and line[i : i + 2] == ": ":
+            cut = i + 2
+    tail = line[cut:].strip() if cut > 0 else ""
+    # After a label that is already masked ("ORA-00904: ?: invalid identifier") comes no value.
+    if not tail or tail.lower() in _ORACLE_FIXED_TAILS or line[: cut - 2].endswith("?"):
+        return line
+    return line[:cut] + "?"
+
+
 def redact_driver_error_text(message: str) -> str:
     """Remove what a driver error quotes from the failing statement.
 
@@ -158,6 +194,8 @@ def redact_driver_error_text(message: str) -> str:
     text = _mask_quoted(text, "'")
     text = _VALUE_GROUP_RE.sub(lambda m: m.group(0).split("(", 1)[0] + "(?)", text)
     text = _mask_quoted(text, '"')
+    text = _VALUE_TAIL_RE.sub(lambda m: m.group(1) + "?", text)
+    text = "\n".join(_mask_oracle_tail(line) for line in text.split("\n"))
     return text.strip()
 
 

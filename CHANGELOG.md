@@ -335,6 +335,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/sql-parsing/oracle.md` section 13.
 ### Fixed
 
+- **Oracle no longer repeats an unquoted value in a conversion error.** Inserting a string into
+  a `NUMBER` column gave a second `ORA-03302` line ending in the value, which reached the console, the
+  logs, the run result and events. The text after `value:`, `value is`, `invalid number:` and a
+  trailing `: ` on an `ORA-` line is now replaced with `?`; the error codes, constraint names and
+  Oracle's fixed phrases stay, and so does the text of an error your own code raises
+  (`ORA-20000` to `ORA-20999`).
+
 - **`dry_run`, `mark_as_executed`, `tags`, `exclude_tags`, `versions` and `exclude_versions` set in the
   configuration (or by `DBLIFT_DRY_RUN` and the matching variables) are applied by the Python API.**
   `DBLiftClient.from_config_file(...).migrate()` ignored them, so `dry_run: true` applied every
