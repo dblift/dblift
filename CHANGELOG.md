@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Statement analysis names the object of `GRANT` and `REVOKE` on the PostgreSQL and MySQL
+  grammars (MariaDB included): `GRANT SELECT ON t TO u` is a DDL statement that references
+  table `t` (also `ON TABLE`, `ON db.t`, and on PostgreSQL `ON SEQUENCE`, `SCHEMA`, `DATABASE`,
+  `TYPE`, `FUNCTION` and `PROCEDURE`; on MySQL `ON FUNCTION` and `ON PROCEDURE`). On MySQL and
+  MariaDB `DESCRIBE t`, `DESC t`, `EXPLAIN t`, `SHOW CREATE TABLE t`, `SHOW COLUMNS FROM t` and
+  `SHOW INDEX FROM t` reference their table; they returned no object. Wildcard grants, role
+  grants, grants to `'u'@'h'` and routines written with a signature stay unnamed.
 - The statement facts of the `mysql` grammar (MySQL and MariaDB) name the object of two forms that
   came back unread: `CREATE`, `ALTER` and `DROP TABLESPACE ts` (MySQL) name the tablespace, and
   `ALTER SEQUENCE [db.]s RESTART WITH 100` (MariaDB) names the sequence, as `CREATE SEQUENCE` and
