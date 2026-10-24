@@ -401,24 +401,26 @@
   },
   "sql": "DROP STOGROUP my_sg"
  },
- "100d168fc3181176/analyzer": {
-  "class": "opaque-reader-gap",
+ "100d168fc3181176/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "tablespace: postgres Command is opaque to statement facts",
    "kind": "DDL",
+   "objects": [
+    [
+     "test_ts",
+     "TABLESPACE",
+     "created",
+     null
+    ]
+   ],
    "operation": "CREATE"
   },
-  "issue": "#669",
   "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.test_ts"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"MANAGED\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (not implemented, not a syntax error); a tablespace has no object type in the reader, so it is opaque and the old extraction's UNKNOWN name is lost (#669). YugabyteDB 2026.1.2: 42601.",
+  "path": "hybrid",
+  "reason": "The old hybrid extraction named nothing; the reader names the object from the statement head (TABLESPACE test_ts (created)), the way it does for any other kind it knows, whether or not the engine accepts the rest of the text. PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"MANAGED\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family (measured 2026-10-24 with psql 16.14).",
   "sql": "CREATE TABLESPACE test_ts MANAGED BY SYSTEM"
  },
  "1056ec069a4157b9/analyzer": {
@@ -1884,24 +1886,26 @@
   },
   "sql": "COPY items FROM '/tmp/' || 'items.csv'"
  },
- "350dbf9c8990d3b8/analyzer": {
-  "class": "opaque-reader-gap",
+ "350dbf9c8990d3b8/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "tablespace: postgres Command is opaque to statement facts",
    "kind": "DDL",
+   "objects": [
+    [
+     "ts",
+     "TABLESPACE",
+     "dropped",
+     null
+    ]
+   ],
    "operation": "DROP"
   },
-  "issue": "#669",
   "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.ts"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "This kind of object has no SqlObjectType the reader can name (event trigger, foreign data wrapper, server, publication, operator class, text search dictionary, tablespace), so it is opaque where the old extraction named UNKNOWN default_schema.ts (#669). PostgreSQL 16.14 parses it (SQLSTATE 25001 at run time).",
+  "path": "hybrid",
+  "reason": "The old hybrid extraction named nothing; the reader names the object from the statement head (TABLESPACE ts (dropped)), the way it does for any other kind it knows, whether or not the engine accepts the rest of the text. PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time, measured 2026-10-24 with psql 16.14).",
   "sql": "DROP TABLESPACE ts"
  },
  "352cb192f9746748/analyzer": {
@@ -2356,24 +2360,26 @@
   },
   "sql": "CREATE OR REPLACE FUNCTION GetEmployeeCount RETURN NUMBER AS\n        BEGIN\n            RETURN (SELECT COUNT(*) FROM empl"
  },
- "3f95346c24ab5e73/analyzer": {
-  "class": "opaque-reader-gap",
+ "3f95346c24ab5e73/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "tablespace: postgres Command is opaque to statement facts",
    "kind": "DDL",
+   "objects": [
+    [
+     "my_ts",
+     "TABLESPACE",
+     "created",
+     null
+    ]
+   ],
    "operation": "CREATE"
   },
-  "issue": "#669",
   "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.my_ts"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"MANAGED\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (not implemented, not a syntax error); a tablespace has no object type in the reader, so it is opaque and the old extraction's UNKNOWN name is lost (#669). YugabyteDB 2026.1.2: 42601.",
+  "path": "hybrid",
+  "reason": "The old hybrid extraction named nothing; the reader names the object from the statement head (TABLESPACE my_ts (created)), the way it does for any other kind it knows, whether or not the engine accepts the rest of the text. PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"MANAGED\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family (measured 2026-10-24 with psql 16.14).",
   "sql": "CREATE TABLESPACE \"my_ts\" MANAGED BY SYSTEM"
  },
  "3f97612d0be4afcd/analyzer": {
@@ -2779,21 +2785,23 @@
   },
   "sql": "CREATE OR REPLACE NOFORCE VIEW vw_test AS\n        SELECT * FROM employees"
  },
- "5497540f7a886263": {
+ "5497540f7a886263/hybrid": {
   "class": "opaque-reader-gap",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "operator class: postgres Command is opaque to statement facts",
    "kind": "DDL",
-   "operation": "CREATE"
-  },
-  "issue": "#669",
-  "old": {
-   "analyzer": [
+   "objects": [
     [
-     "UNKNOWN",
-     "default_schema.oc"
+     "oc",
+     "OPERATOR_CLASS",
+     "created",
+     null
     ]
    ],
+   "operation": "CREATE"
+  },
+  "issue": "by design: docs/sql-parsing/postgresql.md section 12",
+  "old": {
    "hybrid": [
     [
      "UNKNOWN",
@@ -2807,8 +2815,8 @@
     ]
    ]
   },
-  "path": "both",
-  "reason": "This kind of object has no SqlObjectType the reader can name (event trigger, foreign data wrapper, server, publication, operator class, text search dictionary, tablespace), so it is opaque where the old extraction named UNKNOWN class, UNKNOWN oc / UNKNOWN default_schema.oc (#669). PostgreSQL 16.14 runs it.",
+  "path": "hybrid",
+  "reason": "The old hybrid extraction took the word CLASS for an object (UNKNOWN class) next to UNKNOWN oc; there is no object named class. The reader names only the operator class from the head (OPERATOR_CLASS oc (created)). PostgreSQL 16.14 runs it (measured 2026-10-24 with psql 16.14, rolled back).",
   "sql": "CREATE OPERATOR CLASS oc FOR TYPE int USING btree AS OPERATOR 1 ="
  },
  "555669857426b697/analyzer": {
@@ -3067,24 +3075,26 @@
   "reason": "GRANT and REVOKE are read as DDL whose privilege targets are not modelled, so the reader names no object where the old extraction named TABLE checkpoint / TABLE default_schema.checkpoint (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "GRANT SELECT ON TABLE checkpoint TO r"
  },
- "5a55d5c483c0bdbf/analyzer": {
-  "class": "opaque-reader-gap",
+ "5a55d5c483c0bdbf/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "tablespace: postgres Command is opaque to statement facts",
    "kind": "DDL",
+   "objects": [
+    [
+     "ts1",
+     "TABLESPACE",
+     "created",
+     null
+    ]
+   ],
    "operation": "CREATE"
   },
-  "issue": "#669",
   "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.ts1"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"IN\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (not implemented, not a syntax error); a tablespace has no object type in the reader, so it is opaque and the old extraction's UNKNOWN name is lost (#669). YugabyteDB 2026.1.2: 42601.",
+  "path": "hybrid",
+  "reason": "The old hybrid extraction named nothing; the reader names the object from the statement head (TABLESPACE ts1 (created)), the way it does for any other kind it knows, whether or not the engine accepts the rest of the text. PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"IN\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family (measured 2026-10-24 with psql 16.14).",
   "sql": "CREATE TABLESPACE ts1 IN STOGROUP sg1"
  },
  "5a93aafbfa136243/hybrid": {
@@ -3297,33 +3307,6 @@
   "path": "hybrid",
   "reason": "The table carries WITH (fillfactor=70) TABLESPACE ts, which sqlglot parses as a Command: the reader keeps the head identity only as opaque, and the declared columns are not read, and the diagnostic names the TABLESPACE clause, where the old extraction named TABLE Case. PostgreSQL 16.14 parses it (SQLSTATE 3F000 at run time).",
   "sql": "CREATE TABLE MySchema.\"Case\" (a int) WITH (fillfactor=70) TABLESPACE ts"
- },
- "60946c9b564c1ad9": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
-   "kind": "DDL",
-   "operation": "CREATE"
-  },
-  "issue": "#669",
-  "old": {
-   "analyzer": [
-    [
-     "FOREIGN_DATA_WRAPPER",
-     "default_schema.fdw"
-    ]
-   ],
-   "hybrid": [
-    [
-     "FOREIGN_DATA_WRAPPER",
-     "fdw",
-     "public"
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "This kind of object has no SqlObjectType the reader can name (event trigger, foreign data wrapper, server, publication, operator class, text search dictionary, tablespace), so it is opaque where the old extraction named FOREIGN_DATA_WRAPPER fdw / FOREIGN_DATA_WRAPPER default_schema.fdw (#669). PostgreSQL 16.14 parses it (SQLSTATE 42883 at run time).",
-  "sql": "CREATE FOREIGN DATA WRAPPER fdw HANDLER h"
  },
  "6197595503f01ee2": {
   "class": "dml-differs",
@@ -4202,24 +4185,26 @@
   },
   "sql": "DROP STREAM IF EXISTS \"S\".\"ORDERS_STREAM\""
  },
- "7950a208d273b4a4/analyzer": {
-  "class": "opaque-reader-gap",
+ "7950a208d273b4a4/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "tablespace: postgres Command is opaque to statement facts",
    "kind": "DDL",
+   "objects": [
+    [
+     "ts1",
+     "TABLESPACE",
+     "created",
+     null
+    ]
+   ],
    "operation": "CREATE"
   },
-  "issue": "#669",
   "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.ts1"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"MANAGED\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (not implemented, not a syntax error); a tablespace has no object type in the reader, so it is opaque and the old extraction's UNKNOWN name is lost (#669). YugabyteDB 2026.1.2: 42601.",
+  "path": "hybrid",
+  "reason": "The old hybrid extraction named nothing; the reader names the object from the statement head (TABLESPACE ts1 (created)), the way it does for any other kind it knows, whether or not the engine accepts the rest of the text. PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"MANAGED\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family (measured 2026-10-24 with psql 16.14).",
   "sql": "CREATE TABLESPACE ts1 MANAGED BY SYSTEM USING ('path')"
  },
  "79657b036e0b0868": {
@@ -5268,24 +5253,26 @@
   },
   "sql": "USE SCHEMA \"APP\""
  },
- "9be5302963c469ce/analyzer": {
-  "class": "opaque-reader-gap",
+ "9be5302963c469ce/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "tablespace: postgres Command is opaque to statement facts",
    "kind": "DDL",
+   "objects": [
+    [
+     "myts",
+     "TABLESPACE",
+     "created",
+     null
+    ]
+   ],
    "operation": "CREATE"
   },
-  "issue": "#669",
   "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.myts"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"IN\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (not implemented, not a syntax error); a tablespace has no object type in the reader, so it is opaque and the old extraction's UNKNOWN name is lost (#669). YugabyteDB 2026.1.2: 42601.",
+  "path": "hybrid",
+  "reason": "The old hybrid extraction named nothing; the reader names the object from the statement head (TABLESPACE myts (created)), the way it does for any other kind it knows, whether or not the engine accepts the rest of the text. PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"IN\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family (measured 2026-10-24 with psql 16.14).",
   "sql": "CREATE TABLESPACE myts IN STOGROUP mysg"
  },
  "9e604e57b562b116": {
@@ -5622,24 +5609,26 @@
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"CONSTRAINT\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family; the reader names CONSTRAINT old_key (dropped) and the old extraction named TABLE old_key, a difference with no consequence because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "DROP CONSTRAINT old_key"
  },
- "a6cbb05f14de55ca/analyzer": {
-  "class": "opaque-reader-gap",
+ "a6cbb05f14de55ca/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "tablespace: postgres Command is opaque to statement facts",
    "kind": "DDL",
+   "objects": [
+    [
+     "my_ts",
+     "TABLESPACE",
+     "created",
+     null
+    ]
+   ],
    "operation": "CREATE"
   },
-  "issue": "#669",
   "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.my_ts"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"MANAGED\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (not implemented, not a syntax error); a tablespace has no object type in the reader, so it is opaque and the old extraction's UNKNOWN name is lost (#669). YugabyteDB 2026.1.2: 42601.",
+  "path": "hybrid",
+  "reason": "The old hybrid extraction named nothing; the reader names the object from the statement head (TABLESPACE my_ts (created)), the way it does for any other kind it knows, whether or not the engine accepts the rest of the text. PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"MANAGED\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family (measured 2026-10-24 with psql 16.14).",
   "sql": "CREATE TABLESPACE my_ts MANAGED BY SYSTEM"
  },
  "a6d1b96a32dbc515/hybrid": {
@@ -5769,33 +5758,6 @@
    "yugabytedb 2026.1.2": "42601"
   },
   "sql": "DROP ROW ACCESS POLICY IF EXISTS \"S\".\"REGION_ONLY\""
- },
- "a97bb5b98e74856a": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
-   "kind": "DDL",
-   "operation": "CREATE"
-  },
-  "issue": "#669",
-  "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.srv"
-    ]
-   ],
-   "hybrid": [
-    [
-     "FOREIGN_SERVER",
-     "srv",
-     "public"
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "This kind of object has no SqlObjectType the reader can name (event trigger, foreign data wrapper, server, publication, operator class, text search dictionary, tablespace), so it is opaque where the old extraction named FOREIGN_SERVER srv / UNKNOWN default_schema.srv (#669). PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time).",
-  "sql": "CREATE SERVER srv FOREIGN DATA WRAPPER fdw"
  },
  "a9f019ddf96516b9/analyzer": {
   "class": "facts-adds-acted",
@@ -6258,24 +6220,26 @@
   },
   "sql": "DROP INDEX IF EXISTS [idx_u] ON [sales].[orders]"
  },
- "b29962c6a269b576/analyzer": {
-  "class": "opaque-reader-gap",
+ "b29962c6a269b576/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "event trigger: postgres Command is opaque to statement facts",
    "kind": "DDL",
+   "objects": [
+    [
+     "et",
+     "EVENT_TRIGGER",
+     "created",
+     null
+    ]
+   ],
    "operation": "CREATE"
   },
-  "issue": "#669",
   "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.et"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "This kind of object has no SqlObjectType the reader can name (event trigger, foreign data wrapper, server, publication, operator class, text search dictionary, tablespace), so it is opaque where the old extraction named UNKNOWN default_schema.et (#669). PostgreSQL 16.14 parses it (SQLSTATE 42883 at run time).",
+  "path": "hybrid",
+  "reason": "The old hybrid extraction named nothing; the reader names the object from the statement head (EVENT_TRIGGER et (created)), the way it does for any other kind it knows, whether or not the engine accepts the rest of the text. PostgreSQL 16.14 parses it (SQLSTATE 42883 at run time, measured 2026-10-24 with psql 16.14).",
   "sql": "CREATE EVENT TRIGGER et ON ddl_command_end EXECUTE FUNCTION f()"
  },
  "b2c5fa1d0bef2104/analyzer": {
@@ -6550,24 +6514,26 @@
   },
   "sql": "CREATE FULLTEXT INDEX ix ON t ()"
  },
- "b9714f9c7de896b8/analyzer": {
-  "class": "opaque-reader-gap",
+ "b9714f9c7de896b8/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "tablespace: postgres Command is opaque to statement facts",
    "kind": "DDL",
+   "objects": [
+    [
+     "ts1",
+     "TABLESPACE",
+     "created",
+     null
+    ]
+   ],
    "operation": "CREATE"
   },
-  "issue": "#669",
   "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.ts1"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"MANAGED\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family, but CockroachDB answered 0A000 (not implemented, not a syntax error); a tablespace has no object type in the reader, so it is opaque and the old extraction's UNKNOWN name is lost (#669). YugabyteDB 2026.1.2: 42601.",
+  "path": "hybrid",
+  "reason": "The old hybrid extraction named nothing; the reader names the object from the statement head (TABLESPACE ts1 (created)), the way it does for any other kind it knows, whether or not the engine accepts the rest of the text. PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"MANAGED\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family (measured 2026-10-24 with psql 16.14).",
   "sql": "CREATE TABLESPACE ts1 MANAGED BY SYSTEM"
  },
  "ba33568c6a283e58/analyzer": {
@@ -7095,24 +7061,26 @@
   },
   "sql": "CREATE TABLE MiXed (a int) IN TS1"
  },
- "c53c47271effe67e/analyzer": {
-  "class": "opaque-reader-gap",
+ "c53c47271effe67e/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "tablespace: postgres Command is opaque to statement facts",
    "kind": "DDL",
+   "objects": [
+    [
+     "my_ts",
+     "TABLESPACE",
+     "dropped",
+     null
+    ]
+   ],
    "operation": "DROP"
   },
-  "issue": "#669",
   "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.my_ts"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "This kind of object has no SqlObjectType the reader can name (event trigger, foreign data wrapper, server, publication, operator class, text search dictionary, tablespace), so it is opaque where the old extraction named UNKNOWN default_schema.my_ts (#669). PostgreSQL 16.14 parses it (SQLSTATE 25001 at run time).",
+  "path": "hybrid",
+  "reason": "The old hybrid extraction named nothing; the reader names the object from the statement head (TABLESPACE my_ts (dropped)), the way it does for any other kind it knows, whether or not the engine accepts the rest of the text. PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time, measured 2026-10-24 with psql 16.14).",
   "sql": "DROP TABLESPACE my_ts"
  },
  "c5f0a10e0d3aa45a/hybrid": {
@@ -7172,24 +7140,26 @@
   "reason": "A DROP TABLE lists several tables: the reader names all of them (TABLE a (dropped), TABLE b (dropped)); the old analyzer path stopped at the first (TABLE default_schema.a). PostgreSQL 16.14 runs it.",
   "sql": "DROP TABLE IF EXISTS a, b"
  },
- "c7d563dcca2a0a6f/analyzer": {
-  "class": "opaque-reader-gap",
+ "c7d563dcca2a0a6f/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "publication: postgres Command is opaque to statement facts",
    "kind": "DDL",
+   "objects": [
+    [
+     "pub",
+     "PUBLICATION",
+     "altered",
+     null
+    ]
+   ],
    "operation": "ALTER"
   },
-  "issue": "#669",
   "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.pub"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "This kind of object has no SqlObjectType the reader can name (event trigger, foreign data wrapper, server, publication, operator class, text search dictionary, tablespace), so it is opaque where the old extraction named UNKNOWN default_schema.pub (#669). PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time).",
+  "path": "hybrid",
+  "reason": "The old hybrid extraction named nothing; the reader names the object from the statement head (PUBLICATION pub (altered)), the way it does for any other kind it knows, whether or not the engine accepts the rest of the text. PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time, measured 2026-10-24 with psql 16.14).",
   "sql": "ALTER PUBLICATION pub ADD TABLE t"
  },
  "caa27a626d331e07/analyzer": {
@@ -7754,28 +7724,26 @@
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"AS\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family; the reader names PROCEDURE GetEmployees (created), TABLE employees (referenced) and the old extraction named PROCEDURE getemployees, a difference with no consequence because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "CREATE OR REPLACE PROCEDURE GetEmployees AS\n        BEGIN\n            SELECT * FROM employees"
  },
- "d37d4b0f0ffa9b1f/analyzer": {
-  "class": "opaque-reader-gap",
+ "d37d4b0f0ffa9b1f/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "tablespace: postgres Command is opaque to statement facts",
    "kind": "DDL",
+   "objects": [
+    [
+     "my_ts",
+     "TABLESPACE",
+     "altered",
+     null
+    ]
+   ],
    "operation": "ALTER"
   },
   "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.my_ts"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"ADD\"); it is a statement of another dialect or an incomplete fragment harvested into the corpus and never runs on this family, so the reader's opaque result costs nothing. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
-  "rejected_by": {
-   "cockroachdb 24.3.18": "42601",
-   "postgresql 16.14": "42601",
-   "yugabytedb 2026.1.2": "42601"
-  },
+  "path": "hybrid",
+  "reason": "The old hybrid extraction named nothing; the reader names the object from the statement head (TABLESPACE my_ts (altered)), the way it does for any other kind it knows, whether or not the engine accepts the rest of the text. PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at or near \"ADD\"); it is a Db2 or Oracle statement harvested into the corpus and never runs on this family (measured 2026-10-24 with psql 16.14).",
   "sql": "ALTER TABLESPACE my_ts ADD FILE 1000"
  },
  "d50eb5a997e44a82/analyzer": {
@@ -8678,24 +8646,26 @@
   "reason": "The statement is led by a CTE and writes the table the reader names (TABLE t (altered)); the old analyzer path refused CTE-led statements and named nothing. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "WITH x AS (SELECT 1) UPDATE t SET a = 1 WHERE b IN (SELECT * FROM x)"
  },
- "f2d4f655ffb03dcc/analyzer": {
-  "class": "opaque-reader-gap",
+ "f2d4f655ffb03dcc/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "publication: postgres Command is opaque to statement facts",
    "kind": "DDL",
+   "objects": [
+    [
+     "pub",
+     "PUBLICATION",
+     "dropped",
+     null
+    ]
+   ],
    "operation": "DROP"
   },
-  "issue": "#669",
   "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.pub"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "This kind of object has no SqlObjectType the reader can name (event trigger, foreign data wrapper, server, publication, operator class, text search dictionary, tablespace), so it is opaque where the old extraction named UNKNOWN default_schema.pub (#669). PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time).",
+  "path": "hybrid",
+  "reason": "The old hybrid extraction named nothing; the reader names the object from the statement head (PUBLICATION pub (dropped)), the way it does for any other kind it knows, whether or not the engine accepts the rest of the text. PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time, measured 2026-10-24 with psql 16.14).",
   "sql": "DROP PUBLICATION pub"
  },
  "f2e09deb93a6cabe/analyzer": {
@@ -9047,24 +9017,26 @@
   },
   "sql": "CREATE PUBLIC DATABASE LINK dl CONNECT TO u IDENTIFIED BY p"
  },
- "fe00f3450dcee2d7/analyzer": {
-  "class": "opaque-reader-gap",
+ "fe00f3450dcee2d7/hybrid": {
+  "class": "facts-adds-acted",
   "facts": {
-   "diagnostic": "postgres Command is opaque to statement facts",
+   "diagnostic": "text search dictionary: postgres Command is opaque to statement facts",
    "kind": "DDL",
+   "objects": [
+    [
+     "d",
+     "TEXT_SEARCH_DICTIONARY",
+     "created",
+     null
+    ]
+   ],
    "operation": "CREATE"
   },
-  "issue": "#669",
   "old": {
-   "analyzer": [
-    [
-     "UNKNOWN",
-     "default_schema.d"
-    ]
-   ]
+   "hybrid": []
   },
-  "path": "analyzer",
-  "reason": "This kind of object has no SqlObjectType the reader can name (event trigger, foreign data wrapper, server, publication, operator class, text search dictionary, tablespace), so it is opaque where the old extraction named UNKNOWN default_schema.d (#669). PostgreSQL 16.14 runs it.",
+  "path": "hybrid",
+  "reason": "The old hybrid extraction named nothing; the reader names the object from the statement head (TEXT_SEARCH_DICTIONARY d (created)), the way it does for any other kind it knows, whether or not the engine accepts the rest of the text. PostgreSQL 16.14 runs it (measured 2026-10-24 with psql 16.14, rolled back).",
   "sql": "CREATE TEXT SEARCH DICTIONARY d (TEMPLATE = simple)"
  },
  "fe8abe980b4b9521/analyzer": {

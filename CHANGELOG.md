@@ -9,10 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `SqlObjectType` gains `TABLESPACE`, `PUBLICATION`, `EVENT_TRIGGER`, `OPERATOR_CLASS`,
+  `TEXT_SEARCH_DICTIONARY`, `TEXT_SEARCH_CONFIGURATION`, `TEXT_SEARCH_PARSER` and
+  `TEXT_SEARCH_TEMPLATE`, the PostgreSQL object kinds the statement facts reader names.
+
 ### Changed
 
 ### Fixed
 
+- The PostgreSQL statement facts reader names the object of `CREATE`, `ALTER` and `DROP` for event
+  triggers, foreign data wrappers, servers, publications, operator classes, text search
+  dictionaries, configurations, parsers and templates, and tablespaces. They came back with no
+  object, so `info --format json` and execution-time object tracking did not list them. Event
+  triggers, foreign data wrappers, servers, publications and tablespaces are not schema-qualified
+  in PostgreSQL; a dotted name there, which the engine rejects, is left unnamed.
 - The HTML report of `migrate --dry-run --show-sql` and `undo --dry-run --show-sql` names the
   object type and name of each statement, as the report of an applied run does; those columns
   were empty. Each `MigrationSqlInfo` in `result.sql` carries the same per-statement
