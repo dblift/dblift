@@ -180,12 +180,18 @@ class MigrationSqlInfo:
         version: Optional[Union[str, int]] = None,
         description: str = "",
         statements: Optional[List[str]] = None,
+        annotations: Optional[List[Dict[str, str]]] = None,
     ) -> None:
-        """Store per-migration SQL statements after parser/execution filtering."""
+        """Store per-migration SQL statements after parser/execution filtering.
+
+        ``annotations`` holds, per statement, the ``operation``, ``object_type`` and
+        ``object_name`` an applied run's report would show for it.
+        """
         self.script = script
         self.version = version
         self.description = description
         self.statements = statements or []
+        self.annotations = annotations or []
 
 
 class MigrationQueryResultInfo:
