@@ -92,11 +92,18 @@ def test_migrate_honours_mark_as_executed_from_yaml(tmp_path):
     assert _history_rows(tmp_path) == 3
 
 
-def test_migrate_honours_environment_and_explicit_argument_wins(tmp_path, monkeypatch):
+def test_migrate_honours_dry_run_from_environment_and_the_argument_adds_it(tmp_path, monkeypatch):
     monkeypatch.setenv("DBLIFT_DRY_RUN", "true")
     _migrate(tmp_path, {})
     assert _tables(tmp_path) == set()
-    _migrate(tmp_path, {"dry_run": True}, dry_run=False)
+    monkeypatch.delenv("DBLIFT_DRY_RUN")
+    _migrate(tmp_path, {}, dry_run=True)
+    assert _tables(tmp_path) == set()
+
+
+def test_environment_dry_run_beats_yaml(tmp_path, monkeypatch):
+    monkeypatch.setenv("DBLIFT_DRY_RUN", "false")
+    _migrate(tmp_path, {"dry_run": True})
     assert _tables(tmp_path) == {"t1", "t2", "t3"}
 
 

@@ -468,12 +468,12 @@ class DBLiftClient:
     def migrate(
         self,
         target_version: Optional[str] = None,
-        dry_run: Optional[bool] = None,
+        dry_run: bool = False,
         tags: Optional[str] = None,
         exclude_tags: Optional[str] = None,
         versions: Optional[str] = None,
         exclude_versions: Optional[str] = None,
-        mark_as_executed: Optional[bool] = None,
+        mark_as_executed: bool = False,
         show_sql: bool = False,
         show_query_results: bool = False,
         placeholders: Optional[Dict[str, Any]] = None,
@@ -502,12 +502,12 @@ class DBLiftClient:
             MigrateResult with details of applied migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
-        dry_run = self._resolve_run_option(dry_run, self.config.dry_run)
+        dry_run = dry_run or self.config.dry_run
         tags = self._resolve_run_option(tags, self.config.tags)
         exclude_tags = self._resolve_run_option(exclude_tags, self.config.exclude_tags)
         versions = self._resolve_run_option(versions, self.config.versions)
         exclude_versions = self._resolve_run_option(exclude_versions, self.config.exclude_versions)
-        mark_as_executed = self._resolve_run_option(mark_as_executed, self.config.mark_as_executed)
+        mark_as_executed = mark_as_executed or self.config.mark_as_executed
         target_version = self._resolve_target_version(target_version)
         self._check_target_version(
             target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
@@ -753,7 +753,7 @@ class DBLiftClient:
     def undo(
         self,
         target_version: Optional[str] = None,
-        dry_run: Optional[bool] = None,
+        dry_run: bool = False,
         tags: Optional[str] = None,
         exclude_tags: Optional[str] = None,
         versions: Optional[str] = None,
@@ -785,7 +785,7 @@ class DBLiftClient:
             UndoResult with details of rolled back migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
-        dry_run = self._resolve_run_option(dry_run, self.config.dry_run)
+        dry_run = dry_run or self.config.dry_run
         tags = self._resolve_run_option(tags, self.config.tags)
         exclude_tags = self._resolve_run_option(exclude_tags, self.config.exclude_tags)
         versions = self._resolve_run_option(versions, self.config.versions)
@@ -868,7 +868,7 @@ class DBLiftClient:
     @_with_client_emitter
     def clean(
         self,
-        dry_run: Optional[bool] = None,
+        dry_run: bool = False,
         recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
         clean_enabled: bool = False,
@@ -889,7 +889,7 @@ class DBLiftClient:
             CleanResult with details of cleaned objects
         """
         self._guard_scripts_dir_kwarg(kwargs)
-        dry_run = self._resolve_run_option(dry_run, self.config.dry_run)
+        dry_run = dry_run or self.config.dry_run
         self.events.emit(
             EventType.CLEAN_STARTED,
             {

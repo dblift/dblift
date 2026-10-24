@@ -424,7 +424,9 @@ exclude_versions: 1.0.1
 ```
 
 The Python API follows the same order: `client.migrate()` and the other calls use the configured
-value when the call passes none, and an argument you pass (including `dry_run=False`) wins.
+value when the call passes none, and an argument you pass wins. `dry_run=True` and `mark_as_executed=True` can be added by an
+argument but a configured `true` is only turned off in the configuration or with the environment variable
+(`DBLIFT_DRY_RUN=false`), since the argument's default is `False`.
 `DBLiftClient.from_sqlalchemy(engine)` without `config=` reads neither the YAML nor the environment.
 
 ## File Encoding
