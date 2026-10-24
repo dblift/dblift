@@ -50,6 +50,11 @@ _HEAD = re.compile(
 _HEAD_SCAN = re.compile(
     _HEAD.pattern.replace(r"^\s*", r"(?:^|;)\s*", 1), re.IGNORECASE | re.MULTILINE
 )
+# MySQL and MariaDB add two kinds sqlglot reads as an opaque command: a tablespace (MySQL) and a
+# sequence (MariaDB). A tablespace has no schema part, see ``_head_facts``.
+_MYSQL_HEAD = re.compile(
+    _HEAD.pattern.replace("|TRIGGER)", "|TRIGGER|TABLESPACE|SEQUENCE)", 1), re.IGNORECASE
+)
 # PostgreSQL names more kinds than the generic head and skips its creation modifiers;
 # CONCURRENTLY is a modifier after INDEX only, elsewhere an ordinary name.
 _POSTGRES_HEAD = re.compile(
@@ -1488,7 +1493,10 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
     objects: Tuple[NamedObject, ...] = ()
     oracle = dialect == "oracle"  # lint: allow-dialect-string: Oracle head kinds and folding
     folds = oracle or dialect == "snowflake"  # lint: allow-dialect-string: upper-case names
-    match = (_ORACLE_HEAD if oracle else _POSTGRES_HEAD if postgres else _HEAD).match(head)
+    mysql = dialect == "mysql"  # lint: allow-dialect-string: MySQL head kinds
+    match = (
+        _ORACLE_HEAD if oracle else _POSTGRES_HEAD if postgres else _MYSQL_HEAD if mysql else _HEAD
+    ).match(head)
     if match is None and first is None:
         # Stray characters (a NUL, a lone ``/``) ahead of the statement; the engine reads past them.
         scan = _POSTGRES_HEAD_SCAN if postgres else _HEAD_SCAN
@@ -1511,6 +1519,8 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
         match = None
     if oracle and match and match.group(4) and match.group(2).upper().startswith("DATABASE"):
         match = None  # a link name is global: ``a.b`` is one name with a domain, not a schema
+    if mysql and match and match.group(4) and match.group(2).upper() == "TABLESPACE":
+        match = None  # a tablespace is global: ``a.b`` is a syntax error (1064), not a schema
     if dml and (
         not _head_name_is_bounded(head, dml, (2, 3))
         or not _head_tokens_prove_name(
