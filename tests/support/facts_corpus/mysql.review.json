@@ -7934,27 +7934,6 @@
     "reason": "MySQL reads `ONLY` as an ordinary table name (error 1146); the reader declines it because the same token is a clause keyword on other dialects, and reports the statement unread (keyword read where an object name belongs); the former hybrid path named a table `ONLY`.",
     "sql": "UPDATE ONLY child SET id = 2"
   },
-  "c097e0bcb00fc7ff/hybrid": {
-    "class": "opaque-reader-gap",
-    "facts": {
-      "diagnostic": "mysql executable comment is opaque to statement facts",
-      "kind": "UNKNOWN",
-      "operation": "UNKNOWN"
-    },
-    "issue": "dblift/dblift#670",
-    "old": {
-      "hybrid": [
-        [
-          "TABLE",
-          "t",
-          null
-        ]
-      ]
-    },
-    "path": "hybrid",
-    "reason": "An executable comment in the select list: whether `1` is part of the statement depends on the server version, so the reader reports the whole statement unread, by design; the hybrid extraction named the table. Runs on both engines (1146: table missing).",
-    "sql": "SELECT /*!50100 1 */ FROM t"
-  },
   "c0d82a454984364e": {
     "class": "facts-adds-acted",
     "facts": {

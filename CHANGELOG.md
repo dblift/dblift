@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   were empty. Each `MigrationSqlInfo` in `result.sql` carries the same per-statement
   `annotations` (`operation`, `object_type`, `object_name`). Without object analysis
   (`analysis_mode="execution"`) the columns stay empty, as they do for an applied run.
+- MySQL and MariaDB statement facts read the executable comments that run on every supported
+  server, such as the ones `mysqldump` writes (`CREATE TABLE /*!32312 IF NOT EXISTS*/ t (…)`,
+  `/*!50001 CREATE TABLE t (…) */`, a dumped view, `/*!40101 SET NAMES utf8mb4 */`): a `/*!`
+  comment with no version number or a five-digit version below 50700 is read as the server
+  reads it, its content kept, so the statement names its objects instead of being reported
+  unread. 50700 is the lowest version at which a supported server stops running the comment
+  (MariaDB 11 runs `/*!50699 … */`, not `/*!50700 … */`). A statement with any other executable
+  comment (`/*!50700` and above, `/*M!`) is still reported unread, because whether it runs
+  depends on the server version.
 
 ### Removed
 

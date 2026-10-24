@@ -102,6 +102,11 @@ _MYSQL_QUOTES_AND_COMMENTS = re.compile(
     r"(?:\#|--(?=[\x00-\x20\x7f]|\Z))[^\n]*|/\*.*?(?:\*/|\Z)",
     re.DOTALL,
 )
+# `/*!NNNNN … */` runs where NNNNN is not above the server's own version. MariaDB 11 runs up to
+# 50699, MySQL 8.0 and 8.4 more: below this floor the text runs on every supported server
+# (measured 2026-10-24, docs/sql-parsing/mariadb.md).
+_EXECUTABLE_COMMENT_FLOOR = 50700
+_EXECUTABLE_COMMENT_OPENER = re.compile(r"/\*!(\d*)")
 _KINDS = {
     **dict.fromkeys(
         ("CREATE", "ALTER", "DROP", "VACUUM", "ANALYZE", "REINDEX", "PRAGMA", "ATTACH", "DETACH"),
@@ -217,6 +222,29 @@ def _supplementary_name_character(sql: str) -> Optional[str]:
             return str(wide)
         at = span.end()
     return next((str(c) for c in sql[at:] if c > "\uffff"), None)
+
+
+def _mysql_server_view(sql: str) -> Optional[str]:
+    """The text a MySQL-family server runs: each executable comment's markers blanked, its content
+    kept, so offsets do not move. ``None`` when an executable comment may not run on every
+    supported server or cannot be scanned to a single reading: a ``/*M!`` comment, a version
+    that is not five digits or is not below the floor, a comment opened inside it, or no ``*/``.
+    """
+    pieces = []
+    at = 0
+    for span in _MYSQL_QUOTES_AND_COMMENTS.finditer(sql):
+        text = span.group()
+        if not text.startswith(("/*!", "/*M!")):
+            continue
+        opener = _EXECUTABLE_COMMENT_OPENER.match(text)
+        if opener is None or not text.endswith("*/") or "/*" in text[opener.end() : -2]:
+            return None
+        version = opener.group(1)
+        if version and (len(version) != 5 or int(version) >= _EXECUTABLE_COMMENT_FLOOR):
+            return None
+        pieces.append(sql[at : span.start()] + " " * opener.end() + text[opener.end() : -2] + "  ")
+        at = span.end()
+    return "".join(pieces) + sql[at:]
 
 
 def readable_dml_target(sql: str, *, dialect: str) -> Optional[str]:
@@ -2105,18 +2133,19 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     Text that does not tokenize is reported as an error. A statement the grammar does not
     model is classified from its leading words with an informational diagnostic.
     """
-    # MariaDB shares this grammar; without engine/version context both markers are opaque.
-    if (
-        dialect == "mysql"  # lint: allow-dialect-string: MySQL-family executable comments
-        and ("/*!" in sql or "/*M!" in sql)
-        and any(
-            match.group().startswith(("/*!", "/*M!"))
-            for match in _MYSQL_QUOTES_AND_COMMENTS.finditer(sql)
-        )
+    # MariaDB shares this grammar. Without the server version only the executable comments that
+    # run on every supported server are read, as the server reads them; the rest stay opaque.
+    if dialect == "mysql" and (  # lint: allow-dialect-string: MySQL-family executable comments
+        "/*!" in sql or "/*M!" in sql
     ):
-        return StatementFacts(
-            "UNKNOWN", "UNKNOWN", diagnostic="mysql executable comment is opaque to statement facts"
-        )
+        served = _mysql_server_view(sql)
+        if served is None:
+            return StatementFacts(
+                "UNKNOWN",
+                "UNKNOWN",
+                diagnostic="mysql executable comment is opaque to statement facts",
+            )
+        sql = served
     unread = unread_name_character(sql, dialect=dialect)
     if unread is not None:
         return _unread_name_facts(sql, dialect, unread)
