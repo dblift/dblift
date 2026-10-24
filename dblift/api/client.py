@@ -64,6 +64,7 @@ __all__ = ["DBLiftClient"]
 
 _F = TypeVar("_F", bound=Callable[..., Any])
 _R = TypeVar("_R", bound=OperationResult)
+_T = TypeVar("_T")
 
 # Paid-tier commands that have a corresponding OSS-visible DBLiftClient
 # method name (issue #753). Keyed by ``api_method`` so
@@ -333,6 +334,10 @@ class DBLiftClient:
         """Return the explicit target, else the configured ``target_version``."""
         return target_version if target_version is not None else self.config.target_version
 
+    def _resolve_run_option(self, value: Optional[_T], configured: _T) -> _T:
+        """Return the explicit value, else the configured one (argument > environment > YAML)."""
+        return value if value is not None else configured
+
     def _check_target_version(
         self,
         target_version: Optional[str],
@@ -463,12 +468,12 @@ class DBLiftClient:
     def migrate(
         self,
         target_version: Optional[str] = None,
-        dry_run: bool = False,
+        dry_run: Optional[bool] = None,
         tags: Optional[str] = None,
         exclude_tags: Optional[str] = None,
         versions: Optional[str] = None,
         exclude_versions: Optional[str] = None,
-        mark_as_executed: bool = False,
+        mark_as_executed: Optional[bool] = None,
         show_sql: bool = False,
         show_query_results: bool = False,
         placeholders: Optional[Dict[str, Any]] = None,
@@ -497,6 +502,12 @@ class DBLiftClient:
             MigrateResult with details of applied migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        dry_run = self._resolve_run_option(dry_run, self.config.dry_run)
+        tags = self._resolve_run_option(tags, self.config.tags)
+        exclude_tags = self._resolve_run_option(exclude_tags, self.config.exclude_tags)
+        versions = self._resolve_run_option(versions, self.config.versions)
+        exclude_versions = self._resolve_run_option(exclude_versions, self.config.exclude_versions)
+        mark_as_executed = self._resolve_run_option(mark_as_executed, self.config.mark_as_executed)
         target_version = self._resolve_target_version(target_version)
         self._check_target_version(
             target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
@@ -612,6 +623,10 @@ class DBLiftClient:
             InfoResult with migration status
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        tags = self._resolve_run_option(tags, self.config.tags)
+        exclude_tags = self._resolve_run_option(exclude_tags, self.config.exclude_tags)
+        versions = self._resolve_run_option(versions, self.config.versions)
+        exclude_versions = self._resolve_run_option(exclude_versions, self.config.exclude_versions)
         target_version = self._resolve_target_version(target_version)
         self._check_target_version(
             target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
@@ -689,6 +704,10 @@ class DBLiftClient:
             emitted.
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        tags = self._resolve_run_option(tags, self.config.tags)
+        exclude_tags = self._resolve_run_option(exclude_tags, self.config.exclude_tags)
+        versions = self._resolve_run_option(versions, self.config.versions)
+        exclude_versions = self._resolve_run_option(exclude_versions, self.config.exclude_versions)
         target_version = self._resolve_target_version(target_version)
         self._check_target_version(
             target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
@@ -734,7 +753,7 @@ class DBLiftClient:
     def undo(
         self,
         target_version: Optional[str] = None,
-        dry_run: bool = False,
+        dry_run: Optional[bool] = None,
         tags: Optional[str] = None,
         exclude_tags: Optional[str] = None,
         versions: Optional[str] = None,
@@ -766,6 +785,11 @@ class DBLiftClient:
             UndoResult with details of rolled back migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        dry_run = self._resolve_run_option(dry_run, self.config.dry_run)
+        tags = self._resolve_run_option(tags, self.config.tags)
+        exclude_tags = self._resolve_run_option(exclude_tags, self.config.exclude_tags)
+        versions = self._resolve_run_option(versions, self.config.versions)
+        exclude_versions = self._resolve_run_option(exclude_versions, self.config.exclude_versions)
         target_version = self._resolve_target_version(target_version)
         try:
             self._check_target_version(
@@ -844,7 +868,7 @@ class DBLiftClient:
     @_with_client_emitter
     def clean(
         self,
-        dry_run: bool = False,
+        dry_run: Optional[bool] = None,
         recursive: Optional[bool] = None,
         additional_dirs: Optional[List[Path]] = None,
         clean_enabled: bool = False,
@@ -865,6 +889,7 @@ class DBLiftClient:
             CleanResult with details of cleaned objects
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        dry_run = self._resolve_run_option(dry_run, self.config.dry_run)
         self.events.emit(
             EventType.CLEAN_STARTED,
             {

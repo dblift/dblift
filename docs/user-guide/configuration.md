@@ -405,6 +405,28 @@ below it on the console and in the log files: `error` shows only errors, `warn` 
 errors. The command banners and result tables are not log lines and are always printed;
 `--quiet` hides log lines on the console only.
 
+## Run Options
+
+These top-level keys set defaults for a run. Each has an environment variable and, for the
+command line, a flag; the order is flag, then environment variable, then YAML key.
+
+| YAML key | Environment variable | Flag | Applies to |
+| --- | --- | --- | --- |
+| `dry_run` | `DBLIFT_DRY_RUN` | `--dry-run` | `migrate`, `undo`, `clean` |
+| `mark_as_executed` | `DBLIFT_MARK_AS_EXECUTED` | `--mark-as-executed` | `migrate` |
+| `tags`, `exclude_tags` | `DBLIFT_TAGS`, `DBLIFT_EXCLUDE_TAGS` | `--tags`, `--exclude-tags` | `migrate`, `undo`, `info`, `validate` |
+| `versions`, `exclude_versions` | `DBLIFT_VERSIONS`, `DBLIFT_EXCLUDE_VERSIONS` | `--versions`, `--exclude-versions` | `migrate`, `undo`, `info`, `validate` |
+
+```yaml
+dry_run: true
+tags: core,auth
+exclude_versions: 1.0.1
+```
+
+The Python API follows the same order: `client.migrate()` and the other calls use the configured
+value when the call passes none, and an argument you pass (including `dry_run=False`) wins.
+`DBLiftClient.from_sqlalchemy(engine)` without `config=` reads neither the YAML nor the environment.
+
 ## File Encoding
 
 If you're using special characters (é, ñ, ö, etc.) in your SQL files, specify the encoding:
