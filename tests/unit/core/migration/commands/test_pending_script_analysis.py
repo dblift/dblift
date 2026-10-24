@@ -159,8 +159,8 @@ def test_dry_run_console_repeats_a_finding_found_in_two_scripts(tmp_path, projec
     assert output.count(line) == 2, output
 
 
-def test_dry_run_reads_pending_scripts_as_one_delta(tmp_path, project):
-    # A table created by an earlier pending script has no rows yet.
+def test_dry_run_does_not_exempt_later_pending_script(tmp_path, project):
+    # A table created by an earlier pending script may have rows by the next migration.
     scripts, db = project
     (scripts / "V2__drop.sql").write_text("CREATE TABLE b (id INTEGER, x INTEGER);")
     (scripts / "V4__b.sql").write_text(
@@ -172,4 +172,8 @@ def test_dry_run_reads_pending_scripts_as_one_delta(tmp_path, project):
     )
 
     analysis = {m["script"]: m for m in payload["migrations"]}["V4__b.sql"]["analysis"]
-    assert (analysis["verdict"], analysis["findings"]) == ("SAFE", [])
+    assert analysis["verdict"] == "REVIEW"
+    assert [finding["code"] for finding in analysis["findings"]] == [
+        "rename-column",
+        "dml-no-where",
+    ]

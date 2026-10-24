@@ -65,8 +65,8 @@ class ScriptLint:
     findings: Tuple[Finding, ...]
     errors: Tuple[str, ...]
     # Tables the script creates, ``schema.name`` or ``name`` when it gives no schema,
-    # an unquoted part lower-cased, a quoted one as written between double quotes: carried to
-    # the next script of a delta; not part of the JSON payload.
+    # an unquoted part lower-cased, a quoted one as written between double quotes;
+    # not part of the JSON payload.
     created_tables: FrozenSet[str] = field(default=frozenset(), compare=False)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -233,13 +233,12 @@ def lint_pending_scripts(
     """``{script_name: analysis}`` for the SQL and repeatable scripts of *migrations*
     that have text, each analysis carrying the script's ``verdict`` and ``findings``.
 
-    With ``as_delta`` (the default) *migrations*, in the order given, are one delta;
-    otherwise each script is linted alone. *existing_tables* as for ``lint_analysis``.
+    Scripts are linted independently in the order given, including with ``as_delta``
+    (the default). *existing_tables* as for ``lint_analysis``.
     With ``enabled=False`` (execution-only analysis mode) each script gets
     ``DISABLED_ANALYSIS`` and nothing is read.
     """
     analysed: Dict[str, Dict[str, Any]] = {}
-    created: Set[str] = set()
     for migration in migrations:
         if getattr(migration, "type", None) not in _ANALYSED_TYPES:
             continue
@@ -265,11 +264,8 @@ def lint_pending_scripts(
                 content,
                 dialect,
                 name,
-                created_before=created,
                 existing_tables=existing_tables,
             )
-            if as_delta:
-                created |= verdict.created_tables
             analysed[name] = {
                 **analysis.to_dict(),
                 "verdict": verdict.verdict,

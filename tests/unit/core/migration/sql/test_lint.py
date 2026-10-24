@@ -194,13 +194,40 @@ def _pending(name: str, content: str) -> SimpleNamespace:
     return SimpleNamespace(type=MigrationType.SQL, script_name=name, content=content)
 
 
-def test_pending_scripts_are_one_delta():
+def test_pending_scripts_do_not_exempt_indexes_on_tables_created_in_earlier_scripts():
     pending = [_pending("V2__orders.sql", _CREATE_ORDERS), _pending("V3__i.sql", _INDEX_ORDERS)]
 
     analysed = lint_pending_scripts(pending, "postgresql", MagicMock())
 
-    assert analysed["V3__i.sql"]["verdict"] == SAFE
-    assert analysed["V3__i.sql"]["findings"] == []
+    assert analysed["V3__i.sql"]["verdict"] == REVIEW
+    assert [finding["code"] for finding in analysed["V3__i.sql"]["findings"]] == [
+        "pg-index-not-concurrent",
+        "pg-missing-lock-timeout",
+    ]
+
+
+def test_pending_scripts_do_not_exempt_deletes_on_tables_created_in_earlier_scripts():
+    pending = [
+        _pending("V2__orders.sql", _CREATE_ORDERS),
+        _pending("V3__delete.sql", "DELETE FROM orders;"),
+    ]
+
+    analysed = lint_pending_scripts(pending, "postgresql", MagicMock())
+
+    assert analysed["V2__orders.sql"]["verdict"] == SAFE
+    assert analysed["V3__delete.sql"]["verdict"] == REVIEW
+    assert [finding["code"] for finding in analysed["V3__delete.sql"]["findings"]] == [
+        "dml-no-where"
+    ]
+
+
+def test_pending_script_exempts_delete_after_create_in_the_same_script():
+    pending = [_pending("V2__orders.sql", "CREATE TABLE orders (id INT); DELETE FROM orders;")]
+
+    analysed = lint_pending_scripts(pending, "postgresql", MagicMock())
+
+    assert analysed["V2__orders.sql"]["verdict"] == SAFE
+    assert analysed["V2__orders.sql"]["findings"] == []
 
 
 def test_pending_scripts_do_not_carry_existing_tables():
