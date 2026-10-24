@@ -837,7 +837,10 @@ class TestQueryResultCapture(unittest.TestCase):
     """--show-query-results: rows from a SELECT are captured on the OperationResult."""
 
     def test_migration_query_respects_existing_renderer_patch_target(self):
+        from dblift.core.migration.ui.command_presentation import CommandPresentation
+
         engine = _make_engine()
+        engine._presentation = CommandPresentation()
         engine.sql_execution_service = MagicMock()
         engine.sql_execution_service.execute_statement.return_value = (True, [{"id": 1}])
         result = OperationResult()
@@ -854,7 +857,10 @@ class TestQueryResultCapture(unittest.TestCase):
         engine.log.info.assert_any_call("patched table")
 
     def test_migration_query_captures_columns_and_rows_when_enabled(self):
+        from dblift.core.migration.ui.command_presentation import CommandPresentation
+
         engine = _make_engine()
+        engine._presentation = CommandPresentation()
         mock_ses = MagicMock()
         mock_ses.execute_statement.return_value = (
             True,

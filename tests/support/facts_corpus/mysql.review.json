@@ -654,27 +654,27 @@
     },
     "sql": "COPY users TO '/tmp/users.csv' WITH (FORMAT CSV, HEADER)"
   },
-  "100d168fc3181176/analyzer": {
-    "class": "opaque-reader-gap",
+  "100d168fc3181176/hybrid": {
+    "class": "facts-adds-acted",
     "facts": {
-      "diagnostic": "mysql Command is opaque to statement facts",
+      "diagnostic": "tablespace: mysql Command is opaque to statement facts",
       "kind": "DDL",
+      "objects": [
+        [
+          "test_ts",
+          "TABLESPACE",
+          "created",
+          null
+        ]
+      ],
       "operation": "CREATE"
     },
+    "issue": "",
     "old": {
-      "analyzer": [
-        [
-          "UNKNOWN",
-          "default_schema.test_ts"
-        ]
-      ]
+      "hybrid": []
     },
-    "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `test_ts` from its head; the reader names nothing.",
-    "rejected_by": {
-      "MariaDB 11.8.8-MariaDB-ubu2404": "1064",
-      "MySQL 8.4.11": "1064"
-    },
+    "path": "hybrid",
+    "reason": "Not a MySQL statement: MySQL 8.0.46 and 8.4.11 and MariaDB 11.8.8 reject it with error 1064 (measured 2026-10-24, with the tablespace renamed f664ts). The hybrid extraction named nothing; the reader names `test_ts` from the statement head, as it does for any head the grammar leaves as a command.",
     "sql": "CREATE TABLESPACE test_ts MANAGED BY SYSTEM"
   },
   "1056ec069a4157b9/analyzer": {
@@ -779,7 +779,7 @@
       "kind": "UNKNOWN",
       "operation": "WHILE"
     },
-    "issue": "dblift/dblift#664",
+    "issue": "by design: docs/sql-parsing/mysql.md#12-current-implementation",
     "old": {
       "hybrid": [
         [
@@ -1002,7 +1002,7 @@
       ],
       "operation": "CREATE"
     },
-    "issue": "dblift/dblift#664",
+    "issue": "by design: docs/sql-parsing/mysql.md#12-current-implementation",
     "old": {
       "hybrid": [
         [
@@ -1537,33 +1537,6 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `v` from its head; the reader names `v`.",
     "sql": "ALTER VIEW v RENAME TO v2"
   },
-  "27fb88d0000fdd25": {
-    "class": "opaque-reader-gap",
-    "facts": {
-      "diagnostic": "mysql Grant has no statement facts mapping",
-      "kind": "UNKNOWN",
-      "operation": "GRANT"
-    },
-    "issue": "dblift/dblift#663",
-    "old": {
-      "analyzer": [
-        [
-          "TABLE",
-          "default_schema.t"
-        ]
-      ],
-      "hybrid": [
-        [
-          "TABLE",
-          "t",
-          null
-        ]
-      ]
-    },
-    "path": "both",
-    "reason": "Runs on both engines (error 1146 only because the table is missing). The reader has no mapping for GRANT/REVOKE/DESCRIBE and names nothing; the extraction took the table name from the text. No consumer reads privileges or metadata queries.",
-    "sql": "GRANT SELECT ON t TO user1"
-  },
   "2856ef242a885aa3/hybrid": {
     "class": "facts-adds-acted",
     "facts": {
@@ -2071,7 +2044,7 @@
       "kind": "UNKNOWN",
       "operation": "EXECUTE"
     },
-    "issue": "dblift/dblift#664",
+    "issue": "by design: docs/sql-parsing/mysql.md#12-current-implementation",
     "old": {
       "hybrid": [
         [
@@ -2257,24 +2230,27 @@
     },
     "sql": "COPY items FROM '/tmp/' || 'items.csv'"
   },
-  "350dbf9c8990d3b8/analyzer": {
-    "class": "opaque-reader-gap",
+  "350dbf9c8990d3b8/hybrid": {
+    "class": "facts-adds-acted",
     "facts": {
-      "diagnostic": "mysql Command is opaque to statement facts",
+      "diagnostic": "tablespace: mysql Command is opaque to statement facts",
       "kind": "DDL",
+      "objects": [
+        [
+          "ts",
+          "TABLESPACE",
+          "dropped",
+          null
+        ]
+      ],
       "operation": "DROP"
     },
-    "issue": "dblift/dblift#664",
+    "issue": "",
     "old": {
-      "analyzer": [
-        [
-          "UNKNOWN",
-          "default_schema.ts"
-        ]
-      ]
+      "hybrid": []
     },
-    "path": "analyzer",
-    "reason": "MySQL 8.4.11 accepts DROP TABLESPACE (3510: the tablespace is missing), MariaDB 11.8.8 rejects it (1064). The reader has no mapping for it and names nothing; the analyzer took the name from the text.",
+    "path": "hybrid",
+    "reason": "MySQL 8.0.46 and 8.4.11 accept DROP TABLESPACE (3510: the tablespace is missing), MariaDB 11.8.8 rejects it (1064, measured 2026-10-24). The hybrid extraction named nothing; the reader names the tablespace from the statement head.",
     "sql": "DROP TABLESPACE ts"
   },
   "352cb192f9746748/analyzer": {
@@ -2392,24 +2368,27 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `app_logs`, `deleted`, `src` from its head; the reader names `app_logs`, `src`.",
     "sql": "WITH deleted AS (DELETE FROM src WHERE id = 1 /* RETURNING trap */ RETURNING id) INSERT INTO app_logs(msg) SELECT 'remov"
   },
-  "3a249bd31a537d02/analyzer": {
-    "class": "opaque-reader-gap",
+  "3a249bd31a537d02/hybrid": {
+    "class": "facts-adds-acted",
     "facts": {
-      "diagnostic": "mysql Command is opaque to statement facts",
+      "diagnostic": "sequence: mysql Command is opaque to statement facts",
       "kind": "DDL",
+      "objects": [
+        [
+          "users_seq",
+          "SEQUENCE",
+          "altered",
+          null
+        ]
+      ],
       "operation": "ALTER"
     },
-    "issue": "dblift/dblift#664",
+    "issue": "",
     "old": {
-      "analyzer": [
-        [
-          "SEQUENCE",
-          "default_schema.users_seq"
-        ]
-      ]
+      "hybrid": []
     },
-    "path": "analyzer",
-    "reason": "MariaDB 11.8.8 accepts ALTER SEQUENCE (4091: the sequence is missing), MySQL 8.4.11 rejects it (1064). The reader has no mapping for it and names nothing.",
+    "path": "hybrid",
+    "reason": "MariaDB 11.8.8 accepts ALTER SEQUENCE (4091: the sequence is missing), MySQL 8.0.46 and 8.4.11 reject it (1064, measured 2026-10-24). The hybrid extraction named nothing; the reader names the sequence from the statement head.",
     "sql": "ALTER SEQUENCE users_seq RESTART WITH 100"
   },
   "3a323accbe90ace0/analyzer": {
@@ -2714,27 +2693,6 @@
     "path": "analyzer",
     "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE TRIGGER \"my_trigger\" AFTER INSERT ON t FOR EACH ROW BEGIN SELECT 1; END'; dialect tokens: CREATE(CREATE) TRIGGER(TRIGGER) STRING(my_trigger) VAR(AFTER) INSERT(INSERT) ON(ON) VAR(t) FOR(FOR). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TRIGGER \"my_trigger\" AFTER INSERT ON t FOR EACH ROW BEGIN SELECT 1; END"
-  },
-  "40bce787584769ce/hybrid": {
-    "class": "opaque-reader-gap",
-    "facts": {
-      "diagnostic": "mysql Describe has no statement facts mapping",
-      "kind": "UNKNOWN",
-      "operation": "DESCRIBE"
-    },
-    "issue": "dblift/dblift#663",
-    "old": {
-      "hybrid": [
-        [
-          "TABLE",
-          "t",
-          null
-        ]
-      ]
-    },
-    "path": "hybrid",
-    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; it names nothing, the hybrid extraction named the table. No consumer reads it.",
-    "sql": "DESCRIBE t"
   },
   "416027f2c751fce5/hybrid": {
     "class": "facts-adds-acted",
@@ -3144,33 +3102,6 @@
       "MySQL 8.4.11": "1064"
     },
     "sql": "DROP FILE FORMAT IF EXISTS \"S\".\"CSV_FMT\""
-  },
-  "4bacb65d8d5a50da": {
-    "class": "opaque-reader-gap",
-    "facts": {
-      "diagnostic": "mysql Grant has no statement facts mapping",
-      "kind": "UNKNOWN",
-      "operation": "GRANT"
-    },
-    "issue": "dblift/dblift#663",
-    "old": {
-      "analyzer": [
-        [
-          "TABLE",
-          "default_schema.users"
-        ]
-      ],
-      "hybrid": [
-        [
-          "TABLE",
-          "users",
-          null
-        ]
-      ]
-    },
-    "path": "both",
-    "reason": "Runs on both engines (error 1146 only because the table is missing). The reader has no mapping for GRANT/REVOKE/DESCRIBE and names nothing; the extraction took the table name from the text. No consumer reads privileges or metadata queries.",
-    "sql": "GRANT SELECT ON users TO analyst"
   },
   "4df2968567a54807/hybrid": {
     "class": "facts-adds-acted",
@@ -3608,54 +3539,27 @@
     },
     "sql": "CREATE TYPE mood AS ENUM ('ok')"
   },
-  "58d35a8bf55d8d54": {
-    "class": "opaque-reader-gap",
+  "5a55d5c483c0bdbf/hybrid": {
+    "class": "facts-adds-acted",
     "facts": {
-      "diagnostic": "mysql Grant has no statement facts mapping",
-      "kind": "UNKNOWN",
-      "operation": "GRANT"
-    },
-    "issue": "dblift/dblift#663",
-    "old": {
-      "analyzer": [
+      "diagnostic": "tablespace: mysql Command is opaque to statement facts",
+      "kind": "DDL",
+      "objects": [
         [
-          "TABLE",
-          "default_schema.checkpoint"
-        ]
-      ],
-      "hybrid": [
-        [
-          "TABLE",
-          "checkpoint",
+          "ts1",
+          "TABLESPACE",
+          "created",
           null
         ]
-      ]
-    },
-    "path": "both",
-    "reason": "Runs on both engines (error 1146 only because the table is missing). The reader has no mapping for GRANT/REVOKE/DESCRIBE and names nothing; the extraction took the table name from the text. No consumer reads privileges or metadata queries.",
-    "sql": "GRANT SELECT ON TABLE checkpoint TO r"
-  },
-  "5a55d5c483c0bdbf/analyzer": {
-    "class": "opaque-reader-gap",
-    "facts": {
-      "diagnostic": "mysql Command is opaque to statement facts",
-      "kind": "DDL",
+      ],
       "operation": "CREATE"
     },
+    "issue": "",
     "old": {
-      "analyzer": [
-        [
-          "UNKNOWN",
-          "default_schema.ts1"
-        ]
-      ]
+      "hybrid": []
     },
-    "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `ts1` from its head; the reader names nothing.",
-    "rejected_by": {
-      "MariaDB 11.8.8-MariaDB-ubu2404": "1064",
-      "MySQL 8.4.11": "1064"
-    },
+    "path": "hybrid",
+    "reason": "Not a MySQL statement: MySQL 8.0.46 and 8.4.11 and MariaDB 11.8.8 reject it with error 1064 (measured 2026-10-24, with the tablespace renamed f664ts). The hybrid extraction named nothing; the reader names `ts1` from the statement head, as it does for any head the grammar leaves as a command.",
     "sql": "CREATE TABLESPACE ts1 IN STOGROUP sg1"
   },
   "5a93aafbfa136243/hybrid": {
@@ -3689,27 +3593,6 @@
     "path": "hybrid",
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `p` from its head; the reader names `p`.",
     "sql": "CREATE OR ALTER PROCEDURE p AS SELECT 1"
-  },
-  "5b356fa340744050/hybrid": {
-    "class": "opaque-reader-gap",
-    "facts": {
-      "diagnostic": "mysql Describe has no statement facts mapping",
-      "kind": "UNKNOWN",
-      "operation": "DESCRIBE"
-    },
-    "issue": "dblift/dblift#663",
-    "old": {
-      "hybrid": [
-        [
-          "TABLE",
-          "t1",
-          null
-        ]
-      ]
-    },
-    "path": "hybrid",
-    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; it names nothing, the hybrid extraction named the table. No consumer reads it.",
-    "sql": "DESCRIBE t1"
   },
   "5cc7ddb6c37225a1/hybrid": {
     "class": "opaque-reader-gap",
@@ -4127,33 +4010,6 @@
     "path": "both",
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names nothing.",
     "sql": "DELETE"
-  },
-  "66e8449ef5304c8d": {
-    "class": "opaque-reader-gap",
-    "facts": {
-      "diagnostic": "mysql Revoke has no statement facts mapping",
-      "kind": "UNKNOWN",
-      "operation": "REVOKE"
-    },
-    "issue": "dblift/dblift#663",
-    "old": {
-      "analyzer": [
-        [
-          "TABLE",
-          "default_schema.t"
-        ]
-      ],
-      "hybrid": [
-        [
-          "TABLE",
-          "t",
-          null
-        ]
-      ]
-    },
-    "path": "both",
-    "reason": "Runs on both engines once the grant exists (MySQL 8.4.11 1147, MariaDB 11.8.8 1141: no such grant). The reader has no mapping for REVOKE and names nothing; no consumer reads privileges.",
-    "sql": "REVOKE SELECT ON t FROM user1"
   },
   "686001cd0f92670c/analyzer": {
     "class": "opaque-reader-gap",
@@ -5005,27 +4861,27 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `complex_proc`.",
     "sql": "CREATE OR REPLACE PROCEDURE complex_proc()\n        LANGUAGE SQL\n        BEGIN\n            DECLARE v_error_code INTEGER D"
   },
-  "7950a208d273b4a4/analyzer": {
-    "class": "opaque-reader-gap",
+  "7950a208d273b4a4/hybrid": {
+    "class": "facts-adds-acted",
     "facts": {
-      "diagnostic": "mysql Command is opaque to statement facts",
+      "diagnostic": "tablespace: mysql Command is opaque to statement facts",
       "kind": "DDL",
+      "objects": [
+        [
+          "ts1",
+          "TABLESPACE",
+          "created",
+          null
+        ]
+      ],
       "operation": "CREATE"
     },
+    "issue": "",
     "old": {
-      "analyzer": [
-        [
-          "UNKNOWN",
-          "default_schema.ts1"
-        ]
-      ]
+      "hybrid": []
     },
-    "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `ts1` from its head; the reader names nothing.",
-    "rejected_by": {
-      "MariaDB 11.8.8-MariaDB-ubu2404": "1064",
-      "MySQL 8.4.11": "1064"
-    },
+    "path": "hybrid",
+    "reason": "Not a MySQL statement: MySQL 8.0.46 and 8.4.11 and MariaDB 11.8.8 reject it with error 1064 (measured 2026-10-24, with the tablespace renamed f664ts). The hybrid extraction named nothing; the reader names `ts1` from the statement head, as it does for any head the grammar leaves as a command.",
     "sql": "CREATE TABLESPACE ts1 MANAGED BY SYSTEM USING ('path')"
   },
   "79657b036e0b0868": {
@@ -5285,7 +5141,7 @@
       "kind": "UNKNOWN",
       "operation": "IF"
     },
-    "issue": "dblift/dblift#664",
+    "issue": "by design: docs/sql-parsing/mysql.md#12-current-implementation",
     "old": {
       "hybrid": [
         [
@@ -6293,27 +6149,27 @@
     "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [a]]b].[c]]d] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(a) R_BRACKET(]) R_BRACKET(]) VAR(b) R_BRACKET(]). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [a]]b].[c]]d] (id int)"
   },
-  "9be5302963c469ce/analyzer": {
-    "class": "opaque-reader-gap",
+  "9be5302963c469ce/hybrid": {
+    "class": "facts-adds-acted",
     "facts": {
-      "diagnostic": "mysql Command is opaque to statement facts",
+      "diagnostic": "tablespace: mysql Command is opaque to statement facts",
       "kind": "DDL",
+      "objects": [
+        [
+          "myts",
+          "TABLESPACE",
+          "created",
+          null
+        ]
+      ],
       "operation": "CREATE"
     },
+    "issue": "",
     "old": {
-      "analyzer": [
-        [
-          "UNKNOWN",
-          "default_schema.myts"
-        ]
-      ]
+      "hybrid": []
     },
-    "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `myts` from its head; the reader names nothing.",
-    "rejected_by": {
-      "MariaDB 11.8.8-MariaDB-ubu2404": "1064",
-      "MySQL 8.4.11": "1064"
-    },
+    "path": "hybrid",
+    "reason": "Not a MySQL statement: MySQL 8.0.46 and 8.4.11 and MariaDB 11.8.8 reject it with error 1064 (measured 2026-10-24, with the tablespace renamed f664ts). The hybrid extraction named nothing; the reader names `myts` from the statement head, as it does for any head the grammar leaves as a command.",
     "sql": "CREATE TABLESPACE myts IN STOGROUP mysg"
   },
   "9ca7dd77f81f1a3e/analyzer": {
@@ -6647,27 +6503,27 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `old_key` from its head; the reader names `old_key`.",
     "sql": "DROP CONSTRAINT old_key"
   },
-  "a6cbb05f14de55ca/analyzer": {
-    "class": "opaque-reader-gap",
+  "a6cbb05f14de55ca/hybrid": {
+    "class": "facts-adds-acted",
     "facts": {
-      "diagnostic": "mysql Command is opaque to statement facts",
+      "diagnostic": "tablespace: mysql Command is opaque to statement facts",
       "kind": "DDL",
+      "objects": [
+        [
+          "my_ts",
+          "TABLESPACE",
+          "created",
+          null
+        ]
+      ],
       "operation": "CREATE"
     },
+    "issue": "",
     "old": {
-      "analyzer": [
-        [
-          "UNKNOWN",
-          "default_schema.my_ts"
-        ]
-      ]
+      "hybrid": []
     },
-    "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `my_ts` from its head; the reader names nothing.",
-    "rejected_by": {
-      "MariaDB 11.8.8-MariaDB-ubu2404": "1064",
-      "MySQL 8.4.11": "1064"
-    },
+    "path": "hybrid",
+    "reason": "Not a MySQL statement: MySQL 8.0.46 and 8.4.11 and MariaDB 11.8.8 reject it with error 1064 (measured 2026-10-24, with the tablespace renamed f664ts). The hybrid extraction named nothing; the reader names `my_ts` from the statement head, as it does for any head the grammar leaves as a command.",
     "sql": "CREATE TABLESPACE my_ts MANAGED BY SYSTEM"
   },
   "a6d1b96a32dbc515/hybrid": {
@@ -7526,27 +7382,6 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `t`.",
     "sql": "CREATE VIRTUAL TABLE t USING fts5(a)"
   },
-  "b798937511f92700/hybrid": {
-    "class": "opaque-reader-gap",
-    "facts": {
-      "diagnostic": "mysql Describe has no statement facts mapping",
-      "kind": "UNKNOWN",
-      "operation": "DESCRIBE"
-    },
-    "issue": "dblift/dblift#663",
-    "old": {
-      "hybrid": [
-        [
-          "TABLE",
-          "child",
-          null
-        ]
-      ]
-    },
-    "path": "hybrid",
-    "reason": "Runs on both engines (1146: table missing). DESCRIBE is a metadata query the reader does not map; it names nothing, the hybrid extraction named the table. No consumer reads it.",
-    "sql": "DESCRIBE child"
-  },
   "b8a98133b12db722/analyzer": {
     "class": "opaque-reader-gap",
     "facts": {
@@ -7567,27 +7402,27 @@
     "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE TABLE \"Case\" (a int) WITH (fillfactor=70) TABLESPACE ts'; dialect tokens: CREATE(CREATE) TABLE(TABLE) STRING(Case) L_PAREN(() VAR(a) INT(int) R_PAREN()) WITH(WITH). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE \"Case\" (a int) WITH (fillfactor=70) TABLESPACE ts"
   },
-  "b9714f9c7de896b8/analyzer": {
-    "class": "opaque-reader-gap",
+  "b9714f9c7de896b8/hybrid": {
+    "class": "facts-adds-acted",
     "facts": {
-      "diagnostic": "mysql Command is opaque to statement facts",
+      "diagnostic": "tablespace: mysql Command is opaque to statement facts",
       "kind": "DDL",
+      "objects": [
+        [
+          "ts1",
+          "TABLESPACE",
+          "created",
+          null
+        ]
+      ],
       "operation": "CREATE"
     },
+    "issue": "",
     "old": {
-      "analyzer": [
-        [
-          "UNKNOWN",
-          "default_schema.ts1"
-        ]
-      ]
+      "hybrid": []
     },
-    "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `ts1` from its head; the reader names nothing.",
-    "rejected_by": {
-      "MariaDB 11.8.8-MariaDB-ubu2404": "1064",
-      "MySQL 8.4.11": "1064"
-    },
+    "path": "hybrid",
+    "reason": "Not a MySQL statement: MySQL 8.0.46 and 8.4.11 and MariaDB 11.8.8 reject it with error 1064 (measured 2026-10-24, with the tablespace renamed f664ts). The hybrid extraction named nothing; the reader names `ts1` from the statement head, as it does for any head the grammar leaves as a command.",
     "sql": "CREATE TABLESPACE ts1 MANAGED BY SYSTEM"
   },
   "ba33568c6a283e58/analyzer": {
@@ -8000,51 +7835,27 @@
     },
     "sql": "CREATE NONCLUSTERED INDEX ix ON t (a)"
   },
-  "c37bd2a51a3698be": {
-    "class": "opaque-reader-gap",
+  "c53c47271effe67e/hybrid": {
+    "class": "facts-adds-acted",
     "facts": {
-      "diagnostic": "mysql Grant has no statement facts mapping",
-      "kind": "UNKNOWN",
-      "operation": "GRANT"
-    },
-    "issue": "dblift/dblift#663",
-    "old": {
-      "analyzer": [
+      "diagnostic": "tablespace: mysql Command is opaque to statement facts",
+      "kind": "DDL",
+      "objects": [
         [
-          "TABLE",
-          "default_schema.z"
-        ]
-      ],
-      "hybrid": [
-        [
-          "TABLE",
-          "z",
+          "my_ts",
+          "TABLESPACE",
+          "dropped",
           null
         ]
-      ]
-    },
-    "path": "both",
-    "reason": "Runs on both engines once the table exists (MySQL 8.4.11 error 1410, MariaDB 11.8.8 error 1133: the grantee does not exist, i.e. the grammar accepted it). The reader has no mapping for GRANT and names nothing; no consumer reads privileges.",
-    "sql": "GRANT ALL ON z TO admin"
-  },
-  "c53c47271effe67e/analyzer": {
-    "class": "opaque-reader-gap",
-    "facts": {
-      "diagnostic": "mysql Command is opaque to statement facts",
-      "kind": "DDL",
+      ],
       "operation": "DROP"
     },
-    "issue": "dblift/dblift#664",
+    "issue": "",
     "old": {
-      "analyzer": [
-        [
-          "UNKNOWN",
-          "default_schema.my_ts"
-        ]
-      ]
+      "hybrid": []
     },
-    "path": "analyzer",
-    "reason": "MySQL 8.4.11 accepts DROP TABLESPACE (3510: the tablespace is missing), MariaDB 11.8.8 rejects it (1064). The reader has no mapping for it and names nothing; the analyzer took the name from the text.",
+    "path": "hybrid",
+    "reason": "MySQL 8.0.46 and 8.4.11 accept DROP TABLESPACE (3510: the tablespace is missing), MariaDB 11.8.8 rejects it (1064, measured 2026-10-24). The hybrid extraction named nothing; the reader names the tablespace from the statement head.",
     "sql": "DROP TABLESPACE my_ts"
   },
   "c5579c4d265ad8a0/hybrid": {
@@ -8712,27 +8523,27 @@
     "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'ALTER TABLE [a]]b] ADD COLUMN x INT'; dialect tokens: ALTER(ALTER) TABLE(TABLE) L_BRACKET([) VAR(a) R_BRACKET(]) R_BRACKET(]) VAR(b) R_BRACKET(]). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "ALTER TABLE [a]]b] ADD COLUMN x INT"
   },
-  "d37d4b0f0ffa9b1f/analyzer": {
-    "class": "opaque-reader-gap",
+  "d37d4b0f0ffa9b1f/hybrid": {
+    "class": "facts-adds-acted",
     "facts": {
-      "diagnostic": "mysql Command is opaque to statement facts",
+      "diagnostic": "tablespace: mysql Command is opaque to statement facts",
       "kind": "DDL",
+      "objects": [
+        [
+          "my_ts",
+          "TABLESPACE",
+          "altered",
+          null
+        ]
+      ],
       "operation": "ALTER"
     },
+    "issue": "",
     "old": {
-      "analyzer": [
-        [
-          "UNKNOWN",
-          "default_schema.my_ts"
-        ]
-      ]
+      "hybrid": []
     },
-    "path": "analyzer",
-    "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `my_ts` from its head; the reader names nothing.",
-    "rejected_by": {
-      "MariaDB 11.8.8-MariaDB-ubu2404": "1064",
-      "MySQL 8.4.11": "1064"
-    },
+    "path": "hybrid",
+    "reason": "Not a MySQL statement: MySQL 8.0.46 and 8.4.11 and MariaDB 11.8.8 reject it with error 1064 (measured 2026-10-24, with the tablespace renamed f664ts). The hybrid extraction named nothing; the reader names `my_ts` from the statement head, as it does for any head the grammar leaves as a command.",
     "sql": "ALTER TABLESPACE my_ts ADD FILE 1000"
   },
   "d50eb5a997e44a82/analyzer": {
@@ -9260,33 +9071,6 @@
     "path": "hybrid",
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `test_proc`.",
     "sql": "CREATE PROCEDURE \"test_proc\"() LANGUAGE SQL BEGIN SELECT 1; END"
-  },
-  "e07fc09ef4350d3e": {
-    "class": "opaque-reader-gap",
-    "facts": {
-      "diagnostic": "mysql Grant has no statement facts mapping",
-      "kind": "UNKNOWN",
-      "operation": "GRANT"
-    },
-    "issue": "dblift/dblift#663",
-    "old": {
-      "analyzer": [
-        [
-          "TABLE",
-          "default_schema.test"
-        ]
-      ],
-      "hybrid": [
-        [
-          "TABLE",
-          "test",
-          null
-        ]
-      ]
-    },
-    "path": "both",
-    "reason": "Runs on both engines (error 1146 only because the table is missing). The reader has no mapping for GRANT/REVOKE/DESCRIBE and names nothing; the extraction took the table name from the text. No consumer reads privileges or metadata queries.",
-    "sql": "GRANT SELECT ON test TO user1"
   },
   "e0ca86d4ebc62716/analyzer": {
     "class": "opaque-reader-gap",

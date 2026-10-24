@@ -9,8 +9,10 @@ if TYPE_CHECKING:
     pass
 from dblift.core.logger.results import InfoResult, MigrationInfo, is_failed_migration_status
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, MigrationType
+from dblift.core.migration.presentation import presentation_for
 from dblift.core.migration.sql.lint import lint_pending_scripts
 from dblift.core.migration.sql.script_analysis import dialect_of
+from dblift.core.migration.ui.data_collector import MigrationDataCollector
 
 from .base_command import BaseCommand
 
@@ -132,20 +134,26 @@ class InfoCommand(BaseCommand):
             # Use the migration UI to display the information properly
             # Pass the full state so UI can access undone_versions and other state info
             if display_human:
-                self.migration_ui.display_migration_info(
-                    migration_state=migration_state,
-                    all_applied_migrations=all_applied_migrations,
-                    scripts_dir=scripts_dir,
-                    target_version=None,
-                    tags=normalized_tags,
-                    exclude_tags=normalized_exclude_tags,
-                    versions=normalized_versions,
-                    exclude_versions=normalized_exclude_versions,
-                )
+                presenter = presentation_for(self.execution_engine, self.log, requested=True)
+                if presenter is not None:
+                    presenter.present_migration_info(
+                        self,
+                        migration_state=migration_state,
+                        all_applied_migrations=all_applied_migrations,
+                        scripts_dir=scripts_dir,
+                        target_version=None,
+                        tags=normalized_tags,
+                        exclude_tags=normalized_exclude_tags,
+                        versions=normalized_versions,
+                        exclude_versions=normalized_exclude_versions,
+                    )
 
             # Use the same data processing pipeline as the console output
             # Get structured migration data using the UI data collector
-            migrations_data = self.migration_ui.get_migration_data(
+            collector = self.migration_ui
+            if collector is None:
+                collector = MigrationDataCollector(self.log, self.script_manager)
+            migrations_data = collector.get_migration_data(
                 migration_state=migration_state,
                 all_applied_migrations=all_applied_migrations,
                 scripts_dir=scripts_dir,

@@ -1302,33 +1302,6 @@
   "reason": "The reader names only VIEW v (altered by the rename); the old extraction added a phantom TABLE v next to VIEW v. PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
   "sql": "ALTER VIEW v RENAME TO v2"
  },
- "27fb88d0000fdd25": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "postgres Grant privilege targets are not modelled",
-   "kind": "DDL",
-   "operation": "GRANT"
-  },
-  "issue": "#669",
-  "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.t"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "t",
-     "public"
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "GRANT and REVOKE are read as DDL whose privilege targets are not modelled, so the reader names no object where the old extraction named TABLE t / TABLE default_schema.t (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
-  "sql": "GRANT SELECT ON t TO user1"
- },
  "28a2214906323fa1/analyzer": {
   "class": "facts-adds-acted",
   "facts": {
@@ -2728,33 +2701,6 @@
   },
   "sql": "DROP FILE FORMAT IF EXISTS \"S\".\"CSV_FMT\""
  },
- "4bacb65d8d5a50da": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "postgres Grant privilege targets are not modelled",
-   "kind": "DDL",
-   "operation": "GRANT"
-  },
-  "issue": "#669",
-  "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.users"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "users",
-     "public"
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "GRANT and REVOKE are read as DDL whose privilege targets are not modelled, so the reader names no object where the old extraction named TABLE users / TABLE default_schema.users (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
-  "sql": "GRANT SELECT ON users TO analyst"
- },
  "4f396193162c9a78/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -3039,33 +2985,6 @@
   "path": "hybrid",
   "reason": "The enum labels are literals, not objects: the reader names only TYPE mood (created); the old extraction named the type twice, as UNKNOWN mood and as an invented TABLE mood. PostgreSQL 16.14 runs it.",
   "sql": "CREATE TYPE mood AS ENUM ('ok')"
- },
- "58d35a8bf55d8d54": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "postgres Grant privilege targets are not modelled",
-   "kind": "DDL",
-   "operation": "GRANT"
-  },
-  "issue": "#669",
-  "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.checkpoint"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "checkpoint",
-     "public"
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "GRANT and REVOKE are read as DDL whose privilege targets are not modelled, so the reader names no object where the old extraction named TABLE checkpoint / TABLE default_schema.checkpoint (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
-  "sql": "GRANT SELECT ON TABLE checkpoint TO r"
  },
  "5a55d5c483c0bdbf/analyzer": {
   "class": "opaque-reader-gap",
@@ -3532,33 +3451,6 @@
   "path": "both",
   "reason": "PostgreSQL 16.14 rejects this text with SQLSTATE 42601 (syntax error at end of input); it is a truncated statement harvested into the corpus and never runs on this family; the reader and the old extraction differ on events (facts None, extraction ['DELETE']), with no consequence because the engine never runs the text. CockroachDB v24.3.18: 42601; YugabyteDB 2026.1.2: 42601.",
   "sql": "DELETE"
- },
- "66e8449ef5304c8d": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "postgres Revoke privilege targets are not modelled",
-   "kind": "DDL",
-   "operation": "REVOKE"
-  },
-  "issue": "#669",
-  "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.t"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "t",
-     "public"
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "GRANT and REVOKE are read as DDL whose privilege targets are not modelled, so the reader names no object where the old extraction named TABLE t / TABLE default_schema.t (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
-  "sql": "REVOKE SELECT ON t FROM user1"
  },
  "686001cd0f92670c/analyzer": {
   "class": "opaque-reader-gap",
@@ -7035,33 +6927,6 @@
   },
   "sql": "CREATE NONCLUSTERED INDEX ix ON t (a)"
  },
- "c37bd2a51a3698be": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "postgres Grant privilege targets are not modelled",
-   "kind": "DDL",
-   "operation": "GRANT"
-  },
-  "issue": "#669",
-  "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.z"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "z",
-     "public"
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "GRANT and REVOKE are read as DDL whose privilege targets are not modelled, so the reader names no object where the old extraction named TABLE z / TABLE default_schema.z (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
-  "sql": "GRANT ALL ON z TO admin"
- },
  "c442e634bfb4214b/hybrid": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -8217,33 +8082,6 @@
    "yugabytedb 2026.1.2": "42601"
   },
   "sql": "GO\n\nCREATE INDEX idx_emp_name ON dbo.employees (name)"
- },
- "e07fc09ef4350d3e": {
-  "class": "opaque-reader-gap",
-  "facts": {
-   "diagnostic": "postgres Grant privilege targets are not modelled",
-   "kind": "DDL",
-   "operation": "GRANT"
-  },
-  "issue": "#669",
-  "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.test"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "test",
-     "public"
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "GRANT and REVOKE are read as DDL whose privilege targets are not modelled, so the reader names no object where the old extraction named TABLE test / TABLE default_schema.test (#669). PostgreSQL 16.14 parses it (SQLSTATE 42P01 at run time).",
-  "sql": "GRANT SELECT ON test TO user1"
  },
  "e0ca86d4ebc62716/analyzer": {
   "class": "opaque-reader-gap",

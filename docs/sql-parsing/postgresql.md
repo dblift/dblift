@@ -220,11 +220,22 @@ corpus `tests/support/facts_corpus/postgresql.jsonl` and the ledger
 `postgresql.review.json` (every difference against the former extraction,
 explained) are the evidence, and `gated.json` gates the family. Known gaps:
 dblift/dblift#669 (event trigger, FDW, server, publication, operator class, text
-search, tablespace objects and `GRANT`/`REVOKE` name nothing). sqlglot 30.23 has no `TABLESPACE`
+search and tablespace objects name nothing). sqlglot 30.23 has no `TABLESPACE`
 clause in its PostgreSQL grammar and returns `CREATE TABLE … TABLESPACE ts`, the same on an index
 and a materialized view, as a command: the object is named from the head and the diagnostic says
 `postgres TABLESPACE clause is not modelled by the grammar` (storage parameters alone,
 `WITH (fillfactor=70)`, parse normally).
+
+`GRANT` and `REVOKE` are DDL that only reference what they name: the securable is a `referenced`
+object and nothing is created, altered or dropped. `ON t`, `ON TABLE t` and `ON s.t` name a table
+(`s` is the schema), and the written kind names a `SEQUENCE`, `SCHEMA`, `DATABASE`, `TYPE`,
+`FUNCTION` or `PROCEDURE`. PostgreSQL 16.14 ran each of these forms and answered a missing object
+with 42P01, 3F000, 3D000, 42704 or 42883, never 42601. Left opaque, with the operation and the
+kind `DDL` and no object: `ON ALL TABLES IN SCHEMA s` (and the sequence and function forms), role
+grants (`GRANT r TO u`), a list of tables (`ON t1, t2`), `GRANTED BY`, `ON LANGUAGE`,
+`ON FOREIGN SERVER` and `ON TABLESPACE`, which sqlglot holds as commands; a routine written with
+a signature (`ON FUNCTION f(int)`), which sqlglot holds as a call and not as a name; and a
+three-part table name.
 
 `COPY t [(cols)] FROM|TO source [options]` is read from the table and the direction alone: `FROM`
 alters `t` with an `INSERT` event, `TO` references it, and every option after the source
