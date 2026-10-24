@@ -115,6 +115,10 @@ _MYSQL_NEAR_RE = re.compile(r"\bnear '.*?' at line (\d+)", re.DOTALL)
 _VALUE_GROUP_RE = re.compile(r"=\(.*\)|\bvalue is \(.*\)", re.IGNORECASE)
 
 
+# An apostrophe between two word characters (can't, doesn't) is text, not a delimiter.
+_DELIMITERS = {"'": re.compile(r"(?<!\w)'|'(?!\w)"), '"': re.compile('"')}
+
+
 def _mask_quoted(text: str, quote: str) -> str:
     """Replace quoted text with ``?``, from the first quote to the last, failing closed.
 
@@ -122,16 +126,17 @@ def _mask_quoted(text: str, quote: str) -> str:
     taken per line; when a line holds an odd number of quotes (a quote that never closes, or a
     value with a newline in it) it is taken across the whole message.
     """
-    if quote not in text:
+    delimiter = _DELIMITERS[quote]
+    if not delimiter.search(text):
         return text
     lines = text.split("\n")
-    if any(line.count(quote) % 2 for line in lines):
-        first, last = text.find(quote), text.rfind(quote)
-        return text[:first] + "?" + (text[last + 1 :] if last > first else "")
+    if any(len(delimiter.findall(line)) % 2 for line in lines):
+        marks = [m.start() for m in delimiter.finditer(text)]
+        return text[: marks[0]] + "?" + (text[marks[-1] + 1 :] if len(marks) > 1 else "")
     masked = []
     for line in lines:
-        first, last = line.find(quote), line.rfind(quote)
-        masked.append(line if first < 0 else line[:first] + "?" + line[last + 1 :])
+        marks = [m.start() for m in delimiter.finditer(line)]
+        masked.append(line if not marks else line[: marks[0]] + "?" + line[marks[-1] + 1 :])
     return "\n".join(masked)
 
 

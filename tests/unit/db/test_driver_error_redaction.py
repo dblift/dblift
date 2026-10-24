@@ -160,3 +160,23 @@ def test_multi_line_mysql_excerpt_is_removed_across_lines():
 def test_mysql_excerpt_whose_lines_each_hold_balanced_quotes_is_removed():
     message = f"syntax; use near ''{S}\nmore'' at line 2"
     assert redact(message) == "syntax; use near ? at line 2"
+
+
+@pytest.mark.parametrize(
+    "message, expected",
+    [
+        (
+            "Can't connect to MySQL server on 'host' (111)",
+            "Can't connect to MySQL server on ? (111)",
+        ),
+        ("Table 't.x' doesn't exist", "Table ? doesn't exist"),
+        ("it isn't there", "it isn't there"),
+    ],
+)
+def test_an_apostrophe_inside_a_word_is_text_not_a_delimiter(message, expected):
+    assert redact(message) == expected
+
+
+def test_inner_apostrophes_in_a_quoted_value_are_still_masked():
+    assert redact(f"Duplicate entry 'SEC'RET-{S}' for key 'k'") == "Duplicate entry ?"
+    assert redact(f"bad 'it's {S}' here") == "bad ? here"
