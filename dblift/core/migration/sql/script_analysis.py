@@ -12,7 +12,7 @@ import logging
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, FrozenSet, Iterator, List, Optional, Tuple
 
 from dblift.core.exceptions import (
     ParserError,
@@ -56,7 +56,6 @@ _DATA_HOLDERS = frozenset(
         SqlObjectType.MATERIALIZED_VIEW.value,
         SqlObjectType.SCHEMA.value,
         SqlObjectType.DATABASE.value,
-        SqlObjectType.TABLESPACE.value,
     }
 )
 # The statements the facts reader may leave unread and ``statement-not-analysed`` still passes,
@@ -103,7 +102,6 @@ _ROW_HOLDERS = frozenset(
         SqlObjectType.TABLE.value,
         SqlObjectType.VIRTUAL_TABLE.value,
         SqlObjectType.MATERIALIZED_VIEW.value,
-        SqlObjectType.TABLESPACE.value,
     }
 )
 DISABLED_ANALYSIS = {
@@ -272,6 +270,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
                 objects=analysed.objects[:1] if facts.cte_writes and facts.target else objects,
             ),
             body,
+            quirks.drop_discards_rows_types,
             _opaque_dialect(dialect) if facts.opaque else None,
             # a plugin without a sqlglot dialect has no second reader to name an unread target
             name_target=not (analysed.names_unread and quirks.sqlglot_dialect is None),
@@ -426,6 +425,7 @@ def _unnamed_drop_caution(stmt: AnalysedStatement, body: str) -> Optional[Cautio
 def _caution_for(
     stmt: AnalysedStatement,
     body: str,
+    discards_rows: FrozenSet[str],
     opaque_dialect: Optional[str] = None,
     name_target: bool = True,
 ) -> Optional[Caution]:
@@ -433,12 +433,12 @@ def _caution_for(
     if op == "TRUNCATE":
         return Caution(DESTROYS, stmt.index, f"TRUNCATE empties {_names(stmt.objects)}", "truncate")
     if op == "DROP":
-        held = tuple(o for o in stmt.objects if o.type in _DATA_HOLDERS)
+        held = tuple(o for o in stmt.objects if o.type in _DATA_HOLDERS or o.type in discards_rows)
         if not held:
             return _unnamed_drop_caution(stmt, body) if opaque_dialect else None
         if any(o.type in _SCHEMA_HOLDERS for o in held):
             code: Optional[str] = "drop-schema"
-        elif any(o.type in _ROW_HOLDERS for o in held):
+        elif any(o.type in _ROW_HOLDERS or o.type in discards_rows for o in held):
             code = "drop-table"
         else:
             code = None

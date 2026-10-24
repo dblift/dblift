@@ -8,7 +8,12 @@ import pytest
 
 from dblift.core.migration.sql.lint import lint_script
 from dblift.core.migration.sql.lint_rules import ERROR, INFO, SEVERITY, WARNING, find_issues
-from dblift.core.migration.sql.script_analysis import analyse_script
+from dblift.core.migration.sql.script_analysis import (
+    AnalysedObject,
+    AnalysedStatement,
+    _caution_for,
+    analyse_script,
+)
 from dblift.db.provider_registry import ProviderRegistry
 
 pytestmark = pytest.mark.unit
@@ -533,6 +538,27 @@ def test_a_named_db2_table_space_drop_is_judged_as_a_table_drop():
 
     assert [f.code for f in result.findings] == ["drop-table"]
     assert result.verdict == lint_script("DROP TABLE t;", "db2").verdict
+
+
+def _named_tablespace_drop():
+    return AnalysedStatement(
+        0,
+        "DROP",
+        "DDL",
+        (AnalysedObject("TABLESPACE", "TS", None),),
+        False,
+        "DROP TABLESPACE ts",
+    )
+
+
+# PostgreSQL and MySQL refuse to drop a table space that still holds tables, so a dialect whose
+# quirks do not list TABLESPACE among the types that discard rows does not report the drop as one.
+def test_a_named_table_space_drop_discards_rows_only_where_the_dialect_says_so():
+    stmt = _named_tablespace_drop()
+
+    assert _caution_for(stmt, "DROP TABLESPACE ts", frozenset()) is None
+    caution = _caution_for(stmt, "DROP TABLESPACE ts", frozenset({"TABLESPACE"}))
+    assert caution is not None and caution.code == "drop-table"
 
 
 @pytest.mark.parametrize(

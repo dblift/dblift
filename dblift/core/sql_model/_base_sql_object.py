@@ -39,7 +39,7 @@ class SqlObjectType(Enum):
     EXTENSION = "EXTENSION"  # PostgreSQL extensions
     FOREIGN_DATA_WRAPPER = "FOREIGN_DATA_WRAPPER"  # PostgreSQL foreign data wrappers
     FOREIGN_SERVER = "FOREIGN_SERVER"  # PostgreSQL foreign servers
-    TABLESPACE = "TABLESPACE"  # Db2 table spaces
+    TABLESPACE = "TABLESPACE"  # Tablespaces (storage containers, no schema part)
     STORAGE_GROUP = "STORAGE_GROUP"  # Db2 storage groups
     BUFFERPOOL = "BUFFERPOOL"  # Db2 buffer pools
     MODULE = "MODULE"  # Db2 modules

@@ -24,7 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   forms the server rejects (`DROP … IF EXISTS` for these types, a qualified table space name) are
   not read. See `docs/sql-parsing/db2.md` section 13. Because Db2 drops the tables of a table
   space with it, the lint reports a Db2 `DROP TABLESPACE` as `drop-table` (it was
-  `drop-unread-object` while the statement was unread).
+  `drop-unread-object` while the statement was unread); the types whose drop discards rows are
+  now a quirk of each dialect, `drop_discards_rows_types`.
 - The HTML report of `migrate --dry-run --show-sql` and `undo --dry-run --show-sql` names the
   object type and name of each statement, as the report of an applied run does; those columns
   were empty. Each `MigrationSqlInfo` in `result.sql` carries the same per-statement
