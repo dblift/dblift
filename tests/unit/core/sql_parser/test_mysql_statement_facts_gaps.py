@@ -347,6 +347,184 @@ def test_the_diagnostic_names_the_first_offending_code_point():
     assert "U+1F600" in facts.diagnostic
 
 
+# --- GRANT / REVOKE ------------------------------------------------------------------------
+
+REFERENCED_T = [("t", SqlObjectType.TABLE, "referenced", None)]
+
+
+@pytest.mark.parametrize("operation,tail", [("GRANT", "TO u"), ("REVOKE", "FROM u")])
+@pytest.mark.parametrize(
+    ("privileges_on", "expected"),
+    [
+        ("SELECT ON t", REFERENCED_T),
+        ("SELECT ON TABLE t", REFERENCED_T),
+        ("SELECT, INSERT ON t", REFERENCED_T),
+        ("SELECT (a, b) ON t", REFERENCED_T),
+        ("ALL ON t", REFERENCED_T),
+        ("SELECT ON `t`", REFERENCED_T),
+        ("SELECT ON db.t", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+        ("SELECT ON TABLE db.t", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+        ("EXECUTE ON FUNCTION f", [("f", SqlObjectType.FUNCTION, "referenced", None)]),
+        ("EXECUTE ON PROCEDURE p", [("p", SqlObjectType.PROCEDURE, "referenced", None)]),
+        ("EXECUTE ON FUNCTION db.f", [("f", SqlObjectType.FUNCTION, "referenced", "db")]),
+    ],
+)
+def test_grant_and_revoke_are_ddl_that_reference_the_object_they_name(
+    privileges_on, expected, operation, tail
+):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: every form runs on an
+    existing object and fails after parsing on a missing one (1146 table, 1305 routine); none is
+    a syntax error (1064). MySQL 8.4 answers 1147 to a REVOKE of a privilege that was never
+    granted, which is also an answer given after parsing.
+    """
+    facts = mysql(f"{operation} {privileges_on} {tail}")
+
+    assert (facts.operation, facts.kind) == (operation, "DDL")
+    assert objects(facts) == expected
+    assert facts.diagnostic is None
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "GRANT SELECT ON t TO u1, u2",
+        "GRANT SELECT ON t TO u WITH GRANT OPTION",
+        "REVOKE SELECT ON t FROM u1, u2",
+        "REVOKE GRANT OPTION ON t FROM u",
+    ],
+)
+def test_grant_principals_and_options_do_not_change_the_securable(sql):
+    # Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: all run.
+    assert objects(mysql(sql)) == REFERENCED_T
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # sqlglot reads these as an unmodelled command: no table is proven.
+        "GRANT ALL ON *.* TO u",
+        "GRANT ALL ON db.* TO u",
+        "GRANT r TO u",
+        "GRANT SELECT ON t TO 'u'@'h'",
+        "REVOKE ALL PRIVILEGES, GRANT OPTION FROM u",
+    ],
+)
+def test_grant_forms_without_a_single_table_stay_opaque(sql):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: all parse (MariaDB
+    answers 1959 to the role grant when ``r`` is no role).
+    """
+    facts = mysql(sql)
+
+    assert facts.objects == ()
+    assert facts.opaque
+    assert facts.operation in {"GRANT", "REVOKE"}
+
+
+@pytest.mark.parametrize("operation,tail", [("GRANT", "TO u"), ("REVOKE", "FROM u")])
+@pytest.mark.parametrize(
+    "privileges_on",
+    [
+        # ``ON v`` names a user, not a table, whatever sqlglot calls it.
+        "PROXY ON v",
+        # Under ANSI_QUOTES this is a table; otherwise a string and a syntax error (1064).
+        'SELECT ON "t"',
+        # Not MySQL grammar (1064): the securable kinds MySQL has are table and routines.
+        "SELECT ON SCHEMA s",
+        "USAGE ON SEQUENCE s",
+    ],
+)
+def test_grant_targets_that_are_not_proven_tables_stay_opaque(privileges_on, operation, tail):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: ``PROXY ON v`` runs (v is
+    an account); the other three are syntax errors (1064).
+    """
+    facts = mysql(f"{operation} {privileges_on} {tail}")
+
+    assert (facts.operation, facts.kind) == (operation, "DDL")
+    assert facts.objects == ()
+    assert facts.opaque
+
+
+# --- DESCRIBE / SHOW -----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        ("DESCRIBE t", REFERENCED_T),
+        ("DESC t", REFERENCED_T),
+        ("EXPLAIN t", REFERENCED_T),
+        ("DESCRIBE `t`", REFERENCED_T),
+        ("DESCRIBE db.t", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+    ],
+)
+def test_describe_names_its_table_as_referenced(sql, expected):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: all run; on a missing
+    table they fail after parsing (1146, or 1049 for an unknown database).
+    """
+    facts = mysql(sql)
+
+    assert (facts.operation, facts.kind) == ("DESCRIBE", "QUERY")
+    assert objects(facts) == expected
+    assert facts.diagnostic is None
+
+
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        ("SHOW CREATE TABLE t", REFERENCED_T),
+        ("SHOW CREATE TABLE `t`", REFERENCED_T),
+        ("SHOW CREATE TABLE db.t", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+        ("SHOW COLUMNS FROM t", REFERENCED_T),
+        ("SHOW FULL COLUMNS FROM t", REFERENCED_T),
+        ("SHOW COLUMNS FROM t FROM db", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+        ("SHOW COLUMNS FROM db.t", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+        ("SHOW INDEX FROM t", REFERENCED_T),
+        ("SHOW INDEX FROM t FROM db", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+        ("SHOW INDEX FROM db.t", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+    ],
+)
+def test_show_names_the_table_it_describes_as_referenced(sql, expected):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: all run; on a missing
+    table they fail after parsing (1146, or 1049 for an unknown database on MySQL).
+    """
+    facts = mysql(sql)
+
+    assert (facts.operation, facts.kind) == ("SHOW", "QUERY")
+    assert objects(facts) == expected
+    assert facts.diagnostic is None
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # A string literal where MySQL, without ANSI_QUOTES, reads no identifier (1064).
+        'DESCRIBE "t"',
+        'SHOW CREATE TABLE "t"',
+        # A reserved word read where a name belongs (1064); quoted, it would be a name.
+        "DESCRIBE select",
+        "SHOW CREATE TABLE select",
+        # Not a table: a statement, a column, other objects, other SHOW forms.
+        "EXPLAIN SELECT 1",
+        "DESCRIBE t c",
+        "SHOW TABLES",
+        "SHOW CREATE VIEW v",
+        "SHOW CREATE DATABASE db",
+        # Clauses and spellings the grammar holds as a command or with arguments not read.
+        "SHOW COLUMNS FROM t LIKE 'a'",
+        "SHOW KEYS FROM t",
+        "EXPLAIN FORMAT=JSON t",
+        "EXPLAIN ANALYZE t",
+    ],
+)
+def test_describe_and_show_forms_that_prove_no_table_stay_opaque(sql):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: ``"t"``, ``select``,
+    ``EXPLAIN FORMAT=JSON t`` and ``EXPLAIN ANALYZE t`` are syntax errors (1064); the rest run.
+    """
+    facts = mysql(sql)
+
+    assert facts.objects == ()
+
+
 # --- TABLESPACE and SEQUENCE heads (issue #664) ----------------------------------------------
 
 
