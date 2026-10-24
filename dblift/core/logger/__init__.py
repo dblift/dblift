@@ -31,6 +31,11 @@ from dblift.core.logger.results import (
 from dblift.core.utils.url_masking import mask_database_url
 
 if TYPE_CHECKING:
+    from dblift.core.logger.formatters import (
+        JsonFormatter,
+        OutputFormatter,
+        OutputFormatterFactory,
+    )
     from dblift.core.logger.formatters.htmlformatter import HtmlFormatter
 
 

@@ -50,12 +50,16 @@ from dblift.core.utils.module_check import module_available
 if TYPE_CHECKING:
     from rich.console import Console
 
+    from dblift.core.logger.formatters.jsonformatter import JsonFormatter  # noqa: F401
+
+    JINJA_AVAILABLE: bool
+
 JSON_AVAILABLE = True
 
 
 def __getattr__(name: str) -> Any:
     if name == "JsonFormatter":
-        from dblift.core.logger.formatters.jsonformatter import JsonFormatter
+        from dblift.core.logger.formatters.jsonformatter import JsonFormatter  # noqa: F811
 
         globals()[name] = JsonFormatter
         return JsonFormatter
@@ -484,7 +488,7 @@ class FileLog(AbstractLog):
         # Create formatter based on format
         from typing import Union
 
-        from dblift.core.logger.formatters.jsonformatter import JsonFormatter
+        from dblift.core.logger.formatters.jsonformatter import JsonFormatter  # noqa: F811
 
         self.formatter: Union[TextFormatter, "HtmlFormatter", "JsonFormatter"]
         if self.log_format == LogFormat.JSON and JSON_AVAILABLE:
@@ -691,7 +695,7 @@ class FileLog(AbstractLog):
                     f.write(footer)
 
         # For JSON logs, write the complete log with all entries
-        from dblift.core.logger.formatters.jsonformatter import JsonFormatter
+        from dblift.core.logger.formatters.jsonformatter import JsonFormatter  # noqa: F811
 
         if self.log_format == LogFormat.JSON and isinstance(self.formatter, JsonFormatter):
             # Ensure we have a result - create a minimal one if not available
