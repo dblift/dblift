@@ -40,6 +40,7 @@ class UndoCommand(BaseCommand):
                 version=undo_migration.version,
                 description=undo_migration.description,
                 statements=statements,
+                annotations=self.execution_engine.annotate_sql_statements(statements),
             )
         )
 
