@@ -329,6 +329,10 @@ class DBLiftClient:
         self.events = EventEmitter()
         attach_registered_listeners(self.events)
 
+    def _resolve_target_version(self, target_version: Optional[str]) -> Optional[str]:
+        """Return the explicit target, else the configured ``target_version``."""
+        return target_version if target_version is not None else self.config.target_version
+
     def _check_target_version(
         self,
         target_version: Optional[str],
@@ -341,12 +345,9 @@ class DBLiftClient:
     ) -> None:
         """Raise ``InvalidTargetVersionError`` unless the target is a script's version.
 
-        With no argument the configured ``target_version`` is checked. With
-        ``allow_applied`` (undo) a version in the applied history also passes,
-        for a migration whose script has since been removed.
+        With ``allow_applied`` (undo) a version in the applied history also
+        passes, for a migration whose script has since been removed.
         """
-        if target_version is None:
-            target_version = self.config.target_version
         if target_version is None:
             return
         target_version = str(target_version)
@@ -496,6 +497,7 @@ class DBLiftClient:
             MigrateResult with details of applied migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        target_version = self._resolve_target_version(target_version)
         self._check_target_version(
             target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
         )
@@ -610,6 +612,7 @@ class DBLiftClient:
             InfoResult with migration status
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        target_version = self._resolve_target_version(target_version)
         self._check_target_version(
             target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
         )
@@ -686,6 +689,7 @@ class DBLiftClient:
             emitted.
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        target_version = self._resolve_target_version(target_version)
         self._check_target_version(
             target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
         )
@@ -762,6 +766,7 @@ class DBLiftClient:
             UndoResult with details of rolled back migrations
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        target_version = self._resolve_target_version(target_version)
         try:
             self._check_target_version(
                 target_version,

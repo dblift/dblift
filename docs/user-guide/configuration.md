@@ -363,6 +363,25 @@ export DBLIFT_ENV="prod"  # Optional: select the active environments: block (see
 !!! warning "Security Best Practice"
     Never commit passwords or sensitive credentials to version control. Always use environment variables for production deployments.
 
+## Target Version
+
+`target_version` (YAML), `DBLIFT_TARGET_VERSION` (environment) and `--target-version` (flag) all
+set the version `migrate`, `info`, `validate` and `undo` stop at. The flag wins over the
+environment variable, which wins over the YAML key. For `undo` it is the version to roll back
+to: that migration stays applied and everything above it is undone, so a configured target also
+drives `undo`. It must be the version of one of your scripts. An empty YAML value (at the root or
+in an `environments:` block) is refused with the same error as `--target-version ""`, while an
+empty `DBLIFT_TARGET_VERSION` is ignored like any empty environment variable.
+
+The Python API applies the configured value when a call passes no `target_version`; an explicit
+argument wins. `DBLiftClient.from_sqlalchemy(engine)` without `config=` reads neither the YAML nor
+the environment.
+
+```yaml
+target_version: 2
+```
+
+
 ## Logging Settings
 
 `log_level`, `log_format`, `log_dir` and `log_file` resolve like every other setting:

@@ -17,6 +17,7 @@ from dblift.config.database_config import (
 )
 from dblift.config.dblift_config import DbliftConfig, apply_environment, select_environment
 from dblift.config.errors import ConfigurationError
+from dblift.core.exceptions import InvalidTargetVersionError
 
 
 def _file_url_dialect_from_scheme(scheme: str) -> Optional[str]:
@@ -274,7 +275,7 @@ class ConfigBuilder:
                 file_data = DbliftConfig.load_config_data_from_yaml(file_path_str)
                 if file_data:
                     config_data = DbliftConfig.merge_config_data(config_data, file_data)
-            except FileNotFoundError:
+            except (FileNotFoundError, InvalidTargetVersionError):
                 raise
             except Exception as e:
                 warnings.warn(
