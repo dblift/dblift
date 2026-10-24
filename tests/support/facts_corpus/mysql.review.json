@@ -779,7 +779,7 @@
       "kind": "UNKNOWN",
       "operation": "WHILE"
     },
-    "issue": "dblift/dblift#664",
+    "issue": "by design: docs/sql-parsing/mysql.md#12-current-implementation",
     "old": {
       "hybrid": [
         [
@@ -1002,7 +1002,7 @@
       ],
       "operation": "CREATE"
     },
-    "issue": "dblift/dblift#664",
+    "issue": "by design: docs/sql-parsing/mysql.md#12-current-implementation",
     "old": {
       "hybrid": [
         [
@@ -2071,7 +2071,7 @@
       "kind": "UNKNOWN",
       "operation": "EXECUTE"
     },
-    "issue": "dblift/dblift#664",
+    "issue": "by design: docs/sql-parsing/mysql.md#12-current-implementation",
     "old": {
       "hybrid": [
         [
@@ -5291,7 +5291,7 @@
       "kind": "UNKNOWN",
       "operation": "IF"
     },
-    "issue": "dblift/dblift#664",
+    "issue": "by design: docs/sql-parsing/mysql.md#12-current-implementation",
     "old": {
       "hybrid": [
         [
