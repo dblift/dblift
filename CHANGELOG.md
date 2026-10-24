@@ -343,6 +343,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wins over `DBLIFT_TARGET_VERSION`, which wins over the YAML key, and `target_version: ''` in the YAML
   is refused (at the root or in an `environments:` block) like `--target-version ""` instead of being read
   as unset.
+- **Large migration scripts now run in time proportional to their size.** Recording each statement in the
+  run journal re-scanned every statement already recorded, so a script's run time grew with the square of its
+  statement count; a script of 32 000 statements now runs roughly 5 times faster. The history rows and
+  reported results are unchanged.
+
 - **`log_dir` and `log_format` from the config file and `DBLIFT_LOG_DIR` / `DBLIFT_LOG_FORMAT` now
   take effect.** The CLI used to honour only `--log-dir` and `--log-format`; the parser's
   `logs` and `text` defaults always won over the other sources. They now follow the usual
@@ -355,7 +360,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   accepted as `warn`, and an unknown level from the flag, the environment or the file now exits
   with status 2 instead of silently running at `info`; `critical` is accepted and means `error`. `DBLiftClient.from_config(cfg,
   log_level=...)` (and `log_format`, `log_file`) no longer ignores the argument.
+
 - **`info` now lists a failed undo.** After an undo script failed, `dblift info` (console, `--format json`, the Python API and the MCP `info` tool) showed a clean schema while `validate`, `migrate` and `undo` refused to run because of the failed history row. The failed undo now appears as an `Undo` row in the `Failed` state and is counted in the summary's failed total. Completed undos are still not listed.
+
 - **An Oracle procedure, function, package, trigger, type or `FORCE` view that is still INVALID at the end of
   its migration now fails the migration.** Oracle reports a `CREATE [OR REPLACE]` or `ALTER ... COMPILE` with
   compile errors as a success (ORA-24344) and leaves the object INVALID, so `migrate` used to exit 0 with a
