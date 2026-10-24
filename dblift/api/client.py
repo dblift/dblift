@@ -548,6 +548,7 @@ class DBLiftClient:
                 additional_dirs=additional_dirs,
                 **kwargs,
             )
+            result.dry_run = dry_run
 
             if result.success:
                 self.events.emit(
@@ -833,6 +834,7 @@ class DBLiftClient:
                 additional_dirs=additional_dirs,
                 **kwargs,
             )
+            result.dry_run = dry_run
 
             if result.success:
                 self.events.emit(
@@ -912,6 +914,7 @@ class DBLiftClient:
                 show_query_results=show_query_results,
                 **kwargs,
             )
+            result.dry_run = dry_run
 
             if result.success:
                 self.events.emit(
@@ -1031,6 +1034,7 @@ class DBLiftClient:
             RepairResult with repair details
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        dry_run = dry_run or self.config.dry_run
         self.events.emit(
             EventType.REPAIR_STARTED,
             {
@@ -1051,6 +1055,7 @@ class DBLiftClient:
                 dir_recursive_map=dir_recursive_map,
                 **kwargs,
             )
+            result.dry_run = dry_run
 
             if result.success:
                 self.events.emit(
@@ -1105,6 +1110,7 @@ class DBLiftClient:
             OperationResult with import details
         """
         self._guard_scripts_dir_kwarg(kwargs)
+        dry_run = dry_run or self.config.dry_run
         self.events.emit(
             EventType.MIGRATION_STARTED,
             {

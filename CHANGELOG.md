@@ -338,8 +338,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`dry_run`, `mark_as_executed`, `tags`, `exclude_tags`, `versions` and `exclude_versions` set in the
   configuration (or by `DBLIFT_DRY_RUN` and the matching variables) are applied by the Python API.**
   `DBLiftClient.from_config_file(...).migrate()` ignored them, so `dry_run: true` applied every
-  migration for real and a version or tag selection was not applied; `undo`, `info`, `validate` and
-  `clean` ignored the keys that apply to them. An argument passed to the call still wins, then the
+  migration for real and a version or tag selection was not applied; `undo`, `info`, `validate`,
+  `clean`, `repair` and `import_flyway` ignored the keys that apply to them. The `migrate`, `undo`, `clean`
+  and `repair` results now have a `dry_run` attribute. An argument passed to the call still wins, then the
   environment variable, then the YAML key, as on the command line.
 - **`target_version` set in the configuration is applied by the Python API.** A client built with
   `DBLiftClient.from_config_file` or `from_sqlalchemy(config=...)` validated the configured

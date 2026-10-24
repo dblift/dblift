@@ -189,3 +189,53 @@ def test_validate_honours_selection_from_yaml(tmp_path, options):
         assert client.validate().success is True
     with DBLiftClient.from_config_file(_project(tmp_path)) as client:
         assert client.validate().success is False
+
+
+def _stored_checksum(tmp_path):
+    with sqlite3.connect(tmp_path / "db.sqlite") as db:
+        names = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+        table = next(n for n in names if "history" in n.lower() and "flyway" not in n.lower())
+        return db.execute(f"SELECT checksum FROM {table} WHERE version = '1'").fetchone()[0]
+
+
+def test_repair_honours_dry_run_from_yaml(tmp_path):
+    _migrate(tmp_path, {})
+    before = _stored_checksum(tmp_path)
+    (tmp_path / "V1__t1[a].sql").write_text("CREATE TABLE t1(id INTEGER, extra TEXT);")
+    with DBLiftClient.from_config_file(_project(tmp_path, dry_run=True)) as client:
+        assert client.repair().success
+    assert _stored_checksum(tmp_path) == before
+    with DBLiftClient.from_config_file(_project(tmp_path)) as client:
+        assert client.repair().success
+    assert _stored_checksum(tmp_path) != before
+
+
+def test_import_flyway_honours_dry_run_from_yaml(tmp_path):
+    with sqlite3.connect(tmp_path / "db.sqlite") as db:
+        db.execute(
+            "CREATE TABLE flyway_schema_history (installed_rank INTEGER, version TEXT, "
+            "description TEXT, type TEXT, script TEXT, installed_by TEXT, installed_on TEXT, "
+            "checksum INTEGER, execution_time INTEGER, success INTEGER)"
+        )
+        db.execute(
+            "INSERT INTO flyway_schema_history VALUES "
+            "(1, '1', 't1', 'SQL', 'V1__t1.sql', 'me', '2026-01-01 00:00:00', 1, 0, 1)"
+        )
+    with DBLiftClient.from_config_file(_project(tmp_path, dry_run=True)) as client:
+        assert client.import_flyway().success
+    with sqlite3.connect(tmp_path / "db.sqlite") as db:
+        names = [r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")]
+        history = [n for n in names if "history" in n.lower() and "flyway" not in n.lower()]
+        assert not history or db.execute(f"SELECT COUNT(*) FROM {history[0]}").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("configured", [True, False])
+def test_results_report_whether_the_run_was_a_dry_run(tmp_path, configured):
+    options = {"dry_run": True} if configured else {}
+    with DBLiftClient.from_config_file(_project(tmp_path, **options)) as client:
+        assert client.migrate().dry_run is configured
+    _migrate(tmp_path, {}) if configured else None
+    with DBLiftClient.from_config_file(_project(tmp_path, clean_disabled=False, **options)) as c:
+        assert c.undo(target_version="1").dry_run is configured
+        assert c.repair().dry_run is configured
+        assert c.clean().dry_run is configured

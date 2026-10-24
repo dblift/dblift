@@ -412,7 +412,7 @@ command line, a flag; the order is flag, then environment variable, then YAML ke
 
 | YAML key | Environment variable | Flag | Applies to |
 | --- | --- | --- | --- |
-| `dry_run` | `DBLIFT_DRY_RUN` | `--dry-run` | `migrate`, `undo`, `clean` |
+| `dry_run` | `DBLIFT_DRY_RUN` | `--dry-run` | `migrate`, `undo`, `clean`, `repair`, `import_flyway` |
 | `mark_as_executed` | `DBLIFT_MARK_AS_EXECUTED` | `--mark-as-executed` | `migrate` |
 | `tags`, `exclude_tags` | `DBLIFT_TAGS`, `DBLIFT_EXCLUDE_TAGS` | `--tags`, `--exclude-tags` | `migrate`, `undo`, `info`, `validate` |
 | `versions`, `exclude_versions` | `DBLIFT_VERSIONS`, `DBLIFT_EXCLUDE_VERSIONS` | `--versions`, `--exclude-versions` | `migrate`, `undo`, `info`, `validate` |
@@ -423,11 +423,18 @@ tags: core,auth
 exclude_versions: 1.0.1
 ```
 
-The Python API follows the same order: `client.migrate()` and the other calls use the configured
-value when the call passes none, and an argument you pass wins. `dry_run=True` and `mark_as_executed=True` can be added by an
-argument but a configured `true` is only turned off in the configuration or with the environment variable
-(`DBLIFT_DRY_RUN=false`), since the argument's default is `False`.
-`DBLiftClient.from_sqlalchemy(engine)` without `config=` reads neither the YAML nor the environment.
+Boolean environment variables (`DBLIFT_DRY_RUN`, `DBLIFT_MARK_AS_EXECUTED`) are true for `1`, `true` or
+`yes` in any case; `on`, `y` and anything else count as false.
+
+The Python API follows the same order through `DBLiftClient.from_config_file`, which reads the YAML
+and the environment: `client.migrate()` and the other calls use the configured value when the call
+passes none, and an argument you pass wins. `dry_run=True` and `mark_as_executed=True` can be added
+by an argument, but a configured `true` is only turned off in the configuration or with the
+environment variable (`DBLIFT_DRY_RUN=false`), since the argument's default is `False`.
+`DBLiftClient.from_sqlalchemy(engine, config=cfg)` sees only what `cfg` holds, and without `config=`
+it reads neither the YAML nor the environment. The `migrate`, `undo`, `clean` and `repair` results
+carry a `dry_run` attribute that is `True` when the run was a dry run, whether it was asked for by
+an argument or by the configuration.
 
 ## File Encoding
 
