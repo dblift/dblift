@@ -24,6 +24,7 @@ def _make_client(result: MagicMock):
     client.logger = MagicMock()
     client.dialect = "postgresql"
     client._get_scripts_dir = lambda: Path("migrations")
+    client._check_target_version = lambda *args, **kwargs: None
     return client
 
 

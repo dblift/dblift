@@ -106,8 +106,8 @@ class ResolvedMigration:
             tags=list(self.tags),
             logger=logger,
             dialect=dialect,
+            checksum=self.checksum,
         )
-        migration.checksum = self.checksum
         migration.resolved_migration = self
         return migration
 
@@ -194,8 +194,8 @@ class AppliedMigration:
             logger=logger,
             dialect=dialect,
             _filename_metadata=_filename_metadata,
+            checksum=self.checksum,
         )
-        migration.checksum = self.checksum
         for key, value in self.raw.items():
             if not hasattr(migration, key) or key in {
                 "success",
@@ -266,6 +266,8 @@ class Migration:
         detect_encoding: bool = False,
         config: Any = None,
         _filename_metadata: Optional[Tuple[MigrationType, Optional[str], str, List[str]]] = None,
+        *,
+        checksum: Optional[int],
     ) -> None:
         """
         Initialize a Migration object.
@@ -283,6 +285,9 @@ class Migration:
             logger: Optional logger to use instead of creating a new one
             dialect: Optional SQL dialect to use for parsing
             config: Optional application configuration for dialect fallback
+            checksum: The script checksum, used as given. MigrationScriptManager computes it
+                for every script it builds; ``None`` means "no checksum", as for a history row
+                that has none.
         """
         self.logger = logger
         self.dialect = dialect
@@ -363,7 +368,7 @@ class Migration:
             else:
                 self.format = MigrationFormatDetector.detect_from_filename(self.script_name)
 
-        self.checksum: Optional[int] = self._calculate_checksum()
+        self.checksum: Optional[int] = checksum
 
         # Add attributes expected by migration_ui.py
         self.name = self.script_name  # Alias for script_name
@@ -396,54 +401,6 @@ class Migration:
         self.callback_script_exists: Optional[bool] = None
         self.callback_script_missing_since: Optional[str] = None
 
-    @staticmethod
-    def create_baseline_migration(content: str, version: str, description: str) -> "Migration":
-        """Create a baseline migration entry.
-
-        Args:
-            content: Content of the migration script (typically a comment about the baseline)
-            version: Version to baseline at
-            description: Description of the baseline operation
-
-        Returns:
-            A Migration object representing a baseline migration
-        """
-        # For baselines, use a simpler script name format like Flyway
-        baseline_name = "Base Migration"
-        return Migration(
-            script_name=baseline_name,
-            content=content,
-            version=version,
-            description=description,
-            type=MigrationType.BASELINE,
-            tags=[],
-        )
-
-    @staticmethod
-    def create_delete_migration(
-        script_name: str,
-        version: Optional[str] = None,
-        reason: str = "Marked as deleted via repair command",
-    ) -> "Migration":
-        """Create a delete migration entry for audit trail.
-
-        Args:
-            script_name: Name of the original script that was deleted
-            version: Version of the script (optional, extracted from script_name if not provided)
-            reason: Reason for the deletion
-
-        Returns:
-            A Migration object representing a delete operation
-        """
-        return Migration(
-            script_name=script_name,
-            content=f"-- Delete operation: {reason}",
-            version=version,
-            description=reason,
-            type=MigrationType.DELETE,
-            tags=[],
-        )
-
     def load_content(self, scripts_dir: Optional[Path] = None) -> None:
         """Populate self.content from disk when it is empty (e.g. for DB-loaded migrations).
 
@@ -473,39 +430,7 @@ class Migration:
     @property
     def sql_statements(self) -> List[str]:
         """Get the SQL statements from the script content."""
-        if not self.content:
-            return []
-
-        # Split on GO statements and semicolons
-        statements: List[str] = []
-        current_statement: List[str] = []
-
-        for line in self.content.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-
-            if line.upper() == "GO":
-                if current_statement:
-                    statements.append(" ".join(current_statement))
-                    current_statement = []
-            else:
-                current_statement.append(line)
-
-        # Add any remaining statement
-        if current_statement:
-            statements.append(" ".join(current_statement))
-
-        # Split any remaining statements on semicolons
-        final_statements: List[str] = []
-        for stmt in statements:
-            if ";" in stmt:
-                parts = stmt.split(";")
-                final_statements.extend(p.strip() for p in parts if p.strip())
-            else:
-                final_statements.append(stmt)
-
-        return final_statements
+        return self.parse_sql_statements()
 
     def parse_sql_statements(
         self, dialect: Optional[str] = None, content_override: Optional[str] = None
@@ -550,23 +475,23 @@ class Migration:
             logger = DbliftLogger()
         log = cast(Log, logger)
 
+        from dblift.core.exceptions import UnsafeStatementSplitError
         from dblift.core.migration.sql.migration_sql_parser import (
-            fallback_migration_sql,
             parse_migration_sql,
             resolve_migration_sql_dialect,
         )
-        from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+        from dblift.core.migration.sql.statement_reader import StatementReader
 
         if dialect:
             self.dialect = dialect
         dialect = resolve_migration_sql_dialect(dialect or self.dialect, self.config, log)
 
         try:
-            sql_analyzer = SqlAnalyzer(dialect=dialect, logger=log)
+            sql_analyzer = StatementReader(dialect=dialect, logger=log)
         except Exception as exc:
-            statements = fallback_migration_sql(content, log, exc)
+            raise UnsafeStatementSplitError(f"statement splitter failed: {exc}") from exc
         else:
-            statements = parse_migration_sql(sql_analyzer, content, log)
+            statements = parse_migration_sql(sql_analyzer, content, log, dialect=dialect)
 
         # Cache only when the parse used canonical content. When called with
         # content_override (placeholder-substituted), the result is per-execution
@@ -604,15 +529,6 @@ class Migration:
     def _extract_tags(self) -> List[str]:
         """Extract tags from script name through the canonical parser."""
         return self._parse_filename()[3]
-
-    def _calculate_checksum(self) -> int:
-        """Calculate a CRC32 checksum compatible with Flyway.
-
-        Uses CRC32 line-by-line (line separators excluded), identical to
-        org.flywaydb.core.internal.resource.ResourceName in Flyway Java.
-        Returns a signed 32-bit integer (can be negative, like Java int).
-        """
-        return calculate_migration_script_checksum(self.content)
 
     def __repr__(self) -> str:
         # Import the shared type matcher only when formatting a migration.

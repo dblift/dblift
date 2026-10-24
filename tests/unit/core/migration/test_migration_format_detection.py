@@ -11,7 +11,8 @@ from pathlib import Path
 import pytest
 
 from dblift.core.migration.formats import MigrationFormat, MigrationFormatDetector
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
+from tests.unit._migration_factory import make_migration
 
 pytestmark = [pytest.mark.unit]
 
@@ -92,7 +93,7 @@ class TestMigrationFormatInMigration:
         sql_file.write_text("CREATE TABLE test (id INT);")
 
         # Create migration from file
-        migration = Migration(script_path=sql_file)
+        migration = make_migration(script_path=sql_file)
 
         # Verify format was detected
         assert hasattr(migration, "format")
@@ -105,7 +106,7 @@ class TestMigrationFormatInMigration:
         py_file.write_text("def upgrade():\n    pass")
 
         # Create migration from file
-        migration = Migration(script_path=py_file)
+        migration = make_migration(script_path=py_file)
 
         # Verify format was detected
         assert hasattr(migration, "format")
@@ -114,7 +115,9 @@ class TestMigrationFormatInMigration:
     def test_migration_defaults_to_sql_format(self):
         """Test that Migration defaults to SQL format when no path provided."""
         # Create migration without file path
-        migration = Migration(script_name="V1_0_0__test.sql", content="CREATE TABLE test (id INT);")
+        migration = make_migration(
+            script_name="V1_0_0__test.sql", content="CREATE TABLE test (id INT);"
+        )
 
         # Verify default format is SQL
         assert hasattr(migration, "format")
@@ -124,7 +127,7 @@ class TestMigrationFormatInMigration:
         """BASELINE rows are synthetic markers (e.g. '<< Flyway Baseline >>'), not real
         files — format detection should not run against them and log a spurious warning."""
         with caplog.at_level(logging.WARNING):
-            migration = Migration(
+            migration = make_migration(
                 script_name="<< Flyway Baseline >>",
                 type=MigrationType.BASELINE,
                 version=None,
@@ -166,7 +169,9 @@ class TestMigrationExecutorArchitecture:
 
         assert MigrationFormat.SQL not in factory.get_supported_formats()
 
-        migration = Migration(script_name="V1_0_0__test.sql", content="CREATE TABLE test (id INT);")
+        migration = make_migration(
+            script_name="V1_0_0__test.sql", content="CREATE TABLE test (id INT);"
+        )
         assert factory.get_executor(migration) is None
 
     def test_execution_engine_owns_the_sql_path(self):
@@ -214,7 +219,9 @@ class TestMigrationExecutorArchitecture:
         assert MigrationFormat.PYTHON in factory.get_supported_formats()
 
         # Create a Python migration (without file, just for testing)
-        migration = Migration(script_name="V1_0_0__test.py", content="def upgrade():\n    pass")
+        migration = make_migration(
+            script_name="V1_0_0__test.py", content="def upgrade():\n    pass"
+        )
         migration.format = MigrationFormat.PYTHON
 
         # Verify factory can route to it
@@ -227,60 +234,60 @@ class TestMigrationDetermineType:
     """Tests for Migration._determine_type() — callback detection."""
 
     def test_aftereach_is_callback(self):
-        m = Migration(script_name="afterEach__cleanup.sql")
+        m = make_migration(script_name="afterEach__cleanup.sql")
         assert m.type == MigrationType.CALLBACK
 
     def test_beforeeach_is_callback(self):
-        m = Migration(script_name="beforeEach__setup.sql")
+        m = make_migration(script_name="beforeEach__setup.sql")
         assert m.type == MigrationType.CALLBACK
 
     def test_aftermigrateerror_is_callback(self):
         """Cas manquant avant le fix — afterMigrateError n'était pas détecté."""
-        m = Migration(script_name="afterMigrateError__cleanup.sql")
+        m = make_migration(script_name="afterMigrateError__cleanup.sql")
         assert m.type == MigrationType.CALLBACK
 
     def test_aftermigrate_is_callback(self):
-        m = Migration(script_name="afterMigrate__log.sql")
+        m = make_migration(script_name="afterMigrate__log.sql")
         assert m.type == MigrationType.CALLBACK
 
     def test_beforemigrate_is_callback(self):
-        m = Migration(script_name="beforeMigrate__check.sql")
+        m = make_migration(script_name="beforeMigrate__check.sql")
         assert m.type == MigrationType.CALLBACK
 
     def test_versioned_is_not_callback(self):
-        m = Migration(script_name="V1_0_0__create_table.sql")
+        m = make_migration(script_name="V1_0_0__create_table.sql")
         assert m.type == MigrationType.SQL
 
     def test_empty_script_name_is_unknown(self):
         """_determine_type() returns UNKNOWN for empty script_name."""
-        m = Migration(script_name="dummy.sql")
+        m = make_migration(script_name="dummy.sql")
         m.script_name = ""
         assert m._determine_type() == MigrationType.UNKNOWN
 
     def test_none_script_name_is_unknown(self):
         """_determine_type() returns UNKNOWN for None script_name."""
-        m = Migration(script_name="dummy.sql")
+        m = make_migration(script_name="dummy.sql")
         m.script_name = None
         assert m._determine_type() == MigrationType.UNKNOWN
 
     def test_case_insensitive_detection(self):
         """Callback detection est insensible à la casse."""
-        m = Migration(script_name="AFTEREACH__test.sql")
+        m = make_migration(script_name="AFTEREACH__test.sql")
         assert m.type == MigrationType.CALLBACK
 
     def test_case_insensitive_new_events(self):
         """Case-insensitivity fonctionne aussi pour les events ajoutés par la story 10-15."""
-        m = Migration(script_name="AFTERMIGRATEERROR__test.sql")
+        m = make_migration(script_name="AFTERMIGRATEERROR__test.sql")
         assert m.type == MigrationType.CALLBACK
 
     def test_beforeversioned_is_callback(self):
         """beforeVersioned était dans la liste originale (renommé de 'beforeversioned')."""
-        m = Migration(script_name="beforeVersioned__check.sql")
+        m = make_migration(script_name="beforeVersioned__check.sql")
         assert m.type == MigrationType.CALLBACK
 
     def test_afterrepeatable_is_callback(self):
         """afterRepeatable était dans la liste originale (renommé de 'afterrepeatable')."""
-        m = Migration(script_name="afterRepeatable__cleanup.sql")
+        m = make_migration(script_name="afterRepeatable__cleanup.sql")
         assert m.type == MigrationType.CALLBACK
 
     def test_callback_prefixes_constant_covers_supported_events(self):
@@ -316,53 +323,53 @@ class TestMigrationDetermineType:
 
     # True positives (AC#1-4)
     def test_v_followed_by_digit_is_versioned(self):
-        assert Migration(script_name="V1__create.sql").type == MigrationType.SQL
+        assert make_migration(script_name="V1__create.sql").type == MigrationType.SQL
 
     def test_v_dotted_version_is_versioned(self):
-        assert Migration(script_name="V1.0__create.sql").type == MigrationType.SQL
+        assert make_migration(script_name="V1.0__create.sql").type == MigrationType.SQL
 
     def test_r_double_underscore_is_repeatable(self):
-        assert Migration(script_name="R__setup.sql").type == MigrationType.REPEATABLE
+        assert make_migration(script_name="R__setup.sql").type == MigrationType.REPEATABLE
 
     def test_u_followed_by_digit_is_undo(self):
-        assert Migration(script_name="U1__rollback.sql").type == MigrationType.UNDO_SQL
+        assert make_migration(script_name="U1__rollback.sql").type == MigrationType.UNDO_SQL
 
     def test_baseline_filename_is_not_an_implicit_script_type(self):
-        assert Migration(script_name="B1__baseline.sql").type == MigrationType.UNKNOWN
+        assert make_migration(script_name="B1__baseline.sql").type == MigrationType.UNKNOWN
 
     # False positives — must return UNKNOWN (AC#1-4)
     def test_validate_sql_is_unknown(self):
-        assert Migration(script_name="validate.sql").type == MigrationType.UNKNOWN
+        assert make_migration(script_name="validate.sql").type == MigrationType.UNKNOWN
 
     def test_repair_sql_is_unknown(self):
-        assert Migration(script_name="repair.sql").type == MigrationType.UNKNOWN
+        assert make_migration(script_name="repair.sql").type == MigrationType.UNKNOWN
 
     def test_undo_sql_without_version_is_unknown(self):
-        assert Migration(script_name="undo.sql").type == MigrationType.UNKNOWN
+        assert make_migration(script_name="undo.sql").type == MigrationType.UNKNOWN
 
     def test_backup_sql_is_unknown(self):
-        assert Migration(script_name="backup.sql").type == MigrationType.UNKNOWN
+        assert make_migration(script_name="backup.sql").type == MigrationType.UNKNOWN
 
     # Edge cases (AC#2, AC#5)
     def test_v_without_version_number_is_unknown(self):
         """V__ sans numéro de version → UNKNOWN (pas convention Flyway)."""
-        assert Migration(script_name="V__nodescription.sql").type == MigrationType.UNKNOWN
+        assert make_migration(script_name="V__nodescription.sql").type == MigrationType.UNKNOWN
 
     def test_r_lowercase_double_underscore_is_unknown(self):
         """Lowercase r is excluded by the canonical discovery grammar."""
-        assert Migration(script_name="r__lowercase.sql").type == MigrationType.UNKNOWN
+        assert make_migration(script_name="r__lowercase.sql").type == MigrationType.UNKNOWN
 
     def test_views_setup_sql_is_unknown(self):
         """views_setup.sql commence par 'v' mais n'est pas Flyway → UNKNOWN."""
-        assert Migration(script_name="views_setup.sql").type == MigrationType.UNKNOWN
+        assert make_migration(script_name="views_setup.sql").type == MigrationType.UNKNOWN
 
     def test_reset_sql_is_unknown(self):
         """reset.sql commence par 'r' mais pas r__ → UNKNOWN."""
-        assert Migration(script_name="reset.sql").type == MigrationType.UNKNOWN
+        assert make_migration(script_name="reset.sql").type == MigrationType.UNKNOWN
 
     def test_update_sql_is_unknown(self):
         """update.sql commence par 'u' mais pas u<digit> → UNKNOWN."""
-        assert Migration(script_name="update.sql").type == MigrationType.UNKNOWN
+        assert make_migration(script_name="update.sql").type == MigrationType.UNKNOWN
 
     def test_va_alpha_version_is_unknown(self):
         """Va__create.sql : V + lettre (pas chiffre) → UNKNOWN.
@@ -370,7 +377,7 @@ class TestMigrationDetermineType:
         The canonical grammar requires a leading digit for versioned scripts,
         so ordinary filenames such as validate.sql cannot become migrations.
         """
-        assert Migration(script_name="Va__create.sql").type == MigrationType.UNKNOWN
+        assert make_migration(script_name="Va__create.sql").type == MigrationType.UNKNOWN
 
     def test_r_with_version_number_is_unknown(self):
         """R1__setup.sql : 'R' + version → UNKNOWN (Flyway repeatable n'a pas de version).
@@ -378,7 +385,7 @@ class TestMigrationDetermineType:
         Le pattern repeatable Flyway est R__<desc> sans numéro de version.
         'R1__setup.sql' ne commence pas par 'r__' → UNKNOWN.
         """
-        assert Migration(script_name="R1__setup.sql").type == MigrationType.UNKNOWN
+        assert make_migration(script_name="R1__setup.sql").type == MigrationType.UNKNOWN
 
 
 class TestMigrationTypeSqlRename:
@@ -404,5 +411,5 @@ class TestMigrationTypeSqlRename:
 
     def test_determine_type_returns_sql(self):
         """AC#2.1: V1__init.sql → MigrationType.SQL."""
-        m = Migration(script_name="V1__init.sql")
+        m = make_migration(script_name="V1__init.sql")
         assert m.type == MigrationType.SQL

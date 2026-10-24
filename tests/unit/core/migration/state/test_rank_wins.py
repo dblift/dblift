@@ -113,17 +113,12 @@ class TestLatestSuccessfulRanks:
 class TestCallSitesUseSharedHelper:
     """If a site re-inlines the loop, this fails even when behaviour happens to match."""
 
-    def test_four_sites_import_and_call_the_same_function(self):
-        from dblift.core.migration.commands import migrate_command
+    def test_three_sites_import_and_call_the_same_function(self):
         from dblift.core.migration.rules import migration_rules
         from dblift.core.migration.state import migration_data_service, migration_state_manager
         from dblift.core.migration.state.rank_wins import latest_successful_ranks as helper
 
         sites = (
-            (
-                migrate_command,
-                migrate_command.MigrateCommand._filter_already_applied,
-            ),
             (
                 migration_rules,
                 migration_rules.MigrationRules._is_currently_undone,

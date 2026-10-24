@@ -88,7 +88,7 @@ The layout deliberately mirrors `db/plugins/postgresql/` (and siblings) so the s
 
    **File-based dialects need a config field.** The generated config stub only carries the base fields (`url`/`host`/`port`/`database`/`schema`). An embedded, file-path dialect (SQLite, DuckDB) must add its own `path` field and a `__post_init__` that resolves `path` from `url`/`database` and defaults the schema — copy SQLite's `config.py`.
 
-   **Provide a regex parser.** `quirks.parser_class("regex")` must return a parser class. Returning `None` makes the hybrid splitter log `"<dialect>-specific statement splitter failed: Unsupported dialect"` and fall back — and that fallback *raises* under `strict_tokenizer=True`. Ship a `parser/parser_config.py` (`DialectConfig` subclass) + a small `EnhancedRegexParser` subclass. For a non-procedural dialect the splitter only needs to respect string literals and comments around `;`.
+   **Provide SQL reading rules.** A SQL plugin must define a `LexicalSpec` through `quirks.lexical_spec()` for script boundaries: it is the only way dblift splits a script, and `StatementSplitter` raises `UnsupportedDialectError` for a dialect without one (a parser class is no longer a substitute). It also provides a `statement_facts_class` reader (`quirks.statement_facts(sql)` runs it) for supported statement analysis: those two, the spec and the reader, are all a plugin needs to read SQL. The regex, hybrid and SQLGlot parser classes, `quirks.parser_class`, `DialectConfig` pattern tables and the parser factory are gone. If the spec sets `redaction_reads_engine=False` (MySQL, SQL Server and Db2 do, to keep the dialect's own tokenizer for literal masking), also override `quirks.redaction_tokenizer()` to return that tokenizer class; without it masking silently uses the generic tokenizer.
 
 5. Add a driver extra if desired:
 
@@ -96,6 +96,39 @@ The layout deliberately mirrors `db/plugins/postgresql/` (and siblings) so the s
    [project.optional-dependencies]
    myprovider = ["mydriver>=x.y"]
    ```
+
+## Statement splitting contract
+
+`StatementSplitter(dialect).split(script)` returns `Statement` records
+(`dblift.core.sql_parser.statement`). A parser that implements `split(script)` returns them itself:
+
+| Field | Meaning |
+| --- | --- |
+| `text` | the statement verbatim, without its terminator |
+| `line` | the line where it starts |
+| `terminator` | what ended it (`";"`), or `None` when the script ended it |
+| `kind` | `"sql"`, `"copy_stdin"` (a COPY header with its data) or `"directive"` (a client directive dropped and recorded). Execution sends `sql` and `copy_stdin` records, and a `directive` only when it has `execution_text`; a record of any other kind is not a statement |
+| `multi` | reserved for psql's `\;` |
+| `repeat` | how often execution sends it: 1 by default, or the count of the `GO n` that ended a T-SQL batch (0 sends it never) |
+| `execution_text` | the string to send when it is not `text`. `None` sends `text` for `sql` and `copy_stdin`, and nothing for a `directive` |
+| `analysis_statements` | the statements analysis reads from this record; `None` means the record is one analysis statement, `()` contributes none |
+| `source_start`, `source_end` | half-open offsets of the record in the original script, including a consumed client terminator such as `GO`; optional |
+
+A record is a statement: the lexical engine returns no empty pieces, comment-only pieces or batch
+separators. `split_statements` is the list of strings execution sends, derived from the records.
+The records come from the engine driven by the plugin's `LexicalSpec`; there is no other way to
+split a script (no string-returning or record-returning parser class is read).
+
+## Judging a migration at its end
+
+Some servers accept a statement now and report its failure later. `BaseProvider` has a no-op hook,
+`finish_migration_statements(statements)`, that the migration runner calls once after the last
+statement of every migration and callback, with the statements it just ran. A provider that needs
+a verdict at that point checks there and raises `ExecutionError` to fail the migration; raise
+`StatementVerdictError(message, statement_index)` to name the statement the failure belongs to. Any
+error the hook raises is recorded as a failed migration, as a statement failure is. The Oracle
+provider uses it for PL/SQL units that compile with errors. `reset_schema_cache()` runs at the start
+of each migration and callback, so state kept for the hook is cleared there.
 
 ## Step 3: Install & discover
 

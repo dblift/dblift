@@ -19,6 +19,7 @@ from dblift.core.constants import (
     DEFAULT_HISTORY_TABLE,
     ENV_PREFIX,
 )
+from dblift.core.exceptions import InvalidTargetVersionError
 
 _log = logging.getLogger(__name__)
 
@@ -67,7 +68,6 @@ KNOWN_TOP_LEVEL_CONFIG_KEYS: FrozenSet[str] = frozenset(
     (
         "database",
         "migrations",
-        "migrations_dir",  # deprecated alias for migrations.directory
         "logging",
         "log_dir",
         "log_file",
@@ -309,6 +309,21 @@ def apply_environment(config_data: Dict[str, Any], environment: Optional[str]) -
     return deep_merge_dicts(effective, block)
 
 
+def _refuse_empty_target_version(data: Mapping[str, object]) -> None:
+    """Refuse ``target_version: ''`` (root or any environment) as ``--target-version ""`` is.
+
+    The config merge drops empty values, so an empty target would otherwise read as unset.
+    """
+    environments = data.get("environments")
+    blocks = (
+        [data, *(b for b in environments.values() if isinstance(b, dict))]
+        if isinstance(environments, dict)
+        else [data]
+    )
+    if any(block.get("target_version") == "" for block in blocks):
+        raise InvalidTargetVersionError("", [])
+
+
 def _extract_paid_raw_config(data: Dict[str, Any]) -> Dict[str, Any]:
     paid_raw: Dict[str, Any] = {}
     for key in _PAID_RAW_CONFIG_KEYS:
@@ -339,6 +354,8 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
         try:
             file_data = DbliftConfig.load_config_data_from_yaml(config_file_path)
             config_data = DbliftConfig.merge_config_data(config_data, file_data)
+        except InvalidTargetVersionError:
+            raise
         except _CONFIG_LOAD_EXC as e:
             raise RuntimeError(f"Error loading config file {config_file_path}: {e}") from e
 
@@ -569,6 +586,8 @@ class DbliftConfig:
     log_format: Optional[str] = None
     log_level: Optional[str] = None
     log_dir: Optional[str] = None
+    # Set by path anchoring when it fills in ``log_dir``; a default, not a user setting.
+    derived_log_dir: Optional[str] = field(default=None, repr=False, compare=False)
 
     def merge(self, other_config: Dict[str, Any]) -> None:
         """Merge another configuration into this one.
@@ -577,23 +596,10 @@ class DbliftConfig:
             other_config: Configuration dictionary to merge
         """
         other_config = dict(other_config)
-        if other_config.get("migrations_dir"):
-            import warnings
-
-            warnings.warn(
-                "Configuration key 'migrations_dir' is deprecated. "
-                "Please use 'migrations.directory' instead. "
-                "Example:\n"
-                "migrations:\n"
-                "  directory: migrations\n"
-                "  recursive: true",
-                DeprecationWarning,
-                stacklevel=2,
+        if "migrations_dir" in other_config:
+            raise ConfigurationError(
+                "Root configuration key 'migrations_dir' was removed; use 'migrations.directory'"
             )
-            m_block = other_config.get("migrations")
-            m_dict = dict(m_block) if isinstance(m_block, dict) else {}
-            m_dict["directory"] = other_config["migrations_dir"]
-            other_config["migrations"] = m_dict
 
         if "database" in other_config:
             raw_db = other_config["database"]
@@ -696,6 +702,10 @@ class DbliftConfig:
             A DbliftConfig instance
         """
         data = _resolve_env_placeholders(data or {})
+        if "migrations_dir" in data:
+            raise ConfigurationError(
+                "Root configuration key 'migrations_dir' was removed; use 'migrations.directory'"
+            )
         paid_raw_config = _extract_paid_raw_config(data)
 
         if resolve_secrets:
@@ -765,27 +775,9 @@ class DbliftConfig:
         except ValueError as e:
             raise ConfigurationError(str(e)) from e
 
-        # Extract migrations config - support both old and new formats
+        # Extract migrations config
         migrations = data.get("migrations", {})
-
-        # Check for old format (migrations_dir at root level) - DEPRECATED
-        old_migrations_dir = data.get("migrations_dir")
-        if old_migrations_dir:
-            import warnings
-
-            warnings.warn(
-                "Configuration key 'migrations_dir' is deprecated. "
-                "Please use 'migrations.directory' instead. "
-                "Example:\n"
-                "migrations:\n"
-                "  directory: migrations\n"
-                "  recursive: true",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            migrations_dir = old_migrations_dir
-        else:
-            migrations_dir = migrations.get("directory", "migrations")
+        migrations_dir = migrations.get("directory", "migrations")
 
         migrations_table = migrations.get("table", "schema_version")
         migrations_script_encoding = migrations.get("script_encoding", "utf-8")
@@ -1196,7 +1188,10 @@ class DbliftConfig:
         if not data:
             return {}
         resolved = _resolve_env_placeholders(data)
-        return resolved if isinstance(resolved, dict) else {}
+        if not isinstance(resolved, dict):
+            return {}
+        _refuse_empty_target_version(resolved)
+        return resolved
 
     def to_dict(self) -> Dict[str, Any]:
         result = {

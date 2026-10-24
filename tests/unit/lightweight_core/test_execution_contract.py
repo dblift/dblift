@@ -8,7 +8,7 @@ from typing import List, get_type_hints
 
 import pytest
 
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
+from dblift.core.migration.sql.statement_reader import StatementReader
 
 _ROWS = json.loads((Path(__file__).parent / "fixtures/splitting.json").read_text())
 
@@ -23,7 +23,6 @@ def test_execution_contract_has_the_expected_public_import_and_signatures():
     }
     assert get_type_hints(ExecutionSqlParser.split_statements) == {
         "sql": str,
-        "strict_tokenizer": bool,
         "return": List[str],
     }
 
@@ -31,16 +30,13 @@ def test_execution_contract_has_the_expected_public_import_and_signatures():
 @pytest.mark.unit
 @pytest.mark.parametrize("row", _ROWS)
 def test_execution_splitting_stays_identical(row):
-    analyzer = SqlAnalyzer(row["dialect"])
+    analyzer = StatementReader(row["dialect"])
     if row["error_type"]:
         with pytest.raises(Exception) as captured:
-            analyzer.split_statements(row["sql"], strict_tokenizer=row["strict"])
+            analyzer.split_statements(row["sql"])
         assert type(captured.value).__name__ == row["error_type"]
     else:
-        assert (
-            analyzer.split_statements(row["sql"], strict_tokenizer=row["strict"])
-            == row["statements"]
-        )
+        assert analyzer.split_statements(row["sql"]) == row["statements"]
 
 
 @pytest.mark.unit
@@ -69,7 +65,7 @@ assert get_type_hints(ExecutionSqlParser.get_statement_type) == {
     'sql': str, 'return': str,
 }
 assert get_type_hints(ExecutionSqlParser.split_statements) == {
-    'sql': str, 'strict_tokenizer': bool, 'return': List[str],
+    'sql': str, 'return': List[str],
 }
 assert not {'rich', 'jinja2', 'sqlglot'} & set(sys.modules)
 """

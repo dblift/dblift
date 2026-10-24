@@ -273,6 +273,7 @@ class TestCheckRepeatableMigrationsRankOrdering(unittest.TestCase):
         )
 
     def _run(self, scripts, applied):
+        from dblift.core.migration.state.repeatable_status import repeatable_runs
         from dblift.core.sql_validator.migration_validator import (
             MigrationValidator,
             ValidationResult,
@@ -280,7 +281,9 @@ class TestCheckRepeatableMigrationsRankOrdering(unittest.TestCase):
 
         v, _, _, _ = _make_validator()
         result = ValidationResult()
-        v._check_repeatable_migrations(scripts, applied, result, command="migrate")
+        v._check_repeatable_migrations(
+            scripts, applied, result, command="migrate", runs=repeatable_runs(scripts, applied)
+        )
         return result
 
     def test_old_failure_newer_success_does_not_block(self):

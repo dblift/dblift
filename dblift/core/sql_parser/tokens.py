@@ -21,10 +21,11 @@ class TokenType(Enum):
     COMMENT_DIRECTIVE = "COMMENT_DIRECTIVE"  # MySQL /*!50001 ... */
     COPY_DATA = "COPY_DATA"  # PostgreSQL COPY ... FROM stdin data block
     META_COMMAND = "META_COMMAND"  # psql client directive, e.g. \restrict <token>
+    DIRECTIVE = "DIRECTIVE"  # client command line(s), text not lexed as SQL
     EOF = "EOF"
 
 
-@dataclass
+@dataclass(slots=True)
 class Token:
     """Represents a single token in SQL content.
 

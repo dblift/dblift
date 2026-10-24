@@ -8,13 +8,20 @@ from dblift.config.dblift_config import DbliftConfig, DirectoryConfig
 _IN_MEMORY = ":memory:"
 
 
+def is_derived_log_dir(config: DbliftConfig, directory: str) -> bool:
+    """Whether *directory* is the default that :func:`anchor_config_paths` filled in."""
+    return directory == config.derived_log_dir
+
+
 def anchor_config_paths(config: DbliftConfig, base_dir: Path) -> None:
     """Rewrite *config*'s relative paths as absolute paths under *base_dir*.
 
     Covers the migration directories, a file-based database path, and the log
     directory. Absolute paths are left untouched. When no log directory is
     configured, logs go to ``<base_dir>/logs`` so nothing is written to the
-    process working directory.
+    process working directory. That derived directory is a default, not a
+    request for logging: it is recorded in ``config.derived_log_dir`` so
+    :func:`is_derived_log_dir` can tell it apart from one the user set.
     """
     base = Path(base_dir).expanduser().resolve()
 
@@ -49,3 +56,4 @@ def anchor_config_paths(config: DbliftConfig, base_dir: Path) -> None:
         config.logging.directory = anchor(config.logging.directory)
     else:
         config.log_dir = str(base / "logs")
+        config.derived_log_dir = config.log_dir

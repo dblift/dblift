@@ -1,0 +1,6026 @@
+{
+ "duckdb": {
+  "CREATE FULLTEXT INDEX ON t (c)": {
+   "affected_columns": [],
+   "diagnostic": "duckdb Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE FULLTEXT INDEX fx ON ft (txt)": {
+   "affected_columns": [],
+   "diagnostic": "duckdb Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SCHEMA IF NOT EXISTS s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SCHEMA s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SPATIAL INDEX sx ON ft (g)": {
+   "affected_columns": [],
+   "diagnostic": "duckdb Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE TABLE e (c\ud83d\ude00 INT)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "e",
+     "TABLE",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE TABLE t\ud83d\ude00 (id INT)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE FROM t WHERE quick = 1": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": "quick = 1",
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE IGNORE FROM t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "IGNORE",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE LOW_PRIORITY QUICK IGNORE FROM t WHERE id = 1": {
+   "affected_columns": [],
+   "diagnostic": "duckdb grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE QUICK FROM t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "QUICK",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE quick FROM quick": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "quick",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick"
+  },
+  "DROP SCHEMA IF EXISTS s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "dropped",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP SCHEMA s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "dropped",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP TABLE \"t\ud83d\ude00\"": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "dropped",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT DELAYED IGNORE INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "duckdb grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT HIGH_PRIORITY INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "duckdb grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT INTO delayed (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "INSERT"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "delayed",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": "delayed",
+   "target_sql": "delayed"
+  },
+  "INSERT INTO t VALUES ('\ud83d\ude00')": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "INSERT"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "INSERT LOW_PRIORITY INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "duckdb grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE a TO b": {
+   "affected_columns": [],
+   "diagnostic": "duckdb Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE a TO b, c TO d": {
+   "affected_columns": [],
+   "diagnostic": "duckdb Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE t1": {
+   "affected_columns": [],
+   "diagnostic": "duckdb Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "REPLACE DELAYED INTO t VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "duckdb grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "REPLACE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "REPLACE LOW_PRIORITY INTO t VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "duckdb grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "REPLACE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE TABLE db.t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "db"
+    ]
+   ],
+   "opaque": false,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE TABLE t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE t1, t2": {
+   "affected_columns": [],
+   "diagnostic": "duckdb TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "UPDATE -- c\n LOW_PRIORITY t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY"
+  },
+  "UPDATE IGNORE t SET b = 1": {
+   "affected_columns": [
+    "b"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "IGNORE",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "IGNORE",
+   "target_sql": "IGNORE"
+  },
+  "UPDATE LOW_PRIORITY IGNORE `s`.`t` SET b = 1": {
+   "affected_columns": [],
+   "diagnostic": "duckdb grammar is not modelled for this statement",
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": true,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY"
+  },
+  "UPDATE LOW_PRIORITY t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY"
+  },
+  "UPDATE `ignore` SET a = 1": {
+   "affected_columns": [],
+   "diagnostic": "duckdb grammar is not modelled for this statement",
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "ignore",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": true,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore",
+   "target_sql": "ignore"
+  },
+  "UPDATE delayed t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "delayed",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "delayed",
+   "target_sql": "delayed"
+  },
+  "UPDATE ignore\n.t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "ignore"
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore.t",
+   "target_sql": "ignore.t"
+  },
+  "UPDATE ignore SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "ignore",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore",
+   "target_sql": "ignore"
+  },
+  "UPDATE ignore.t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "ignore"
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore.t",
+   "target_sql": "ignore.t"
+  },
+  "UPDATE low_priority_x SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "low_priority_x",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "low_priority_x",
+   "target_sql": "low_priority_x"
+  },
+  "UPDATE quick SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick"
+  },
+  "UPDATE quick t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick"
+  },
+  "UPDATE t SET ignore = 1": {
+   "affected_columns": [
+    "ignore"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "UPDATE t\ud83d\ude00 SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "t\ud83d\ude00",
+   "target_sql": "t\ud83d\ude00"
+  }
+ },
+ "oracle": {
+  "CREATE FULLTEXT INDEX ON t (c)": {
+   "affected_columns": [],
+   "diagnostic": "oracle Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE FULLTEXT INDEX fx ON ft (txt)": {
+   "affected_columns": [],
+   "diagnostic": "oracle Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SCHEMA IF NOT EXISTS s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SCHEMA s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SPATIAL INDEX sx ON ft (g)": {
+   "affected_columns": [],
+   "diagnostic": "oracle Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE TABLE e (c\ud83d\ude00 INT)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "E",
+     "TABLE",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE TABLE t\ud83d\ude00 (id INT)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "T\ud83d\ude00",
+     "TABLE",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE FROM t WHERE quick = 1": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": "quick = 1",
+   "target": "T",
+   "target_sql": "t"
+  },
+  "DELETE IGNORE FROM t": {
+   "affected_columns": [],
+   "diagnostic": "oracle mutation target is not a direct named table",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE LOW_PRIORITY QUICK IGNORE FROM t WHERE id = 1": {
+   "affected_columns": [],
+   "diagnostic": "oracle grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE QUICK FROM t": {
+   "affected_columns": [],
+   "diagnostic": "oracle mutation target is not a direct named table",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE quick FROM quick": {
+   "affected_columns": [],
+   "diagnostic": "oracle mutation target is not a direct named table",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP SCHEMA IF EXISTS s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP SCHEMA s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP TABLE \"t\ud83d\ude00\"": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "dropped",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT DELAYED IGNORE INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "oracle grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT HIGH_PRIORITY INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "oracle grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT INTO delayed (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "INSERT"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "DELAYED",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": "DELAYED",
+   "target_sql": "delayed"
+  },
+  "INSERT INTO t VALUES ('\ud83d\ude00')": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "INSERT"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": "T",
+   "target_sql": "t"
+  },
+  "INSERT LOW_PRIORITY INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "oracle grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE a TO b": {
+   "affected_columns": [],
+   "diagnostic": "oracle Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE a TO b, c TO d": {
+   "affected_columns": [],
+   "diagnostic": "oracle Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE t1": {
+   "affected_columns": [],
+   "diagnostic": "oracle Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "REPLACE DELAYED INTO t VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "oracle grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "REPLACE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "REPLACE LOW_PRIORITY INTO t VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "oracle grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "REPLACE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE TABLE db.t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     "DB"
+    ]
+   ],
+   "opaque": false,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE TABLE t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE t": {
+   "affected_columns": [],
+   "diagnostic": "oracle TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE t1, t2": {
+   "affected_columns": [],
+   "diagnostic": "oracle TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "UPDATE -- c\n LOW_PRIORITY t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY t"
+  },
+  "UPDATE IGNORE t SET b = 1": {
+   "affected_columns": [
+    "b"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "IGNORE",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "IGNORE",
+   "target_sql": "IGNORE t"
+  },
+  "UPDATE LOW_PRIORITY IGNORE `s`.`t` SET b = 1": {
+   "affected_columns": [],
+   "diagnostic": "oracle grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "UPDATE LOW_PRIORITY t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY t"
+  },
+  "UPDATE `ignore` SET a = 1": {
+   "affected_columns": [],
+   "diagnostic": "oracle grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "UPDATE delayed t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "DELAYED",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "DELAYED",
+   "target_sql": "delayed t"
+  },
+  "UPDATE ignore\n.t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     "IGNORE"
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "IGNORE.T",
+   "target_sql": "ignore.t"
+  },
+  "UPDATE ignore SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "IGNORE",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "IGNORE",
+   "target_sql": "ignore"
+  },
+  "UPDATE ignore.t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     "IGNORE"
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "IGNORE.T",
+   "target_sql": "ignore.t"
+  },
+  "UPDATE low_priority_x SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY_X",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY_X",
+   "target_sql": "low_priority_x"
+  },
+  "UPDATE quick SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "QUICK",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "QUICK",
+   "target_sql": "quick"
+  },
+  "UPDATE quick t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "QUICK",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "QUICK",
+   "target_sql": "quick t"
+  },
+  "UPDATE t SET ignore = 1": {
+   "affected_columns": [
+    "ignore"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "T",
+   "target_sql": "t"
+  },
+  "UPDATE t\ud83d\ude00 SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "T\ud83d\ude00",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "T\ud83d\ude00",
+   "target_sql": "t\ud83d\ude00"
+  }
+ },
+ "postgres": {
+  "CREATE FULLTEXT INDEX ON t (c)": {
+   "affected_columns": [],
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE FULLTEXT INDEX fx ON ft (txt)": {
+   "affected_columns": [],
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SCHEMA IF NOT EXISTS s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SCHEMA s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SPATIAL INDEX sx ON ft (g)": {
+   "affected_columns": [],
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE TABLE e (c\ud83d\ude00 INT)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "e",
+     "TABLE",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE TABLE t\ud83d\ude00 (id INT)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE FROM t WHERE quick = 1": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": "quick = 1",
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE IGNORE FROM t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "IGNORE",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE LOW_PRIORITY QUICK IGNORE FROM t WHERE id = 1": {
+   "affected_columns": [],
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE QUICK FROM t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "QUICK",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE quick FROM quick": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "quick",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick"
+  },
+  "DROP SCHEMA IF EXISTS s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "dropped",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP SCHEMA s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "dropped",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP TABLE \"t\ud83d\ude00\"": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "dropped",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT DELAYED IGNORE INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT HIGH_PRIORITY INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT INTO delayed (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "INSERT"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "delayed",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": "delayed",
+   "target_sql": "delayed"
+  },
+  "INSERT INTO t VALUES ('\ud83d\ude00')": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "INSERT"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "INSERT LOW_PRIORITY INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE a TO b": {
+   "affected_columns": [],
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE a TO b, c TO d": {
+   "affected_columns": [],
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE t1": {
+   "affected_columns": [],
+   "diagnostic": "postgres Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "REPLACE DELAYED INTO t VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "REPLACE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "REPLACE LOW_PRIORITY INTO t VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "REPLACE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE TABLE db.t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "db"
+    ]
+   ],
+   "opaque": false,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE TABLE t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE t1, t2": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t1",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "t2",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "UPDATE -- c\n LOW_PRIORITY t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY"
+  },
+  "UPDATE IGNORE t SET b = 1": {
+   "affected_columns": [
+    "b"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "IGNORE",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "IGNORE",
+   "target_sql": "IGNORE"
+  },
+  "UPDATE LOW_PRIORITY IGNORE `s`.`t` SET b = 1": {
+   "affected_columns": [],
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": true,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY"
+  },
+  "UPDATE LOW_PRIORITY t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY"
+  },
+  "UPDATE `ignore` SET a = 1": {
+   "affected_columns": [],
+   "diagnostic": "postgres grammar is not modelled for this statement",
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "ignore",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": true,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore",
+   "target_sql": "ignore"
+  },
+  "UPDATE delayed t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "delayed",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "delayed",
+   "target_sql": "delayed"
+  },
+  "UPDATE ignore\n.t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "ignore"
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore.t",
+   "target_sql": "ignore.t"
+  },
+  "UPDATE ignore SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "ignore",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore",
+   "target_sql": "ignore"
+  },
+  "UPDATE ignore.t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "ignore"
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore.t",
+   "target_sql": "ignore.t"
+  },
+  "UPDATE low_priority_x SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "low_priority_x",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "low_priority_x",
+   "target_sql": "low_priority_x"
+  },
+  "UPDATE quick SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick"
+  },
+  "UPDATE quick t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick"
+  },
+  "UPDATE t SET ignore = 1": {
+   "affected_columns": [
+    "ignore"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "UPDATE t\ud83d\ude00 SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "t\ud83d\ude00",
+   "target_sql": "t\ud83d\ude00"
+  }
+ },
+ "redshift": {
+  "CREATE FULLTEXT INDEX ON t (c)": {
+   "affected_columns": [],
+   "diagnostic": "redshift Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE FULLTEXT INDEX fx ON ft (txt)": {
+   "affected_columns": [],
+   "diagnostic": "redshift Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SCHEMA IF NOT EXISTS s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SCHEMA s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SPATIAL INDEX sx ON ft (g)": {
+   "affected_columns": [],
+   "diagnostic": "redshift Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE TABLE e (c\ud83d\ude00 INT)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "e",
+     "TABLE",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE TABLE t\ud83d\ude00 (id INT)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE FROM t WHERE quick = 1": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": "quick = 1",
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE IGNORE FROM t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "IGNORE",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE LOW_PRIORITY QUICK IGNORE FROM t WHERE id = 1": {
+   "affected_columns": [],
+   "diagnostic": "redshift grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE QUICK FROM t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "QUICK",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE quick FROM quick": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "quick",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick"
+  },
+  "DROP SCHEMA IF EXISTS s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "dropped",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP SCHEMA s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "s",
+     "SCHEMA",
+     "dropped",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP TABLE \"t\ud83d\ude00\"": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "dropped",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT DELAYED IGNORE INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "redshift grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT HIGH_PRIORITY INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "redshift grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT INTO delayed (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "INSERT"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "delayed",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": "delayed",
+   "target_sql": "delayed"
+  },
+  "INSERT INTO t VALUES ('\ud83d\ude00')": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "INSERT"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "INSERT LOW_PRIORITY INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "redshift grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE a TO b": {
+   "affected_columns": [],
+   "diagnostic": "redshift Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE a TO b, c TO d": {
+   "affected_columns": [],
+   "diagnostic": "redshift Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE t1": {
+   "affected_columns": [],
+   "diagnostic": "redshift Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "REPLACE DELAYED INTO t VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "redshift grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "REPLACE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "REPLACE LOW_PRIORITY INTO t VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "redshift grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "REPLACE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE TABLE db.t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "db"
+    ]
+   ],
+   "opaque": false,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE TABLE t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE t1, t2": {
+   "affected_columns": [],
+   "diagnostic": "redshift TRUNCATE target is not a single table",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "UPDATE -- c\n LOW_PRIORITY t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY"
+  },
+  "UPDATE IGNORE t SET b = 1": {
+   "affected_columns": [
+    "b"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "IGNORE",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "IGNORE",
+   "target_sql": "\"IGNORE\""
+  },
+  "UPDATE LOW_PRIORITY IGNORE `s`.`t` SET b = 1": {
+   "affected_columns": [],
+   "diagnostic": "redshift grammar is not modelled for this statement",
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": true,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY"
+  },
+  "UPDATE LOW_PRIORITY t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY"
+  },
+  "UPDATE `ignore` SET a = 1": {
+   "affected_columns": [],
+   "diagnostic": "redshift grammar is not modelled for this statement",
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "ignore",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": true,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore",
+   "target_sql": "ignore"
+  },
+  "UPDATE delayed t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "delayed",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "delayed",
+   "target_sql": "delayed"
+  },
+  "UPDATE ignore\n.t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "ignore"
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore.t",
+   "target_sql": "\"ignore\".t"
+  },
+  "UPDATE ignore SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "ignore",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore",
+   "target_sql": "\"ignore\""
+  },
+  "UPDATE ignore.t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "ignore"
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore.t",
+   "target_sql": "\"ignore\".t"
+  },
+  "UPDATE low_priority_x SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "low_priority_x",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "low_priority_x",
+   "target_sql": "low_priority_x"
+  },
+  "UPDATE quick SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick"
+  },
+  "UPDATE quick t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick"
+  },
+  "UPDATE t SET ignore = 1": {
+   "affected_columns": [
+    "ignore"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "UPDATE t\ud83d\ude00 SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "t\ud83d\ude00",
+   "target_sql": "t\ud83d\ude00"
+  }
+ },
+ "snowflake": {
+  "CREATE FULLTEXT INDEX ON t (c)": {
+   "affected_columns": [],
+   "diagnostic": "snowflake Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE FULLTEXT INDEX fx ON ft (txt)": {
+   "affected_columns": [],
+   "diagnostic": "snowflake Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SCHEMA IF NOT EXISTS s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SCHEMA s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SPATIAL INDEX sx ON ft (g)": {
+   "affected_columns": [],
+   "diagnostic": "snowflake Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE TABLE e (c\ud83d\ude00 INT)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "E",
+     "TABLE",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE TABLE t\ud83d\ude00 (id INT)": {
+   "affected_columns": [],
+   "diagnostic": "snowflake unquoted name holds a non-ASCII letter (rejected natively)",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE FROM t WHERE quick = 1": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": "quick = 1",
+   "target": "T",
+   "target_sql": "t"
+  },
+  "DELETE IGNORE FROM t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "IGNORE",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "T",
+   "target_sql": "t"
+  },
+  "DELETE LOW_PRIORITY QUICK IGNORE FROM t WHERE id = 1": {
+   "affected_columns": [],
+   "diagnostic": "snowflake grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE QUICK FROM t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "QUICK",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "T",
+   "target_sql": "t"
+  },
+  "DELETE quick FROM quick": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "QUICK",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "QUICK",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "QUICK",
+   "target_sql": "quick"
+  },
+  "DROP SCHEMA IF EXISTS s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP SCHEMA s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP TABLE \"t\ud83d\ude00\"": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "dropped",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT DELAYED IGNORE INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "snowflake grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT HIGH_PRIORITY INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "snowflake grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT INTO delayed (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "INSERT"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "DELAYED",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": "DELAYED",
+   "target_sql": "delayed"
+  },
+  "INSERT INTO t VALUES ('\ud83d\ude00')": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "INSERT"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": "T",
+   "target_sql": "t"
+  },
+  "INSERT LOW_PRIORITY INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "snowflake grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE a TO b": {
+   "affected_columns": [],
+   "diagnostic": "snowflake Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE a TO b, c TO d": {
+   "affected_columns": [],
+   "diagnostic": "snowflake Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE t1": {
+   "affected_columns": [],
+   "diagnostic": "snowflake Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "REPLACE DELAYED INTO t VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "snowflake grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "REPLACE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "REPLACE LOW_PRIORITY INTO t VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "snowflake grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "REPLACE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE TABLE db.t": {
+   "affected_columns": [],
+   "diagnostic": "snowflake TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE TABLE t": {
+   "affected_columns": [],
+   "diagnostic": "snowflake TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE t": {
+   "affected_columns": [],
+   "diagnostic": "snowflake TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE t1, t2": {
+   "affected_columns": [],
+   "diagnostic": "snowflake TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "UPDATE -- c\n LOW_PRIORITY t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY AS t"
+  },
+  "UPDATE IGNORE t SET b = 1": {
+   "affected_columns": [
+    "b"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "IGNORE",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "IGNORE",
+   "target_sql": "IGNORE AS t"
+  },
+  "UPDATE LOW_PRIORITY IGNORE `s`.`t` SET b = 1": {
+   "affected_columns": [],
+   "diagnostic": "snowflake grammar is not modelled for this statement",
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": true,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY"
+  },
+  "UPDATE LOW_PRIORITY t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY AS t"
+  },
+  "UPDATE `ignore` SET a = 1": {
+   "affected_columns": [],
+   "diagnostic": "snowflake grammar is not modelled for this statement",
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "ignore",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": true,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore",
+   "target_sql": "ignore"
+  },
+  "UPDATE delayed t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "DELAYED",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "DELAYED",
+   "target_sql": "delayed AS t"
+  },
+  "UPDATE ignore\n.t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     "IGNORE"
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "IGNORE.T",
+   "target_sql": "ignore.t"
+  },
+  "UPDATE ignore SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "IGNORE",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "IGNORE",
+   "target_sql": "ignore"
+  },
+  "UPDATE ignore.t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     "IGNORE"
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "IGNORE.T",
+   "target_sql": "ignore.t"
+  },
+  "UPDATE low_priority_x SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY_X",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY_X",
+   "target_sql": "low_priority_x"
+  },
+  "UPDATE quick SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "QUICK",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "QUICK",
+   "target_sql": "quick"
+  },
+  "UPDATE quick t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "QUICK",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "QUICK",
+   "target_sql": "quick AS t"
+  },
+  "UPDATE t SET ignore = 1": {
+   "affected_columns": [
+    "ignore"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "T",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "T",
+   "target_sql": "t"
+  },
+  "UPDATE t\ud83d\ude00 SET a = 1": {
+   "affected_columns": [],
+   "diagnostic": "snowflake unquoted name holds a non-ASCII letter (rejected natively)",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  }
+ },
+ "sqlite": {
+  "CREATE FULLTEXT INDEX ON t (c)": {
+   "affected_columns": [],
+   "diagnostic": "sqlite Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE FULLTEXT INDEX fx ON ft (txt)": {
+   "affected_columns": [],
+   "diagnostic": "sqlite Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SCHEMA IF NOT EXISTS s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SCHEMA s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SPATIAL INDEX sx ON ft (g)": {
+   "affected_columns": [],
+   "diagnostic": "sqlite Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE TABLE e (c\ud83d\ude00 INT)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "e",
+     "TABLE",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE TABLE t\ud83d\ude00 (id INT)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE FROM t WHERE quick = 1": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": "quick = 1",
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE IGNORE FROM t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "IGNORE",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE LOW_PRIORITY QUICK IGNORE FROM t WHERE id = 1": {
+   "affected_columns": [],
+   "diagnostic": "sqlite grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE QUICK FROM t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "QUICK",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE quick FROM quick": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "quick",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick"
+  },
+  "DROP SCHEMA IF EXISTS s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP SCHEMA s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP TABLE \"t\ud83d\ude00\"": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "dropped",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT DELAYED IGNORE INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "sqlite grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT HIGH_PRIORITY INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "sqlite grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT INTO delayed (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "INSERT"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "delayed",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": "delayed",
+   "target_sql": "delayed"
+  },
+  "INSERT INTO t VALUES ('\ud83d\ude00')": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "INSERT"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "INSERT LOW_PRIORITY INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "sqlite grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE a TO b": {
+   "affected_columns": [],
+   "diagnostic": "sqlite Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE a TO b, c TO d": {
+   "affected_columns": [],
+   "diagnostic": "sqlite Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE t1": {
+   "affected_columns": [],
+   "diagnostic": "sqlite Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "REPLACE DELAYED INTO t VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "sqlite Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "REPLACE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "REPLACE LOW_PRIORITY INTO t VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "sqlite Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "REPLACE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE TABLE db.t": {
+   "affected_columns": [],
+   "diagnostic": "sqlite TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE TABLE t": {
+   "affected_columns": [],
+   "diagnostic": "sqlite TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE t": {
+   "affected_columns": [],
+   "diagnostic": "sqlite TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE t1, t2": {
+   "affected_columns": [],
+   "diagnostic": "sqlite TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "UPDATE -- c\n LOW_PRIORITY t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY AS t"
+  },
+  "UPDATE IGNORE t SET b = 1": {
+   "affected_columns": [
+    "b"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "IGNORE",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "IGNORE",
+   "target_sql": "IGNORE AS t"
+  },
+  "UPDATE LOW_PRIORITY IGNORE `s`.`t` SET b = 1": {
+   "affected_columns": [],
+   "diagnostic": "sqlite grammar is not modelled for this statement",
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": true,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY"
+  },
+  "UPDATE LOW_PRIORITY t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY AS t"
+  },
+  "UPDATE `ignore` SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "ignore",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore",
+   "target_sql": "\"ignore\""
+  },
+  "UPDATE delayed t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "delayed",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "delayed",
+   "target_sql": "delayed AS t"
+  },
+  "UPDATE ignore\n.t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "ignore"
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore.t",
+   "target_sql": "ignore.t"
+  },
+  "UPDATE ignore SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "ignore",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore",
+   "target_sql": "ignore"
+  },
+  "UPDATE ignore.t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "ignore"
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore.t",
+   "target_sql": "ignore.t"
+  },
+  "UPDATE low_priority_x SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "low_priority_x",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "low_priority_x",
+   "target_sql": "low_priority_x"
+  },
+  "UPDATE quick SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick"
+  },
+  "UPDATE quick t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick AS t"
+  },
+  "UPDATE t SET ignore = 1": {
+   "affected_columns": [
+    "ignore"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "UPDATE t\ud83d\ude00 SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "t\ud83d\ude00",
+   "target_sql": "t\ud83d\ude00"
+  }
+ },
+ "tsql": {
+  "CREATE FULLTEXT INDEX ON t (c)": {
+   "affected_columns": [],
+   "diagnostic": "tsql Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE FULLTEXT INDEX fx ON ft (txt)": {
+   "affected_columns": [],
+   "diagnostic": "tsql Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SCHEMA IF NOT EXISTS s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SCHEMA s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE SPATIAL INDEX sx ON ft (g)": {
+   "affected_columns": [],
+   "diagnostic": "tsql Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": true,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE TABLE e (c\ud83d\ude00 INT)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "e",
+     "TABLE",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "CREATE TABLE t\ud83d\ude00 (id INT)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "created",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "CREATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE FROM t WHERE quick = 1": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": "quick = 1",
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE IGNORE FROM t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "IGNORE",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE LOW_PRIORITY QUICK IGNORE FROM t WHERE id = 1": {
+   "affected_columns": [],
+   "diagnostic": "tsql grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DELETE QUICK FROM t": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "QUICK",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "DELETE quick FROM quick": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "DELETE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "quick",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DELETE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick"
+  },
+  "DROP SCHEMA IF EXISTS s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP SCHEMA s": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "DROP TABLE \"t\ud83d\ude00\"": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DDL",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "dropped",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "DROP",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT DELAYED IGNORE INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "tsql grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT HIGH_PRIORITY INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "tsql grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "INSERT INTO delayed (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "INSERT"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "delayed",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": "delayed",
+   "target_sql": "delayed"
+  },
+  "INSERT INTO t VALUES ('\ud83d\ude00')": {
+   "affected_columns": [],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "INSERT"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "INSERT LOW_PRIORITY INTO t (a) VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "tsql grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "INSERT",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE a TO b": {
+   "affected_columns": [],
+   "diagnostic": "tsql Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE a TO b, c TO d": {
+   "affected_columns": [],
+   "diagnostic": "tsql Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "RENAME TABLE t1": {
+   "affected_columns": [],
+   "diagnostic": "tsql Command is opaque to statement facts",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "RENAME",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "REPLACE DELAYED INTO t VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "tsql grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "REPLACE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "REPLACE LOW_PRIORITY INTO t VALUES (1)": {
+   "affected_columns": [],
+   "diagnostic": "tsql grammar is not modelled for this statement",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [],
+   "opaque": true,
+   "operation": "REPLACE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE TABLE db.t": {
+   "affected_columns": [],
+   "diagnostic": "tsql TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE TABLE t": {
+   "affected_columns": [],
+   "diagnostic": "tsql TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE t": {
+   "affected_columns": [],
+   "diagnostic": "tsql TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "TRUNCATE t1, t2": {
+   "affected_columns": [],
+   "diagnostic": "tsql TruncateTable has no statement facts mapping",
+   "error": null,
+   "events": null,
+   "indexed_table": null,
+   "kind": "UNKNOWN",
+   "objects": [],
+   "opaque": true,
+   "operation": "TRUNCATE",
+   "predicate": null,
+   "target": null,
+   "target_sql": null
+  },
+  "UPDATE -- c\n LOW_PRIORITY t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY AS t"
+  },
+  "UPDATE IGNORE t SET b = 1": {
+   "affected_columns": [
+    "b"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "IGNORE",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "IGNORE",
+   "target_sql": "IGNORE AS t"
+  },
+  "UPDATE LOW_PRIORITY IGNORE `s`.`t` SET b = 1": {
+   "affected_columns": [],
+   "diagnostic": "tsql grammar is not modelled for this statement",
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": true,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY"
+  },
+  "UPDATE LOW_PRIORITY t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "LOW_PRIORITY",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "LOW_PRIORITY",
+   "target_sql": "LOW_PRIORITY AS t"
+  },
+  "UPDATE `ignore` SET a = 1": {
+   "affected_columns": [],
+   "diagnostic": "tsql grammar is not modelled for this statement",
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "ignore",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": true,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore",
+   "target_sql": "ignore"
+  },
+  "UPDATE delayed t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "delayed",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "delayed",
+   "target_sql": "delayed AS t"
+  },
+  "UPDATE ignore\n.t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "ignore"
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore.t",
+   "target_sql": "ignore.t"
+  },
+  "UPDATE ignore SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "ignore",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore",
+   "target_sql": "ignore"
+  },
+  "UPDATE ignore.t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     "ignore"
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "ignore.t",
+   "target_sql": "ignore.t"
+  },
+  "UPDATE low_priority_x SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "low_priority_x",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "low_priority_x",
+   "target_sql": "low_priority_x"
+  },
+  "UPDATE quick SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick"
+  },
+  "UPDATE quick t SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "quick",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "quick",
+   "target_sql": "quick AS t"
+  },
+  "UPDATE t SET ignore = 1": {
+   "affected_columns": [
+    "ignore"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "t",
+   "target_sql": "t"
+  },
+  "UPDATE t\ud83d\ude00 SET a = 1": {
+   "affected_columns": [
+    "a"
+   ],
+   "diagnostic": null,
+   "error": null,
+   "events": [
+    "UPDATE"
+   ],
+   "indexed_table": null,
+   "kind": "DML",
+   "objects": [
+    [
+     "t\ud83d\ude00",
+     "TABLE",
+     "altered",
+     null
+    ]
+   ],
+   "opaque": false,
+   "operation": "UPDATE",
+   "predicate": null,
+   "target": "t\ud83d\ude00",
+   "target_sql": "t\ud83d\ude00"
+  }
+ }
+}

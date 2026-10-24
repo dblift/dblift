@@ -21,6 +21,7 @@ typically commits those in the same release-prep PR).
 
 Examples:
     python scripts/create_release.py --dry-run 1.7.0
+    python scripts/create_release.py --dry-run 5.0.0a1
     python scripts/create_release.py --push 1.7.0
 """
 
@@ -30,6 +31,9 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+
+# x.y.z with an optional PEP 440 pre-release suffix (aN, bN, rcN).
+VERSION_PATTERN = r"\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?"
 
 
 def run_command(cmd, dry_run=False):
@@ -112,7 +116,7 @@ def update_version_in_files(version, dry_run=False):
         text = pyproject.read_text()
         # Only the [project] version line (first occurrence at line start)
         updated = re.sub(
-            r'^version = "\d+\.\d+\.\d+"',
+            rf'^version = "{VERSION_PATTERN}"',
             f'version = "{version}"',
             text,
             count=1,
@@ -137,7 +141,7 @@ def update_version_in_files(version, dry_run=False):
     init_py = Path("dblift") / "__init__.py"
     if init_py.exists():
         text = init_py.read_text()
-        version_pattern = r'__version__\s*=\s*[\'"](\d+\.\d+\.\d+)[\'"]'
+        version_pattern = rf'__version__\s*=\s*[\'"]({VERSION_PATTERN})[\'"]'
         if re.search(version_pattern, text):
             updated = re.sub(version_pattern, f'__version__ = "{version}"', text)
             if dry_run:
@@ -234,10 +238,13 @@ def extract_version_changelog(version):
 
 def validate_version(version):
     """
-    Validate that the version string follows semantic versioning.
+    Validate that the version is ``x.y.z`` or a PEP 440 pre-release of it.
     """
-    if not re.match(r"^\d+\.\d+\.\d+$", version):
-        print("Error: Version must be in the format 'x.y.z' (e.g., '1.2.3')")
+    if not re.fullmatch(VERSION_PATTERN, version):
+        print(
+            "Error: Version must be in the format 'x.y.z' (e.g., '1.2.3') "
+            "or a pre-release 'x.y.zaN', 'x.y.zbN', 'x.y.zrcN' (e.g., '5.0.0a1')"
+        )
         return False
     return True
 

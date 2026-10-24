@@ -12,7 +12,7 @@ from dblift.core.migration.executors.python_executor import (
     PythonMigrationExecutor,
 )
 from dblift.core.migration.formats import MigrationFormat
-from dblift.core.migration.migration import Migration
+from tests.unit._migration_factory import make_migration
 
 # Track temp files created by _make_migration for session-end cleanup
 _TEMP_MIGRATION_FILES: list = []
@@ -48,7 +48,7 @@ def _make_migration(content, suffix=".py", script_path=None):
         tmp.close()
         script_path = Path(tmp.name)
         _TEMP_MIGRATION_FILES.append(script_path)
-    migration = Migration(script_path=script_path)
+    migration = make_migration(script_path=script_path)
     migration.content = content
     return migration
 
@@ -115,7 +115,7 @@ class TestCanExecute:
         tmp.write("SELECT 1;")
         tmp.flush()
         tmp.close()
-        migration = Migration(script_path=Path(tmp.name))
+        migration = make_migration(script_path=Path(tmp.name))
         migration.content = "SELECT 1;"
         assert executor.can_execute(migration) is False
 

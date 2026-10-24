@@ -11,7 +11,7 @@ import pytest
 from dblift.core.logger import NullLog
 from dblift.core.migration.migration import Migration, MigrationType, dict_to_migration
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
-from dblift.core.migration.scripting.undo_script_generator import UndoScriptGenerator
+from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
 
@@ -50,7 +50,7 @@ def test_implicit_model_and_manager_share_the_discovery_grammar(
 ):
     expected = (MigrationType[kind], version, description, tags)
     assert MigrationScriptManager(NullLog()).parse_filename(name) == expected
-    migration = Migration(script_name=name)
+    migration = make_migration(script_name=name)
     assert (migration.type, migration.version, migration.description, migration.tags) == expected
 
 
@@ -121,20 +121,8 @@ def test_data_and_history_construction_never_construct_a_manager(monkeypatch):
         raise AssertionError("model constructed a manager")
 
     monkeypatch.setattr(MigrationScriptManager, "__init__", forbidden)
-    assert Migration(script_name="V1__x[tag].sql").tags == ["tag"]
+    assert make_migration(script_name="V1__x[tag].sql").tags == ["tag"]
     assert dict_to_migration({"script": "V1__x[tag].sql", "type": "SQL"}).tags == ["tag"]
-
-
-def test_undo_resource_input_uses_script_manager(tmp_path, monkeypatch):
-    script = tmp_path / "V1__create.sql"
-    script.write_text("CREATE TABLE example (id INT);", encoding="utf-8")
-    generator = UndoScriptGenerator("sqlite", logger=NullLog())
-    monkeypatch.setattr(
-        "dblift.core.migration.migration.read_migration_text",
-        MagicMock(side_effect=AssertionError("model read")),
-    )
-    output = generator.generate_undo_script(script)
-    assert "DROP TABLE" in output.read_text()
 
 
 @pytest.mark.parametrize("filename", ["V__.sql", "V__.py"])

@@ -47,116 +47,11 @@ class TestMySqlAtUserVariableTokenization(unittest.TestCase):
                 self.assertNotIn("@not_a_var", t.text)
 
     def test_statement_split_preserves_user_var(self) -> None:
-        from dblift.db.plugins.mysql.parser.mysql_statement_parser import MySQLStatementParser
-        from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
+        from tests.support.facts_parser import facts_parser
 
         sql = "SET @stmt_count = 0;\nINSERT INTO logs (n) VALUES (@stmt_count);\n"
-        tokens = MySQLTokenizer(sql).tokenize()
-        stmts = MySQLStatementParser(tokens).split_statements()
+        stmts = facts_parser("mysql").split_statements(sql)
         self.assertTrue(any("@stmt_count" in s for s in stmts))
-
-
-class TestSqlplusDirectiveTermination(unittest.TestCase):
-    """SQL*Plus directives (``SET``, ``DEFINE``, ``PROMPT``,
-    ``WHENEVER SQLERROR``) are line-terminated, not ``;``-terminated. The
-    Oracle tokeniser ends a statement only on ``;`` or ``/``, so a directive
-    line silently merged with the following DDL/DML, either dropping the
-    user's real statement (when ``is_sqlplus_command`` matched the merged
-    text) or pushing invalid SQL to the execution provider. Fix:
-    ``terminate_sqlplus_directives()`` finds the directive lines where a
-    statement can begin, appends ``;`` to a ``WHENEVER SQLERROR`` line not
-    already terminated, and empties the other directive lines (they are
-    never executed), so their text cannot merge with the next statement.
-    """
-
-    def _split(self, sql: str) -> list[str]:
-        from dblift.db.plugins.oracle.parser.oracle_statement_parser import OracleStatementParser
-        from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
-
-        tokens = OracleTokenizer(sql).tokenize()
-        return [s for s in OracleStatementParser(tokens).split_statements() if s.strip()]
-
-    def test_set_serveroutput_followed_by_ddl_is_split(self) -> None:
-        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        raw = "SET SERVEROUTPUT ON\nCREATE TABLE t (id NUMBER);\n"
-        terminated = terminate_sqlplus_directives(raw)
-        self.assertEqual(terminated, "\nCREATE TABLE t (id NUMBER);\n")
-        stmts = self._split(terminated)
-        self.assertTrue(any("CREATE TABLE" in s for s in stmts))
-
-    def test_define_directive_is_removed(self) -> None:
-        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        raw = "DEFINE schema_name = APP\nCREATE TABLE &schema_name..t (id NUMBER);\n"
-        self.assertEqual(
-            terminate_sqlplus_directives(raw), "\nCREATE TABLE &schema_name..t (id NUMBER);\n"
-        )
-
-    def test_prompt_directive_is_removed(self) -> None:
-        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        raw = "PROMPT Creating schema\nCREATE TABLE t (id NUMBER);\n"
-        self.assertEqual(terminate_sqlplus_directives(raw), "\nCREATE TABLE t (id NUMBER);\n")
-
-    def test_whenever_sqlerror_continue_is_terminated(self) -> None:
-        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        raw = "WHENEVER SQLERROR CONTINUE\nDROP TABLE missing;\n"
-        self.assertIn("WHENEVER SQLERROR CONTINUE;", terminate_sqlplus_directives(raw))
-
-    def test_whenever_sqlerror_exit_is_terminated(self) -> None:
-        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        raw = "WHENEVER SQLERROR EXIT\nSELECT 1 FROM dual;\n"
-        self.assertIn("WHENEVER SQLERROR EXIT;", terminate_sqlplus_directives(raw))
-
-    def test_directive_already_terminated_is_removed(self) -> None:
-        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        raw = "SET SERVEROUTPUT ON;\nCREATE TABLE t (id NUMBER);\n"
-        self.assertEqual(terminate_sqlplus_directives(raw), "\nCREATE TABLE t (id NUMBER);\n")
-
-    def test_whenever_already_terminated_unchanged(self) -> None:
-        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        raw = "WHENEVER SQLERROR EXIT;\nCREATE TABLE t (id NUMBER);\n"
-        self.assertEqual(terminate_sqlplus_directives(raw), raw)
-
-    def test_non_directive_lines_pass_through(self) -> None:
-        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        raw = "CREATE TABLE t (\n  id NUMBER,\n  name VARCHAR2(100)\n);\n"
-        self.assertEqual(terminate_sqlplus_directives(raw), raw)
-
-    def test_block_comment_is_not_modified(self) -> None:
-        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        raw = "/*\n  SET SERVEROUTPUT ON\n*/\nCREATE TABLE t (id NUMBER);\n"
-        out = terminate_sqlplus_directives(raw)
-        self.assertIn("/*\n  SET SERVEROUTPUT ON\n*/", out)
-
-    def test_empty_input_passes_through(self) -> None:
-        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        self.assertEqual(terminate_sqlplus_directives(""), "")
-
-    def test_multiple_directives_then_ddl_round_trip(self) -> None:
-        from dblift.db.plugins.oracle.parser.sqlplus_context import terminate_sqlplus_directives
-
-        # Avoid the word "Begin" inside PROMPT: the Oracle tokeniser treats BEGIN as
-        # a KEYWORD which triggers the PL/SQL ``/``-delimiter switch. Production
-        # users hit the same trap by accident, but the directive stripping itself
-        # is correctly demonstrated here without that confound.
-        raw = (
-            "SET SERVEROUTPUT ON\n"
-            "PROMPT Starting migration\n"
-            "WHENEVER SQLERROR CONTINUE\n"
-            "CREATE TABLE t (id NUMBER);\n"
-        )
-        terminated = terminate_sqlplus_directives(raw)
-        stmts = self._split(terminated)
-        self.assertTrue(any("CREATE TABLE" in s for s in stmts))
 
 
 class TestSqliteRecordUndo(unittest.TestCase):

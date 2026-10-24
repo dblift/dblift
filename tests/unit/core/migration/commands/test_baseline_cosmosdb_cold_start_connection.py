@@ -27,6 +27,7 @@ from dblift.core.migration.commands.baseline_command import BaselineCommand
 from dblift.core.migration.commands.info_command import InfoCommand
 from dblift.core.migration.commands.repair_command import RepairCommand
 from dblift.core.migration.commands.validate_command import ValidateCommand
+from dblift.core.migration.state.migration_state import MigrationState
 
 
 class _ColdStartProvider:
@@ -55,6 +56,15 @@ class _ColdStartProvider:
 
     def rollback_transaction(self) -> None:
         pass
+
+    def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:
+        return True
+
+    def release_migration_lock(self, schema: str) -> bool:
+        return True
+
+    def migration_lock_lost(self) -> bool:
+        return False
 
 
 _NO_CONNECTION_ERROR = (
@@ -94,6 +104,8 @@ def _make_config():
 
 
 def _make_command(command_cls, provider, history_manager, **extra_ctx):
+    state_manager = MagicMock()
+    state_manager.get_applied_migration_records.return_value = []
     ctx_kwargs = dict(
         config=_make_config(),
         log=MagicMock(),
@@ -103,7 +115,7 @@ def _make_command(command_cls, provider, history_manager, **extra_ctx):
         validator=MagicMock(),
         execution_engine=MagicMock(),
         migration_helpers=MagicMock(),
-        state_manager=MagicMock(),
+        state_manager=state_manager,
         migration_ui=MagicMock(),
         migration_rules=MagicMock(),
     )
@@ -171,9 +183,7 @@ class TestOtherCommandsColdStartRegression:
         provider = _ColdStartProvider()
         history_manager = _make_history_manager(provider)
         cmd = _make_command(InfoCommand, provider, history_manager)
-        cmd.state_manager.build_state.return_value = SimpleNamespace(
-            applied_objects=[], all_applied_objects=[]
-        )
+        cmd.state_manager.build_state.return_value = MigrationState()
         cmd.migration_ui.get_migration_data.return_value = []
 
         result = cmd.execute(scripts_dir=MagicMock(), display_human=False)
@@ -203,14 +213,13 @@ class TestOtherCommandsColdStartRegression:
         cmd = _make_command(RepairCommand, provider, history_manager)
         cmd.state_manager.build_state.return_value = SimpleNamespace(
             checksum_changes=[],
-            grouped_objects=None,
+            grouped_objects={},
             applied_objects=[],
             deleted_scripts=set(),
             failed_objects=[],
             all_applied_objects=[],
+            checksum_drift=(),
         )
-        cmd.state_manager.get_grouped_migrations.return_value = {}
-
         result = cmd.execute(scripts_dir=MagicMock())
 
         assert result.success, f"repair() failed: {result.error_message}"

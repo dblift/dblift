@@ -145,11 +145,13 @@ DBLift works with these databases:
 | SQL Server | `mssql+pymssql://localhost:1433/mydb` | `dblift[sqlserver]` |
 | Oracle | `oracle+oracledb://localhost:1521?sid=SID` | `dblift[oracle]` |
 | MySQL | `mysql+pymysql://localhost:3306/mydb` | `dblift[mysql]` |
-| MariaDB | `mysql+pymysql://localhost:3306/mydb` | `dblift[mariadb]` |
+| MariaDB | `mariadb+pymysql://localhost:3306/mydb` | `dblift[mariadb]` |
 | DB2 | `ibm_db_sa://localhost:50000/mydb` | `dblift[db2]` |
 | SQLite | `/path/to/database.db` or `:memory:` (see [SQLite Configuration](#sqlite-configuration)) |
 | Azure Cosmos DB | `https://account.documents.azure.com:443/` (see [CosmosDB Configuration](#cosmosdb-configuration)) | `dblift[cosmosdb]` |
 | MongoDB | `mongodb://host:27017` or `mongodb+srv://…` (see [MongoDB Configuration](#mongodb-configuration)) | `dblift[mongodb]` |
+
+A `mysql+pymysql://` URL selects the MySQL rules, also against a MariaDB server; use `mariadb+pymysql://` for MariaDB.
 
 ## SQL Server Configuration
 
@@ -212,7 +214,7 @@ export DBLIFT_DB_PATH="/path/to/database.db"
 Cosmos DB needs the Azure SDK, which ships in its own extra:
 
 ```bash
-pip install "dblift[cosmosdb]"
+pip install "dblift[cli,analysis,cosmosdb]"
 ```
 
 Azure Cosmos DB uses a different configuration format through the Azure SDK:
@@ -267,7 +269,7 @@ pseudo-SQL statements (`DROP CONTAINER`, `SET THROUGHPUT`, `CREATE INDEX`,
 MongoDB needs `pymongo`, which ships in its own extra:
 
 ```bash
-pip install "dblift[mongodb]"
+pip install "dblift[cli,analysis,mongodb]"
 ```
 
 Two input shapes are accepted; `url` wins when both are present:
@@ -360,6 +362,79 @@ export DBLIFT_ENV="prod"  # Optional: select the active environments: block (see
 
 !!! warning "Security Best Practice"
     Never commit passwords or sensitive credentials to version control. Always use environment variables for production deployments.
+
+## Target Version
+
+`target_version` (YAML), `DBLIFT_TARGET_VERSION` (environment) and `--target-version` (flag) all
+set the version `migrate`, `info`, `validate` and `undo` stop at. The flag wins over the
+environment variable, which wins over the YAML key. For `undo` it is the version to roll back
+to: that migration stays applied and everything above it is undone, so a configured target also
+drives `undo`. It must be the version of one of your scripts. An empty YAML value (at the root or
+in an `environments:` block) is refused with the same error as `--target-version ""`, while an
+empty `DBLIFT_TARGET_VERSION` is ignored like any empty environment variable.
+
+The Python API applies the configured value when a call passes no `target_version`; an explicit
+argument wins. `DBLiftClient.from_sqlalchemy(engine)` without `config=` reads neither the YAML nor
+the environment.
+
+```yaml
+target_version: 2
+```
+
+
+## Logging Settings
+
+`log_level`, `log_format`, `log_dir` and `log_file` resolve like every other setting:
+command-line flag, then environment variable, then the configuration file, then the default.
+
+| Setting | Flag | Environment variable | YAML key | Default |
+| --- | --- | --- | --- | --- |
+| Level (`debug`, `info`, `warn`, `error`) | `--log-level` | `DBLIFT_LOG_LEVEL` | `log_level` or `logging.level` | `info` |
+| Format (`text`, `json`, `html`, comma-separated for several) | `--log-format` | `DBLIFT_LOG_FORMAT` | `log_format` | `text` |
+| Directory | `--log-dir` | `DBLIFT_LOG_DIR` | `log_dir` | `logs` |
+| File name | `--log-file` | `DBLIFT_LOG_FILE` | `log_file` | generated |
+
+```yaml
+log_level: warn
+log_format: text,json
+log_dir: build/logs
+```
+
+Level names are case-insensitive, `warning` is accepted for `warn` in the flag, the environment variable and the file, and `critical` for `error` in the environment variable and the file. An unknown level from any of them exits with status 2, as an unknown format does. A level hides everything
+below it on the console and in the log files: `error` shows only errors, `warn` shows warnings and
+errors. The command banners and result tables are not log lines and are always printed;
+`--quiet` hides log lines on the console only.
+
+## Run Options
+
+These top-level keys set defaults for a run. Each has an environment variable and, for the
+command line, a flag; the order is flag, then environment variable, then YAML key.
+
+| YAML key | Environment variable | Flag | Applies to |
+| --- | --- | --- | --- |
+| `dry_run` | `DBLIFT_DRY_RUN` | `--dry-run` | `migrate`, `undo`, `clean`, `repair`, `import_flyway` |
+| `mark_as_executed` | `DBLIFT_MARK_AS_EXECUTED` | `--mark-as-executed` | `migrate` |
+| `tags`, `exclude_tags` | `DBLIFT_TAGS`, `DBLIFT_EXCLUDE_TAGS` | `--tags`, `--exclude-tags` | `migrate`, `undo`, `info`, `validate` |
+| `versions`, `exclude_versions` | `DBLIFT_VERSIONS`, `DBLIFT_EXCLUDE_VERSIONS` | `--versions`, `--exclude-versions` | `migrate`, `undo`, `info`, `validate` |
+
+```yaml
+dry_run: true
+tags: core,auth
+exclude_versions: 1.0.1
+```
+
+Boolean environment variables (`DBLIFT_DRY_RUN`, `DBLIFT_MARK_AS_EXECUTED`) are true for `1`, `true` or
+`yes` in any case; `on`, `y` and anything else count as false.
+
+The Python API follows the same order through `DBLiftClient.from_config_file`, which reads the YAML
+and the environment: `client.migrate()` and the other calls use the configured value when the call
+passes none, and an argument you pass wins. `dry_run=True` and `mark_as_executed=True` can be added
+by an argument, but a configured `true` is only turned off in the configuration or with the
+environment variable (`DBLIFT_DRY_RUN=false`), since the argument's default is `False`.
+`DBLiftClient.from_sqlalchemy(engine, config=cfg)` sees only what `cfg` holds, and without `config=`
+it reads neither the YAML nor the environment. The `migrate`, `undo`, `clean` and `repair` results
+carry a `dry_run` attribute that is `True` when the run was a dry run, whether it was asked for by
+an argument or by the configuration.
 
 ## File Encoding
 

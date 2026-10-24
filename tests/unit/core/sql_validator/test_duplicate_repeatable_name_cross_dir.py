@@ -25,8 +25,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.sql_validator.migration_validator import MigrationValidator
+from tests.unit._migration_factory import make_migration
 
 pytestmark = [pytest.mark.unit]
 
@@ -135,14 +136,14 @@ class TestDuplicateRepeatableNameWiredIntoAllRepeatableEarlyReturn:
         v.script_manager = MagicMock()
         v = MigrationValidator(v.script_manager, v.history_manager, v.log)
 
-        primary = Migration(
+        primary = make_migration(
             script_name="R__cleanup.sql",
             content="SELECT 1;",
             type=MigrationType.REPEATABLE,
         )
         primary.path = Path("/proj/migrations/R__cleanup.sql")
 
-        secondary = Migration(
+        secondary = make_migration(
             script_name="R__cleanup.sql",
             content="SELECT 2;",
             type=MigrationType.REPEATABLE,

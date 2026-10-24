@@ -20,7 +20,7 @@ from unittest.mock import MagicMock, patch
 # ---------------------------------------------------------------------------
 class TestStrictOutOfOrder(unittest.TestCase):
     def test_migrate_command_has_strict_out_of_order_messages(self) -> None:
-        import dblift.core.migration.commands.migrate_command as mod
+        import dblift.core.migration.state.migrate_plan as mod
 
         src = Path(mod.__file__).read_text()
         self.assertIn("Strict mode: out-of-order migration", src)
@@ -149,45 +149,14 @@ class TestScriptEventsEmitted(unittest.TestCase):
         self.assertEqual(len(received), 1)
         self.assertEqual(received[0].script, "V1__x.sql")
 
-    def test_migrate_command_imports_helper(self) -> None:
-        import dblift.core.migration.commands.migrate_command as mod
+    def test_script_runner_imports_helper(self) -> None:
+        import dblift.core.migration.commands._script_runner as mod
 
         src = Path(mod.__file__).read_text()
-        self.assertIn("_emit_script_event", src)
+        self.assertIn("emit_script_event", src)
         self.assertIn("migration.script.started", src)
         self.assertIn("migration.script.completed", src)
         self.assertIn("migration.script.failed", src)
-
-
-# ---------------------------------------------------------------------------
-# repair must not flag baseline rows as MISSING_SCRIPT
-# ---------------------------------------------------------------------------
-class TestRepairSkipsBaseline(unittest.TestCase):
-    def _make_applied(self, script_name: str, type_name: str) -> Any:
-        obj = MagicMock()
-        obj.script_name = script_name
-        obj.version = "2"
-        obj.description = ""
-        obj.type = MagicMock(name="MigType")
-        obj.type.name = type_name
-        return obj
-
-    def test_count_candidate_missing_skips_baseline(self) -> None:
-        from dblift.core.migration.commands.repair_command import _count_candidate_missing
-
-        applied = [
-            self._make_applied("B2__.sql", "BASELINE"),
-            self._make_applied("V3__add_col.sql", "SQL"),
-        ]
-        self.assertEqual(_count_candidate_missing(applied, set()), 1)
-
-    def test_count_candidate_missing_skips_baseline_string(self) -> None:
-        from dblift.core.migration.commands.repair_command import _count_candidate_missing
-
-        applied = [self._make_applied("B2__.sql", "anything")]
-        # type provided as a plain string rather than an enum-like MagicMock.
-        applied[0].type = "BASELINE"
-        self.assertEqual(_count_candidate_missing(applied, set()), 0)
 
 
 if __name__ == "__main__":

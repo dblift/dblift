@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import re
-from typing import Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.core.utils.database_url_parser import DatabaseUrlParser
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
 # ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
@@ -46,6 +50,20 @@ class MysqlQuirks(BaseQuirks):
     catalog-mode metadata queries (no separate schema concept).
     """
 
+    def lexical_spec(self) -> "LexicalSpec":
+        """The lexical specification the shared engine splits MySQL scripts with."""
+        from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_SPEC
+
+        return MYSQL_SPEC
+
+    def redaction_tokenizer(self) -> "Optional[type]":
+        """MySQL's tokenizer, which literal masking reads."""
+        from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
+
+        return MySQLTokenizer
+
+    statement_facts_class = SqlglotStatementFactsReader
+
     # Capability matrix (was ``_CAPABILITIES["mysql"]``).
     supports_transactions = True
     supports_transactional_ddl = False  # DDL auto-commits
@@ -68,12 +86,6 @@ class MysqlQuirks(BaseQuirks):
     # The unqualified form parses fine. The regex parser already extracts
     # this shape correctly (index name + schema), so skip sqlglot for it
     # entirely instead of letting it raise on a routine DROP INDEX (#379).
-    # The gap between INDEX and ON excludes ";" so the match cannot cross
-    # into a *different* statement in a multi-statement ``extract_objects``
-    # call and false-positive on an unrelated "... ON x.y" elsewhere in the
-    # batch (e.g. a JOIN clause) — this must describe the one DROP INDEX
-    # statement, not the whole blob it may be embedded in.
-    sqlglot_unsupported_sql_regex_patterns = (r"DROP\s+INDEX\s+[^;]+\bON\s+[^\s;,()]*\.",)
     # Trigger DDL.
     trigger_supports_definer_clause = True
     # Event scheduler timestamp-quoting.
@@ -106,25 +118,21 @@ class MysqlQuirks(BaseQuirks):
         return _ERROR_PATTERNS
 
     def engine_pool_options(self) -> "dict[str, Any]":
-        """MySQL/MariaDB: disable pool reset-on-return to avoid connection-state churn."""
-        return {"pool_reset_on_return": None}
+        """MySQL/MariaDB engine options.
 
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """MySQL parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
-        :class:`SqlGlotParser`, regex → :class:`MySqlRegexParser`."""
-        if parser_type == "hybrid":
-            from dblift.core.sql_parser.hybrid_parser import HybridParser
+        Pool reset-on-return is disabled to avoid connection-state churn. Multi-statements
+        are enabled because the ``mysql``/``mariadb`` clients connect with them and send a
+        chunk holding several statements (under a custom ``DELIMITER``) as one query.
+        ``connect_args`` replaces SQLAlchemy's own ``client_flag``, so ``FOUND_ROWS`` (an
+        ``UPDATE`` counts matched rows) is repeated here. An engine the caller supplies to
+        ``from_sqlalchemy`` is not built from these options and keeps the driver's default.
+        """
+        from pymysql.constants import CLIENT
 
-            return HybridParser
-        if parser_type == "sqlglot":
-            from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-
-            return SqlGlotParser
-        if parser_type == "regex":
-            from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
-
-            return MySqlRegexParser
-        return None
+        return {
+            "pool_reset_on_return": None,
+            "connect_args": {"client_flag": CLIENT.MULTI_STATEMENTS | CLIENT.FOUND_ROWS},
+        }
 
     def type_equivalents(self) -> "dict[str, str]":
         """MySQL alias → canonical type map.

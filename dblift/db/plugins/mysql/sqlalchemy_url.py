@@ -1,8 +1,11 @@
 """SQLAlchemy URL construction for the MySQL-family plugin."""
 
+import re
 from typing import Any, Dict
 
 from sqlalchemy.engine import URL, make_url
+
+from dblift.db.plugins.mysql.sql_literals import string_literal
 
 
 def _string_mapping(values: Any) -> Dict[str, str]:
@@ -19,13 +22,14 @@ def _query_mapping(database_config: Any, base_query: Any = None) -> Dict[str, st
     if session_variables and "init_command" not in query:
         parts = []
         for key, value in session_variables.items():
-            # Quote non-numeric values so SET SESSION time_zone='+00:00' is safe.
-            try:
-                float(value)
-                parts.append(f"{key}={value}")
-            except ValueError:
-                escaped = value.replace("'", "''")
-                parts.append(f"{key}='{escaped}'")
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+                raise ValueError(f"Invalid MySQL session variable name: {key!r}")
+            # Keep numeric SET values numeric; encode strings independently of sql_mode.
+            numeric = value.strip()
+            if re.fullmatch(r"[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", numeric):
+                parts.append(f"{key}={numeric}")
+            else:
+                parts.append(f"{key}={string_literal(value)}")
         query["init_command"] = f"SET SESSION {', '.join(parts)}"
 
     connection_timeout = getattr(database_config, "connection_timeout", None)

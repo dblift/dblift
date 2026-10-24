@@ -79,7 +79,7 @@ def test_failed_sql_stops_following_script_and_keeps_external_engine(tmp_path: P
         ]
         assert len(failed_statements) == 1
         assert failed_statements[0].migration_id == "V2__bad.sql"
-        assert failed_statements[0].statement == "INSERT INTO missing_table VALUES (1);"
+        assert failed_statements[0].statement == "INSERT INTO missing_table VALUES (1)"
         assert failed_statements[0].error_message == "no such table: missing_table"
         assert events == [
             "migration.started",

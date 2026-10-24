@@ -1,0 +1,190 @@
+[
+{
+"script": "\ufeff< < x > > BEGIN (id NUMBER)\n/ -- c\n\r\nBEGIN\n  FUNCTION f RETURN NUMBER IS BEGIN RETURN 4\n/ 2; END;\nBEGIN NULL;\nEND pk;\n/\nCONNECT TO u /* q'[ */\nSET TRANSACTION READ ONLY;\r\n\nCREATE OR REPLACE AND COMPILE NOFORCE IF NOT EXISTS MLE MODULE m LANGUAGE JAVASCRIPT AS (id NUMBER)\n/\nCREATE OR REPLACE AND COMPILE JAVA SOURCE NAMED \"H\" AS BEGIN x := q'[a;b]'; y := 'it''s; ok'; END;\n/\n\n<<a>> NULL; BEGIN NULL; END; /* t */\n/ -- c\n\n",
+"expected": [
+"\ufeff< < x > > BEGIN (id NUMBER)\n/ \n\r\nBEGIN\n  FUNCTION f RETURN NUMBER IS BEGIN RETURN 4\n/ 2; END;\nBEGIN NULL;\nEND pk;\n/\nCONNECT TO u \nSET TRANSACTION READ ONLY;\r\n\nCREATE OR REPLACE AND COMPILE NOFORCE IF NOT EXISTS MLE MODULE m LANGUAGE JAVASCRIPT AS (id NUMBER)\n/\nCREATE OR REPLACE AND COMPILE JAVA SOURCE NAMED \"H\" AS BEGIN x := q'[a;b]'; y := 'it''s; ok'; END;\n/\n\n<<a>> NULL; BEGIN NULL; END; \n/",
+"\ufeff< < x > > BEGIN (id NUMBER)\n/ \n\r\nBEGIN\n FUNCTION f RETURN NUMBER IS BEGIN RETURN 4\n/ 2; END;\nBEGIN NULL;\nEND pk;\n/\nCONNECT TO u \nSET TRANSACTION READ ONLY;\r\n\nCREATE OR REPLACE AND COMPILE NOFORCE IF NOT EXISTS MLE MODULE m LANGUAGE JAVASCRIPT AS (id NUMBER)\n/\nCREATE OR REPLACE AND COMPILE JAVA SOURCE NAMED \"H\" AS BEGIN x := q'[a;b]'; y := 'it''s; ok'; END;\n/\n\n<<a>> NULL; BEGIN NULL; END; \n/ \n\n",
+[
+false,
+[]
+]
+]
+},
+{
+"script": "/*\n*/ SET SERVEROUTP ONCREATE TABLE \"/*\" (id NUMBER) /COMMENT ON TABLE t IS 'a&b';\n\n\r\nCOMPUTE SUM OF a\r\nSELECT nQ'-\u00e9' FROM (SELECT nQ'-\u00e9' FROM dual);\nSELECT &v- FROM dual; -- c\n",
+"expected": [
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated q-quoted string opened at line 6, column 8"
+],
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated q-quoted string opened at line 6, column 8"
+],
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated q-quoted string opened at line 6, column 8"
+]
+]
+},
+{
+"script": "CREATE OR REPLACE VIEW v AS SELECT 1 FROM dual;\n\nSELECT 1.5e+3 FROM dual;\n\r\nSELECT begin FROM t;\n\n\t\nSET ROLE r /* x /\n\t\nSELECT tab#1 FROM dual;\n\n",
+"expected": [
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 8, column 12"
+],
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 8, column 12"
+],
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated block comment opened at line 8, column 12"
+]
+]
+},
+{
+"script": "set serveroutput on\nprompt hello",
+"expected": [
+"set serveroutput on\nprompt hello",
+"set serveroutput on\nprompt hello",
+[
+true,
+[
+"hello"
+]
+]
+]
+},
+{
+"script": "WHENEVER SQLERROR CONTINUE NONE\n\n \n/* c\n c */ REM don't run twice\n\nCREATE FUNCTION f RETURN NUMBER IS BEGIN\n  NULL;\n  / 2;\nEND;\n/\n\nEXIT FAILURE\nSET SERVEROUTP ON  \n",
+"expected": [
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 5, column 14"
+],
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 5, column 14"
+],
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated string opened at line 5, column 14"
+]
+]
+},
+{
+"script": "set constraints all immediate\nselect &w from dual;\n\ncreate table \"\" (id number);\n\t\ndrop table t;\n-- c\nwhenever sqlerror exit -- c\n\n \ngrant select on t to u\n/* a;b */\r\ncreate user u identified by p;\n\ncreate or replace procedure p is\nbegin\n  if 1=1 then null; end if;\nend;/* c */  set x \"open\n\r\n",
+"expected": [
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated quoted identifier opened at line 18, column 20"
+],
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated quoted identifier opened at line 18, column 20"
+],
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated quoted identifier opened at line 18, column 20"
+]
+]
+},
+{
+"script": "type>> -- q'\nq'\n",
+"expected": [
+[
+"error",
+"UnsafeStatementSplitError",
+"q-quote delimiter cannot be whitespace at line 2, column 1"
+],
+[
+"error",
+"UnsafeStatementSplitError",
+"q-quote delimiter cannot be whitespace at line 2, column 1"
+],
+[
+"error",
+"UnsafeStatementSplitError",
+"q-quote delimiter cannot be whitespace at line 2, column 1"
+]
+]
+},
+{
+"script": "CONNECT \"\u00e9\" '/* c' SELECT%\nnq'",
+"expected": [
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated q-quoted string opened at line 2, column 1"
+],
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated q-quoted string opened at line 2, column 1"
+],
+[
+"error",
+"UnsafeStatementSplitError",
+"unterminated q-quoted string opened at line 2, column 1"
+]
+]
+},
+{
+"script": "x1\n$a'\n/\n'SELECT \ufeff/* q'[ */\u00dcn\u00ef\nREM #. ? package",
+"expected": [
+"x1\n$a'\n/\n'SELECT \ufeff\u00dcn\u00ef\nREM #. ? package",
+"x1\n$a'\n/\n'SELECT \ufeff\u00dcn\u00ef\nREM #. ? package",
+[
+false,
+[]
+]
+]
+},
+{
+"script": "SET SERVEROUTPUT OFF",
+"expected": [
+"SET SERVEROUTPUT OFF",
+"SET SERVEROUTPUT OFF",
+[
+false,
+[]
+]
+]
+},
+{
+"script": "-# @\f /* a;b */ $1",
+"expected": [
+"-# @\f  $1",
+"-# @\f $1",
+[
+false,
+[]
+]
+]
+},
+{
+"script": "DECLAREN'x' --\t\\ begin\tDEFINE\"a\"\"b\"\n$a $1end\\-- it'sv$x\t$COMPILE emp \u00dcn\u00ef\t",
+"expected": [
+"DECLAREN'x' \n$a $1end\\",
+"DECLAREN'x' \n$a $1end\\",
+[
+false,
+[]
+]
+]
+}
+]

@@ -1,0 +1,841 @@
+{
+  "description": "Distinct SQL inputs captured from migrated SQLite parser entrypoint tests; source tests retain their legacy observations.",
+  "cases": [
+    {
+      "sql": "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)",
+      "source_tests": [
+        "tests/unit/sqlite/test_sqlite_parser.py::TestSQLiteFactsParser::test_extract_table_from_create"
+      ],
+      "reviewed_difference": null,
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "users",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [
+            "id",
+            "name"
+          ],
+          "declared_constraints": [
+            {
+              "kind": "PRIMARY_KEY",
+              "columns": [
+                "id"
+              ],
+              "name": null,
+              "referenced_table": null,
+              "referenced_columns": []
+            }
+          ],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "TABLE",
+          "name": "users",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "CREATE VIEW active_users AS SELECT * FROM users WHERE active = 1",
+      "source_tests": [
+        "tests/unit/sqlite/test_sqlite_parser.py::TestSQLiteFactsParser::test_extract_view_from_create"
+      ],
+      "reviewed_difference": null,
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "VIEW",
+              "name": "active_users",
+              "role": "created",
+              "schema": null
+            },
+            {
+              "type": "TABLE",
+              "name": "users",
+              "role": "referenced",
+              "schema": null
+            }
+          ],
+          "declared_columns": [],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "VIEW",
+          "name": "active_users",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "CREATE UNIQUE INDEX idx_users_email ON users(email)",
+      "source_tests": [
+        "tests/unit/sqlite/test_sqlite_parser.py::TestSQLiteFactsParser::test_extract_index_from_create"
+      ],
+      "reviewed_difference": null,
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "INDEX",
+              "name": "idx_users_email",
+              "role": "created",
+              "schema": null
+            },
+            {
+              "type": "TABLE",
+              "name": "users",
+              "role": "referenced",
+              "schema": null
+            }
+          ],
+          "declared_columns": [],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": "users",
+          "indexed_columns": [
+            "email"
+          ]
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "INDEX",
+          "name": "idx_users_email",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "CREATE TRIGGER update_timestamp AFTER UPDATE ON users \n                  BEGIN UPDATE users SET updated_at = datetime('now'); END",
+      "source_tests": [
+        "tests/unit/sqlite/test_sqlite_parser.py::TestSQLiteFactsParser::test_extract_trigger_from_create"
+      ],
+      "reviewed_difference": "Identity is retained; unavailable grammar detail is explicit.",
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TRIGGER",
+              "name": "update_timestamp",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": "trigger: sqlite Block is opaque to statement facts",
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "TRIGGER",
+          "name": "update_timestamp",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "CREATE VIRTUAL TABLE IF NOT EXISTS docs USING fts5(title, body);",
+      "source_tests": [
+        "tests/unit/sqlite/test_sqlite_parser.py::TestSQLiteFactsParser::test_extract_virtual_table_from_create"
+      ],
+      "reviewed_difference": "Identity is retained; unavailable grammar detail is explicit.",
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "VIRTUAL_TABLE",
+              "name": "docs",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": "sqlite virtual table module arguments are opaque",
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "VIRTUAL_TABLE",
+          "name": "docs",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "CREATE TABLE \"MyTable\" (id INT)",
+      "source_tests": [
+        "tests/unit/sqlite/test_sqlite_parser.py::TestSQLiteFactsReader::test_named_object[CREATE TABLE \"MyTable\" (id INT)-TABLE-MyTable]"
+      ],
+      "reviewed_difference": null,
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "MyTable",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [
+            "id"
+          ],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "TABLE",
+          "name": "MyTable",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "CREATE TABLE [bracket_quoted] (id INT)",
+      "source_tests": [
+        "tests/unit/sqlite/test_sqlite_parser.py::TestSQLiteFactsReader::test_named_object[CREATE TABLE [bracket_quoted] (id INT)-TABLE-bracket_quoted]"
+      ],
+      "reviewed_difference": null,
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "bracket_quoted",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [
+            "id"
+          ],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "TABLE",
+          "name": "bracket_quoted",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "CREATE VIEW v AS SELECT 1",
+      "source_tests": [
+        "tests/unit/sqlite/test_sqlite_parser.py::TestSQLiteFactsReader::test_named_object[CREATE VIEW v AS SELECT 1-VIEW-v]"
+      ],
+      "reviewed_difference": null,
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "VIEW",
+              "name": "v",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "VIEW",
+          "name": "v",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "CREATE INDEX ix ON t (id)",
+      "source_tests": [
+        "tests/unit/sqlite/test_sqlite_parser.py::TestSQLiteFactsReader::test_named_object[CREATE INDEX ix ON t (id)-INDEX-ix]"
+      ],
+      "reviewed_difference": null,
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "INDEX",
+              "name": "ix",
+              "role": "created",
+              "schema": null
+            },
+            {
+              "type": "TABLE",
+              "name": "t",
+              "role": "referenced",
+              "schema": null
+            }
+          ],
+          "declared_columns": [],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": "t",
+          "indexed_columns": [
+            "id"
+          ]
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "INDEX",
+          "name": "ix",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "UPDATE MyTable SET id = 1",
+      "source_tests": [
+        "tests/unit/sqlite/test_sqlite_parser.py::TestSQLiteFactsReader::test_named_object[UPDATE MyTable SET id = 1-TABLE-MyTable]"
+      ],
+      "reviewed_difference": "The removed extractor returned no object; statement facts now report the mutation target.",
+      "facts": [
+        {
+          "operation": "UPDATE",
+          "kind": "DML",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "MyTable",
+              "role": "altered",
+              "schema": null
+            }
+          ],
+          "declared_columns": [],
+          "declared_constraints": [],
+          "affected_columns": [
+            "id"
+          ],
+          "target": "MyTable",
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "legacy_extractor_observed": {
+        "objects": []
+      },
+      "projected_objects": [
+        {
+          "type": "TABLE",
+          "name": "MyTable",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "DELETE FROM MyTable",
+      "source_tests": [
+        "tests/unit/sqlite/test_sqlite_parser.py::TestSQLiteFactsReader::test_named_object[DELETE FROM MyTable-TABLE-MyTable]"
+      ],
+      "reviewed_difference": "The removed extractor returned no object; statement facts now report the mutation target.",
+      "facts": [
+        {
+          "operation": "DELETE",
+          "kind": "DML",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "MyTable",
+              "role": "altered",
+              "schema": null
+            }
+          ],
+          "declared_columns": [],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": "MyTable",
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "legacy_extractor_observed": {
+        "objects": []
+      },
+      "projected_objects": [
+        {
+          "type": "TABLE",
+          "name": "MyTable",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "/* outer /* inner */ CREATE TABLE victim (id INT); still outer */\nSELECT 1;",
+      "source_tests": [
+        "tests/unit/core/sql_parser/test_extraction_nested_block_comments.py::TestExtractionAgreesWithSplittingPerDialect::test_sqlite",
+        "tests/unit/core/sql_parser/test_extraction_nested_block_comments.py::TestSQLiteExtractionDoesNotNestBlockComments::test_nested_comment_leaves_live_statement_visible"
+      ],
+      "reviewed_difference": "Identity is retained; unavailable grammar detail is explicit.",
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "victim",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [
+            "id"
+          ],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        },
+        {
+          "operation": "STILL",
+          "kind": "UNKNOWN",
+          "objects": [],
+          "declared_columns": [],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": "sqlite grammar is not modelled for this statement",
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "TABLE",
+          "name": "victim",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "/* CREATE TABLE commented_out (id int); */ CREATE TABLE real_one (id int);",
+      "source_tests": [
+        "tests/unit/core/sql_parser/test_extraction_nested_block_comments.py::TestSQLiteExtractionDoesNotNestBlockComments::test_issue_example"
+      ],
+      "reviewed_difference": null,
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "real_one",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [
+            "id"
+          ],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "TABLE",
+          "name": "real_one",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "-- CREATE TABLE commented_out (id int);\nCREATE TABLE real_one (id int);",
+      "source_tests": [
+        "tests/unit/core/sql_parser/test_extraction_nested_block_comments.py::TestLineCommentsAlsoHideTheCommentedStatement::test_sqlite"
+      ],
+      "reviewed_difference": null,
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "real_one",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [
+            "id"
+          ],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "TABLE",
+          "name": "real_one",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "CREATE TABLE first_one (id int); CREATE TABLE second_one (id int);",
+      "source_tests": [
+        "tests/unit/core/sql_parser/test_extraction_nested_block_comments.py::TestExtractionReturnsEveryLiveObjectNotJustTheFirst::test_sqlite"
+      ],
+      "reviewed_difference": null,
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "first_one",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [
+            "id"
+          ],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        },
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "second_one",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [
+            "id"
+          ],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "TABLE",
+          "name": "first_one",
+          "schema": null
+        },
+        {
+          "type": "TABLE",
+          "name": "second_one",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "/* outer /* inner */ CREATE TABLE victim (id INT);",
+      "source_tests": [
+        "tests/unit/core/sql_parser/test_extraction_nested_block_comments.py::TestUnterminatedInnerCommentAgreesWithSplitting::test_sqlite_closes_at_first_marker_exposes_statement"
+      ],
+      "reviewed_difference": null,
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "victim",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [
+            "id"
+          ],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "TABLE",
+          "name": "victim",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "CREATE TABLE t (note VARCHAR(10) DEFAULT '/*'); SELECT 1;",
+      "source_tests": [
+        "tests/unit/core/sql_parser/test_extraction_nested_block_comments.py::TestQuotedCommentMarkersSurviveDialectAwareStripping::test_slash_star_inside_string_on_sqlite"
+      ],
+      "reviewed_difference": null,
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "t",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [
+            "note"
+          ],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        },
+        {
+          "operation": "SELECT",
+          "kind": "QUERY",
+          "objects": [],
+          "declared_columns": [],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "TABLE",
+          "name": "t",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "/* has a ; inside */ CREATE TABLE t (id int);",
+      "source_tests": [
+        "tests/unit/core/sql_parser/test_extraction_nested_block_comments.py::TestCommentContainingSemicolon::test_sqlite_semicolon_inside_comment_is_not_a_boundary"
+      ],
+      "reviewed_difference": null,
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "t",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [
+            "id"
+          ],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ],
+      "projected_objects": [
+        {
+          "type": "TABLE",
+          "name": "t",
+          "schema": null
+        }
+      ]
+    },
+    {
+      "sql": "CREATE TABLE a(x); CREATE TABLE b(y);",
+      "source_tests": [
+        "tests/unit/db/plugins/sqlite/test_extraction_keeps_statements.py::test_parse_sql_still_reports_one_statement_per_semicolon"
+      ],
+      "reviewed_difference": null,
+      "parse_expected": {
+        "success": true,
+        "objects": [
+          "a",
+          "b"
+        ]
+      },
+      "facts": [
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "a",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [
+            "x"
+          ],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        },
+        {
+          "operation": "CREATE",
+          "kind": "DDL",
+          "objects": [
+            {
+              "type": "TABLE",
+              "name": "b",
+              "role": "created",
+              "schema": null
+            }
+          ],
+          "declared_columns": [
+            "y"
+          ],
+          "declared_constraints": [],
+          "affected_columns": [],
+          "target": null,
+          "predicate": null,
+          "diagnostic": null,
+          "indexed_table": null,
+          "indexed_columns": null
+        }
+      ]
+    },
+    {
+      "sql": ".mode csv\nCREATE TABLE a(x);",
+      "source_tests": [
+        "tests/unit/db/plugins/sqlite/test_extraction_keeps_statements.py::test_parse_sql_reports_a_shell_command_refusal"
+      ],
+      "reviewed_difference": "The shell directive is refused before statement facts are read.",
+      "parse_expected": {
+        "success": false,
+        "objects": [],
+        "error_contains": ".mode"
+      },
+      "facts": []
+    }
+  ]
+}

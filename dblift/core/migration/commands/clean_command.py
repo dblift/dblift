@@ -3,13 +3,14 @@ Clean command implementation.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from dblift.core.exceptions import FixedDboSchemaError
 from dblift.core.logger._null import NullLog
+from dblift.core.logger.console import rich_available
 from dblift.core.logger.results import CleanResult
 from dblift.db.provider_capabilities import get_clean_listing_warnings
-from dblift.db.provider_interfaces import TransactionalProvider
+from dblift.db.provider_interfaces import CleanTargetProvider, TransactionalProvider
 
 from ._script_events import emit_script_event as _emit_script_event
 from .base_command import BaseCommand
@@ -39,6 +40,7 @@ class CleanCommand(BaseCommand):
         """
         self._reset_callback_catalog()
         result = CleanResult()
+        self._bind_callbacks(scripts_dir, recursive, additional_dirs, dir_recursive_map, result)
         clean_enabled = kwargs.pop("clean_enabled", False) is True
         result.show_query_results = kwargs.pop("show_query_results", False) is True
         # CosmosDB has no SQL schema, so ``config.database.schema`` is
@@ -67,24 +69,51 @@ class CleanCommand(BaseCommand):
             result.complete()
             return result
 
-        if scripts_dir and not dry_run:
-            self._prepare_analysis_for_sql_callbacks(
-                scripts_dir,
-                ("beforeClean", "afterClean", "afterCleanError"),
-                recursive,
-                additional_dirs,
-                dir_recursive_map,
-            )
-
-        # Connect and read connection metadata (clean needs no history table).
-        # Needed for both dry-run enumeration and the actual clean: a failed
-        # connection must be reported, not hidden, otherwise a dry run shows
-        # "(schema appears empty)" when the schema may be full. Failures raise
-        # PreflightConnectionError, as for every other command.
-        self._run_preflight(result)
-
         try:
-            if hasattr(self.provider, "set_current_schema"):
+            if isinstance(self.provider, CleanTargetProvider):
+                schema = self.provider.validate_clean_target(self.config.database.schema)
+                if schema and not self.config.database.schema:
+                    # Callbacks and connection logging share this runtime config.
+                    self.config.database.schema = schema
+                    result.target_schema = schema
+        except Exception as e:
+            error_message = f"Clean operation failed: {e}"
+            self.log.error(error_message)
+            result.set_error(error_message)
+            result.complete()
+            return result
+
+        def preflight() -> None:
+            if scripts_dir and not dry_run:
+                self._prepare_analysis_for_sql_callbacks(
+                    scripts_dir,
+                    ("beforeClean", "afterClean", "afterCleanError"),
+                    recursive,
+                    additional_dirs,
+                    dir_recursive_map,
+                )
+
+            # Connect and read connection metadata (clean needs no history table).
+            # Needed for both dry-run enumeration and the actual clean: a failed
+            # connection must be reported, not hidden, otherwise a dry run shows
+            # "(schema appears empty)" when the schema may be full. Failures raise
+            # PreflightConnectionError, as for every other command.
+            self._run_preflight(result)
+
+        def body() -> None:
+            if isinstance(self.provider, CleanTargetProvider):
+                try:
+                    self.provider.prepare_clean_target(self.config.database.schema)
+                except Exception as e:
+                    error_message = f"Clean operation failed: {e}"
+                    self.log.error(error_message)
+                    result.set_error(error_message)
+                    result.complete()
+                    return
+
+            if not isinstance(self.provider, CleanTargetProvider) and hasattr(
+                self.provider, "set_current_schema"
+            ):
                 try:
                     self.provider.set_current_schema(self.config.database.schema)
                 except FixedDboSchemaError:
@@ -94,11 +123,6 @@ class CleanCommand(BaseCommand):
                     raise
                 except Exception as e:
                     self.log.debug(f"set_current_schema skipped: {e}")
-
-            try:
-                self._log_command_header_update("clean", dry_run=dry_run)
-            except Exception as e:
-                self.log.debug(f"_log_command_header_update skipped: {e}")
 
             if dry_run:
                 self.log.info(f"DRY RUN: Would clean schema '{self.config.database.schema}'")
@@ -118,34 +142,17 @@ class CleanCommand(BaseCommand):
                 if not objects_found:
                     self.log.info("  (schema appears empty or objects could not be enumerated)")
                 # Note: Callbacks are NOT executed in dry-run mode
-                self._log_command_completion("clean", result)
-                return result
+                return
 
             # Execute beforeClean callbacks if scripts_dir is provided
-            if scripts_dir:
-                try:
-                    self._execute_callbacks(
-                        scripts_dir,
-                        "beforeClean",
-                        recursive,
-                        additional_dirs,
-                        dir_recursive_map,
-                        result=result,
-                    )
-                except Exception as e:
-                    self.log.error(f"beforeClean callback failed: {e}")
-                    result.set_error(f"beforeClean callback failed: {e}")
-                    if scripts_dir:
-                        self._execute_callbacks(
-                            scripts_dir,
-                            "afterCleanError",
-                            recursive,
-                            additional_dirs,
-                            dir_recursive_map,
-                            result=result,
-                        )
-                    result.complete()
-                    return result
+            try:
+                self._fire("beforeClean")
+            except Exception as e:
+                self.log.error(f"beforeClean callback failed: {e}")
+                result.set_error(f"beforeClean callback failed: {e}")
+                self._fire("afterCleanError")
+                result.complete()
+                return
 
             self.log.info(f"Cleaning schema '{self.config.database.schema}'")
 
@@ -191,15 +198,7 @@ class CleanCommand(BaseCommand):
                     raise
 
             # Execute afterClean callbacks if scripts_dir is provided
-            if scripts_dir:
-                self._execute_callbacks(
-                    scripts_dir,
-                    "afterClean",
-                    recursive,
-                    additional_dirs,
-                    dir_recursive_map,
-                    result=result,
-                )
+            self._fire("afterClean")
 
             # Log summary of cleaned objects grouped by type
             self._log_clean_summary(result)
@@ -222,38 +221,23 @@ class CleanCommand(BaseCommand):
                     f"{error_count} error(s))"
                 )
 
-            self._log_command_completion("clean", result)
-            return result
-
-        except Exception as e:
-            self.log.error(f"Clean operation failed: {e}")
-            result.set_error(f"Clean operation failed: {e}")
-            # Execute afterCleanError callbacks on exception if scripts_dir is provided
-            if scripts_dir:
-                try:
-                    self._execute_callbacks(
-                        scripts_dir,
-                        "afterCleanError",
-                        recursive,
-                        additional_dirs,
-                        dir_recursive_map,
-                        result=result,
-                    )
-                except Exception as cb_e:
-                    self.log.debug(
-                        f"afterCleanError callback skipped: {cb_e}"
-                    )  # Ignore errors in error callbacks during exception handling
-            self._log_command_completion("clean", result)
-            return result
+        return cast(
+            CleanResult,
+            self._run_command_lifecycle(
+                "clean",
+                result,
+                body,
+                preflight=preflight,
+                error_message_prefix="Clean operation failed",
+                header_kwargs={"dry_run": dry_run},
+                on_error=lambda: self._fire("afterCleanError"),
+            ),
+        )
 
     def _log_clean_summary(self, result: CleanResult) -> None:
         """Log summary of cleaned objects grouped by type."""
         if isinstance(self.log, NullLog):
             return
-
-        from rich.tree import Tree
-
-        from dblift.core.logger.console import render_tree_to_str
 
         objects_map = result.get_objects_by_type()
         total_objects = sum(len(names) for names in objects_map.values())
@@ -295,10 +279,25 @@ class CleanCommand(BaseCommand):
                 return f"{label[:-1]}ies"
             return f"{label}s"
 
+        ordered = list(preferred_order) + sorted(t for t in objects_map if t not in preferred_order)
+
+        if not rich_available():
+            self.log.info(f"Cleaned {total_objects} object(s) from schema '{result.target_schema}'")
+            for object_type in ordered:
+                names = sorted(objects_map.get(object_type, []))
+                if names:
+                    self.log.info(f"  {_label(object_type, len(names))} ({len(names)})")
+                    for name in names:
+                        self.log.info(f"    {name}")
+            return
+
+        from rich.tree import Tree
+
+        from dblift.core.logger.console import render_tree_to_str
+
         root = Tree(f"Cleaned {total_objects} object(s) from schema '{result.target_schema}'")
 
         handled = set()
-        ordered = list(preferred_order) + sorted(t for t in objects_map if t not in preferred_order)
         for object_type in ordered:
             names = sorted(objects_map.get(object_type, []))
             if not names:

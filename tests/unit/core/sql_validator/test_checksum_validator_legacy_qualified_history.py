@@ -21,6 +21,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.state.checksum_drift import find_checksum_drift
+from dblift.core.migration.state.missing_scripts import missing_applied
 from dblift.core.sql_validator.migration_validator import MigrationValidator, ValidationResult
 
 
@@ -92,6 +94,8 @@ class TestValidateChecksumsLegacyQualifiedHistoryFallback:
             result=result,
             issues=issues,
             strict_mode=True,
+            drift=find_checksum_drift([fresh_script], [applied]),
+            missing=missing_applied([fresh_script], [applied]),
         )
 
         assert issues == [], (

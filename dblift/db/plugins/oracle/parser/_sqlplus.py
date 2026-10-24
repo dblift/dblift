@@ -48,7 +48,7 @@ from typing import List, Optional, Tuple
 
 from dblift.core.sql_parser.base_tokenizer import TokenizerWarning
 from dblift.core.sql_parser.tokens import Token, TokenType
-from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
+from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer, is_alone_on_line
 
 __all__ = [
     "SQLPLUS_DIRECTIVES",
@@ -72,8 +72,8 @@ class SqlplusDirective:
             done with ``Pattern.match``.
         examples: Realistic SQL*Plus lines that *must* be classified by this
             directive. The structural corpus test asserts each example matches
-            the directive's pattern *and* round-trips through
-            ``terminate_sqlplus_directives`` + ``is_sqlplus_command``.
+            the directive's pattern *and* is recognised by
+            ``is_sqlplus_command``.
         filter_from_execution: When ``True`` (default) the directive is dropped
             from the executor-bound statement stream. ``False`` for
             ``WHENEVER SQLERROR …`` — those flow through to the executor
@@ -365,7 +365,7 @@ class _DirectiveLineTokenizer(OracleTokenizer):
     """
 
     def __init__(self, sql: str):
-        super().__init__(sql)
+        super().__init__(sql, directives=False)
         self.directive_lines: List[Tuple[int, int]] = []
         self._at_statement_start = True
         self._in_plsql = False
@@ -395,17 +395,11 @@ class _DirectiveLineTokenizer(OracleTokenizer):
             self._in_plsql = is_plsql_keyword_start(
                 self.sql[token.pos : end if end != -1 else None]
             )
-        if token.text == "/" and self._alone_on_line(token):
+        if token.text == "/" and is_alone_on_line(self.sql, token.pos):
             self._at_statement_start, self._in_plsql = True, False
         elif token.text == ";" and not self._in_plsql:
             self._at_statement_start = True
         return token
-
-    def _alone_on_line(self, token: Token) -> bool:
-        line_start = self.sql.rfind("\n", 0, token.pos) + 1
-        eol = self.sql.find("\n", token.pos)
-        rest = self.sql[token.pos + 1 : eol if eol != -1 else None]
-        return not self.sql[line_start : token.pos].strip() and not rest.strip()
 
 
 def tokenize_outside_sqlplus_directives(sql: str) -> Tuple[List[Token], List[Tuple[int, int]]]:

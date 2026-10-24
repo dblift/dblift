@@ -117,9 +117,17 @@ def _transform(source: Path) -> tuple[list[str], list[str], str]:
         if match is None:
             raise ValueError("Unexpected original all-extra requirement")
         referenced.update(match.group(1).split(","))
-    if referenced != engine_extras:
+    # ``cli`` and ``analysis`` are capability extras the fork keeps; every other
+    # name in ``all`` must be exactly a removable engine.
+    capability_extras = {"cli", "analysis"}
+    if referenced - capability_extras != engine_extras:
         raise ValueError("Original all extra does not cover exactly the removable engines")
-    extras["all"] = tomlkit.array()
+    # A self-reference must name the fork, not the published dblift.
+    for key in list(extras):
+        extras[key] = [
+            re.sub(r"^dblift\[", f"{FORK_NAME}[", requirement) for requirement in extras[key]
+        ]
+    extras["all"] = [f"{FORK_NAME}[cli,analysis]"]
     rewritten_toml = tomlkit.dumps(document)
     parsed = tomllib.loads(rewritten_toml)
     assert parsed["project"]["name"] == FORK_NAME
@@ -130,7 +138,7 @@ def _transform(source: Path) -> tuple[list[str], list[str], str]:
         assert parsed["project"]["entry-points"]["dblift.provider_descriptors"] == {
             "sqlite": original_descriptors["sqlite"]
         }
-    assert parsed["project"]["optional-dependencies"]["all"] == []
+    assert parsed["project"]["optional-dependencies"]["all"] == [f"{FORK_NAME}[cli,analysis]"]
     assert not any(key in parsed["project"]["optional-dependencies"] for key in engine_extras)
     for key in ("dependencies", "classifiers"):
         assert parsed["project"][key] == original["project"][key]
@@ -212,7 +220,8 @@ def qualify(
             _run([sys.executable, "-m", "venv", str(venv)], work)
             python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
             # Installation logs can contain index credentials; never copy them into the report.
-            _run([str(python), "-m", "pip", "install", str(wheels[0])], work)
+            requirement = f"{FORK_NAME}[cli,analysis] @ {wheels[0].resolve().as_uri()}"
+            _run([str(python), "-m", "pip", "install", requirement], work)
             _run([str(python), "-m", "pip", "check"], work)
             probe = Path(__file__).with_name("sqlite_fork_installed_probe.py")
             if not probe.is_file():

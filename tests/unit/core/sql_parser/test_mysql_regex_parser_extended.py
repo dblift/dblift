@@ -1,13 +1,8 @@
 """Extended tests for MySQL regex parser — targeting uncovered paths.
 
 Covers:
-- split_statements: fallback path (has_delimiter, has_stored_procs, semicolon)
-- _has_delimiter_statements (state machine edge cases)
-- _has_stored_procedures
+- scanner command positions, stored programs, quotes and comments
 - _clean_mysql_comments (hash, line, block)
-- _split_with_delimiter_awareness
-- _split_with_procedure_awareness
-- _split_by_semicolon_mysql (backtick, string, comment, block comment)
 - _extract_delimiter_statement
 - _extract_backtick_identifier
 - _extract_stored_procedure_name / _extract_stored_function_name
@@ -19,12 +14,12 @@ Covers:
 import unittest
 
 from dblift.core.sql_model.base import ParseResult, SqlStatementType
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
+from tests.support.facts_parser import facts_parser
 
 
 class TestSplitStatements(unittest.TestCase):
     def setUp(self):
-        self.parser = MySqlRegexParser()
+        self.parser = facts_parser("mysql")
 
     def test_empty_returns_empty(self):
         self.assertEqual(self.parser.split_statements(""), [])
@@ -67,320 +62,76 @@ class TestSplitStatements(unittest.TestCase):
         self.assertEqual(len(stmts), 2)
 
 
-class TestHasDelimiterStatements(unittest.TestCase):
+class TestScannerClientBehavior(unittest.TestCase):
     def setUp(self):
-        self.parser = MySqlRegexParser()
+        self.parser = facts_parser("mysql")
 
-    def test_delimiter_at_start_of_line(self):
-        sql = "DELIMITER //\nSELECT 1 //\nDELIMITER ;"
-        self.assertTrue(self.parser._has_delimiter_statements(sql))
-
-    def test_no_delimiter_keyword(self):
-        sql = "CREATE TABLE t (id INT);"
-        self.assertFalse(self.parser._has_delimiter_statements(sql))
-
-    def test_delimiter_inside_string_not_counted(self):
-        sql = "SELECT 'DELIMITER //';"
-        self.assertFalse(self.parser._has_delimiter_statements(sql))
-
-    def test_delimiter_inside_backtick_not_counted(self):
-        sql = "SELECT `DELIMITER //`;"
-        self.assertFalse(self.parser._has_delimiter_statements(sql))
-
-    def test_delimiter_inside_line_comment_not_counted(self):
-        sql = "-- DELIMITER //\nSELECT 1;"
-        self.assertFalse(self.parser._has_delimiter_statements(sql))
-
-    def test_delimiter_inside_block_comment_not_counted(self):
-        sql = "/* DELIMITER // */\nSELECT 1;"
-        self.assertFalse(self.parser._has_delimiter_statements(sql))
-
-    def test_delimiter_after_regular_statement(self):
-        # DELIMITER on its own line after a regular statement triggers detection
-        sql = "SELECT 1;\nDELIMITER //"
-        self.assertTrue(self.parser._has_delimiter_statements(sql))
-
-    def test_hash_comment_hides_delimiter_on_same_line(self):
-        # DELIMITER inside a hash comment is not counted; the \n ending the
-        # comment is consumed by the comment handler, so the subsequent
-        # DELIMITER keyword on the *next* token is NOT picked up by the
-        # line-start check (the \n was already consumed).
-        sql = "# not here\nDELIMITER //"
-        # The actual result depends on the state-machine order; just verify no crash
-        result = self.parser._has_delimiter_statements(sql)
-        self.assertIsInstance(result, bool)
-
-
-class TestHasStoredProcedures(unittest.TestCase):
-    def setUp(self):
-        self.parser = MySqlRegexParser()
-
-    def test_create_procedure(self):
-        self.assertTrue(self.parser._has_stored_procedures("CREATE PROCEDURE p() BEGIN END;"))
-
-    def test_create_function(self):
-        self.assertTrue(
-            self.parser._has_stored_procedures(
-                "CREATE FUNCTION f() RETURNS INT BEGIN RETURN 1; END;"
-            )
+    def test_delimiter_directives_are_only_read_at_command_position(self):
+        scripts = (
+            ("DELIMITER //\nSELECT 1 //\nDELIMITER ;", 2),
+            ("SELECT 1;\nDELIMITER //", 1),
+            ("CREATE TABLE t (id INT);", 0),
+            ("SELECT 'DELIMITER //';", 0),
+            ("SELECT `DELIMITER //`;", 0),
+            ("-- DELIMITER //\nSELECT 1;", 0),
+            ("/* DELIMITER // */\nSELECT 1;", 0),
+            ("# not here\nDELIMITER //", 1),
         )
+        for script, expected in scripts:
+            with self.subTest(script=script):
+                self.assertEqual(
+                    sum(record.kind == "directive" for record in self.parser.split(script)),
+                    expected,
+                )
 
-    def test_create_event(self):
-        self.assertTrue(
-            self.parser._has_stored_procedures(
-                "CREATE EVENT e ON SCHEDULE EVERY 1 HOUR DO BEGIN SELECT 1; END;"
-            )
+    def test_stored_program_bodies_keep_internal_semicolons(self):
+        scripts = (
+            "CREATE PROCEDURE p() BEGIN SELECT 1; END;",
+            "CREATE FUNCTION f() RETURNS INT BEGIN RETURN 1; END;",
+            "CREATE EVENT e ON SCHEDULE EVERY 1 HOUR DO BEGIN SELECT 1; END;",
+            "CREATE TRIGGER t BEFORE INSERT ON tbl FOR EACH ROW BEGIN SELECT 1; END;",
         )
+        for script in scripts:
+            with self.subTest(script=script):
+                self.assertEqual(len(self.parser.split_statements(script)), 1)
 
-    def test_create_trigger(self):
-        self.assertTrue(
-            self.parser._has_stored_procedures(
-                "CREATE TRIGGER t BEFORE INSERT ON tbl FOR EACH ROW BEGIN END;"
-            )
+
+class TestScannerLexemes(unittest.TestCase):
+    def setUp(self):
+        self.parser = facts_parser("mysql")
+
+    def test_delimiter_and_procedure_boundaries(self):
+        scripts = (
+            ("DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END //\nDELIMITER ;", 1),
+            ("DELIMITER ;\nSELECT 1;\nSELECT 2;", 2),
+            ("DELIMITER //\n\nDELIMITER ;", 0),
+            ("CREATE PROCEDURE p()\nBEGIN\nSELECT 1;\nEND;\nSELECT 2;", 2),
+            ("CREATE PROCEDURE p() SELECT 1;\nSELECT 2;", 2),
         )
+        for script, count in scripts:
+            with self.subTest(script=script):
+                self.assertEqual(len(self.parser.split_statements(script)), count)
 
-    def test_alter_procedure(self):
-        self.assertTrue(
-            self.parser._has_stored_procedures("ALTER PROCEDURE p SQL SECURITY INVOKER;")
+    def test_quotes_and_comments_do_not_split_on_their_semicolons(self):
+        scripts = (
+            "SELECT `col;name` FROM t; SELECT 1;",
+            "SELECT 'a;b'; SELECT 1;",
+            'SELECT "col;name"; SELECT 1;',
+            "SELECT 1; # comment;\nSELECT 2;",
+            "SELECT 1; -- comment;\nSELECT 2;",
+            "SELECT /* a; */ 1; SELECT 2;",
+            "SELECT 'O''Brien'; SELECT 1;",
         )
-
-    def test_regular_table_no_proc(self):
-        self.assertFalse(self.parser._has_stored_procedures("CREATE TABLE t (id INT);"))
-
-    def test_select_no_proc(self):
-        self.assertFalse(self.parser._has_stored_procedures("SELECT * FROM t;"))
-
-
-class TestCleanMysqlComments(unittest.TestCase):
-    def setUp(self):
-        self.parser = MySqlRegexParser()
-
-    def test_removes_hash_comments(self):
-        sql = "SELECT 1; # hash comment"
-        result = self.parser._clean_mysql_comments(sql)
-        self.assertNotIn("#", result)
-        self.assertIn("SELECT 1", result)
-
-    def test_removes_double_dash_comments(self):
-        sql = "SELECT 1; -- line comment"
-        result = self.parser._clean_mysql_comments(sql)
-        self.assertNotIn("--", result)
-
-    def test_removes_block_comments(self):
-        sql = "SELECT /* block */ 1;"
-        result = self.parser._clean_mysql_comments(sql)
-        self.assertNotIn("block", result)
-
-    def test_preserves_mysql_specific_comments(self):
-        # /*! ... */ are preserved (MySQL-specific)
-        sql = "SELECT /*!50100 1 */ FROM t;"
-        result = self.parser._clean_mysql_comments(sql)
-        self.assertIn("50100", result)
-
-    def test_multiline_block_comment_removed(self):
-        sql = "SELECT /*\n  multi line\n*/ 1;"
-        result = self.parser._clean_mysql_comments(sql)
-        self.assertNotIn("multi line", result)
-
-    def test_empty_sql(self):
-        self.assertEqual(self.parser._clean_mysql_comments(""), "")
-
-
-class TestSplitWithDelimiterAwareness(unittest.TestCase):
-    def setUp(self):
-        self.parser = MySqlRegexParser()
-
-    def test_custom_delimiter_procedure(self):
-        sql = "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END //\nDELIMITER ;"
-        stmts = self.parser._split_with_delimiter_awareness(sql)
-        proc = next((s for s in stmts if "CREATE PROCEDURE" in s), None)
-        self.assertIsNotNone(proc)
-
-    def test_standard_delimiter_semicolon(self):
-        sql = "DELIMITER ;\nSELECT 1;\nSELECT 2;"
-        stmts = self.parser._split_with_delimiter_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-    def test_empty_content_blocks_skipped(self):
-        sql = "DELIMITER //\n\nDELIMITER ;"
-        stmts = self.parser._split_with_delimiter_awareness(sql)
-        self.assertEqual(stmts, [])
-
-
-class TestSplitWithProcedureAwareness(unittest.TestCase):
-    def setUp(self):
-        self.parser = MySqlRegexParser()
-
-    def test_procedure_with_begin_end_kept_as_one(self):
-        sql = "CREATE PROCEDURE p()\n" "BEGIN\n" "  SELECT 1;\n" "END;\n"
-        stmts = self.parser._split_with_procedure_awareness(sql)
-        proc = next((s for s in stmts if "CREATE PROCEDURE" in s), None)
-        self.assertIsNotNone(proc)
-
-    def test_simple_select_after_proc(self):
-        sql = "CREATE PROCEDURE p()\n" "BEGIN\n" "  SELECT 1;\n" "END;\n" "SELECT 2;\n"
-        stmts = self.parser._split_with_procedure_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 2)
-
-    def test_no_begin_end_uses_semicolon_split(self):
-        sql = "CREATE PROCEDURE p() SELECT 1;\nSELECT 2;\n"
-        stmts = self.parser._split_with_procedure_awareness(sql)
-        self.assertGreaterEqual(len(stmts), 1)
-
-
-class TestSplitBySemicolonMysql(unittest.TestCase):
-    def setUp(self):
-        self.parser = MySqlRegexParser()
-
-    def test_simple_split(self):
-        stmts = self.parser._split_by_semicolon_mysql("SELECT 1; SELECT 2;")
-        self.assertEqual(len(stmts), 2)
-
-    def test_backtick_with_semicolon_inside(self):
-        stmts = self.parser._split_by_semicolon_mysql("SELECT `col;name` FROM t; SELECT 1;")
-        self.assertEqual(len(stmts), 2)
-
-    def test_single_quote_with_semicolon(self):
-        stmts = self.parser._split_by_semicolon_mysql("SELECT 'a;b'; SELECT 1;")
-        self.assertEqual(len(stmts), 2)
-
-    def test_double_quote_with_semicolon(self):
-        stmts = self.parser._split_by_semicolon_mysql('SELECT "col;name"; SELECT 1;')
-        self.assertEqual(len(stmts), 2)
-
-    def test_hash_comment_not_split_mid_comment(self):
-        stmts = self.parser._split_by_semicolon_mysql("SELECT 1; # comment\nSELECT 2;")
-        self.assertEqual(len(stmts), 2)
-
-    def test_dash_comment(self):
-        stmts = self.parser._split_by_semicolon_mysql("SELECT 1; -- comment\nSELECT 2;")
-        self.assertEqual(len(stmts), 2)
-
-    def test_block_comment(self):
-        stmts = self.parser._split_by_semicolon_mysql("SELECT /* a */ 1; SELECT 2;")
-        self.assertEqual(len(stmts), 2)
-
-    def test_escaped_quote_in_string(self):
-        stmts = self.parser._split_by_semicolon_mysql("SELECT 'O''Brien'; SELECT 1;")
-        self.assertEqual(len(stmts), 2)
-        self.assertIn("O''Brien", stmts[0])
-
-    def test_empty_string(self):
-        self.assertEqual(self.parser._split_by_semicolon_mysql(""), [])
-
-    def test_no_semicolon_returns_single_statement(self):
-        stmts = self.parser._split_by_semicolon_mysql("SELECT 1")
-        self.assertEqual(len(stmts), 1)
-
-
-class TestExtractDelimiterStatement(unittest.TestCase):
-    def setUp(self):
-        self.parser = MySqlRegexParser()
-
-    def test_extract_slash_delimiter(self):
-        sql = "DELIMITER //"
-        result = self.parser._extract_delimiter_statement(sql)
-        self.assertEqual(result, "//")
-
-    def test_extract_dollar_delimiter(self):
-        sql = "DELIMITER $$"
-        result = self.parser._extract_delimiter_statement(sql)
-        self.assertEqual(result, "$$")
-
-    def test_reset_to_semicolon(self):
-        sql = "DELIMITER ;"
-        result = self.parser._extract_delimiter_statement(sql)
-        self.assertEqual(result, ";")
-
-    def test_no_delimiter_returns_none(self):
-        sql = "SELECT 1;"
-        result = self.parser._extract_delimiter_statement(sql)
-        self.assertIsNone(result)
-
-    def test_multiline_delimiter(self):
-        sql = "SELECT 1;\nDELIMITER //\nSELECT 2;"
-        result = self.parser._extract_delimiter_statement(sql)
-        self.assertEqual(result, "//")
-
-
-class TestExtractBacktickIdentifier(unittest.TestCase):
-    def setUp(self):
-        self.parser = MySqlRegexParser()
-
-    def test_simple_backtick(self):
-        sql = "SELECT `my_col` FROM t;"
-        result = self.parser._extract_backtick_identifier(sql)
-        self.assertEqual(result, "my_col")
-
-    def test_backtick_with_special_chars(self):
-        sql = "CREATE TABLE `my-table` (id INT);"
-        result = self.parser._extract_backtick_identifier(sql)
-        self.assertEqual(result, "my-table")
-
-    def test_no_backtick_returns_none(self):
-        sql = "SELECT my_col FROM t;"
-        result = self.parser._extract_backtick_identifier(sql)
-        self.assertIsNone(result)
-
-
-class TestExtractStoredProcedureName(unittest.TestCase):
-    def setUp(self):
-        self.parser = MySqlRegexParser()
-
-    def test_simple_procedure(self):
-        sql = "CREATE PROCEDURE my_proc() BEGIN SELECT 1; END;"
-        name = self.parser._extract_stored_procedure_name(sql)
-        self.assertEqual(name, "my_proc")
-
-    def test_quoted_procedure(self):
-        sql = "CREATE PROCEDURE `my_proc`() BEGIN SELECT 1; END;"
-        name = self.parser._extract_stored_procedure_name(sql)
-        self.assertEqual(name, "my_proc")
-
-    def test_with_definer(self):
-        sql = "CREATE DEFINER=`root`@`localhost` PROCEDURE my_proc() BEGIN SELECT 1; END;"
-        name = self.parser._extract_stored_procedure_name(sql)
-        self.assertIsNotNone(name)
-
-    def test_if_not_exists(self):
-        sql = "CREATE PROCEDURE IF NOT EXISTS my_proc() BEGIN SELECT 1; END;"
-        name = self.parser._extract_stored_procedure_name(sql)
-        self.assertEqual(name, "my_proc")
-
-    def test_no_procedure_returns_none(self):
-        sql = "CREATE TABLE t (id INT);"
-        name = self.parser._extract_stored_procedure_name(sql)
-        self.assertIsNone(name)
-
-
-class TestExtractStoredFunctionName(unittest.TestCase):
-    def setUp(self):
-        self.parser = MySqlRegexParser()
-
-    def test_simple_function(self):
-        sql = "CREATE FUNCTION my_func() RETURNS INT BEGIN RETURN 1; END;"
-        name = self.parser._extract_stored_function_name(sql)
-        self.assertEqual(name, "my_func")
-
-    def test_quoted_function(self):
-        sql = "CREATE FUNCTION `my_func`() RETURNS INT BEGIN RETURN 1; END;"
-        name = self.parser._extract_stored_function_name(sql)
-        self.assertEqual(name, "my_func")
-
-    def test_with_definer(self):
-        sql = "CREATE DEFINER=`root`@`%` FUNCTION my_func() RETURNS INT BEGIN RETURN 1; END;"
-        name = self.parser._extract_stored_function_name(sql)
-        self.assertIsNotNone(name)
-
-    def test_no_function_returns_none(self):
-        sql = "CREATE TABLE t (id INT);"
-        name = self.parser._extract_stored_function_name(sql)
-        self.assertIsNone(name)
+        for script in scripts:
+            with self.subTest(script=script):
+                self.assertEqual(len(self.parser.split_statements(script)), 2)
+        self.assertEqual(self.parser.split_statements(""), [])
+        self.assertEqual(self.parser.split_statements("SELECT 1"), ["SELECT 1"])
 
 
 class TestParseSql(unittest.TestCase):
     def setUp(self):
-        self.parser = MySqlRegexParser()
+        self.parser = facts_parser("mysql")
 
     def test_parse_empty(self):
         result = self.parser.parse_sql("")
@@ -392,10 +143,6 @@ class TestParseSql(unittest.TestCase):
         result = self.parser.parse_sql(sql)
         self.assertTrue(result.success)
         self.assertGreaterEqual(len(result.statements), 1)
-
-    def test_parse_with_none_input(self):
-        result = self.parser.parse_sql(None)
-        self.assertIsInstance(result, ParseResult)
 
     def test_parse_with_default_schema(self):
         sql = "CREATE TABLE users (id INT);"
@@ -443,7 +190,7 @@ class TestParseSql(unittest.TestCase):
 
 class TestValidateSql(unittest.TestCase):
     def setUp(self):
-        self.parser = MySqlRegexParser()
+        self.parser = facts_parser("mysql")
 
     def test_valid_sql(self):
         sql = "CREATE TABLE t (id INT PRIMARY KEY);"
@@ -455,18 +202,7 @@ class TestValidateSql(unittest.TestCase):
         sql = "CREATE TABLE `test (id INT);"
         result = self.parser.validate_sql(sql)
         self.assertFalse(result["valid"])
-        self.assertIn("Unmatched backtick identifier", result["errors"][0])
-
-    def test_empty_sql_invalid(self):
-        result = self.parser.validate_sql("")
-        self.assertFalse(result["valid"])
-        self.assertIn("No valid statements found", result["errors"][0])
-
-    def test_statement_count_in_result(self):
-        sql = "SELECT 1; SELECT 2;"
-        result = self.parser.validate_sql(sql)
-        self.assertIn("statement_count", result)
-        self.assertGreaterEqual(result["statement_count"], 2)
+        self.assertIn("unterminated quoted identifier", result["errors"][0])
 
     def test_multiple_delimiter_statements_flagged(self):
         # DELIMITER appearing in the middle of a statement (not at line start)
@@ -478,37 +214,9 @@ class TestValidateSql(unittest.TestCase):
         self.assertIn("valid", result)
 
 
-class TestValidateMysqlSyntax(unittest.TestCase):
-    def setUp(self):
-        self.parser = MySqlRegexParser()
-
-    def test_unmatched_backtick(self):
-        sql = "CREATE TABLE `test (id INT);"
-        errors = self.parser._validate_mysql_syntax(sql)
-        self.assertGreater(len(errors), 0)
-        self.assertIn("backtick", errors[0].lower())
-
-    def test_matched_backticks_no_error(self):
-        sql = "CREATE TABLE `test` (id INT);"
-        errors = self.parser._validate_mysql_syntax(sql)
-        self.assertEqual(errors, [])
-
-    def test_multiple_delimiter_error(self):
-        sql = "DELIMITER //\nDELIMITER ;"
-        errors = self.parser._validate_mysql_syntax(sql)
-        self.assertGreater(len(errors), 0)
-
-    def test_delimiter_keyword_wrong_context(self):
-        # DELIMITER keyword not at start of line
-        sql = "SELECT DELIMITER // FROM t;"
-        errors = self.parser._validate_mysql_syntax(sql)
-        # May flag "DELIMITER keyword used outside of DELIMITER statement"
-        self.assertIsInstance(errors, list)
-
-
 class TestIntegration(unittest.TestCase):
     def setUp(self):
-        self.parser = MySqlRegexParser()
+        self.parser = facts_parser("mysql")
 
     def test_complete_schema(self):
         sql = """

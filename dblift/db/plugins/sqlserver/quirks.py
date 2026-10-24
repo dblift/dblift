@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import re
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.feature_gate import FeatureGate
 
-_PK_CLUSTERED_RE = re.compile(r"(PRIMARY\s+KEY)\s+(CLUSTERED|NONCLUSTERED)", re.IGNORECASE)
-_UNIQUE_CLUSTERED_RE = re.compile(r"(UNIQUE)\s+(CLUSTERED|NONCLUSTERED)", re.IGNORECASE)
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 
 class SqlserverQuirks(BaseQuirks):
@@ -31,7 +31,9 @@ class SqlserverQuirks(BaseQuirks):
     uppercase_identifiers = False
     clean_strategy = "introspector"
     sqlglot_dialect = "tsql"
+    statement_facts_class = SqlglotStatementFactsReader
     is_sqlserver_family = True
+
     # sqlglot's tsql grammar rejects DROP INDEX's modern form
     # ("DROP INDEX index ON table") when the table is schema-qualified —
     # the ordinary, everyday spelling, not an edge case. It parses the
@@ -40,13 +42,6 @@ class SqlserverQuirks(BaseQuirks):
     # table fails. The regex parser already extracts this shape
     # correctly (index name + schema), so skip sqlglot for it entirely
     # instead of letting it raise on every routine DROP INDEX (#379).
-    # The gap between INDEX and ON excludes ";" so the match cannot cross
-    # into a *different* statement in a multi-statement ``extract_objects``
-    # call and false-positive on an unrelated "... ON x.y" elsewhere in the
-    # batch (e.g. a JOIN clause) — this must describe the one DROP INDEX
-    # statement, not the whole blob it may be embedded in.
-    sqlglot_unsupported_sql_regex_patterns = (r"DROP\s+INDEX\s+[^;]+\bON\s+[^\s;,()]*\.",)
-
     def is_schema_history_race_error(self, error_message: str) -> bool:
         """SQL Server's ``CREATE TABLE`` for the migration history table has
         no ``IF NOT EXISTS`` guard; a concurrent migration bootstrap loses
@@ -70,6 +65,18 @@ class SqlserverQuirks(BaseQuirks):
         from dblift.db.plugins.sqlserver.parser.tsql_batch_separator import is_tsql_batch_separator
 
         return is_tsql_batch_separator(stmt)
+
+    def lexical_spec(self) -> "LexicalSpec":
+        """The lexical specification the shared engine splits SQL Server scripts with."""
+        from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
+
+        return SQLSERVER_SPEC
+
+    def redaction_tokenizer(self) -> "Optional[type]":
+        """SQL Server's tokenizer, which literal masking reads."""
+        from dblift.db.plugins.sqlserver.parser.sqlserver_tokenizer import SQLServerTokenizer
+
+        return SQLServerTokenizer
 
     parser_default_schema = "dbo"
 
@@ -98,30 +105,6 @@ class SqlserverQuirks(BaseQuirks):
         """Initialize SQL Server quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
 
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """SQL Server parser dispatch: hybrid → :class:`HybridParser`, sqlglot →
-        :class:`SqlGlotParser` (``tsql`` dialect), regex → :class:`SqlServerRegexParser`."""
-        if parser_type == "hybrid":
-            from dblift.core.sql_parser.hybrid_parser import HybridParser
-
-            return HybridParser
-        if parser_type == "sqlglot":
-            from dblift.core.sql_parser.sqlglot_parser import SqlGlotParser
-
-            return SqlGlotParser
-        if parser_type == "regex":
-            from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import (
-                SqlServerRegexParser,
-            )
-
-            return SqlServerRegexParser
-        return None
-
-    def preprocess_sql_for_sqlglot(self, sql_content: str) -> str:
-        """Strip CLUSTERED/NONCLUSTERED from PK/UNIQUE — sqlglot can't parse them."""
-        result = _PK_CLUSTERED_RE.sub(r"\1", sql_content)
-        return _UNIQUE_CLUSTERED_RE.sub(r"\1", result)
-
     non_transactional_sql_patterns = (
         (
             r"^CREATE\s+FULLTEXT\s+CATALOG\b",
@@ -138,6 +121,37 @@ class SqlserverQuirks(BaseQuirks):
         (
             r"^DROP\s+FULLTEXT\s+CATALOG\b",
             "SQL Server DROP FULLTEXT CATALOG cannot run inside a user transaction",
+        ),
+        (
+            r"^ALTER\s+FULLTEXT\s+(?:CATALOG|INDEX)\b",
+            "SQL Server ALTER FULLTEXT cannot run inside a user transaction",
+        ),
+        (
+            r"^(?:CREATE|ALTER|DROP)\s+DATABASE\b"
+            r"(?!\s+(?:SCOPED\s+CREDENTIAL|ENCRYPTION\s+KEY|AUDIT\s+SPECIFICATION)\b)",
+            "SQL Server CREATE, ALTER and DROP DATABASE cannot run inside a user transaction",
+        ),
+        (
+            r"^(?:BACKUP\s+(?:DATABASE|LOG)|RESTORE\s+(?:DATABASE|LOG|VERIFYONLY))\b",
+            "SQL Server BACKUP and RESTORE cannot run inside a user transaction",
+        ),
+        (
+            r"^RECONFIGURE\b",
+            "SQL Server RECONFIGURE cannot run inside a user transaction",
+        ),
+        (
+            r"^KILL\b",
+            "SQL Server KILL cannot run inside a user transaction",
+        ),
+        (
+            r"^ALTER\s+SERVER\s+(?:CONFIGURATION|AUDIT)\b",
+            "SQL Server ALTER SERVER CONFIGURATION and ALTER SERVER AUDIT cannot run inside a "
+            "user transaction",
+        ),
+        (
+            r"^DROP\s+(?:FULLTEXT\s+STOPLIST|SEARCH\s+PROPERTY\s+LIST)\b",
+            "SQL Server DROP FULLTEXT STOPLIST and DROP SEARCH PROPERTY LIST cannot run inside "
+            "a user transaction",
         ),
     )
 

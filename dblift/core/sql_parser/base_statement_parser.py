@@ -22,6 +22,13 @@ class BaseStatementParser:
     - _is_statement_end: Custom logic for statement boundaries
     """
 
+    # a ';' inside parentheses ends a statement unless the dialect's client says otherwise
+    # (PostgreSQL: psql tracks parentheses)
+    TERMINATOR_RESPECTS_PARENS: bool = False
+
+    #: What a statement's text may lose at its end; ``None`` strips every white space character.
+    text_blanks: Optional[str] = None
+
     def __init__(
         self,
         tokens: List[Token],
@@ -126,7 +133,7 @@ class BaseStatementParser:
             end = terminator.pos + len(terminator.text)
         else:
             end = len(self.source)
-        return self.source[start:end].rstrip()
+        return self.source[start:end].rstrip(self.text_blanks)
 
     def _is_statement_end(self, token: Token) -> bool:
         """Check if token marks the end of a statement.
@@ -139,7 +146,7 @@ class BaseStatementParser:
         """
         # Delimiter at block depth 0 ends a statement
         if token.type == TokenType.DELIMITER and self.context.block_depth == 0:
-            return True
+            return not (self.TERMINATOR_RESPECTS_PARENS and token.parens_depth > 0)
 
         return False
 

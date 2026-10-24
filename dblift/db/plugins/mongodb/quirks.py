@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict
 
 from dblift.db.base_quirks import BaseQuirks
 
@@ -39,8 +39,7 @@ class MongodbQuirks(BaseQuirks):
     quote_open = ""
     quote_close = ""
     native_driver_display = "PyMongo"
-    # No validate-sql offline lint: ``parser_class()`` returns None for every
-    # parser_type because MongoDB has no SQL for dblift to read, so a
+    # No validate-sql offline lint: MongoDB has no SQL for dblift to read, so a
     # placeholder connection would not unlock anything. ``lint_placeholder_url``
     # stays unset (``None``, from BaseQuirks).
     connection_identifier_attrs = ("url", "host")
@@ -53,17 +52,6 @@ class MongodbQuirks(BaseQuirks):
     def __init__(self, dialect_name: str = "mongodb") -> None:
         """Initialize MongoDB quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
-
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """No parser — MongoDB has no SQL for dblift to read.
-
-        Migrations are Python driving pymongo, and there is no read-side
-        string language either: ``find()`` is a call, not a statement. Asking
-        for a parser is therefore an error, not a silent degradation, and
-        ``HybridParser`` cannot stand in because it falls back to a regex SQL
-        parser that would match nothing meaningful.
-        """
-        return None
 
     def type_equivalents(self) -> "Dict[str, str]":
         """No cross-dialect type mapping — BSON types are not SQL types."""

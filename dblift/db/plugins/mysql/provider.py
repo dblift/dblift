@@ -2,6 +2,10 @@
 
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy import event
+from sqlalchemy.engine import Connection
+from sqlalchemy.exc import DBAPIError
+
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
@@ -9,8 +13,9 @@ from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.migration import success_to_bool
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
-from dblift.db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
-from dblift.db.provider_interfaces import DroppableObject
+from dblift.db.plugins.mysql.mysql.schema_operations import SYSTEM_DATABASES, MySqlSchemaOperations
+from dblift.db.plugins.mysql.sql_literals import string_literal
+from dblift.db.provider_interfaces import CleanTargetProvider, DroppableObject
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 # MySQL's named lock predates the lock table and keeps its historical stem
@@ -22,7 +27,24 @@ def _quote_identifier(identifier: str) -> str:
     return "`" + identifier.replace("`", "``") + "`"
 
 
-class MySqlProvider(SqlAlchemyProvider):
+_DRAIN_KEY = "dblift_drain_result_sets"
+
+
+def _drain_result_sets(
+    conn: Any, cursor: Any, statement: Any, parameters: Any, context: Any, executemany: Any
+) -> None:
+    """After a statement run by ``execute_statement``, read every further result set.
+
+    The driver reports the first statement only; the rest sit unread (an error in one is
+    swallowed when the cursor closes, and the connection falls out of step). A query keeps
+    the rows it asked for, so only ``execute_statement`` arms this (see ``_DRAIN_KEY``).
+    """
+    if conn.info.get(_DRAIN_KEY):
+        while cursor.nextset():
+            pass
+
+
+class MySqlProvider(SqlAlchemyProvider, CleanTargetProvider):
     """MySQL provider implementation using native SQLAlchemy connections."""
 
     canonical_dialect_key = "mysql"
@@ -43,6 +65,12 @@ class MySqlProvider(SqlAlchemyProvider):
         super().__init__(config, log)
         self._current_database_set = None
 
+    def create_connection(self) -> Connection:
+        """Open the connection and make it read every result set of a query."""
+        conn = super().create_connection()
+        event.listen(conn, "after_cursor_execute", _drain_result_sets)
+        return conn
+
     def reset_schema_cache(self) -> None:
         """Forget the database this connection was last ``USE``'d into.
 
@@ -60,7 +88,42 @@ class MySqlProvider(SqlAlchemyProvider):
         if schema:
             self.create_schema_if_not_exists(schema)
             self.set_current_schema(schema)
-        return super().execute_statement(sql, schema=schema, params=params)
+        with self._lock:
+            conn = self._ensure_connection()
+            conn.info[_DRAIN_KEY] = True
+            try:
+                return super().execute_statement(sql, schema=schema, params=params)
+            finally:
+                conn.info.pop(_DRAIN_KEY, None)
+
+    def execute_query(self, sql: str, params: Optional[List[Any]] = None) -> List[Dict[str, Any]]:
+        """Return the rows of the first result set; later statements of the query still run.
+
+        Rows are read before the remaining result sets, so ``SELECT 1; INSERT ...`` and a
+        ``CALL`` that returns rows keep their rows and an error in a later statement is raised.
+        """
+        if params is not None:
+            return super().execute_query(sql, params)
+        with self._lock:
+            conn = self._ensure_connection()
+            result = self._exec_unbound(conn, sql)
+            cursor = result.cursor
+            if cursor is None:
+                return [dict(row) for row in result.mappings()]  # raises: no rows to return
+            from pymysql.err import MySQLError
+
+            keys = list(result.keys())
+            rows = [dict(zip(keys, row)) for row in cursor.fetchall()]
+            try:
+                while cursor.nextset():
+                    pass
+            except MySQLError as exc:
+                raise DBAPIError.instance(sql, None, exc, MySQLError) from exc
+            finally:
+                result.close()
+            if self._tx is None and not getattr(self, "_external_connection", False):
+                conn.commit()
+            return rows
 
     def create_schema_if_not_exists(self, schema: str) -> None:
         """Create a MySQL database if it is missing."""
@@ -113,8 +176,30 @@ class MySqlProvider(SqlAlchemyProvider):
         """Return a quoted database-qualified object name."""
         return f"{_quote_identifier(schema)}.{_quote_identifier(object_name)}"
 
+    def validate_clean_target(self, schema: str) -> str:
+        """Reject system database targets before clean setup and callbacks."""
+        schema = schema or self.quirks.derive_schema_name(self.config.database) or ""
+        name = schema.strip()
+        folded = name.lower()
+        if folded not in SYSTEM_DATABASES:
+            return schema
+        connection = (
+            self._ensure_connection() if name != folded and folded != "information_schema" else None
+        )
+        MySqlSchemaOperations(self.query_executor, self.log).validate_clean_target(
+            connection, schema
+        )
+        return schema
+
+    def prepare_clean_target(self, schema: str) -> None:
+        """Force the requested database selection before clean callbacks."""
+        schema = schema or self.quirks.derive_schema_name(self.config.database) or ""
+        self.reset_schema_cache()
+        self.set_current_schema(schema)
+
     def clean_schema(self, schema: str) -> CleanExecutionSummary:
         """Drop objects inside a database, returning executed clean statements."""
+        schema = self.validate_clean_target(schema)
         connection = self._ensure_connection()
         return MySqlSchemaOperations(self.query_executor, self.log).clean_schema(connection, schema)
 
@@ -149,6 +234,7 @@ class MySqlProvider(SqlAlchemyProvider):
 
     def get_clean_preview(self, schema: str) -> CleanExecutionSummary:
         """Return the MySQL clean preview without executing drop statements."""
+        schema = self.validate_clean_target(schema)
         connection = self._ensure_connection()
         return MySqlSchemaOperations(self.query_executor, self.log).get_clean_preview(
             connection, schema
@@ -323,7 +409,7 @@ class MySqlProvider(SqlAlchemyProvider):
         return f"""
             SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT
             FROM information_schema.COLUMNS
-            WHERE TABLE_SCHEMA = '{schema}' AND TABLE_NAME = '{table}'
+            WHERE TABLE_SCHEMA = {string_literal(schema)} AND TABLE_NAME = {string_literal(table)}
             ORDER BY ORDINAL_POSITION
             """
 

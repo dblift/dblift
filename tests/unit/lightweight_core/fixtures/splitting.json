@@ -42,7 +42,7 @@
     "sql": "COPY t (id) FROM stdin;\n1\n\\.\nSELECT 1;\n",
     "strict": false,
     "statements": [
-      "COPY t (id) FROM stdin;\n1\n\\.",
+      "COPY t (id) FROM stdin;\n1\n",
       "SELECT 1;"
     ],
     "error_type": null
@@ -172,8 +172,8 @@
     "sql": "SELECT 'a;b'; SELECT 2;",
     "strict": false,
     "statements": [
-      "SELECT 'a;b';",
-      "SELECT 2;"
+      "SELECT 'a;b'",
+      "SELECT 2"
     ],
     "error_type": null
   },
@@ -181,9 +181,7 @@
     "dialect": "duckdb",
     "sql": "/* just a comment */",
     "strict": false,
-    "statements": [
-      "/* just a comment */"
-    ],
+    "statements": [],
     "error_type": null
   },
   {

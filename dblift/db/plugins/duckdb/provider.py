@@ -7,9 +7,12 @@ from sqlalchemy import text
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
+from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
+from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
 from dblift.db.plugins.sql_lease_store import (
     OWNER_COLUMN,
     SqlLeaseDialect,
@@ -59,6 +62,27 @@ class DuckDBProvider(SqlLeaseLockingProvider):
             return counted
         return super().execute_statement(sql, schema=schema, params=params)
 
+    def execute_autocommit_statement(
+        self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
+    ) -> int:
+        """Run outside DuckDB's explicit transaction on the same connection.
+
+        duckdb_engine cannot set SQLAlchemy's AUTOCOMMIT isolation level.
+        DuckDB itself autocommits unless BEGIN was issued, so first roll back
+        pending work, then bypass SQLAlchemy's implicit BEGIN for this call.
+        Later SQLAlchemy statements retain their normal transaction behavior.
+        """
+        with self._lock:
+            conn = self._ensure_connection()
+            self._end_open_transaction(conn)
+            dbapi = conn.connection.dbapi_connection
+            assert dbapi is not None  # _ensure_connection returned a live connection.
+            if schema:
+                dbapi.execute(f"CREATE SCHEMA IF NOT EXISTS {_quote_identifier(schema)}")
+                dbapi.execute("SET schema = ?", [schema])
+            result = dbapi.execute(sql) if params is None else dbapi.execute(sql, params)
+            return result.rowcount if result.rowcount is not None else -1
+
     def _try_dml_rowcount_via_returning(
         self, sql: str, params: Optional[List[Any]] = None
     ) -> Optional[int]:
@@ -73,26 +97,27 @@ class DuckDBProvider(SqlLeaseLockingProvider):
         :meth:`SqlAlchemyProvider.execute_statement` so undo restore and other
         bind-using paths get accurate counts.
         """
-        stripped = self._strip_sql_comments(sql.strip()).rstrip(";").strip()
-        if not stripped:
+        try:
+            units = LexicalEngine(DUCKDB_SPEC).split(sql)
+        except (UnsafeStatementSplitError, UnsupportedMetaCommandError):
             return None
+        # Zero or several statements: leave to super (no silent rewrite)
+        if len(units) != 1:
+            return None
+        # The statement goes to the engine as written; comments are blanked only to read its shape
+        code = LexicalEngine(DUCKDB_SPEC).blank_comments(units[0].text).strip()
         # Already has a top-level RETURNING clause — do not double-append
-        if self._has_top_level_keyword(stripped, "RETURNING"):
+        if self._has_top_level_keyword(code, "RETURNING"):
             return None
-        # Normalize whitespace for statement-type checks only
-        upper = " ".join(stripped.upper().split())
-        if not (
-            upper.startswith("INSERT ")
-            or upper.startswith("UPDATE ")
-            or upper.startswith("DELETE ")
-        ):
+        words = code.split(None, 1)
+        if not words or words[0].upper() not in ("INSERT", "UPDATE", "DELETE"):
             return None
 
-        # Multi-statement scripts: leave to super (no silent rewrite)
-        if self._has_top_level_semicolon(stripped):
+        # The engine keeps a U+00A0 in the last two bytes of a script; after RETURNING it replaces it
+        if units[0].text.endswith("\xa0"):
             return None
-
-        rewritten = f"{stripped} RETURNING 1"
+        # A newline keeps RETURNING out of a trailing ``--`` comment
+        rewritten = f"{units[0].text}\nRETURNING 1"
         conn = self._ensure_connection()
         if params is None:
             result = self._exec_unbound(conn, rewritten)
@@ -103,92 +128,6 @@ class DuckDBProvider(SqlLeaseLockingProvider):
         if self._tx is None and not getattr(self, "_external_connection", False):
             conn.commit()
         return len(rows)
-
-    @staticmethod
-    def _strip_sql_comments(sql: str) -> str:
-        """Remove ``--`` / ``/* */`` comments (and blank lines).
-
-        Strips leading directives, full-line mid-statement comments, and
-        trailing *inline* ``--`` on DML lines so an appended ``RETURNING 1``
-        is not commented out and keyword detection is not confused by the
-        word ``returning`` inside comments.
-        """
-        s = sql.lstrip()
-        # Leading block comments only (line comments handled per-line below)
-        while s.startswith("/*"):
-            end = s.find("*/")
-            if end < 0:
-                return ""
-            s = s[end + 2 :].lstrip()
-
-        kept: List[str] = []
-        for raw in s.splitlines():
-            line = DuckDBProvider._strip_inline_trailing_comment(raw)
-            if not line or line.lstrip().startswith("--"):
-                continue
-            # Drop leftover full-line block comments
-            if line.lstrip().startswith("/*") and line.rstrip().endswith("*/"):
-                continue
-            kept.append(line)
-        return "\n".join(kept).strip()
-
-    @staticmethod
-    def _strip_inline_trailing_comment(line: str) -> str:
-        """Strip trailing ``--`` or ``/* … */`` outside string/identifier quotes."""
-        in_single = in_double = False
-        i = 0
-        n = len(line)
-        cut: Optional[int] = None
-        while i < n:
-            ch = line[i]
-            if ch == "'" and not in_double:
-                if in_single and i + 1 < n and line[i + 1] == "'":
-                    i += 2
-                    continue
-                in_single = not in_single
-            elif ch == '"' and not in_single:
-                if in_double and i + 1 < n and line[i + 1] == '"':
-                    i += 2
-                    continue
-                in_double = not in_double
-            elif not in_single and not in_double:
-                if ch == "-" and i + 1 < n and line[i + 1] == "-":
-                    cut = i
-                    break
-                if ch == "/" and i + 1 < n and line[i + 1] == "*":
-                    # Only treat as trailing comment if it runs to end of line
-                    close = line.find("*/", i + 2)
-                    if close >= 0 and line[close + 2 :].strip() == "":
-                        cut = i
-                        break
-            i += 1
-        if cut is not None:
-            return line[:cut].rstrip()
-        return line.rstrip()
-
-    @staticmethod
-    def _has_top_level_semicolon(sql: str) -> bool:
-        """True if ``sql`` contains a semicolon outside string/identifier quotes."""
-        in_single = in_double = False
-        i = 0
-        n = len(sql)
-        while i < n:
-            ch = sql[i]
-            if ch == "'" and not in_double:
-                # SQL escaped single quote ''
-                if in_single and i + 1 < n and sql[i + 1] == "'":
-                    i += 2
-                    continue
-                in_single = not in_single
-            elif ch == '"' and not in_single:
-                if in_double and i + 1 < n and sql[i + 1] == '"':
-                    i += 2
-                    continue
-                in_double = not in_double
-            elif ch == ";" and not in_single and not in_double:
-                return True
-            i += 1
-        return False
 
     @staticmethod
     def _has_top_level_keyword(sql: str, keyword: str) -> bool:

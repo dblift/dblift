@@ -56,7 +56,7 @@ class TestGetInstalledBy(unittest.TestCase):
             MigrationValidator=MagicMock(),
             MigrationUI=MagicMock(),
             MigrationRules=MagicMock(),
-            SqlAnalyzer=MagicMock(),
+            StatementReader=MagicMock(),
             MigrationJournal=MagicMock(),
             MigrationStateManager=MagicMock(),
             PlaceholderManager=MagicMock(),

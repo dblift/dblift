@@ -11,8 +11,13 @@ from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
 from dblift.core.migration.commands.repair_command import RepairCommand, RepairSafetyError
-from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from dblift.core.migration.state.repair_plan import (
+    _detect_checksum_drift,
+    _detect_missing_migrations,
+)
+from tests.unit._migration_factory import make_migration
 
 pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
 
@@ -29,6 +34,16 @@ def database_client(tmp_path):
     finally:
         client.close()
         engine.dispose()
+
+
+def _contents(database):
+    """Schema and rows of the database, ignoring the file-header change counter.
+
+    A real run takes and releases the migration lock, which bumps the counter
+    without leaving a row behind.
+    """
+    with sqlite3.connect(database) as connection:
+        return list(connection.iterdump())
 
 
 def _history(database):
@@ -53,7 +68,7 @@ def test_noop_and_preview_load_catalog_once(database_client, extension, drift):
     assert client.migrate().success
     if drift:
         script.write_text(body + ("-- edited\n" if extension == "sql" else "# edited\n"))
-    before = database.read_bytes()
+    before = _contents(database)
     before_history = _history(database)
     script_manager = client.executor.script_manager
     with patch.object(
@@ -66,7 +81,7 @@ def test_noop_and_preview_load_catalog_once(database_client, extension, drift):
     assert [m.script for m in result.aligned_migrations] == ([script.name] if drift else [])
     assert result.failed_migrations_removed == result.deleted_migrations_marked == 0
     assert _history(database) == before_history
-    assert database.read_bytes() == before
+    assert _contents(database) == before
     assert load.call_count == 1
     assert client.validate().success is (not drift)
 
@@ -131,14 +146,14 @@ def test_recursion_map_and_additional_directories_use_same_catalog(database_clie
     extra_script.write_text("CREATE TABLE extra (id INTEGER);")
     options = dict(recursive=False, additional_dirs=[extra], dir_recursive_map={extra: True})
     assert client.migrate(**options).success
-    before = database.read_bytes()
+    before = _contents(database)
     script_manager = client.executor.script_manager
     with patch.object(
         script_manager, "load_migration_scripts", wraps=script_manager.load_migration_scripts
     ) as load:
         result = client.repair(**options)
     assert result.success and result.deleted_migrations_marked == 0
-    assert database.read_bytes() == before
+    assert _contents(database) == before
     assert load.call_count == 1
     assert {row[0] for row in _history(database)} == {"V1__app.sql", "V2__extra.sql"}
 
@@ -152,19 +167,21 @@ def _command(script_manager):
     return command
 
 
-def test_built_catalog_preserves_group_order_and_last_duplicate_wins(tmp_path):
-    first = Migration(script_name="V1__same.sql", content="SELECT 1;", type=MigrationType.SQL)
-    last = Migration(script_name="V1__same.sql", content="SELECT 2;", type=MigrationType.SQL)
+def test_built_catalog_preserves_group_order_and_first_duplicate_wins(tmp_path):
+    first = make_migration(script_name="V1__same.sql", content="SELECT 1;", type=MigrationType.SQL)
+    last = make_migration(script_name="V1__same.sql", content="SELECT 2;", type=MigrationType.SQL)
     catalog = {MigrationType.REPEATABLE: [first], MigrationType.SQL: [last]}
     scripts = MagicMock()
     scripts.load_migration_scripts.return_value = catalog
     command = _command(scripts)
-    state = command.state_manager.build_state(tmp_path)
-    state.all_applied_objects = [
-        SimpleNamespace(script_name=first.script_name, type=MigrationType.SQL, checksum=0)
+    command.state_manager.history_manager.get_applied_migrations.return_value = [
+        SimpleNamespace(
+            script_name=first.script_name, type=MigrationType.SQL, checksum=0, success=True
+        )
     ]
-    repairs = command._detect_checksum_drift(state, [], tmp_path)
-    assert repairs[0]["new_checksum"] == last.checksum
+    state = command.state_manager.build_state(tmp_path)
+    repairs = _detect_checksum_drift(state, [])
+    assert repairs[0]["new_checksum"] == first.checksum
     assert list(state.grouped_objects) == list(catalog)
     assert scripts.load_migration_scripts.call_count == 1
 
@@ -174,38 +191,38 @@ def test_empty_built_catalog_is_authoritative(tmp_path, has_history):
     scripts = MagicMock()
     scripts.load_migration_scripts.return_value = {}
     command = _command(scripts)
-    state = command.state_manager.build_state(tmp_path)
     if has_history:
-        state.applied_objects = [
-            SimpleNamespace(script_name="V1__gone.sql", type=MigrationType.SQL)
+        command.state_manager.history_manager.get_applied_migrations.return_value = [
+            SimpleNamespace(
+                script_name="V1__gone.sql", type=MigrationType.SQL, checksum=0, success=True
+            )
         ]
+    state = command.state_manager.build_state(tmp_path)
     scripts.load_migration_scripts.side_effect = AssertionError("must reuse empty catalog")
     if has_history:
         with pytest.raises(RepairSafetyError):
-            command._detect_missing_migrations(state, tmp_path)
+            _detect_missing_migrations(state, tmp_path)
     else:
-        assert command._detect_missing_migrations(state, tmp_path) == []
-    assert command._detect_checksum_drift(state, [], tmp_path) == []
+        assert _detect_missing_migrations(state, tmp_path) == []
+    assert _detect_checksum_drift(state, []) == []
     assert scripts.load_migration_scripts.call_count == 1
 
 
-def test_missing_catalog_fallback_preserves_errors_and_freshness(tmp_path):
+def test_catalog_load_errors_propagate_and_each_build_reads_fresh(tmp_path):
     scripts = MagicMock()
     scripts.load_migration_scripts.side_effect = PermissionError("unreadable catalog")
     command = _command(scripts)
-    state = command._build_migration_state(tmp_path)
     with pytest.raises(PermissionError, match="unreadable catalog"):
-        command._detect_missing_migrations(state, tmp_path)
-    assert command._detect_checksum_drift(state, [], tmp_path) == []
-    command.log.warning.assert_called_once_with(
-        "Unable to load filesystem migrations during repair: unreadable catalog"
-    )
+        command.state_manager.build_state(tmp_path)
     scripts.load_migration_scripts.side_effect = None
     scripts.load_migration_scripts.return_value = {}
-    assert command.state_manager.get_grouped_migrations(tmp_path) == {}
-    scripts.load_migration_scripts.return_value = {MigrationType.SQL: ["new catalog"]}
-    assert command.state_manager.get_grouped_migrations(tmp_path) == {
-        MigrationType.SQL: ["new catalog"]
+    assert command.state_manager.build_state(tmp_path).grouped_objects == {}
+    new_script = make_migration(
+        script_name="V1__new.sql", content="SELECT 1;", type=MigrationType.SQL
+    )
+    scripts.load_migration_scripts.return_value = {MigrationType.SQL: [new_script]}
+    assert command.state_manager.build_state(tmp_path).grouped_objects == {
+        MigrationType.SQL: [new_script]
     }
 
 
@@ -257,3 +274,20 @@ def test_failed_row_is_removed_with_reused_catalog(database_client):
     assert result.checksums_fixed == 0
     assert _history(database) == []
     assert load.call_count == 2
+
+
+def test_repair_reads_state_drift(database_client):
+    client, migrations, _ = database_client
+    script = migrations / "V1__app.sql"
+    script.write_text("CREATE TABLE app (id INTEGER PRIMARY KEY);\n")
+    assert client.migrate().success
+    script.write_text("CREATE TABLE app (id INTEGER PRIMARY KEY);\n-- edited\n")
+    # The command module must not compare checksums itself; guard against it coming back.
+    with patch(
+        "dblift.core.migration.state.repair_plan.find_checksum_drift",
+        create=True,
+        side_effect=AssertionError("repair must read the state's drift"),
+    ):
+        result = client.repair(dry_run=True)
+    assert result.success
+    assert [m.script for m in result.aligned_migrations] == [script.name]

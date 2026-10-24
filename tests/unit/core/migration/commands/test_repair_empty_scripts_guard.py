@@ -25,34 +25,41 @@ import pytest
 
 from dblift.core.migration.commands.repair_command import RepairCommand, RepairSafetyError
 from dblift.core.migration.migration import MigrationType
-from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from dblift.core.migration.state.repair_plan import (
+    _detect_checksum_drift,
+    _detect_missing_migrations,
+)
+from dblift.core.migration.version_utils import compare_versions
+from tests.unit._migration_factory import make_migration
 
 
 def _make_applied(script_name: str, version: str = "1") -> SimpleNamespace:
-    """Minimal applied-migration stand-in (matches attribute access in code under test)."""
+    """Minimal applied-history row (matches attribute access in code under test)."""
     return SimpleNamespace(
         script_name=script_name,
         version=version,
         description="",
-        type=SimpleNamespace(name="VERSIONED"),
+        type=MigrationType.SQL,
+        checksum=1,
+        success=True,
+        installed_rank=int(version),
     )
 
 
-def _make_repair_command(script_manager_mock: MagicMock) -> RepairCommand:
-    """Bypass BaseCommand.__init__ — we only exercise _detect_missing_migrations.
+def _make_repair_command(script_manager_mock: MagicMock, applied=()) -> RepairCommand:
+    """Bypass BaseCommand.__init__ — only the state manager is exercised.
 
-    ``_detect_missing_migrations`` uses two attributes: ``state_manager``
-    and ``log``. Everything else on the instance is irrelevant for this
-    path, so constructing without running BaseCommand's heavy init keeps
-    the test hermetic.
+    The state manager is real: ``build_state`` reads ``applied`` from the history
+    and the catalog from ``script_manager_mock``, exactly as ``plan_repairs`` does.
     """
     cmd = RepairCommand.__new__(RepairCommand)
     cmd.script_manager = script_manager_mock
+    script_manager_mock.compare_versions = compare_versions
     cmd.log = MagicMock()
-    cmd.state_manager = MigrationStateManager(
-        cmd.log, MagicMock(), script_manager_mock, MagicMock()
-    )
+    history = MagicMock()
+    history.get_applied_migrations.return_value = list(applied)
+    cmd.state_manager = MigrationStateManager(cmd.log, history, script_manager_mock, MagicMock())
     return cmd
 
 
@@ -63,17 +70,18 @@ class TestRepairEmptyScriptsGuard:
         script_manager = MagicMock()
         script_manager.load_migration_scripts.return_value = {}  # empty dict, no migrations
 
-        cmd = _make_repair_command(script_manager)
-        state = MigrationState(
-            applied_objects=[
+        cmd = _make_repair_command(
+            script_manager,
+            [
                 _make_applied("V1__a.sql", "1"),
                 _make_applied("V2__b.sql", "2"),
                 _make_applied("V3__c.sql", "3"),
             ],
         )
+        state = cmd.state_manager.build_state(tmp_path)
 
         with pytest.raises(RepairSafetyError) as exc_info:
-            cmd._detect_missing_migrations(state, tmp_path)
+            _detect_missing_migrations(state, tmp_path)
 
         msg = str(exc_info.value)
         assert "3" in msg, "error message should say how many migrations would be affected"
@@ -85,28 +93,31 @@ class TestRepairEmptyScriptsGuard:
         script_manager.load_migration_scripts.return_value = {}
 
         cmd = _make_repair_command(script_manager)
-        state = MigrationState(applied_objects=[])
+        state = cmd.state_manager.build_state(tmp_path)
 
         # Should not raise; returns an empty repair list.
-        repairs = cmd._detect_missing_migrations(state, tmp_path)
+        repairs = _detect_missing_migrations(state, tmp_path)
         assert repairs == []
 
     def test_happy_path_still_flags_genuinely_missing_script(self, tmp_path: Path):
         """One applied script absent + one applied script present → flag only the absent one."""
         script_manager = MagicMock()
         # Filesystem has V1 only; applied has V1 + V2.
-        present = SimpleNamespace(script_name="V1__a.sql")
-        script_manager.load_migration_scripts.return_value = {"V1": [present]}
+        present = make_migration(
+            script_name="V1__a.sql", content="SELECT 1;", version="1", type=MigrationType.SQL
+        )
+        script_manager.load_migration_scripts.return_value = {MigrationType.SQL: [present]}
 
-        cmd = _make_repair_command(script_manager)
-        state = MigrationState(
-            applied_objects=[
+        cmd = _make_repair_command(
+            script_manager,
+            [
                 _make_applied("V1__a.sql", "1"),
                 _make_applied("V2__b.sql", "2"),  # missing on disk
             ],
         )
+        state = cmd.state_manager.build_state(tmp_path)
 
-        repairs = cmd._detect_missing_migrations(state, tmp_path)
+        repairs = _detect_missing_migrations(state, tmp_path)
         missing_scripts: List[str] = [r["script"] for r in repairs if r["type"] == "MISSING_SCRIPT"]
         assert missing_scripts == ["V2__b.sql"]
 
@@ -117,42 +128,44 @@ class TestRepairEmptyScriptsGuard:
             "cannot read scripts dir"
         )
 
-        cmd = _make_repair_command(script_manager)
-        state = MigrationState(
-            applied_objects=[_make_applied("V1__a.sql", "1")],
-        )
+        cmd = _make_repair_command(script_manager, [_make_applied("V1__a.sql", "1")])
 
         with pytest.raises(PermissionError):
-            cmd._detect_missing_migrations(state, tmp_path)
+            cmd.state_manager.plan_repairs(
+                tmp_path, recursive=True, additional_dirs=None, dir_recursive_map=None
+            )
 
 
 @pytest.mark.unit
 class TestRepairChecksumDrift:
     def test_zero_checksum_is_compared_instead_of_skipped(self, tmp_path: Path):
         """A stored checksum of 0 is still a real value for drift detection."""
+        script = make_migration(
+            script_name="V1__a.sql", content="SELECT 1;", type=MigrationType.SQL
+        )
         script_manager = MagicMock()
-        script_manager.load_migration_scripts.return_value = {
-            "1": [SimpleNamespace(script_name="V1__a.sql", checksum=123)]
-        }
-        cmd = _make_repair_command(script_manager)
-        state = MigrationState(
-            all_applied_objects=[
+        script_manager.load_migration_scripts.return_value = {MigrationType.SQL: [script]}
+        cmd = _make_repair_command(
+            script_manager,
+            [
                 SimpleNamespace(
                     script_name="V1__a.sql",
                     version="1",
                     type=MigrationType.SQL,
                     checksum=0,
+                    success=True,
                 )
-            ]
+            ],
         )
+        state = cmd.state_manager.build_state(tmp_path)
 
-        repairs = cmd._detect_checksum_drift(state, [], tmp_path)
+        repairs = _detect_checksum_drift(state, [])
 
         assert repairs == [
             {
                 "type": "CHECKSUM_MISMATCH",
                 "script": "V1__a.sql",
                 "old_checksum": 0,
-                "new_checksum": 123,
+                "new_checksum": script.checksum,
             }
         ]

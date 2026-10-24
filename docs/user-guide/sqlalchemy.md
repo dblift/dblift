@@ -50,6 +50,15 @@ Calling `client.close()` releases DBLift resources but does not dispose your
 engine or close your externally supplied connection. Your application remains
 responsible for its normal SQLAlchemy lifecycle.
 
+## MySQL and MariaDB Engines
+
+A migration unit that holds several statements (for example `INSERT ...; INSERT ...`
+under `DELIMITER //`) runs as one query, as the `mysql` client runs it. On an engine
+DBLift builds, multi-statements are enabled. On an engine you pass in, enable them
+yourself if your scripts rely on it:
+`create_engine(url, connect_args={"client_flag": CLIENT.MULTI_STATEMENTS | CLIENT.FOUND_ROWS})`
+with `CLIENT` from `pymysql.constants`.
+
 ## Read-Only Status Checks
 
 Use `info()` for startup guards, health endpoints, and deployment checks:

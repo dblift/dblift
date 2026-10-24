@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import TYPE_CHECKING
 
+from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.plugins.postgresql.quirks import PostgresqlQuirks
+
+if TYPE_CHECKING:
+    from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
 
 class RedshiftQuirks(PostgresqlQuirks):
@@ -21,6 +25,7 @@ class RedshiftQuirks(PostgresqlQuirks):
     # PostgreSQL's ``sqlglot_dialect = "postgres"`` parses that divergent
     # syntax but then fails to render it back out.
     sqlglot_dialect = "redshift"
+    statement_facts_class = SqlglotStatementFactsReader
 
     # Opt out of PostgreSQL's feature gates: Redshift's engine diverged long
     # ago (its version() banner even reports PostgreSQL 8.0.x), so PG
@@ -31,22 +36,13 @@ class RedshiftQuirks(PostgresqlQuirks):
     def __init__(self, dialect_name: str = "redshift") -> None:
         super().__init__(dialect_name=dialect_name)
 
-    def parser_class(self, parser_type: str) -> Optional[type]:
-        """Kept non-nesting, unverified: no local Redshift engine, and no
-        documentation found that addresses comment nesting in top-level SQL
-        (the AWS "Structure of PL/pgSQL" page says block comments don't nest,
-        but that sentence describes comments inside a PL/pgSQL procedure
-        body's ``$$ ... $$``, not the outer SQL scanner ``split_statements``
-        tokenizes — it is not evidence for this). Keep the pre-#333 reader
-        (first ``*/`` closes) as the safer default rather than inherit
-        PostgreSQL's nesting unverified. Redshift's tokenizer additionally
-        handles backslash escapes in all single-quoted string literals.
-        """
-        if parser_type == "regex":
-            from dblift.db.plugins.redshift.parser.redshift_regex_parser import RedshiftRegexParser
+    def lexical_spec(self) -> "LexicalSpec":
+        """The Redshift specification, measured on Redshift Serverless 1.0.485645
+        (docs/sql-parsing/redshift.md): nested block comments, backslash escapes in every
+        ``'...'`` literal, no ``E'...'`` prefix, ``COPY ... FROM STDIN`` or ``BEGIN ATOMIC``."""
+        from dblift.db.plugins.redshift.parser.lexical_spec import REDSHIFT_SPEC
 
-            return RedshiftRegexParser
-        return super().parser_class(parser_type)
+        return REDSHIFT_SPEC
 
     def build_snapshot_table_ddl(
         self,

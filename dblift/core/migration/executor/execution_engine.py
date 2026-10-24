@@ -16,7 +16,13 @@ from dblift.core.constants import (
     SECONDS_TO_MILLISECONDS,
     truncate_sql_for_logging,
 )
-from dblift.core.exceptions import CallbackExecutionError, TransactionAbortedError
+from dblift.core.exceptions import (
+    CallbackExecutionError,
+    StatementVerdictError,
+    TransactionAbortedError,
+    TransactionStatementError,
+    UnsafeStatementSplitError,
+)
 from dblift.core.logger import Log, NullLog
 from dblift.core.logger.results import CallbackExecution, MigrationInfo, OperationResult
 from dblift.core.logger.tabular_data import rows_to_columns_and_values
@@ -32,18 +38,21 @@ from dblift.core.migration.placeholders.placeholder_service import PlaceholderSe
 from dblift.core.migration.sql.execution_statement import (
     ExecutionStatement,
     classify_execution_statement,
-    is_comment_only_statement,
+    neutralise_transaction_statements,
 )
 from dblift.core.migration.sql.migration_sql_parser import (
-    fallback_migration_sql,
     parse_migration_sql,
     resolve_migration_sql_dialect,
 )
-from dblift.core.migration.sql.sql_analyzer import SqlAnalyzer
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
-from dblift.core.sql_parser.redaction import describe_statement
+from dblift.core.migration.sql.statement_reader import StatementReader
+from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.base_provider import BaseProvider
-from dblift.db.error import clean_driver_error_message, strip_sql_statement_block
+from dblift.db.error import (
+    clean_driver_error_message,
+    redact_driver_error_text,
+    strip_sql_statement_block,
+)
 from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.value_utils import to_python_string
@@ -72,7 +81,7 @@ class ExecutionEngine:
     def __init__(
         self,
         provider: BaseProvider,
-        sql_analyzer: SqlAnalyzer,
+        sql_analyzer: StatementReader,
         log: Log,
         sql_execution_service: Optional[SqlExecutionService] = None,
         history_manager: Optional[MigrationHistoryManager] = None,
@@ -110,9 +119,6 @@ class ExecutionEngine:
             log=self.log,
             placeholder_service=placeholder_service,
         )
-
-    # Compatibility alias; script tooling and the engine share one implementation.
-    _is_comment_only_statement = staticmethod(is_comment_only_statement)
 
     def execute_migration(self, migration: Migration, result: OperationResult) -> None:
         """Execute a single migration.
@@ -213,16 +219,8 @@ class ExecutionEngine:
     def _classify_execution_statements(self, statements: List[str]) -> List[ExecutionStatement]:
         """Attach transaction metadata to executable SQL statements."""
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
-        quirks = ProviderRegistry.get_quirks(dialect)
         execution_statements: List[ExecutionStatement] = []
         for statement in statements:
-            stripped = statement.strip()
-            if (
-                not stripped
-                or quirks.is_batch_separator(stripped)
-                or self._is_comment_only_statement(stripped)
-            ):
-                continue
             statement_type = self.sql_analyzer.get_statement_type(statement)
             execution_statements.append(
                 classify_execution_statement(
@@ -252,14 +250,7 @@ class ExecutionEngine:
         executable: List[str] = []
         execution_statements: List[ExecutionStatement] = []
         for statement in statements:
-            stripped = statement.strip()
-            if not stripped:
-                continue
-            if quirks.is_batch_separator(stripped):
-                continue
-            if self._is_comment_only_statement(stripped):
-                continue
-            if is_oracle_sqlplus and quirks.parse_error_policy_directive(stripped) is not None:
+            if is_oracle_sqlplus and quirks.parse_error_policy_directive(statement) is not None:
                 continue
             statement_type = self.sql_analyzer.get_statement_type(statement)
             execution_statements.append(
@@ -301,7 +292,12 @@ class ExecutionEngine:
         try:
             return self._prepare_sql_statements(migration, placeholder_service=placeholder_service)
         except Exception as exc:
-            message = f"Failed to parse SQL for {migration.script_name}: {to_python_string(exc)}"
+            detail = str(to_python_string(exc))
+            message = (
+                detail
+                if isinstance(exc, TransactionStatementError)  # names its script itself
+                else f"Failed to parse SQL for {migration.script_name}: {detail}"
+            )
             self.log.error(message)
             result.set_error(message)
             return None
@@ -343,10 +339,11 @@ class ExecutionEngine:
         if placeholder_service:
             content_override = placeholder_service.replace_placeholders(migration.content)
 
-        # Dialects with script-level preprocessing (Oracle SQL*Plus today) get their
-        # context extracted + variable substitution + directive termination applied
-        # via quirks hooks. Must run after placeholder substitution so ${...}
-        # fragments are already resolved.
+        # Dialects with script-level context (Oracle SQL*Plus today) get it
+        # extracted via the quirks hook, after placeholder substitution so ${...}
+        # fragments are already resolved. The script text is not touched here:
+        # the dialect splitter reads directive lines and substitutes variables
+        # (``WHENEVER SQLERROR`` reaches ``_execute_statements``).
         self._current_sqlplus_ctx = None
         quirks = ProviderRegistry.get_quirks(dialect_key)
         if quirks.supports_sqlplus_preprocessing:
@@ -355,15 +352,6 @@ class ExecutionEngine:
             self._current_sqlplus_ctx = ctx
             for msg in getattr(ctx, "prompts", []) or []:
                 self.log.info(f"[PROMPT] {msg}")
-            # Terminate or empty directive lines (SET, DEFINE, PROMPT, WHENEVER SQLERROR …)
-            # so the tokeniser does not merge them with the next DDL/DML. Without this,
-            # ``SET SERVEROUTPUT ON\nCREATE TABLE ...`` becomes a single statement that
-            # the driver rejects (or that directive filtering removes wholesale, dropping
-            # the user's CREATE TABLE).
-            terminated = quirks.terminate_script_directives(base)
-            substituted = quirks.apply_script_substitution(terminated, ctx)
-            if substituted != base:
-                content_override = substituted
 
         content = content_override if content_override is not None else migration.content
         if not content:
@@ -377,14 +365,22 @@ class ExecutionEngine:
         analyzer = self.sql_analyzer
         if analyzer.dialect != dialect_key:
             try:
-                analyzer = SqlAnalyzer(
+                analyzer = StatementReader(
                     dialect=dialect_key,
                     logger=self.log,
                     analysis_mode=getattr(self.sql_analyzer, "analysis_mode", "full"),
                 )
             except Exception as exc:
-                return fallback_migration_sql(content, self.log, exc)
-        return parse_migration_sql(analyzer, content, self.log)
+                raise UnsafeStatementSplitError(f"statement splitter failed: {exc}") from exc
+        statements = parse_migration_sql(analyzer, content, self.log, dialect=dialect_key)
+        return neutralise_transaction_statements(
+            statements,
+            dialect=dialect_key,
+            log=self.log,
+            script_name=migration.script_name,
+            content=content,
+            records=analyzer.statement_splitter.last_split(content),
+        )
 
     def _reset_provider_schema_cache(self) -> None:
         """Forget any per-connection schema the provider has cached as already applied.
@@ -535,17 +531,6 @@ class ExecutionEngine:
                 return d
         return _normalize(getattr(self.provider, "dialect", None))
 
-    def _transaction_liveness_probe_sql(self) -> str:
-        """Return a single-row SELECT valid for the active dialect.
-
-        Delegates to ``provider.quirks.connection_probe_sql`` so the
-        framework no longer hardcodes the dialect-specific variants
-        (DB2 rejects bare ``SELECT 1``; Oracle requires ``FROM DUAL``).
-        """
-        from dblift.db.provider_registry import ProviderRegistry
-
-        return ProviderRegistry.get_quirks(self._probe_dialect_key() or "").connection_probe_sql
-
     def _execute_statements(
         self,
         statements: List[str],
@@ -591,26 +576,16 @@ class ExecutionEngine:
         is_oracle_sqlplus = ctx is not None
         whenever_policy = "exit"  # SQL*Plus default; only meaningful when is_oracle_sqlplus
 
-        probe_sql = self._transaction_liveness_probe_sql()
         for i, statement in enumerate(statements):
             self.log.debug(
                 f"Executing statement {i+1}/{len(statements)} from {migration.script_name}"
             )
 
-            stripped_stmt = statement.strip()
-            # Skip empty statements
-            if not stripped_stmt:
-                continue
-            # Dialect-specific batch separator (T-SQL ``GO``); not executable by the native driver
-            if quirks.is_batch_separator(stripped_stmt):
-                continue
-            if self._is_comment_only_statement(stripped_stmt):
-                continue
             # Positional error-handling directive (Oracle WHENEVER SQLERROR) — update
             # policy positionally, do not send to the provider. Gated on the script context
             # so non-Oracle dialects never consume CONTINUE/EXIT lookalikes.
             if is_oracle_sqlplus:
-                _new_policy = quirks.parse_error_policy_directive(stripped_stmt)
+                _new_policy = quirks.parse_error_policy_directive(statement)
                 if _new_policy is not None:
                     whenever_policy = _new_policy
                     self.log.debug(f"WHENEVER SQLERROR policy → {whenever_policy}")
@@ -622,44 +597,20 @@ class ExecutionEngine:
             # a resolved placeholder value.
 
             # Log the statement (truncated for readability)
-            self.log.debug(
-                f"Executing: {truncate_sql_for_logging(statement, LOG_STATEMENT_PREVIEW_LENGTH)}"
+            preview = truncate_sql_for_logging(
+                mask_string_literals(statement, dialect), LOG_STATEMENT_PREVIEW_LENGTH
             )
+            self.log.debug(f"Executing: {preview}")
 
             stmt_start_time = time.time()
             try:
-                # Pre-check transaction state (PostgreSQL anti-aborted-transaction).
-                # Only transactional providers own a SQL transaction to probe.
-                try:
-                    run_precheck = isinstance(self.provider, TransactionalProvider)
-                    if run_precheck:
-                        if hasattr(self.provider, "connection") and self.provider.connection:
-                            conn = self.provider.connection
-                            stmt_check: Any = None
-                            try:
-                                stmt_check = conn.prepareStatement(probe_sql)
-                            except AttributeError:
-                                self.provider.execute_query(probe_sql)
-                            else:
-                                try:
-                                    rs = stmt_check.executeQuery()
-                                    rs.close()
-                                finally:
-                                    if stmt_check is not None:
-                                        stmt_check.close()
-                        else:
-                            self.provider.execute_query(probe_sql)
-                except Exception as pre_check_e:
-                    error_msg = str(pre_check_e).lower()
-                    if (
-                        "transaction is aborted" in error_msg
-                        or "current transaction is aborted" in error_msg
-                    ):
+                if isinstance(self.provider, TransactionalProvider):
+                    try:
+                        self.provider.check_transaction_state()
+                    except TransactionAbortedError as health_error:
                         raise TransactionAbortedError(
-                            f"Transaction is aborted before executing statement {i+1}: {pre_check_e}"
-                        ) from pre_check_e
-                    else:
-                        raise
+                            f"Transaction is aborted before executing statement {i+1}: {health_error}"
+                        ) from (health_error.__cause__ or health_error)
 
                 if self.sql_execution_service:
                     is_query, result_data = self.sql_execution_service.execute_statement(
@@ -739,7 +690,7 @@ class ExecutionEngine:
                 ):
                     self.log.warning(
                         f"Statement {i + 1} failed (WHENEVER SQLERROR CONTINUE): "
-                        f"{strip_sql_statement_block(str(stmt_error))}"
+                        f"{redact_driver_error_text(strip_sql_statement_block(str(stmt_error)))}"
                     )
                     continue
 
@@ -749,7 +700,26 @@ class ExecutionEngine:
                 )
                 return False
 
+        try:
+            self._finish_statements(statements)
+        except Exception as end_error:
+            total_execution_time = int((time.time() - start_time) * SECONDS_TO_MILLISECONDS)
+            index = (
+                end_error.statement_index
+                if isinstance(end_error, StatementVerdictError)
+                else len(statements) - 1
+            )
+            self._handle_statement_failure(
+                migration, end_error, index, total_execution_time, result
+            )
+            return False
         return True
+
+    def _finish_statements(self, statements: List[str]) -> None:
+        """Let the provider give its verdict once the last statement of a unit has run."""
+        finish = getattr(self.provider, "finish_migration_statements", None)
+        if finish is not None:
+            finish(statements)
 
     def _handle_statement_failure(
         self,
@@ -764,8 +734,10 @@ class ExecutionEngine:
         Sequence: result.set_error -> result.add_migration(FAILED) -> rollback ->
         begin_transaction + record_migration(success=False) + commit.
         """
-        error_msg = strip_sql_statement_block(
-            clean_driver_error_message(to_python_string(error) or str(error))
+        error_msg = redact_driver_error_text(
+            strip_sql_statement_block(
+                clean_driver_error_message(to_python_string(error) or str(error))
+            )
         )
         self.log.error(
             f"Failed to execute statement {stmt_index+1} from {migration.script_name}: {error_msg}"
@@ -994,7 +966,7 @@ class ExecutionEngine:
                         return
 
                 # Do not add a successful MigrationInfo to the result here: the
-                # caller (MigrateCommand._execute_single_migration) already adds
+                # caller (MigrateCommand, via its script runner) already adds
                 # one for every migration that completes without an error,
                 # covering both SQL and non-SQL formats uniformly. Adding one
                 # here too duplicated the entry for non-SQL (e.g. Python)
@@ -1138,16 +1110,9 @@ class ExecutionEngine:
         # Execute SQL statements in the callback
         try:
             for statement in sql_statements:
-                stripped = statement.strip()
-                if (
-                    not stripped
-                    or quirks.is_batch_separator(stripped)
-                    or self._is_comment_only_statement(stripped)
-                ):
-                    continue
                 if (
                     self._current_sqlplus_ctx is not None
-                    and quirks.parse_error_policy_directive(stripped) is not None
+                    and quirks.parse_error_policy_directive(statement) is not None
                 ):
                     continue
                 if record is not None:
@@ -1171,7 +1136,8 @@ class ExecutionEngine:
                     )
 
                 # Execute statement using provider
-                self.log.debug(f"Executing callback SQL: {statement}")
+                masked = mask_string_literals(statement, self._probe_dialect_key())
+                self.log.debug(f"Executing callback SQL: {masked}")
 
                 try:
                     if self.sql_execution_service:
@@ -1285,11 +1251,15 @@ class ExecutionEngine:
                 except Exception as e:
                     self.log.error(
                         "Error executing callback SQL statement: "
-                        f"{strip_sql_statement_block(str(e))}"
+                        f"{redact_driver_error_text(strip_sql_statement_block(str(e)))}"
                     )
-                    self.log.error(f"SQL: {describe_statement(statement)}")
-                    self.log.debug(f"Failed statement: {statement}")
+                    if not self.sql_execution_service:
+                        self.log.error(f"SQL: {describe_statement(statement)}")
+                    masked = mask_string_literals(statement, self._probe_dialect_key())
+                    self.log.debug(f"Failed statement: {masked}")
                     raise
+
+            self._finish_statements(sql_statements)
 
             if transaction_started and isinstance(self.provider, TransactionalProvider):
                 # Commit transaction for successful callback execution

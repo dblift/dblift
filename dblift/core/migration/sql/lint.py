@@ -65,7 +65,8 @@ class ScriptLint:
     findings: Tuple[Finding, ...]
     errors: Tuple[str, ...]
     # Tables the script creates, ``schema.name`` or ``name`` when it gives no schema,
-    # lower-cased: carried to the next script of a delta; not part of the JSON payload.
+    # an unquoted part lower-cased, a quoted one as written between double quotes: carried to
+    # the next script of a delta; not part of the JSON payload.
     created_tables: FrozenSet[str] = field(default=frozenset(), compare=False)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -119,7 +120,7 @@ def lint_analysis(
 
     allowed = allowed_codes(text)
     issues, created = issues_and_created_tables(
-        analysis, dialect, created_before or frozenset(), existing_tables=existing_tables
+        analysis, dialect, created_before or frozenset(), existing_tables=existing_tables, text=text
     )
     findings = tuple(replace(f, allowed=f.code in allowed) for f in issues)
     return ScriptLint(

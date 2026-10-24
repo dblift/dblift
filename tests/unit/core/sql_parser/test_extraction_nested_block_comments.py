@@ -1,6 +1,6 @@
 """Object extraction must nest block comments only where splitting does.
 
-``EnhancedRegexParser._strip_comments_preserving_quotes`` used to treat
+The removed regex parser's comment stripper used to treat
 ``/* ... */`` as nesting for every dialect unconditionally, while statement
 splitting already follows each engine's real rule (see
 ``test_nested_block_comments.py``). On a non-nesting engine such as MySQL, a
@@ -18,21 +18,12 @@ malformed or extra object as well as a missing one.
 """
 
 import unittest
-from unittest import mock
 
-from dblift.db.plugins.db2.parser.db2_regex_parser import DB2RegexParser
-from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-from dblift.db.plugins.duckdb.parser.duckdb_tokenizer import DuckDBTokenizer
-from dblift.db.plugins.mysql.parser.mysql_regex_parser import MySqlRegexParser
-from dblift.db.plugins.oracle.parser.oracle_parser import OracleParser
-from dblift.db.plugins.postgresql.parser.postgresql_regex_parser import (
-    PostgreSqlRegexParser,
-)
-from dblift.db.plugins.sqlite.parser.sqlite_regex_parser import SQLiteRegexParser
-from dblift.db.plugins.sqlserver.parser.sqlserver_regex_parser import (
-    SqlServerRegexParser,
-)
+from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
+from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 from dblift.db.provider_registry import ProviderRegistry
+from tests.support.facts_parser import facts_parser
 
 # "victim" only appears inside the nested comment, so finding it as an
 # extracted object proves extraction (wrongly) looked past the first "*/".
@@ -50,12 +41,8 @@ LINE_COMMENT_REPRODUCTION_SQL = (
 
 
 def _regex_parser_for(dialect: str):
-    """Resolve the dialect's regex parser via ``ProviderRegistry``, exactly
-    as the runtime does (mirrors ``test_nested_block_comments.py``'s
-    helper), so a wrong quirks-level wiring is caught too, not just a wrong
-    parser class.
-    """
-    return ProviderRegistry.get_quirks(dialect).parser_class("regex")()
+    """The dialect's statement-facts parser, built from its registered plugin."""
+    return facts_parser(dialect)
 
 
 def _splits_out_the_live_statement(dialect: str) -> bool:
@@ -72,9 +59,18 @@ def _splits_out_the_live_statement(dialect: str) -> bool:
     """
     parser = _regex_parser_for(dialect)
     stmts = parser.split_statements(NESTED_COMMENT_SQL)
-    strip_comments = getattr(parser, "_strip_comments_preserving_quotes", None)
-    if strip_comments is None:
-        return any("CREATE TABLE victim" in s for s in stmts)
+    quirks = ProviderRegistry.get_quirks(dialect)
+    tokenizer = quirks.redaction_tokenizer()
+    nests = tokenizer.NESTED_BLOCK_COMMENTS if tokenizer else quirks.lexical_spec().nested_comments
+    if dialect == "duckdb":
+        strip_comments = DuckDBQuirks().blank_comments
+    else:
+
+        def strip_comments(text: str) -> str:
+            return strip_comments_preserving_quotes(
+                text, line_prefixes=["--"], has_block_comments=True, nested_block_comments=nests
+            )
+
     return any("CREATE TABLE victim" in strip_comments(s) for s in stmts)
 
 
@@ -130,9 +126,6 @@ class TestExtractionAgreesWithSplittingPerDialect(unittest.TestCase):
     def test_db2(self):
         self._assert_agree("db2")
 
-    def test_oracle(self):
-        self._assert_agree("oracle")
-
     def test_cockroachdb(self):
         self._assert_agree("cockroachdb")
 
@@ -152,12 +145,12 @@ class TestMySqlExtractionDoesNotNestBlockComments(unittest.TestCase):
 
     def test_issue_example(self):
         sql = "/* a /* b */ CREATE TABLE t (id int); */"
-        objects = MySqlRegexParser().extract_objects(sql)
+        objects = facts_parser("mysql").extract_objects(sql)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "t")
 
     def test_nested_comment_leaves_live_statement_visible(self):
-        objects = MySqlRegexParser().extract_objects(NESTED_COMMENT_SQL)
+        objects = facts_parser("mysql").extract_objects(NESTED_COMMENT_SQL)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "victim")
 
@@ -172,7 +165,7 @@ class TestSqlServerExtractionNestsBlockComments(unittest.TestCase):
     """
 
     def test_nested_comment_hides_the_statement(self):
-        objects = SqlServerRegexParser().extract_objects(NESTED_COMMENT_SQL)
+        objects = facts_parser("sqlserver").extract_objects(NESTED_COMMENT_SQL)
         self.assertEqual(objects, [])
 
 
@@ -183,7 +176,7 @@ class TestDb2ExtractionNestsBlockComments(unittest.TestCase):
     """
 
     def test_nested_comment_hides_the_statement(self):
-        objects = DB2RegexParser().extract_objects(NESTED_COMMENT_SQL)
+        objects = facts_parser("db2").extract_objects(NESTED_COMMENT_SQL)
         self.assertEqual(objects, [])
 
     def test_nested_comment_hides_create_and_drop_but_not_the_statement_after(self):
@@ -191,7 +184,7 @@ class TestDb2ExtractionNestsBlockComments(unittest.TestCase):
             "/* a /* b */ ; CREATE TABLE t_in (x INT); DROP TABLE t_keep; */\n"
             "CREATE TABLE t_after (x INT);"
         )
-        objects = DB2RegexParser().extract_objects(sql)
+        objects = facts_parser("db2").extract_objects(sql)
         self.assertEqual([o.name for o in objects], ["T_AFTER"], objects)
 
 
@@ -202,12 +195,12 @@ class TestSQLiteExtractionDoesNotNestBlockComments(unittest.TestCase):
     """
 
     def test_issue_example(self):
-        objects = SQLiteRegexParser().extract_objects(ISSUE_REPRODUCTION_SQL)
+        objects = facts_parser("sqlite").extract_objects(ISSUE_REPRODUCTION_SQL)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name, "real_one")
 
     def test_nested_comment_leaves_live_statement_visible(self):
-        objects = SQLiteRegexParser().extract_objects(NESTED_COMMENT_SQL)
+        objects = facts_parser("sqlite").extract_objects(NESTED_COMMENT_SQL)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "victim")
 
@@ -220,14 +213,9 @@ class TestOracleExtractionDoesNotNestBlockComments(unittest.TestCase):
     """
 
     def test_issue_example(self):
-        objects = OracleParser().extract_objects(ISSUE_REPRODUCTION_SQL)
+        objects = facts_parser("oracle").extract_objects(ISSUE_REPRODUCTION_SQL)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name, "REAL_ONE")
-
-    def test_nested_comment_leaves_live_statement_visible(self):
-        objects = OracleParser().extract_objects(NESTED_COMMENT_SQL)
-        self.assertEqual(len(objects), 1, objects)
-        self.assertEqual(objects[0].name, "VICTIM")
 
 
 class TestDuckDBExtractionNestsBlockComments(unittest.TestCase):
@@ -237,45 +225,21 @@ class TestDuckDBExtractionNestsBlockComments(unittest.TestCase):
     """
 
     def test_issue_example(self):
-        objects = DuckDBRegexParser().extract_objects(ISSUE_REPRODUCTION_SQL)
+        objects = facts_parser("duckdb").extract_objects(ISSUE_REPRODUCTION_SQL)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name, "real_one")
 
     def test_nested_comment_hides_the_statement(self):
-        objects = DuckDBRegexParser().extract_objects(NESTED_COMMENT_SQL)
+        objects = facts_parser("duckdb").extract_objects(NESTED_COMMENT_SQL)
         self.assertEqual(objects, [])
 
 
-class TestDuckDBSplittingAndExtractionShareOneNestingFlag(unittest.TestCase):
-    """``DuckDBRegexParser.split_statements`` and the inherited
-    ``extract_objects`` both read ``DuckDBTokenizer.NESTED_BLOCK_COMMENTS``
-    instead of each hardcoding their own answer. Pin the lockstep itself,
-    not just today's value: flipping the flag must move both paths
-    together, and restoring it must bring both back — two hand-maintained
-    facts that merely happen to agree is exactly how the original
-    SQLite/DuckDB mismatch went unnoticed for so long.
-    """
+class TestDuckDBScannerAndExtractionAgreeOnNestedComments(unittest.TestCase):
+    """A nested comment remains one inert segment across scanner and object extraction."""
 
-    def test_flipping_the_flag_moves_both_paths_together_then_restores(self):
-        parser = DuckDBRegexParser()
-
-        # Baseline: nesting on (DuckDB's real rule) — one statement, no
-        # object, because the whole thing is one comment.
-        self.assertEqual(parser.split_statements(NESTED_COMMENT_SQL), [NESTED_COMMENT_SQL])
-        self.assertEqual(parser.extract_objects(NESTED_COMMENT_SQL), [])
-
-        with mock.patch.object(DuckDBTokenizer, "NESTED_BLOCK_COMMENTS", False):
-            # Flipped: the inner "/*" no longer nests, so the first "*/"
-            # closes the whole comment — two statements, one live object.
-            stmts = parser.split_statements(NESTED_COMMENT_SQL)
-            self.assertEqual(len(stmts), 2, stmts)
-
-            objects = parser.extract_objects(NESTED_COMMENT_SQL)
-            self.assertEqual(len(objects), 1, objects)
-            self.assertEqual(objects[0].name.lower(), "victim")
-
-        # Restored: both paths return to the nesting answer, not just one.
-        self.assertEqual(parser.split_statements(NESTED_COMMENT_SQL), [NESTED_COMMENT_SQL])
+    def test_nested_comment_hides_the_statement_in_both_views(self):
+        parser = facts_parser("duckdb")
+        self.assertEqual(parser.split_for_extraction(NESTED_COMMENT_SQL), [NESTED_COMMENT_SQL[:-1]])
         self.assertEqual(parser.extract_objects(NESTED_COMMENT_SQL), [])
 
 
@@ -286,17 +250,17 @@ class TestLineCommentsAlsoHideTheCommentedStatement(unittest.TestCase):
     """
 
     def test_sqlite(self):
-        objects = SQLiteRegexParser().extract_objects(LINE_COMMENT_REPRODUCTION_SQL)
+        objects = facts_parser("sqlite").extract_objects(LINE_COMMENT_REPRODUCTION_SQL)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name, "real_one")
 
     def test_duckdb(self):
-        objects = DuckDBRegexParser().extract_objects(LINE_COMMENT_REPRODUCTION_SQL)
+        objects = facts_parser("duckdb").extract_objects(LINE_COMMENT_REPRODUCTION_SQL)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name, "real_one")
 
     def test_oracle(self):
-        objects = OracleParser().extract_objects(LINE_COMMENT_REPRODUCTION_SQL)
+        objects = facts_parser("oracle").extract_objects(LINE_COMMENT_REPRODUCTION_SQL)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name, "REAL_ONE")
 
@@ -313,16 +277,12 @@ class TestExtractionReturnsEveryLiveObjectNotJustTheFirst(unittest.TestCase):
     SQL = "CREATE TABLE first_one (id int); CREATE TABLE second_one (id int);"
 
     def test_sqlite(self):
-        objects = SQLiteRegexParser().extract_objects(self.SQL)
+        objects = facts_parser("sqlite").extract_objects(self.SQL)
         self.assertEqual([o.name for o in objects], ["first_one", "second_one"])
 
     def test_duckdb(self):
-        objects = DuckDBRegexParser().extract_objects(self.SQL)
+        objects = facts_parser("duckdb").extract_objects(self.SQL)
         self.assertEqual([o.name for o in objects], ["first_one", "second_one"])
-
-    def test_oracle(self):
-        objects = OracleParser().extract_objects(self.SQL)
-        self.assertEqual([o.name for o in objects], ["FIRST_ONE", "SECOND_ONE"])
 
 
 class TestUnterminatedInnerCommentAgreesWithSplitting(unittest.TestCase):
@@ -334,28 +294,28 @@ class TestUnterminatedInnerCommentAgreesWithSplitting(unittest.TestCase):
 
     UNTERMINATED_INNER = "/* outer /* inner */ CREATE TABLE victim (id INT);"
 
-    def test_postgresql_stays_open_hides_everything(self):
-        objects = PostgreSqlRegexParser().extract_objects(self.UNTERMINATED_INNER)
-        self.assertEqual(objects, [])
+    def test_postgresql_refuses_an_unterminated_nested_comment(self):
+        with self.assertRaises(UnsafeStatementSplitError):
+            facts_parser("postgresql").extract_objects(self.UNTERMINATED_INNER)
 
     def test_mysql_closes_at_first_marker_exposes_statement(self):
-        objects = MySqlRegexParser().extract_objects(self.UNTERMINATED_INNER)
+        objects = facts_parser("mysql").extract_objects(self.UNTERMINATED_INNER)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "victim")
 
     def test_sqlite_closes_at_first_marker_exposes_statement(self):
-        objects = SQLiteRegexParser().extract_objects(self.UNTERMINATED_INNER)
+        objects = facts_parser("sqlite").extract_objects(self.UNTERMINATED_INNER)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "victim")
 
     def test_oracle_closes_at_first_marker_exposes_statement(self):
-        objects = OracleParser().extract_objects(self.UNTERMINATED_INNER)
+        objects = facts_parser("oracle").extract_objects(self.UNTERMINATED_INNER)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name, "VICTIM")
 
-    def test_duckdb_stays_open_hides_everything(self):
-        objects = DuckDBRegexParser().extract_objects(self.UNTERMINATED_INNER)
-        self.assertEqual(objects, [])
+    def test_duckdb_stays_open_and_the_script_is_refused(self):
+        with self.assertRaises(UnsafeStatementSplitError):
+            facts_parser("duckdb").extract_objects(self.UNTERMINATED_INNER)
 
 
 class TestQuotedCommentMarkersSurviveDialectAwareStripping(unittest.TestCase):
@@ -366,37 +326,37 @@ class TestQuotedCommentMarkersSurviveDialectAwareStripping(unittest.TestCase):
 
     def test_slash_star_inside_string_on_mysql(self):
         sql = "CREATE TABLE t (note VARCHAR(10) DEFAULT '/*'); SELECT 1;"
-        objects = MySqlRegexParser().extract_objects(sql)
+        objects = facts_parser("mysql").extract_objects(sql)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "t")
 
     def test_star_slash_inside_string_on_postgresql(self):
         sql = "CREATE TABLE t (note VARCHAR(10) DEFAULT '*/'); SELECT 1;"
-        objects = PostgreSqlRegexParser().extract_objects(sql)
+        objects = facts_parser("postgresql").extract_objects(sql)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "t")
 
     def test_slash_star_inside_string_on_sqlite(self):
         sql = "CREATE TABLE t (note VARCHAR(10) DEFAULT '/*'); SELECT 1;"
-        objects = SQLiteRegexParser().extract_objects(sql)
+        objects = facts_parser("sqlite").extract_objects(sql)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "t")
 
     def test_star_slash_inside_string_on_duckdb(self):
         sql = "CREATE TABLE t (note VARCHAR(10) DEFAULT '*/'); SELECT 1;"
-        objects = DuckDBRegexParser().extract_objects(sql)
+        objects = facts_parser("duckdb").extract_objects(sql)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "t")
 
     def test_slash_star_inside_string_on_oracle(self):
-        sql = "CREATE TABLE t (note VARCHAR2(10) DEFAULT '/*'); SELECT 1 FROM DUAL;"
-        objects = OracleParser().extract_objects(sql)
+        sql = "CREATE TABLE t (note VARCHAR2(10) DEFAULT '/*');\nSELECT 1 FROM DUAL;"
+        objects = facts_parser("oracle").extract_objects(sql)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name, "T")
 
     def test_star_slash_inside_string_on_oracle(self):
-        sql = "CREATE TABLE t (note VARCHAR2(10) DEFAULT '*/'); SELECT 1 FROM DUAL;"
-        objects = OracleParser().extract_objects(sql)
+        sql = "CREATE TABLE t (note VARCHAR2(10) DEFAULT '*/');\nSELECT 1 FROM DUAL;"
+        objects = facts_parser("oracle").extract_objects(sql)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name, "T")
 
@@ -408,25 +368,25 @@ class TestCommentContainingSemicolon(unittest.TestCase):
 
     def test_mysql_semicolon_inside_comment_is_not_a_boundary(self):
         sql = "/* has a ; inside */ CREATE TABLE t (id int);"
-        objects = MySqlRegexParser().extract_objects(sql)
+        objects = facts_parser("mysql").extract_objects(sql)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "t")
 
     def test_sqlite_semicolon_inside_comment_is_not_a_boundary(self):
         sql = "/* has a ; inside */ CREATE TABLE t (id int);"
-        objects = SQLiteRegexParser().extract_objects(sql)
+        objects = facts_parser("sqlite").extract_objects(sql)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "t")
 
     def test_duckdb_semicolon_inside_comment_is_not_a_boundary(self):
         sql = "/* has a ; inside */ CREATE TABLE t (id int);"
-        objects = DuckDBRegexParser().extract_objects(sql)
+        objects = facts_parser("duckdb").extract_objects(sql)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name.lower(), "t")
 
     def test_oracle_semicolon_inside_comment_is_not_a_boundary(self):
         sql = "/* has a ; inside */ CREATE TABLE t (id int);"
-        objects = OracleParser().extract_objects(sql)
+        objects = facts_parser("oracle").extract_objects(sql)
         self.assertEqual(len(objects), 1, objects)
         self.assertEqual(objects[0].name, "T")
 

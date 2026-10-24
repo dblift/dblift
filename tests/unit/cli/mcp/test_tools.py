@@ -454,3 +454,17 @@ def test_validate_fails_when_history_is_unreadable(project):
 
     assert result.structured_content["success"] is False
     assert "could not read migration history" in result.structured_content["error"]
+
+
+@pytest.mark.unit
+def test_migrate_dry_run_analysis_marks_an_unreadable_statement_for_review(project):
+    (project / "migrations" / "V1__init.sql").write_text("FROBNICATE the widgets;")
+
+    async def scenario(client):
+        return await client.call_tool("migrate_dry_run", {})
+
+    result = anyio.run(_session, scenario)
+
+    analysis = result.structured_content["migrations"][0]["analysis"]
+    assert analysis["verdict"] == "REVIEW"
+    assert [f["code"] for f in analysis["findings"]] == ["statement-not-analysed"]

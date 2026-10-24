@@ -177,6 +177,28 @@ these ahead of time.
 2. Test SQL directly in your database client first
 3. Ensure you're using the correct SQL dialect for your database
 
+## Quoted Values Are Missing from a Database Error
+
+When a statement fails, the database driver often repeats values from it: PostgreSQL's `DETAIL:`
+line, MySQL's `Duplicate entry '...'` and `near '...'`, SQLite's `near "..."`, DB2's unexpected
+token. DBLift removes the driver's `DETAIL`, `HINT`, `QUERY`, `CONTEXT` and `LINE n:` lines and
+SQLAlchemy's `[SQL: ...]` and `[parameters: ...]` blocks from the error text before it reaches the
+console, the log files, the run result and the statement journal. In what remains, anything in
+single or double quotes (from the first quote to the last on the line) and every `=(...)` group is
+replaced with `?`. An unquoted value after `value:`, `value is` or `invalid number:`, and the
+unquoted tail of an Oracle `ORA-` line that follows a colon (except Oracle's fixed phrases), are
+replaced too.
+
+The statement number, the script name, the error class and error codes stay. Because a name cannot
+be told from a value, quoted names are replaced too: PostgreSQL's `relation "orders"`, a constraint
+in double quotes, MySQL's `for key '...'`. To see the whole error, run the statement in the
+database client. Statements printed at `--log-level debug` have their string literals masked.
+
+Two things are not masked. `--show-sql` prints the statements it is asked to show verbatim, and a
+message you raise yourself (`RAISE EXCEPTION '...'` in PostgreSQL, `SIGNAL ... MESSAGE_TEXT` in
+MySQL, `RAISE_APPLICATION_ERROR` in Oracle, whose `ORA-20000` to `ORA-20999` text is kept as
+written) is your own text and is kept.
+
 ## SQL Server: Full-text Catalog and Index Fail in Transactional Migration
 
 **Problem**: A SQL Server migration containing `CREATE FULLTEXT CATALOG` or `CREATE FULLTEXT INDEX` fails with:

@@ -27,7 +27,7 @@ class SqlParserInterface(ABC):
         """
 
     @abstractmethod
-    def split_statements(self, sql_content: str, strict_tokenizer: bool = False) -> List[str]:
+    def split_statements(self, sql_content: str) -> List[str]:
         """Split SQL content into individual statements.
 
         Args:
@@ -35,6 +35,30 @@ class SqlParserInterface(ABC):
 
         Returns:
             List of SQL statement strings
+        """
+
+    @abstractmethod
+    def split_for_extraction(self, sql_content: str) -> List[str]:
+        """Executed SQL constituents for object extraction and reporting.
+
+        Dialect scanners may keep several constituents in one execution unit
+        (T-SQL batches or a client-combined command). Directives and skipped
+        batches contribute none.
+        """
+
+    def statement_sources(self, script: str, statements: List[str]) -> List[Optional[str]]:
+        """Each of ``statements`` as it stands in ``script``, blanks the split trimmed included.
+
+        ``None`` marks one that cannot be located. Parsers that read names override this.
+        """
+        return list(statements)
+
+    @abstractmethod
+    def split_for_analysis(self, sql_content: str) -> List[str]:
+        """Scanner-derived executed constituents, once per execution unit.
+
+        A repeated batch is analyzed once, and a skipped batch contributes
+        nothing.
         """
 
     @abstractmethod

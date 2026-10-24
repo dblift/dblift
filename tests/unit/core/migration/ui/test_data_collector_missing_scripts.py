@@ -5,16 +5,21 @@ Flyway reports missing migrations, without info calling validate."""
 import pytest
 
 from dblift.core.logger import NullLog
-from dblift.core.migration.migration import Migration, MigrationType
-from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.state.migration_state import (
+    CatalogMigration,
+    MigrationEntry,
+    MigrationState,
+)
 from dblift.core.migration.state.migration_state_service import MigrationStateService
 from dblift.core.migration.ui.data_collector import MigrationDataCollector
+from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
 
 
 def _mk_versioned(version, rank, script_name=None, success=True, resolved=True):
-    m = Migration(
+    m = make_migration(
         script_name=script_name or f"V{version}__test.sql",
         content="SELECT 1;",
         version=version,
@@ -47,7 +52,6 @@ def _build_state(applied_migrations, current_version=None, undone_versions=None)
     return MigrationState(
         current_version=current_version,
         undone_versions=sorted(context["undone_versions"]),
-        pending_objects=[],
         all_applied_objects=applied_migrations,
         applied=entries,
     )
@@ -56,19 +60,19 @@ def _build_state(applied_migrations, current_version=None, undone_versions=None)
 def _build_pending_state(
     pending_migrations, scripts_dir=None, baseline_version=None, target_version=None
 ):
-    """Same idea as _build_state, but for pending entries via
-    MigrationStateService.determine_pending_state()."""
+    """Build unresolved on-disk catalog records with the state service."""
     context = {
         "baseline_version": baseline_version,
         "target_version": target_version,
         "scripts_dir": scripts_dir,
     }
     service = MigrationStateService(NullLog())
-    entries = [
-        MigrationEntry.from_migration(m, status=service.determine_pending_state(m, context).value)
-        for m in pending_migrations
-    ]
-    return MigrationState(pending_objects=pending_migrations, pending=entries)
+    return MigrationState(
+        catalog=tuple(
+            CatalogMigration(m, service.determine_pending_eligibility(m, context))
+            for m in pending_migrations
+        )
+    )
 
 
 def test_applied_migration_with_deleted_script_shows_missing():
@@ -147,7 +151,7 @@ def test_undone_migration_still_detected_with_resolved_scripts():
     are still present."""
     collector = MigrationDataCollector(NullLog())
     sql = _mk_versioned("1", rank=1, resolved=True)
-    undo = Migration(
+    undo = make_migration(
         script_name="U1__test.sql",
         content="SELECT 1;",
         version="1",
@@ -175,7 +179,7 @@ def test_pending_migration_with_undo_script_shows_pending():
     from pathlib import Path
 
     collector = MigrationDataCollector(NullLog())
-    pending = Migration(
+    pending = make_migration(
         script_name="V2__test.sql",
         content="SELECT 1;",
         version="2",

@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.support.facts_parser import facts_parser
+
 pytest.importorskip("duckdb", reason="duckdb driver not installed")
 pytest.importorskip("duckdb_engine", reason="duckdb_engine dialect not installed")
 
@@ -106,69 +108,25 @@ class TestDuckDBQuirks:
         assert q.type_equivalents()["INT8"] == "BIGINT"
         assert q.type_equivalents()["BOOL"] == "BOOLEAN"
 
-    def test_parser_class_dispatch(self):
-        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
-        from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
 
-        q = DuckDBQuirks()
-        assert q.parser_class("regex") is DuckDBRegexParser
-        assert q.parser_class("hybrid").__name__ == "HybridParser"
-        assert q.parser_class("sqlglot").__name__ == "SqlGlotParser"
-        assert q.parser_class("other") is None
+pytest.importorskip("duckdb", reason="duckdb driver not installed")
 
 
-# --- parser config -----------------------------------------------------
-@pytest.mark.unit
-class TestParserConfig:
-    def test_classification_and_getters(self):
-        from dblift.db.plugins.duckdb.parser.parser_config import DuckDBParserConfig
-
-        cfg = DuckDBParserConfig()
-        assert cfg.is_ddl_statement("CREATE SEQUENCE s START 1")
-        assert cfg.is_dml_statement("INSERT INTO t VALUES (1)")
-        assert cfg.is_query_statement("SELECT 1")
-        assert not cfg.is_ddl_statement("")
-        assert cfg.get_batch_separator() == ";"
-        assert cfg.supports_block_comments() and cfg.supports_line_comments()
-        assert cfg.get_block_keywords_for_splitting() == set()
-        assert "CREATE" in cfg.get_ddl_keywords()
-        assert "INSERT" in cfg.get_dml_keywords()
-        assert "SELECT" in cfg.get_query_keywords()
-        assert "COMMIT" in cfg.get_transaction_keywords()
-
-    def test_identifier_normalization_and_properties(self):
-        from dblift.db.plugins.duckdb.parser.parser_config import DuckDBParserConfig
-
-        cfg = DuckDBParserConfig()
-        assert cfg.normalize_identifier('"Mixed"') == "Mixed"
-        assert cfg.normalize_identifier("plain") == "plain"
-        assert cfg.normalize_identifier("") == ""
-        assert cfg.name == "duckdb"
-        assert cfg.batch_separators and cfg.quoted_identifiers and cfg.comment_patterns
-        assert cfg.block_keywords and cfg.ddl_patterns and cfg.dml_patterns
-        assert cfg.query_patterns and cfg.object_patterns
-        assert cfg.get_identifier_pattern().match("foo")
-        assert cfg.get_qualified_identifier_pattern().match("s.foo")
-        assert cfg.get_string_literal_pattern().match("'x'")
-        assert cfg.get_comment_pattern().search("-- c")
-        assert cfg.get_statement_separator_pattern().search(";")
+pytest.importorskip("duckdb_engine", reason="duckdb_engine dialect not installed")
 
 
-# --- regex parser ------------------------------------------------------
 @pytest.mark.unit
 class TestRegexParser:
     def test_split_empty_and_block_comment(self):
-        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 
-        p = DuckDBRegexParser()
+        p = facts_parser("duckdb")
         assert p.split_statements("") == []
         stmts = p.split_statements("/* c; */ SELECT 1; SELECT 2;")
         assert len(stmts) == 2
 
     def test_split_respects_quoted_identifiers(self):
-        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 
-        p = DuckDBRegexParser()
+        p = facts_parser("duckdb")
         # ';' and '--' inside a double-quoted identifier are literal.
         stmts = p.split_statements('CREATE TABLE "weird;name" (a INT); SELECT 1;')
         assert len(stmts) == 2
@@ -177,15 +135,13 @@ class TestRegexParser:
         assert len(stmts2) == 2
 
     def test_extract_variants(self):
-        from dblift.db.plugins.duckdb.parser.duckdb_regex_parser import DuckDBRegexParser
 
-        p = DuckDBRegexParser()
+        p = facts_parser("duckdb")
         assert p.extract_objects("") == []
         assert p.extract_objects("CREATE SEQUENCE s")[0].object_type.value == "SEQUENCE"
         assert p.extract_objects("CREATE VIEW v AS SELECT 1")[0].name == "v"
 
 
-# --- provider helper methods ------------------------------------------
 @pytest.fixture()
 def provider():
     from dblift.config import DbliftConfig
@@ -243,3 +199,11 @@ class TestProviderHelpers:
 
     def test_get_schema_qualified_name(self, provider):
         assert provider.get_schema_qualified_name("main", "t") == '"main"."t"'
+
+
+@pytest.mark.parametrize("sql", ["\x0b", " ", "\x85"])
+def test_a_statement_of_white_space_alone_is_not_rewritten_with_returning(sql):
+    from dblift.db.plugins.duckdb.provider import DuckDBProvider
+
+    provider = object.__new__(DuckDBProvider)
+    assert provider._try_dml_rowcount_via_returning(sql) is None

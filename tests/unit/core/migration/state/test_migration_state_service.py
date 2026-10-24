@@ -7,6 +7,7 @@ import pytest
 
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
+from dblift.core.migration.state.migration_state import MigrationEligibility
 from dblift.core.migration.state.migration_state_service import MigrationStateService
 
 
@@ -288,68 +289,68 @@ class TestMigrationStateService:
         result = service.determine_state(migration, {})
         assert result == MigrationDisplayState.UNKNOWN
 
-    def test_determine_pending_state_repeatable(self, service):
-        """Test determine_pending_state for repeatable migration."""
+    def test_determine_pending_eligibility_repeatable(self, service):
+        """Test determine_pending_eligibility for repeatable migration."""
         migration = Mock()
         migration.type = "REPEATABLE"
         context = {}
-        result = service.determine_pending_state(migration, context)
-        assert result == MigrationDisplayState.PENDING
+        result = service.determine_pending_eligibility(migration, context)
+        assert result == MigrationEligibility.PENDING
 
-    def test_determine_pending_state_undo_sql(self, service):
-        """Test determine_pending_state for UNDO_SQL migration."""
+    def test_determine_pending_eligibility_undo_sql(self, service):
+        """Test determine_pending_eligibility for UNDO_SQL migration."""
         migration = Mock()
         migration.type = "UNDO_SQL"
         context = {}
-        result = service.determine_pending_state(migration, context)
-        assert result == MigrationDisplayState.AVAILABLE
+        result = service.determine_pending_eligibility(migration, context)
+        assert result == MigrationEligibility.UNDO_AVAILABLE
 
-    def test_determine_pending_state_below_baseline(self, service):
-        """Test determine_pending_state for version below baseline."""
+    def test_determine_pending_eligibility_below_baseline(self, service):
+        """Test determine_pending_eligibility for version below baseline."""
         migration = Mock()
         migration.type = "SQL"
         migration.version = "1.0.0"
         context = {"baseline_version": "2.0.0"}
-        result = service.determine_pending_state(migration, context)
-        assert result == MigrationDisplayState.BELOW_BASELINE
+        result = service.determine_pending_eligibility(migration, context)
+        assert result == MigrationEligibility.BELOW_BASELINE
 
-    def test_determine_pending_state_version_equal_to_baseline(self, service):
+    def test_determine_pending_eligibility_version_equal_to_baseline(self, service):
         """Pending versioned migration at baseline is Below baseline, not Pending."""
         migration = Mock()
         migration.type = "SQL"
         migration.version = "2.0.0"
         context = {"baseline_version": "2.0.0"}
-        result = service.determine_pending_state(migration, context)
-        assert result == MigrationDisplayState.BELOW_BASELINE
+        result = service.determine_pending_eligibility(migration, context)
+        assert result == MigrationEligibility.BELOW_BASELINE
 
-    def test_determine_pending_state_version_above_baseline(self, service):
+    def test_determine_pending_eligibility_version_above_baseline(self, service):
         """Version above baseline stays Pending when no target is set."""
         migration = Mock()
         migration.type = "SQL"
         migration.version = "3.0.0"
         context = {"baseline_version": "2.0.0"}
-        result = service.determine_pending_state(migration, context)
-        assert result == MigrationDisplayState.PENDING
+        result = service.determine_pending_eligibility(migration, context)
+        assert result == MigrationEligibility.PENDING
 
-    def test_determine_pending_state_above_baseline_and_target(self, service):
+    def test_determine_pending_eligibility_above_baseline_and_target(self, service):
         """Version above both baseline and target is Above target."""
         migration = Mock()
         migration.type = "SQL"
         migration.version = "5.0.0"
         context = {"baseline_version": "2.0.0", "target_version": "4.0.0"}
-        result = service.determine_pending_state(migration, context)
-        assert result == MigrationDisplayState.ABOVE_TARGET
+        result = service.determine_pending_eligibility(migration, context)
+        assert result == MigrationEligibility.ABOVE_TARGET
 
-    def test_determine_pending_state_above_target(self, service):
-        """Test determine_pending_state for version above target."""
+    def test_determine_pending_eligibility_above_target(self, service):
+        """Test determine_pending_eligibility for version above target."""
         migration = Mock()
         migration.type = "SQL"
         migration.version = "3.0.0"
         context = {"target_version": "2.0.0"}
-        result = service.determine_pending_state(migration, context)
-        assert result == MigrationDisplayState.ABOVE_TARGET
+        result = service.determine_pending_eligibility(migration, context)
+        assert result == MigrationEligibility.ABOVE_TARGET
 
-    def test_determine_pending_state_with_undo_script(self, service, tmp_path):
+    def test_determine_pending_eligibility_with_undo_script(self, service, tmp_path):
         """Versioned scripts stay Pending; Available is the undo-script state only."""
         migration = Mock()
         migration.type = "SQL"
@@ -360,17 +361,17 @@ class TestMigrationStateService:
         undo_file.write_text("DROP TABLE test;")
 
         context = {"scripts_dir": str(tmp_path)}
-        result = service.determine_pending_state(migration, context)
-        assert result == MigrationDisplayState.PENDING
+        result = service.determine_pending_eligibility(migration, context)
+        assert result == MigrationEligibility.PENDING
 
-    def test_determine_pending_state_default(self, service):
-        """Test determine_pending_state default to PENDING."""
+    def test_determine_pending_eligibility_default(self, service):
+        """Test determine_pending_eligibility default to PENDING."""
         migration = Mock()
         migration.type = "SQL"
         migration.version = "1.0.0"
         context = {}
-        result = service.determine_pending_state(migration, context)
-        assert result == MigrationDisplayState.PENDING
+        result = service.determine_pending_eligibility(migration, context)
+        assert result == MigrationEligibility.PENDING
 
     def test_compare_versions_both_none(self, service):
         """Test _compare_versions with both None."""

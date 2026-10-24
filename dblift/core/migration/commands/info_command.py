@@ -11,8 +11,6 @@ from dblift.core.logger.results import InfoResult, MigrationInfo, is_failed_migr
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, MigrationType
 from dblift.core.migration.sql.lint import lint_pending_scripts
 from dblift.core.migration.sql.script_analysis import dialect_of
-from dblift.core.utils.url_masking import mask_database_url
-from dblift.db.provider_capabilities import get_provider_display_url, get_provider_driver_display
 
 from .base_command import BaseCommand
 
@@ -129,11 +127,7 @@ class InfoCommand(BaseCommand):
             # but for info command we need to show ALL migrations in chronological order
             all_applied_migrations = migration_state.all_applied_objects
 
-            # Populate current schema version from applied (non-undone) migrations
-            applied_migrations = migration_state.applied_objects
-            current_version = self.state_manager.get_current_version(applied_migrations)
-            if current_version:
-                result.current_schema_version = current_version
+            result.current_schema_version = migration_state.current_version
 
             # Use the migration UI to display the information properly
             # Pass the full state so UI can access undone_versions and other state info
@@ -204,29 +198,6 @@ class InfoCommand(BaseCommand):
                 )
                 for info in all_migration_infos:
                     info.analysis = analysed.get(info.script)
-
-            # Add database connection information to the result
-            # (This is already done by _populate_database_info, but keeping for compatibility)
-            try:
-                # Get database version
-                if hasattr(self.provider, "get_database_version"):
-                    result.db_version = self.provider.get_database_version()
-
-                # Get provider display URL (masked for security)
-                display_url = get_provider_display_url(self.provider, self.config)
-                if display_url:
-                    result.database_url_masked = mask_database_url(display_url)
-                    self.log.debug(f"Database URL: {result.database_url_masked}")
-
-                # Get driver info from plugin-declared quirks.
-                try:
-                    result.native_driver = get_provider_driver_display(self.provider, self.config)
-                except Exception as e:
-                    self.log.debug(f"Could not determine native driver info: {e}")
-                    result.native_driver = None  # Don't set "Unknown Native Driver"
-
-            except Exception as e:
-                self.log.debug(f"Could not retrieve database connection info: {e}")
 
         # Canonical lifecycle: preflight/header/schema-version/body/footer.
         return cast(

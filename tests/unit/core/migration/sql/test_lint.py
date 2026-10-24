@@ -29,6 +29,15 @@ def test_a_create_table_script_is_safe():
     assert (result.verdict, result.findings, result.script) == (SAFE, (), "V1__u.sql")
 
 
+def test_scanner_refusal_is_one_parse_error_without_transaction_rescan():
+    result = lint_script("SELECT 1; /* unterminated", "postgresql", "V2__bad.sql")
+    assert result.script == "V2__bad.sql"
+    assert result.verdict == REVIEW
+    assert result.findings == ()
+    assert len(result.errors) == 1
+    assert "unterminated block comment" in result.errors[0]
+
+
 def test_an_error_makes_the_script_unsafe():
     assert lint_script("DROP TABLE users;", "mysql").verdict == UNSAFE
 
@@ -265,3 +274,93 @@ def test_lint_targets_per_directory_recursion_overrides_the_default(migration_tr
 
 def test_lint_targets_of_no_directory_is_empty():
     assert lint_targets([], recursive=True) == []
+
+
+def _delta_findings(tmp_path: Path, dialect: str, drop: str):
+    (tmp_path / "V1__c.sql").write_text("CREATE TABLE t (id INTEGER);")
+    (tmp_path / "V2__d.sql").write_text(drop)
+    results = lint_files(
+        [tmp_path / "V1__c.sql", tmp_path / "V2__d.sql"],
+        dialect,
+        {},
+        MagicMock(),
+        as_delta=True,
+    )
+    return results[1].findings
+
+
+# Oracle reads an ideographic space as a blank (the name is read whole) and refuses a no-break space
+# (the script is not parsed): neither leaves an unreadable name for the lint to report, except the
+# ideographic space before a terminator, pinned below.
+@pytest.mark.parametrize(
+    "dialect,blank",
+    [
+        (dialect, blank)
+        for dialect in ["sqlite", "duckdb", "postgresql", "mysql"]
+        for blank in [chr(0xA0), chr(0x3000)]
+        if (dialect, blank) != ("duckdb", chr(0x3000))  # a blank for DuckDB: see the test below
+    ],
+)
+def test_a_drop_whose_name_cannot_be_read_is_not_exempted_as_a_new_table(
+    tmp_path: Path, dialect: str, blank: str
+):
+    # DuckDB replaces a no-break space before a terminator and refuses the statement (the statement
+    # alone would keep it); at the end of the script the engine keeps it, as the lint reads it
+    terminator = "" if dialect == "duckdb" and blank == chr(0xA0) else ";"
+    findings = _delta_findings(tmp_path, dialect, f"DROP TABLE t{blank}{terminator}")
+
+    assert [
+        (f.code, "name could not be read" in f.message) for f in findings if f.code == "drop-table"
+    ] == [("drop-table", True)]
+
+
+def test_a_drop_ending_in_an_ideographic_space_is_read_by_duckdb_as_a_drop_of_the_named_table(
+    tmp_path: Path,
+):
+    assert _delta_findings(tmp_path, "duckdb", f"DROP TABLE t{chr(0x3000)};") == ()
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+def test_a_drop_of_a_table_created_earlier_in_the_delta_is_still_exempted(
+    tmp_path: Path, dialect: str
+):
+    assert _delta_findings(tmp_path, dialect, "DROP TABLE t;") == ()
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
+def test_a_drop_of_another_table_still_warns(tmp_path: Path, dialect: str):
+    findings = _delta_findings(tmp_path, dialect, "DROP TABLE u;")
+
+    assert [f.code for f in findings] == ["drop-table"]
+
+
+@pytest.mark.parametrize("dialect", ["sqlite", "duckdb", "postgresql", "mysql", "oracle"])
+def test_a_table_created_under_an_unreadable_name_is_not_a_new_table(tmp_path: Path, dialect: str):
+    (tmp_path / "V1__c.sql").write_text("CREATE TABLE t (id INTEGER);")
+    (tmp_path / "V2__d.sql").write_text("DROP TABLE t;")
+    results = lint_files(
+        [tmp_path / "V1__c.sql", tmp_path / "V2__d.sql"], dialect, {}, MagicMock(), as_delta=True
+    )
+
+    assert [f.code for f in results[1].findings if f.code == "drop-table"] == ["drop-table"]
+
+
+def test_a_drop_of_a_table_whose_creation_carried_a_diagnostic_is_still_exempted(
+    tmp_path: Path,
+):
+    dialect = "sqlite"
+    (tmp_path / "V1__c.sql").write_text("CREATE VIRTUAL TABLE v USING fts5(a);")
+    (tmp_path / "V2__d.sql").write_text("DROP TABLE v;")
+    results = lint_files(
+        [tmp_path / "V1__c.sql", tmp_path / "V2__d.sql"], dialect, {}, MagicMock(), as_delta=True
+    )
+
+    assert results[1].findings == ()
+
+
+def test_an_oracle_drop_whose_name_ends_with_an_ideographic_space_before_a_terminator_is_read(
+    tmp_path: Path,
+):
+    findings = _delta_findings(tmp_path, "oracle", f"DROP TABLE t{chr(0x3000)};")
+
+    assert not [f for f in findings if "name could not be read" in f.message]

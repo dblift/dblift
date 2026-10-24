@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Set
 
 from dblift.core.logger import Log
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration
-from dblift.core.migration.state.rank_wins import latest_successful_ranks
+from dblift.core.migration.state.rank_wins import effective_current_version, latest_successful_ranks
 from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
 from dblift.core.migration.version_utils import is_migration_success
 
@@ -201,37 +201,8 @@ class MigrationDataService:
         return is_migration_success(success)
 
     def _get_current_version(self, applied_migrations: List[Migration]) -> Optional[str]:
-        """Get the current version from successfully applied versioned migrations.
-
-        Args:
-            applied_migrations: List of applied migrations
-
-        Returns:
-            Optional[str]: Current version if found
-        """
-        current_version = None
-
-        for migration in applied_migrations:
-            if self._get_migration_type(
-                migration
-            ) in VERSIONED_SCRIPT_TYPES and self._is_migration_successful(migration):
-                version = str(getattr(migration, "version", ""))
-                if version:
-                    # Keep track of the highest version
-                    if not current_version:
-                        current_version = version
-                    else:
-                        try:
-                            if self._compare_versions(version, current_version) > 0:
-                                current_version = version
-                        except Exception as e:
-                            self.logger.debug(
-                                f"Version comparison failed, using string fallback: {e}"
-                            )
-                            if version > current_version:
-                                current_version = version
-
-        return current_version
+        """Delegate the display version to the effective-history calculation."""
+        return effective_current_version(applied_migrations, self._compare_versions)
 
     def _compare_versions(self, version1: str, version2: str) -> int:
         """Compare two version strings. Delegates to shared compare_versions utility."""

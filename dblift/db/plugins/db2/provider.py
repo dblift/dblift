@@ -14,6 +14,7 @@ from dblift.core.sql_parser.common.comment_stripping import strip_comments_prese
 from dblift.db.object_naming import configured_identifier_text, get_normalized_object_name
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.plugins.db2.db2.schema_operations import Db2SchemaOperations
+from dblift.db.plugins.db2.parser.lexical_spec import DB2_SPEC
 from dblift.db.plugins.lease_lock import LEGACY_LEASE_EXPIRY_SECONDS
 from dblift.db.plugins.sql_lease_store import (
     OWNER_COLUMN,
@@ -67,6 +68,7 @@ def _without_nested_comments(sql: str) -> str:
             has_block_comments=True,
             nested_block_comments=nested,
             block_comment_replacement=" ",
+            blanks=DB2_SPEC.text_blanks,
         )
 
     stripped = strip(True)
@@ -194,9 +196,10 @@ class Db2Provider(SqlLeaseLockingProvider):
         if schema:
             self.create_schema_if_not_exists(schema)
             self.set_current_schema(schema)
-        stmt = _without_nested_comments(sql).strip()
+        blanks = DB2_SPEC.text_blanks
+        stmt = _without_nested_comments(sql).strip(blanks)
         while stmt.endswith(";"):
-            stmt = stmt[:-1].rstrip()
+            stmt = stmt[:-1].rstrip(blanks)
         return super().execute_statement(stmt, schema=schema, params=params)
 
     def create_schema_if_not_exists(self, schema: str) -> None:

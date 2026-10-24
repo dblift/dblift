@@ -10,8 +10,12 @@ import pytest
 
 from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.migration import MigrationType
-from dblift.core.migration.state.migration_display_state import MigrationDisplayState
-from dblift.core.migration.state.migration_state import MigrationEntry, MigrationState
+from dblift.core.migration.state.migration_state import (
+    CatalogMigration,
+    MigrationEligibility,
+    MigrationState,
+)
+from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 
 @pytest.mark.unit
@@ -22,13 +26,19 @@ def test_python_migrations_trigger_versioned_callbacks(monkeypatch):
     command.provider.acquire_migration_lock.return_value = True
     command.log = MagicMock()
     command.journal = None
-    command._initialize_migration_execution = MagicMock(return_value=(True, True, None))
+    command._run_preflight = MagicMock()
+    command._log_command_header_update = MagicMock()
+    command.migration_helpers = MagicMock()
+    command.migration_helpers.setup_migration_parameters.return_value = (True, None)
+    command.migration_helpers.validate_migrations_for_migrate.return_value = (True, None, 0.0)
+    command.validator = MagicMock()
+    command.placeholder_service = MagicMock()
     command._execute_before_callbacks = MagicMock()
     command._execute_migration_loop = MagicMock()
     command._execute_after_callbacks = MagicMock()
     command._update_final_state = MagicMock()
     command._log_command_completion = MagicMock()
-    command.state_manager = MagicMock()
+    command.state_manager = wire_plan_migrate(MagicMock())
     command.history_manager = MagicMock()
     command.history_manager.get_applied_migration_records.return_value = []
     python_migration = SimpleNamespace(
@@ -38,17 +48,7 @@ def test_python_migrations_trigger_versioned_callbacks(monkeypatch):
     )
     command.state_manager.build_state.return_value = MigrationState(
         applied_objects=[],
-        pending_objects=[python_migration],
-        pending=[
-            MigrationEntry(
-                python_migration.script_name,
-                python_migration.version,
-                None,
-                "PYTHON",
-                MigrationDisplayState.PENDING.value,
-                None,
-            )
-        ],
+        catalog=(CatalogMigration(python_migration, MigrationEligibility.PENDING),),
     )
     command.state_manager.get_current_version.return_value = None
     command.state_manager.apply_filters_to_migrations.side_effect = (
@@ -60,5 +60,5 @@ def test_python_migrations_trigger_versioned_callbacks(monkeypatch):
     assert result.success is True
     before_args = command._execute_before_callbacks.call_args.args
     after_args = command._execute_after_callbacks.call_args.args
-    assert before_args[1] == [python_migration]
-    assert after_args[1] == [python_migration]
+    assert before_args[0] == [python_migration]
+    assert after_args[0] == [python_migration]

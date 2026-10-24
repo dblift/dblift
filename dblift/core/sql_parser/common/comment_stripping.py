@@ -1,9 +1,7 @@
 """Quote-aware comment stripping shared by every dialect's object extraction.
 
-Extracted from ``EnhancedRegexParser._strip_comments_preserving_quotes`` so a
-dialect that does not go through that base class (Oracle's regex parser,
-which needs its own splitting and object model) can strip comments the same
-way instead of re-deciding string/comment boundaries on its own.
+Shared by the statement-facts readers and the plugins that strip comments outside the
+lexical engine, so none of them re-decides string and comment boundaries on its own.
 
 The scan is a small state machine (``_Scanner``): one method per construct
 it can be inside (line comment, block comment, dollar-quoted body) or can
@@ -25,6 +23,8 @@ def strip_comments_preserving_quotes(
     nested_block_comments: bool,
     supports_dollar_quoting: bool = False,
     block_comment_replacement: str = "",
+    blanks: Optional[str] = None,
+    keep_unterminated_comment: bool = False,
 ) -> str:
     """Remove comments without touching text inside a quoted span.
 
@@ -37,11 +37,14 @@ def strip_comments_preserving_quotes(
     ``nested_block_comments`` is true; otherwise the first ``*/`` closes,
     matching statement splitting for the same dialect. Each removed block
     comment becomes ``block_comment_replacement``; pass ``" "`` when the
-    result is sent to a server, so ``a/* c */b`` stays two tokens.
+    result is sent to a server, so ``a/* c */b`` stays two tokens. The result
+    is stripped of ``blanks`` (``None``: every white-space character).
+    ``keep_unterminated_comment`` leaves a block
+    comment that never closes in the result, as text the server has to read.
     """
     markers = list(line_prefixes) + (["/*"] if has_block_comments else [])
     if not any(marker in sql for marker in markers):
-        return sql.strip()
+        return sql.strip(blanks)
 
     scanner = _Scanner(
         sql,
@@ -50,6 +53,8 @@ def strip_comments_preserving_quotes(
         nested_block_comments=nested_block_comments,
         supports_dollar_quoting=supports_dollar_quoting,
         block_comment_replacement=block_comment_replacement,
+        blanks=blanks,
+        keep_unterminated_comment=keep_unterminated_comment,
     )
     return scanner.run()
 
@@ -73,8 +78,13 @@ class _Scanner:
         nested_block_comments: bool,
         supports_dollar_quoting: bool,
         block_comment_replacement: str = "",
+        blanks: Optional[str] = None,
+        keep_unterminated_comment: bool = False,
     ) -> None:
         self.sql = sql
+        self.keep_unterminated_comment = keep_unterminated_comment
+        self.block_comment_start = 0
+        self.blanks = blanks
         self.line_prefixes = line_prefixes
         self.has_block_comments = has_block_comments
         self.nested_block_comments = nested_block_comments
@@ -102,7 +112,9 @@ class _Scanner:
                 self._advance_dollar_body()
             else:
                 self._advance_default()
-        return "".join(self.result).strip()
+        if self.block_comment_depth > 0 and self.keep_unterminated_comment:
+            self.result.append(self.sql[self.block_comment_start :])
+        return "".join(self.result).strip(self.blanks)
 
     def _advance_line_comment(self) -> None:
         char = self.sql[self.i]
@@ -225,6 +237,7 @@ class _Scanner:
     def _try_comment_start(self, char: str) -> bool:
         if self.has_block_comments and char == "/" and self.sql[self.i + 1 : self.i + 2] == "*":
             self.block_comment_depth = 1
+            self.block_comment_start = self.i
             self.result.append(self.block_comment_replacement)
             self.i += 2
             return True

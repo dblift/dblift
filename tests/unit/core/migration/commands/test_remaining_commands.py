@@ -16,6 +16,10 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from dblift.core.logger.results import InfoResult
+from dblift.db.provider_interfaces import SchemaProvider
+from tests.unit.core.migration.commands._plan_undo_wiring import wire_plan_undo
+
 # ===========================================================================
 # Helpers
 # ===========================================================================
@@ -43,7 +47,6 @@ def _make_info_command(
     else:
         state_manager.build_state.return_value = MigrationState(
             applied_objects=applied_objects or [],
-            pending_objects=[],
         )
 
     state_manager.get_current_version.return_value = "1"
@@ -84,7 +87,7 @@ def _make_undo_command(applied_migrations, *, rules_return=None, provider=None, 
     from dblift.core.migration.commands.undo_command import UndoCommand
     from dblift.core.migration.migration import MigrationType
 
-    state_manager = MagicMock()
+    state_manager = wire_plan_undo(MagicMock())
     migration_state = MagicMock()
     migration_state.applied_objects = applied_migrations
     state_manager.build_state.return_value = migration_state
@@ -304,7 +307,7 @@ class TestUndoCommandBuildStateFailure(unittest.TestCase):
         migration = _make_migration("1", MigrationType.SQL)
         cmd = _make_undo_command([migration])
         cmd.state_manager.build_state.return_value.all_applied_objects = [migration]
-        cmd.state_manager.get_current_version.side_effect = RuntimeError("version unavailable")
+        cmd.state_manager.build_state.side_effect = RuntimeError("version unavailable")
         cmd._run_preflight = MagicMock()
         cmd._log_command_header_update = MagicMock()
         cmd._log_current_schema_version = MagicMock()
@@ -314,6 +317,7 @@ class TestUndoCommandBuildStateFailure(unittest.TestCase):
 
         self.assertFalse(result.success)
         self.assertEqual(result.error_message, "Undo operation failed: version unavailable")
+        cmd.execution_engine.execute_migration.assert_not_called()
 
 
 class TestInfoCommandScriptScanFailure(unittest.TestCase):
@@ -321,19 +325,27 @@ class TestInfoCommandScriptScanFailure(unittest.TestCase):
 
     def test_script_scan_failure_handled_gracefully(self):
         cmd, log = _make_info_command()
-        cmd.script_manager.get_migration_scripts.side_effect = RuntimeError("scan error")
+        cmd.state_manager.get_resolved_migrations.side_effect = RuntimeError("scan error")
         result = cmd.execute(Path("/tmp"))
         self.assertIsNotNone(result)
-        log.debug.assert_called()
+        self.assertTrue(any("Could not scan scripts" in str(c) for c in log.debug.call_args_list))
+
+
+def _populate_info(cmd):
+    """Run the preflight's database-info step on a fresh InfoResult."""
+    result = InfoResult()
+    cmd._populate_database_info(result)
+    return result
 
 
 class TestInfoCommandDatabaseInfo(unittest.TestCase):
-    """Test InfoCommand.execute database info population."""
+    """Database info the preflight puts on an InfoResult (info adds nothing of its own)."""
 
     def test_db_version_populated_from_provider(self):
         cmd, _ = _make_info_command()
+        cmd.provider = MagicMock(spec=SchemaProvider)
         cmd.provider.get_database_version.return_value = "PostgreSQL 14.5"
-        result = cmd.execute(Path("/tmp"))
+        result = _populate_info(cmd)
         self.assertEqual(result.db_version, "PostgreSQL 14.5")
 
     def test_native_driver_set_for_cosmosdb_provider(self):
@@ -342,10 +354,10 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd.provider.connection = None
         # Patch get_provider_display_url to return a URL
         with patch(
-            "dblift.core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.base_command.get_provider_display_url",
             return_value="https://cosmos.documents.azure.com",
         ):
-            result = cmd.execute(Path("/tmp"))
+            result = _populate_info(cmd)
         # CosmosDB driver name is set
         self.assertEqual(result.native_driver, "Azure Cosmos DB SDK for Python")
 
@@ -354,10 +366,10 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd.config.database.type = "postgresql"
         cmd.provider.connection = None
         with patch(
-            "dblift.core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.base_command.get_provider_display_url",
             return_value="postgresql+psycopg://localhost/db",
         ):
-            result = cmd.execute(Path("/tmp"))
+            result = _populate_info(cmd)
         self.assertEqual("psycopg", result.native_driver)
 
     def test_native_driver_set_for_mysql_provider(self):
@@ -365,10 +377,10 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd.config.database.type = "mysql"
         cmd.provider.connection = None
         with patch(
-            "dblift.core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.base_command.get_provider_display_url",
             return_value="mysql+pymysql://localhost/db",
         ):
-            result = cmd.execute(Path("/tmp"))
+            result = _populate_info(cmd)
         self.assertIn("mysql", result.native_driver.lower())
 
     def test_native_driver_set_for_oracle_provider(self):
@@ -376,10 +388,10 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd.config.database.type = "oracle"
         cmd.provider.connection = None
         with patch(
-            "dblift.core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.base_command.get_provider_display_url",
             return_value="oracle+oracledb://localhost:1521?service_name=ORCL",
         ):
-            result = cmd.execute(Path("/tmp"))
+            result = _populate_info(cmd)
         self.assertIn("oracle", result.native_driver.lower())
 
     def test_native_driver_set_for_sqlserver_provider(self):
@@ -387,10 +399,10 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd.config.database.type = "sqlserver"
         cmd.provider.connection = None
         with patch(
-            "dblift.core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.base_command.get_provider_display_url",
             return_value="mssql+pymssql://localhost:1433/db",
         ):
-            result = cmd.execute(Path("/tmp"))
+            result = _populate_info(cmd)
         self.assertEqual("pymssql", result.native_driver)
 
     def test_native_driver_is_none_for_unknown_provider(self):
@@ -398,30 +410,30 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd.config.database.type = "unknown"
         cmd.provider.connection = None
         with patch(
-            "dblift.core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.base_command.get_provider_display_url",
             return_value="some://url",
         ):
-            result = cmd.execute(Path("/tmp"))
+            result = _populate_info(cmd)
         self.assertIsNone(result.native_driver)
 
     def test_database_url_masked_set_when_url_available(self):
         cmd, _ = _make_info_command()
         cmd.provider.connection = None
         with patch(
-            "dblift.core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.base_command.get_provider_display_url",
             return_value="postgresql+psycopg://user:secret@host/db",
         ):
-            result = cmd.execute(Path("/tmp"))
+            result = _populate_info(cmd)
         self.assertIsNotNone(result.database_url_masked)
         self.assertNotIn("secret", result.database_url_masked or "")
 
     def test_connection_info_error_handled_gracefully(self):
         cmd, log = _make_info_command()
         with patch(
-            "dblift.core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.base_command.get_provider_display_url",
             side_effect=RuntimeError("network error"),
         ):
-            result = cmd.execute(Path("/tmp"))
+            result = _populate_info(cmd)
         # Should not raise — db_version may or may not be set
         self.assertIsNotNone(result)
         log.debug.assert_called()
@@ -431,10 +443,10 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
         cmd.config.database.type = "postgresql"
         cmd.provider.connection = MagicMock()
         with patch(
-            "dblift.core.migration.commands.info_command.get_provider_display_url",
+            "dblift.core.migration.commands.base_command.get_provider_display_url",
             return_value="postgresql+psycopg://localhost/db",
         ):
-            result = cmd.execute(Path("/tmp"))
+            result = _populate_info(cmd)
         self.assertEqual("psycopg", result.native_driver)
 
     def test_current_schema_version_populated_from_state_manager(self):
@@ -444,7 +456,7 @@ class TestInfoCommandDatabaseInfo(unittest.TestCase):
 
         applied = [SimpleNamespace(version="3", type=MigrationType.SQL, success=True)]
         cmd, _ = _make_info_command(applied_objects=applied)
-        cmd.state_manager.get_current_version.return_value = "3"
+        cmd.state_manager.build_state.return_value.current_version = "3"
         result = cmd.execute(Path("/tmp"))
         self.assertEqual(result.current_schema_version, "3")
 

@@ -14,7 +14,7 @@ Pour vérifier les capacités, utiliser isinstance :
 """
 
 from abc import abstractmethod
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
@@ -249,6 +249,16 @@ class BaseProvider(
         server frees with the session can never be lost this way.
         """
         return False
+
+    def finish_migration_statements(self, statements: Sequence[str] = ()) -> None:
+        """Hook run after the last statement of a migration or callback.
+
+        *statements* are the ones just run, so a failure can name one.
+
+        Dialects whose server defers part of a statement's verdict (Oracle
+        reports a PL/SQL unit that does not compile as a success) check it
+        here and raise to fail the migration. The default does nothing.
+        """
 
     def close(self) -> None:
         """Close the database connection if it exists.

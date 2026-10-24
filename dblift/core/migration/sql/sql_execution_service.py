@@ -17,6 +17,7 @@ from dblift.db.error import (
     clean_driver_error_message,
     extract_error_code,
     extract_sqlstate,
+    redact_driver_error_text,
     strip_sql_statement_block,
 )
 from dblift.db.provider_interfaces import TransactionalProvider
@@ -30,7 +31,9 @@ def _format_execution_error(exc: BaseException) -> str:
     expose them via attributes or getSQLState() / getErrorCode().
     """
     fragments: List[str] = []
-    base = strip_sql_statement_block(clean_driver_error_message(to_python_string(exc) or str(exc)))
+    base = redact_driver_error_text(
+        strip_sql_statement_block(clean_driver_error_message(to_python_string(exc) or str(exc)))
+    )
     if base:
         fragments.append(base)
     sqlstate = extract_sqlstate(exc)
@@ -108,10 +111,17 @@ class SqlExecutionService:
             prepare()
 
         # Native quirks use the shared AST-first DML analyzer, including on
-        # dialects whose DDL parser is regex-only. Plugin overrides own this path.
+        # dialects whose DDL parser is regex-only. Plugin overrides own this path,
+        # except that statement facts are read from the same AST.
         analyze_dml = self.quirks.analyze_dml
-        if getattr(analyze_dml, "__func__", analyze_dml) is BaseQuirks.analyze_dml:
-            import sqlglot  # noqa: F401 - fail before any user or history write
+        if (
+            self.quirks.supports_statement_facts
+            or getattr(analyze_dml, "__func__", analyze_dml) is BaseQuirks.analyze_dml
+        ):
+            # Fail before any user or history write, naming the extra.
+            from dblift.core.migration.executor.migration_executor import require_analysis_support
+
+            require_analysis_support("full")
 
         self._analysis_prepared = True
 
@@ -138,19 +148,15 @@ class SqlExecutionService:
               - is_query_result is True for query results, False for DDL/DML row counts
               - result is either a list of row dictionaries (for queries) or row count (for DDL/DML)
         """
-        if self.quirks.is_batch_separator(statement):
-            self.log.debug("Skipping dialect batch separator statement")
-            return False, 0
-
         self.prepare_analysis()
 
-        # Log statement for debugging
+        # Log statement for debugging, with its string literals masked
+        masked = mask_string_literals(statement, self._dialect_name())
         if len(statement) > LOG_STATEMENT_PREVIEW_LENGTH:
-            self.log.debug(
-                f"Executing statement (preview): {truncate_sql_for_logging(statement, LOG_STATEMENT_PREVIEW_LENGTH)}"
-            )
+            preview = truncate_sql_for_logging(masked, LOG_STATEMENT_PREVIEW_LENGTH)
+            self.log.debug(f"Executing statement (preview): {preview}")
         else:
-            self.log.debug(f"Executing statement: {statement}")
+            self.log.debug(f"Executing statement: {masked}")
 
         # Record statement start in journal if enabled
         stmt_start_time = time.time()
@@ -209,20 +215,18 @@ class SqlExecutionService:
                         and hasattr(self.journal, "record_object_changes")
                     ):
                         try:
-                            objects_affected = []
+                            objects_affected: List[Any] = []
 
-                            # For DDL statements, use parser to extract objects
-                            if statement_type == SqlStatementType.DDL.value:
-                                # Use the parser factory directly to get proper schema handling
-                                if getattr(self.sql_analyzer, "parser_factory", None):
-                                    objects_affected = (
-                                        self.sql_analyzer.parser_factory.extract_objects(
-                                            statement, self.schema
-                                        )
-                                    )
-                                else:
-                                    # Fallback to analyzer method
-                                    objects_affected = self.sql_analyzer.extract_objects(statement)
+                            if self.quirks.supports_statement_facts:
+                                facts = self.quirks.statement_facts(statement)
+                                objects_affected = [
+                                    obj.as_sql_object(self.schema, self.quirks.dialect_name)
+                                    for obj in facts.affected_objects
+                                ]
+                                if facts.error:
+                                    self.log.warning(facts.error)
+                                elif facts.diagnostic:
+                                    self.log.debug(facts.diagnostic)
 
                             # For DML statements (INSERT, UPDATE, DELETE), extract table name
                             elif statement_type == SqlStatementType.DML.value:
@@ -237,7 +241,7 @@ class SqlExecutionService:
                                     table_name = (
                                         self._extract_simple_table_name(table_ref)
                                         if table_ref
-                                        else self._extract_table_from_dml(statement)
+                                        else ""
                                     )
                                     qualifier = table_ref.rpartition(".")[0] if table_ref else ""
                                     if table_name:
@@ -340,8 +344,10 @@ class SqlExecutionService:
             # Record statement failure in journal if enabled
             if self.journal and hasattr(self.journal, "record_statement_failed"):
                 execution_time = int((time.time() - stmt_start_time) * SECONDS_TO_MILLISECONDS)
-                error_message = strip_sql_statement_block(
-                    clean_driver_error_message(to_python_string(e) or str(e))
+                error_message = redact_driver_error_text(
+                    strip_sql_statement_block(
+                        clean_driver_error_message(to_python_string(e) or str(e))
+                    )
                 )
                 self.journal.record_statement_failed(
                     mask_string_literals(statement, self._dialect_name()),
@@ -355,8 +361,10 @@ class SqlExecutionService:
             except Exception:
                 formatted = ""
             self.log.error(f"SQL: {describe_statement(statement, self._dialect_name())}")
-            self.log.debug(f"Failed statement: {statement}")
-            self.log.error(formatted or strip_sql_statement_block(str(e)))
+            self.log.debug(
+                f"Failed statement: {mask_string_literals(statement, self._dialect_name())}"
+            )
+            self.log.error(formatted or redact_driver_error_text(strip_sql_statement_block(str(e))))
 
             # Re-raise the exception
             raise
@@ -400,47 +408,3 @@ class SqlExecutionService:
                 match.group(1) or match.group(2) or match.group(3) or match.group(4) or identifier
             )
         return identifier
-
-    def _extract_table_from_dml(self, statement: str) -> Optional[str]:
-        """Extract table name from DML statement (INSERT, UPDATE, DELETE).
-
-        Args:
-            statement: SQL DML statement
-
-        Returns:
-            Table name if found, None otherwise
-        """
-        if not statement:
-            return None
-
-        stmt_upper = statement.strip().upper()
-        stmt_original = statement.strip()
-
-        # INSERT INTO table_name ...
-        if stmt_upper.startswith("INSERT"):
-            match = re.search(r"INSERT\s+INTO\s+([^\s(]+)", stmt_original, re.IGNORECASE)
-            if match:
-                table_name = match.group(1).strip()
-                # Extract simple table name: handles qualified names (catalog.schema.table),
-                # quoted identifiers ("my.table"), and SQL Server brackets ([dbo].[table])
-                return self._extract_simple_table_name(table_name)
-
-        # UPDATE table_name ...
-        elif stmt_upper.startswith("UPDATE"):
-            match = re.search(r"UPDATE\s+([^\s]+)", stmt_original, re.IGNORECASE)
-            if match:
-                table_name = match.group(1).strip()
-                # Extract simple table name: handles qualified names (catalog.schema.table),
-                # quoted identifiers ("my.table"), and SQL Server brackets ([dbo].[table])
-                return self._extract_simple_table_name(table_name)
-
-        # DELETE FROM table_name ...
-        elif stmt_upper.startswith("DELETE"):
-            match = re.search(r"DELETE\s+FROM\s+([^\s]+)", stmt_original, re.IGNORECASE)
-            if match:
-                table_name = match.group(1).strip()
-                # Extract simple table name: handles qualified names (catalog.schema.table),
-                # quoted identifiers ("my.table"), and SQL Server brackets ([dbo].[table])
-                return self._extract_simple_table_name(table_name)
-
-        return None

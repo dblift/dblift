@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.exceptions import ExecutionError
+from dblift.core.exceptions import ExecutionError, UnsafeStatementSplitError
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
 
@@ -128,6 +128,51 @@ def test_empty_copy_block_sends_no_rows():
     assert "".join(cursor.written) == ""
 
 
+@pytest.mark.parametrize("header_tail", ["  ", " -- header comment", " /* header comment */"])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_copy_header_line_tail_is_not_streamed_as_data(header_tail, newline):
+    cursor = _Psycopg3Cursor()
+    provider, _conn = _provider(cursor)
+    script = (
+        f"COPY t (id) FROM stdin;{header_tail}{newline}1{newline}{newline}\\.{newline}SELECT 1;"
+    )
+    statements = StatementSplitter("postgresql").split_statements(script)
+
+    assert statements == [
+        f"COPY t (id) FROM stdin;{header_tail}{newline}1{newline}{newline}",
+        "SELECT 1;",
+    ]
+    provider.execute_statement(statements[0])
+
+    assert cursor.copy_sql == "COPY t (id) FROM stdin"
+    assert "".join(cursor.written) == f"1{newline}{newline}"
+
+
+def test_copy_header_refuses_sql_after_semicolon():
+    script = "COPY t FROM STDIN; DROP TABLE t;\n1\n\\.\n"
+
+    with pytest.raises(
+        UnsafeStatementSplitError, match=f"line 1, column {script.index('DROP') + 1}"
+    ):
+        StatementSplitter("postgresql").split_statements(script)
+
+
+def test_copy_header_refuses_nonbreaking_space_after_semicolon():
+    script = "COPY t FROM STDIN;\u00a0\n1\n\\.\n"
+
+    with pytest.raises(
+        UnsafeStatementSplitError, match=f"line 1, column {script.index(chr(0xA0)) + 1}"
+    ):
+        StatementSplitter("postgresql").split_statements(script)
+
+
+def test_copy_header_refuses_multiline_block_comment_at_its_start():
+    script = "COPY t FROM STDIN; /* header\ncomment */\n1\n\\.\n"
+
+    with pytest.raises(UnsafeStatementSplitError, match=f"line 1, column {script.index('/*') + 1}"):
+        StatementSplitter("postgresql").split_statements(script)
+
+
 @pytest.mark.parametrize(
     "sql",
     [
@@ -168,3 +213,26 @@ def test_copy_to_stdout_is_refused_before_anything_is_sent(sql):
 
     conn.exec_driver_sql.assert_not_called()
     assert cursor.copy_sql is None
+
+
+def test_split_copy_from_stdin_preserves_unterminated_eof_row() -> None:
+    from dblift.db.plugins.postgresql.provider import _split_copy_from_stdin
+
+    assert _split_copy_from_stdin("COPY t (a) FROM STDIN;\n1\n2") == (
+        "COPY t (a) FROM STDIN",
+        "1\n2",
+    )
+    assert _split_copy_from_stdin("COPY t (a, b) FROM STDIN;\n1\t") == (
+        "COPY t (a, b) FROM STDIN",
+        "1\t",
+    )
+    assert _split_copy_from_stdin("COPY t FROM STDIN;") == ("COPY t FROM STDIN", "")
+
+
+def test_split_copy_from_stdin_preserves_unterminated_eof_row_in_crlf_style() -> None:
+    from dblift.db.plugins.postgresql.provider import _split_copy_from_stdin
+
+    assert _split_copy_from_stdin("COPY t (a) FROM STDIN;\r\n1\r\n2") == (
+        "COPY t (a) FROM STDIN",
+        "1\r\n2",
+    )
