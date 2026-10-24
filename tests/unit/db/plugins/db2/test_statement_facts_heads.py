@@ -34,7 +34,7 @@ READ = Db2StatementFactsReader(None).read
         ("CONNECT TO sample", "CONNECT", "UNKNOWN", True),
         ("RUNSTATS ON TABLE app.orders", "RUNSTATS", "UNKNOWN", True),
         ("UPDATE DB CFG FOR sample USING LOGRETAIN ON", "UPDATE", "DML", True),
-        ("DROP TABLESPACE ts1", "DROP", "DDL", True),
+        ("EXECUTE IMMEDIATE 'DROP TABLE t'", "EXECUTE", "UNKNOWN", True),
         ("", "UNKNOWN", "UNKNOWN", True),
         ("-- only a comment\n/* and */", "UNKNOWN", "UNKNOWN", True),
     ],
@@ -53,7 +53,7 @@ def test_heads_outside_the_families_classify_and_name_nothing(sql, operation, ki
 @pytest.mark.parametrize(
     ("sql", "diagnostic"),
     [
-        ("DROP TABLESPACE ts1", NOT_CLASSIFIED.format(word="DROP")),
+        ("EXECUTE IMMEDIATE 'DROP TABLE t'", NOT_CLASSIFIED.format(word="EXECUTE")),
         ("CONNECT TO sample", CLIENT_COMMAND),
         ("UPDATE DB CFG FOR sample USING LOGRETAIN ON", CLIENT_COMMAND),
         ("SET INTEGRITY FOR app.t IMMEDIATE CHECKED", SET_INTEGRITY),

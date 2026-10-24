@@ -84,6 +84,30 @@ class Head:
     follow: Tuple[str, ...] = ()
 
 
+_ROLES = {"CREATE": "created", "ALTER": "altered", "DROP": "dropped"}
+#: The words before TABLESPACE that Db2 accepts. A kind is a separate head, not an optional group:
+#: ``CREATE TABLESPACE large`` names a table space ``LARGE``.
+_TABLESPACE_KINDS = (
+    ("LARGE",),
+    ("REGULAR",),
+    ("TEMPORARY",),
+    ("SYSTEM", "TEMPORARY"),
+    ("USER", "TEMPORARY"),
+)
+
+
+def _head(
+    words: Tuple[str, ...],
+    object_type: SqlObjectType,
+    max_parts: int,
+    optional: Tuple[Tuple[str, ...], ...] = (),
+) -> Head:
+    """A CREATE / ALTER / DROP head that names one object and reads nothing else."""
+    return Head(
+        words, words[0], "DDL", object_type, _ROLES[words[0]], optional, max_parts=max_parts
+    )
+
+
 def _heads() -> Tuple[Head, ...]:
     or_replace, if_exists = ("OR", "REPLACE"), ("IF", "EXISTS")
     heads = [
@@ -144,6 +168,23 @@ def _heads() -> Tuple[Head, ...]:
                 max_parts=1 if word == "SCHEMA" else 2,
             )
         )
+    one_part = (
+        ("TABLESPACE", SqlObjectType.TABLESPACE),
+        ("STOGROUP", SqlObjectType.STORAGE_GROUP),
+        ("BUFFERPOOL", SqlObjectType.BUFFERPOOL),
+    )
+    two_part = (("TYPE", SqlObjectType.TYPE), ("MODULE", SqlObjectType.MODULE))
+    for verb in ("CREATE", "ALTER", "DROP"):
+        replace = (or_replace,) if verb == "CREATE" else ()
+        heads.extend(_head((verb, word), otype, 1) for word, otype in one_part)
+        heads.extend(_head((verb, word), otype, 2, replace) for word, otype in two_part)
+    for kind in _TABLESPACE_KINDS:
+        heads.append(_head(("CREATE", *kind, "TABLESPACE"), SqlObjectType.TABLESPACE, 1))
+    heads.append(_head(("CREATE", "DISTINCT", "TYPE"), SqlObjectType.TYPE, 2, (or_replace,)))
+    heads.append(_head(("DROP", "DISTINCT", "TYPE"), SqlObjectType.TYPE, 2))
+    heads.append(_head(("DROP", "DATA", "TYPE"), SqlObjectType.TYPE, 2))
+    heads.append(_head(("CREATE", "SYNONYM"), SqlObjectType.SYNONYM, 2, (or_replace,)))
+    heads.append(_head(("DROP", "SYNONYM"), SqlObjectType.SYNONYM, 2))
     heads.append(
         Head(("RENAME", "INDEX"), "RENAME", "DDL", SqlObjectType.INDEX, "altered", follow=("TO",))
     )

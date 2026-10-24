@@ -40,6 +40,9 @@ class SqlObjectType(Enum):
     FOREIGN_DATA_WRAPPER = "FOREIGN_DATA_WRAPPER"  # PostgreSQL foreign data wrappers
     FOREIGN_SERVER = "FOREIGN_SERVER"  # PostgreSQL foreign servers
     TABLESPACE = "TABLESPACE"  # Tablespaces (storage containers, no schema part)
+    STORAGE_GROUP = "STORAGE_GROUP"  # Db2 storage groups
+    BUFFERPOOL = "BUFFERPOOL"  # Db2 buffer pools
+    MODULE = "MODULE"  # Db2 modules
     PUBLICATION = "PUBLICATION"  # PostgreSQL logical replication publications
     EVENT_TRIGGER = "EVENT_TRIGGER"  # PostgreSQL event triggers
     OPERATOR_CLASS = "OPERATOR_CLASS"  # PostgreSQL operator classes

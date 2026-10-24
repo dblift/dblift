@@ -9,8 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `SqlObjectType.TABLESPACE` names a tablespace, as the statement facts of the `mysql` grammar and
-  of PostgreSQL now report one.
+- `SqlObjectType.TABLESPACE` names a tablespace, as the statement facts of the `mysql` grammar, of
+  PostgreSQL and of Db2 now report one.
+- `SqlObjectType` gains `STORAGE_GROUP`, `BUFFERPOOL` and `MODULE`, the object types of the Db2
+  statements below.
 - `SqlObjectType` gains `PUBLICATION`, `EVENT_TRIGGER`, `OPERATOR_CLASS`,
   `TEXT_SEARCH_DICTIONARY`, `TEXT_SEARCH_CONFIGURATION`, `TEXT_SEARCH_PARSER` and
   `TEXT_SEARCH_TEMPLATE`, the PostgreSQL object kinds the statement facts reader names.
@@ -19,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The Db2 statement facts reader names the object of `CREATE`, `ALTER` and `DROP` for
+  `TABLESPACE`, `STOGROUP`, `BUFFERPOOL`, `TYPE` and `MODULE`, and of `CREATE` and `DROP` for
+  `SYNONYM` (typed `SYNONYM`, as `ALIAS` is: Db2 LUW creates an alias). They were reported as
+  `db2 <WORD> statement: not classified`. `EXECUTE IMMEDIATE` stays opaque because the statement it
+  runs is inside a string, and `DROP DATABASE`, which Db2 rejects as SQL, stays unclassified. The
+  forms the server rejects (`DROP … IF EXISTS` for these types, a qualified table space name) are
+  not read. See `docs/sql-parsing/db2.md` section 13. Because Db2 drops the tables of a table
+  space with it, the lint reports a Db2 `DROP TABLESPACE` as `drop-table` (it was
+  `drop-unread-object` while the statement was unread); the types whose drop discards rows are
+  now a quirk of each dialect, `drop_discards_rows_types`.
 - The PostgreSQL statement facts reader names the object of `CREATE`, `ALTER` and `DROP` for event
   triggers, foreign data wrappers, servers, publications, operator classes, text search
   dictionaries, configurations, parsers and templates, and tablespaces. They came back with no
