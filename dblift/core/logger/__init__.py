@@ -6,12 +6,10 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Dict, Generator, List, Optional
 
-from dblift.core.logger.formatters import OutputFormatter, OutputFormatterFactory
 from dblift.core.logger.log import (
     AbstractLog,
     ConsoleLog,
     FileLog,
-    JsonFormatter,
     Log,
     LogEvent,
     LogFactory,
@@ -37,6 +35,20 @@ if TYPE_CHECKING:
 
 
 def __getattr__(name: str) -> Any:
+    if name in {"OutputFormatter", "OutputFormatterFactory", "JsonFormatter"}:
+        from dblift.core.logger.formatters import (
+            JsonFormatter,
+            OutputFormatter,
+            OutputFormatterFactory,
+        )
+
+        value = {
+            "OutputFormatter": OutputFormatter,
+            "OutputFormatterFactory": OutputFormatterFactory,
+            "JsonFormatter": JsonFormatter,
+        }[name]
+        globals()[name] = value
+        return value
     if name == "HtmlFormatter":
         from dblift.core.logger.formatters.htmlformatter import HtmlFormatter
 

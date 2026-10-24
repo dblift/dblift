@@ -45,14 +45,30 @@ from dblift.core.logger._levels import (  # noqa: F401  re-export
 )
 from dblift.core.logger._multi import MultiLog  # noqa: F401  re-export
 from dblift.core.logger._null import NullLog  # noqa: F401  re-export
-from dblift.core.logger.formatters.jsonformatter import JsonFormatter  # noqa: F401  re-export
 from dblift.core.utils.module_check import module_available
 
 if TYPE_CHECKING:
     from rich.console import Console
 
-JINJA_AVAILABLE = module_available("jinja2")
 JSON_AVAILABLE = True
+
+
+def __getattr__(name: str) -> Any:
+    if name == "JsonFormatter":
+        from dblift.core.logger.formatters.jsonformatter import JsonFormatter
+
+        globals()[name] = JsonFormatter
+        return JsonFormatter
+    if name == "JINJA_AVAILABLE":
+        return _jinja_available()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def _jinja_available() -> bool:
+    """Keep the historical patch target while deferring dependency discovery."""
+    if "JINJA_AVAILABLE" in globals():
+        return bool(globals()["JINJA_AVAILABLE"])
+    return module_available("jinja2")
 
 
 # Abstract base implementation with common functionality
@@ -473,7 +489,7 @@ class FileLog(AbstractLog):
         self.formatter: Union[TextFormatter, "HtmlFormatter", "JsonFormatter"]
         if self.log_format == LogFormat.JSON and JSON_AVAILABLE:
             self.formatter = JsonFormatter()
-        elif self.log_format == LogFormat.HTML and JINJA_AVAILABLE:
+        elif self.log_format == LogFormat.HTML and _jinja_available():
             from dblift.core.logger.formatters.htmlformatter import HtmlFormatter
 
             self.formatter = HtmlFormatter()
@@ -675,6 +691,8 @@ class FileLog(AbstractLog):
                     f.write(footer)
 
         # For JSON logs, write the complete log with all entries
+        from dblift.core.logger.formatters.jsonformatter import JsonFormatter
+
         if self.log_format == LogFormat.JSON and isinstance(self.formatter, JsonFormatter):
             # Ensure we have a result - create a minimal one if not available
             if hasattr(self, "operation_result") and self.operation_result is not None:
@@ -697,7 +715,7 @@ class FileLog(AbstractLog):
             )
 
         # For HTML logs, render the complete template with Jinja
-        elif self.log_format == LogFormat.HTML and JINJA_AVAILABLE:
+        elif self.log_format == LogFormat.HTML and _jinja_available():
             from .results import OperationResult
 
             # Get the operation result from attached object if available

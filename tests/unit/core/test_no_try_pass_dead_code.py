@@ -7,21 +7,21 @@ import pytest
 pytestmark = [pytest.mark.unit]
 
 
-def test_log_py_jinja_available_no_try_except():
-    """log.py JINJA_AVAILABLE no longer wrapped in dead try/except."""
+def test_log_py_jinja_availability_is_discovered_on_access(monkeypatch):
+    """The historical availability flag resolves without probing during import."""
     import dblift.core.logger.log as mod
 
-    src = inspect.getsource(mod)
-    # The try:pass artifact is gone — JINJA_AVAILABLE should be a direct assignment
-    assert "JINJA_AVAILABLE = module_available" in src
-    # No dead try/except wrapping a bare pass before JINJA_AVAILABLE
-    lines = src.splitlines()
-    for i, line in enumerate(lines):
-        if "JINJA_AVAILABLE = module_available" in line:
-            # The preceding non-blank line should NOT be 'pass'
-            preceding = [l.strip() for l in lines[:i] if l.strip()]
-            assert preceding[-1] != "pass", "pass found immediately before JINJA_AVAILABLE"
-            break
+    calls = []
+
+    def unavailable(name):
+        calls.append(name)
+        return False
+
+    monkeypatch.setattr(mod, "module_available", unavailable)
+    assert "JINJA_AVAILABLE" not in vars(mod)
+    assert calls == []
+    assert mod.JINJA_AVAILABLE is False
+    assert calls == ["jinja2"]
 
 
 def test_log_py_jinja_available_is_true():

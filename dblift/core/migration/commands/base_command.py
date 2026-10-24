@@ -26,12 +26,13 @@ if TYPE_CHECKING:
 from dblift.core.exceptions import CallbackExecutionError
 from dblift.core.logger import Log, NullLog
 from dblift.core.logger.console import rich_available
-from dblift.core.logger.log import LogFormat
+from dblift.core.logger.log import LogFormat  # noqa: F401 - historical export
 from dblift.core.logger.results import CallbackExecution
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.migration_helpers import MigrationHelpers
 from dblift.core.migration.formats.migration_format import MigrationFormat
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.core.migration.presentation import presentation_for
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_state import CallbackReadSnapshot, MigrationReadSnapshot
@@ -494,125 +495,11 @@ class BaseCommand:
             command_name: Name of the command that completed
             result: OperationResult with execution time and success status
         """
-        # Mark as complete if not already done to get execution time
         if result.end_time is None:
             result.complete()
-
-        if isinstance(self.log, NullLog):
-            return
-
-        execution_time_ms = result.execution_time()
-
-        # Format execution time appropriately
-        if execution_time_ms < 1000:
-            time_str = f"{execution_time_ms} ms"
-        elif execution_time_ms < 60000:
-            time_seconds = execution_time_ms / 1000.0
-            time_str = f"{time_seconds:.2f} s"
-        else:
-            time_minutes = execution_time_ms / 60000.0
-            time_str = f"{time_minutes:.2f} min"
-
-        # Format and log footer (only for text-based console output)
-        from dblift.core.logger.log import ConsoleLog, FileLog, MultiLog
-
-        # Check if we should print to console
-        should_print_footer = False
-        has_console_log = False
-        has_file_log = False
-        if isinstance(self.log, MultiLog):
-            # MultiLog - check if any is console or file
-            for log in self.log.logs:
-                if isinstance(log, ConsoleLog):
-                    should_print_footer = True
-                    has_console_log = True
-                elif isinstance(log, FileLog):
-                    has_file_log = True
-        elif isinstance(self.log, ConsoleLog):
-            # Console log - print footer
-            should_print_footer = True
-            has_console_log = True
-        elif isinstance(self.log, FileLog):
-            # File log only
-            has_file_log = True
-
-        # Don't log completion message to console - the footer already shows it
-        # But still log to file logs (HTML/JSON) for record keeping
-        status = "SUCCESS" if result.success else "FAILED"
-        if has_file_log and isinstance(self.log, MultiLog):
-            # MultiLog with file log - log only to file logs, not console
-            for log in self.log.logs:
-                if isinstance(log, FileLog) and not isinstance(log, ConsoleLog):
-                    if getattr(log, "log_format", None) == LogFormat.TEXT:
-                        continue
-                    log.info(f"Command {command_name} completed with status {status} in {time_str}")
-        elif has_file_log and not has_console_log:
-            # File log only, no console - log the message
-            if getattr(self.log, "log_format", None) != LogFormat.TEXT:
-                self.log.info(
-                    f"Command {command_name} completed with status {status} in {time_str}"
-                )
-
-        # Resolve the schema version *after* the operation has run
-        # so the footer reflects the post-state (undo rolling back V3 now
-        # shows "Schema Version: 3" in the footer, not the pre-op "4" that
-        # the header emitted at command start). Resolution can fail for
-        # legitimate reasons (clean just dropped the history table, commands
-        # that never initialised a history_manager, stub providers in
-        # tests) — any failure means the footer cleanly omits the line
-        # rather than interrupting the status line. The debug log itself
-        # is also wrapped defensively because stubbed logs in unit tests
-        # may lack the expected attributes.
-        post_op_schema_version: Optional[str] = None
-        if hasattr(self, "history_manager") and self.history_manager is not None:
-            try:
-                post_op_schema_version = self._resolve_current_schema_version()
-            except Exception as e:
-                try:
-                    self.log.debug(f"Could not resolve post-operation schema version: {e}")
-                except Exception:
-                    pass
-
-        # Only collect applied script names for the migrate command.
-        # Other commands (info, clean, repair, baseline, …) may also have a
-        # `migrations` attribute but those entries are historical records, not
-        # scripts applied in the current run — listing them in the footer would
-        # be misleading.
-        # Script names are already logged line-by-line during execution.
-        # Footer only surfaces "nothing to apply" as a note.
-        applied_scripts = None
-        if command_name.lower() == "migrate":
-            raw_migrations = getattr(result, "migrations", None)
-            if raw_migrations is not None and result.success:
-                has_applied = any(
-                    getattr(m, "status", "") in ("SUCCESS", "Success") for m in raw_migrations
-                )
-                if not has_applied:
-                    dry_run_count = getattr(result, "dry_run_count", 0)
-                    if dry_run_count:
-                        applied_scripts = [
-                            f"Dry run — {dry_run_count} migration(s) would be applied"
-                        ]
-                    else:
-                        applied_scripts = ["No pending migrations found"]
-
-        # Print footer to console if applicable
-        footer_args = dict(
-            command_name=command_name,
-            success=result.success,
-            execution_time=time_str,
-            error_message=getattr(result, "error_message", None),
-            schema_version=post_op_schema_version,
-            applied_scripts=applied_scripts,
-        )
-        if should_print_footer and not self._has_own_console_footer:
-            from dblift.core.logger.console import get_stdout_console
-
-            if rich_available():
-                get_stdout_console().print(self._build_footer_panel(**footer_args))
-            else:
-                sys.stdout.write(self._format_command_footer(**footer_args) + "\n")
-        self._log_text_block(self._format_command_footer(**footer_args))
+        presenter = presentation_for(getattr(self, "execution_engine", None), self.log)
+        if presenter is not None:
+            presenter.present_command_result(self, command_name, result)
 
     def _build_footer_panel(
         self,
@@ -695,7 +582,7 @@ class BaseCommand:
             return
 
         try:
-            from dblift.core.logger.log import FileLog, LogFormat, MultiLog
+            from dblift.core.logger.log import FileLog, MultiLog
         except (ImportError, AttributeError):
             # Silently ignore if logging modules are not available
             return
@@ -1301,60 +1188,17 @@ class BaseCommand:
             exclude_versions: Exclude versions filter
             **kwargs: Additional command-specific filters
         """
-        filters = self._build_filters_list(
-            dry_run=dry_run,
-            target_version=target_version,
-            tags=tags,
-            exclude_tags=exclude_tags,
-            versions=versions,
-            exclude_versions=exclude_versions,
-            **kwargs,
-        )
-        schema_version = (
-            self._resolve_current_schema_version(read_snapshot=read_snapshot)
-            if read_snapshot is not None
-            else self._resolve_current_schema_version()
-        )
-        database_url = self._resolve_database_url_masked()
-        connection_info = self._resolve_connection_info()
-
-        if isinstance(self.log, NullLog):
-            return
-
-        should_print_header = self._is_console_output()
-        if should_print_header:
-            self._print_main_header_once()
-
-        if should_print_header:
-            from dblift.core.logger.console import get_stdout_console
-
-            if rich_available():
-                get_stdout_console().print(
-                    self._build_command_header_panel(
-                        command_name=command_name,
-                        filters=filters,
-                        schema_version=schema_version,
-                        database_url=database_url,
-                        connection_info=connection_info,
-                    )
-                )
-            else:
-                sys.stdout.write(
-                    self._format_command_header(
-                        command_name=command_name,
-                        filters=filters,
-                        schema_version=schema_version,
-                        database_url=database_url,
-                        connection_info=connection_info,
-                    )
-                    + "\n"
-                )
-        self._log_text_block(
-            self._format_command_header(
-                command_name=command_name,
-                filters=filters,
-                schema_version=schema_version,
-                database_url=database_url,
-                connection_info=connection_info,
+        presenter = presentation_for(getattr(self, "execution_engine", None), self.log)
+        if presenter is not None:
+            presenter.present_command_start(
+                self,
+                command_name,
+                target_version=target_version,
+                dry_run=dry_run,
+                tags=tags,
+                exclude_tags=exclude_tags,
+                versions=versions,
+                exclude_versions=exclude_versions,
+                read_snapshot=read_snapshot,
+                **kwargs,
             )
-        )
