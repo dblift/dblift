@@ -39,7 +39,7 @@ class SqlObjectType(Enum):
     EXTENSION = "EXTENSION"  # PostgreSQL extensions
     FOREIGN_DATA_WRAPPER = "FOREIGN_DATA_WRAPPER"  # PostgreSQL foreign data wrappers
     FOREIGN_SERVER = "FOREIGN_SERVER"  # PostgreSQL foreign servers
-    TABLESPACE = "TABLESPACE"  # PostgreSQL tablespaces
+    TABLESPACE = "TABLESPACE"  # Tablespaces (storage containers, no schema part)
     PUBLICATION = "PUBLICATION"  # PostgreSQL logical replication publications
     EVENT_TRIGGER = "EVENT_TRIGGER"  # PostgreSQL event triggers
     OPERATOR_CLASS = "OPERATOR_CLASS"  # PostgreSQL operator classes
