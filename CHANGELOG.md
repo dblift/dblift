@@ -31,6 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   space with it, the lint reports a Db2 `DROP TABLESPACE` as `drop-table` (it was
   `drop-unread-object` while the statement was unread); the types whose drop discards rows are
   now a quirk of each dialect, `drop_discards_rows_types`.
+- The lint reports a `DROP` with `CASCADE` or `FORCE` of a named object that holds no rows, as the
+  new `drop-cascade` warning. `DROP TYPE ty CASCADE` and `DROP FUNCTION f(int) CASCADE` passed
+  with no finding, yet PostgreSQL drops every column of that type, or generated column calling
+  that function, with the object (measured on PostgreSQL 16.14: the column is gone, the row stays).
+  A statement that names only indexes, sequences, triggers or procedures is not reported, since
+  `CASCADE` reaches no column through them. `DROP TABLE`, `DROP SCHEMA` and the `DROP`
+  statements that could not be read are judged as before.
 - The PostgreSQL statement facts reader names the object of `CREATE`, `ALTER` and `DROP` for event
   triggers, foreign data wrappers, servers, publications, operator classes, text search
   dictionaries, configurations, parsers and templates, and tablespaces. They came back with no
