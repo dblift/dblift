@@ -9,13 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `SqlObjectType.TABLESPACE` names a tablespace, as the statement facts of the `mysql` grammar now
-  report one.
+- `SqlObjectType.TABLESPACE` names a tablespace, as the statement facts of the `mysql` grammar and
+  of PostgreSQL now report one.
+- `SqlObjectType` gains `PUBLICATION`, `EVENT_TRIGGER`, `OPERATOR_CLASS`,
+  `TEXT_SEARCH_DICTIONARY`, `TEXT_SEARCH_CONFIGURATION`, `TEXT_SEARCH_PARSER` and
+  `TEXT_SEARCH_TEMPLATE`, the PostgreSQL object kinds the statement facts reader names.
 
 ### Changed
 
 ### Fixed
 
+- The PostgreSQL statement facts reader names the object of `CREATE`, `ALTER` and `DROP` for event
+  triggers, foreign data wrappers, servers, publications, operator classes, text search
+  dictionaries, configurations, parsers and templates, and tablespaces. They came back with no
+  object, so `info --format json` and execution-time object tracking did not list them. Event
+  triggers, foreign data wrappers, servers, publications and tablespaces are not schema-qualified
+  in PostgreSQL; a dotted name there, which the engine rejects, is left unnamed.
 - Statement analysis names the object of `GRANT` and `REVOKE` on the PostgreSQL and MySQL
   grammars (MariaDB included): `GRANT SELECT ON t TO u` is a DDL statement that references
   table `t` (also `ON TABLE`, `ON db.t`, and on PostgreSQL `ON SEQUENCE`, `SCHEMA`, `DATABASE`,

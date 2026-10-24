@@ -61,7 +61,9 @@ _POSTGRES_HEAD = re.compile(
     rf"^\s*(CREATE|ALTER|DROP)\s+"
     rf"(?:(?:OR\s+REPLACE|UNLOGGED|TEMP|TEMPORARY|UNIQUE|CONSTRAINT|IF|NOT|EXISTS)\s+)*"
     rf"(VIRTUAL\s+TABLE|MATERIALIZED\s+VIEW|TABLE|VIEW|INDEX|TRIGGER|FUNCTION|PROCEDURE"
-    rf"|SEQUENCE|TYPE|SCHEMA|EXTENSION)(?:(?<=INDEX)\s+CONCURRENTLY\b)?\s+"
+    rf"|SEQUENCE|TYPE|SCHEMA|EXTENSION|EVENT\s+TRIGGER|FOREIGN\s+DATA\s+WRAPPER|SERVER|PUBLICATION"
+    rf"|OPERATOR\s+CLASS|TEXT\s+SEARCH\s+(?:DICTIONARY|CONFIGURATION|PARSER|TEMPLATE)|TABLESPACE)"
+    rf"(?:(?<=INDEX)\s+CONCURRENTLY\b)?\s+"
     rf"(?:(?:IF|NOT|EXISTS)\s+)*"
     rf"(?!(?:IF|NOT|EXISTS|AUTHORIZATION|OR|REPLACE)\b)"
     rf"({_NAME})(?:\s*\.\s*({_NAME}))?",
@@ -69,6 +71,16 @@ _POSTGRES_HEAD = re.compile(
 )
 _POSTGRES_HEAD_SCAN = re.compile(
     _POSTGRES_HEAD.pattern.replace(r"^\s*", r"(?:^|;)\s*", 1), re.IGNORECASE | re.MULTILINE
+)
+# The kinds PostgreSQL does not put in a schema: a dotted name is a syntax error (42601).
+_POSTGRES_UNQUALIFIED = frozenset(
+    {
+        SqlObjectType.EVENT_TRIGGER,
+        SqlObjectType.FOREIGN_DATA_WRAPPER,
+        SqlObjectType.FOREIGN_SERVER,
+        SqlObjectType.PUBLICATION,
+        SqlObjectType.TABLESPACE,
+    }
 )
 # Oracle names more kinds than the generic head, skips its creation modifiers and counts ``#``
 # as a name character. ``TYPE BODY`` is not listed (no object type), and the reserved words that
@@ -1440,11 +1452,18 @@ def _upper_case_name(name: str, *, ascii_only: bool = False) -> Optional[str]:
     return "".join(folded) if all(len(letter) == 1 for letter in folded) else None
 
 
+def _head_object_type(match: "re.Match[str]") -> SqlObjectType:
+    """The object type a head's kind words name: the words joined by ``_``, except that the
+    PostgreSQL ``SERVER`` is the ``FOREIGN_SERVER`` member."""
+    words = "_".join(match.group(2).upper().split())
+    return SqlObjectType["FOREIGN_SERVER" if words == "SERVER" else words]
+
+
 def _head_object(
     match: "re.Match[str]", *, fold: bool = False, ascii_only: bool = False
 ) -> Optional[NamedObject]:
     operation = match.group(1).upper()
-    object_type = SqlObjectType["_".join(match.group(2).upper().split())]
+    object_type = _head_object_type(match)
     name = strip_identifier_quotes(match.group(4) or match.group(3))
     schema = strip_identifier_quotes(match.group(3)) if match.group(4) else None
     if fold:  # an unquoted name is stored upper-cased, a quoted one as written
@@ -1556,6 +1575,8 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
         match = None
     if oracle and match and match.group(4) and match.group(2).upper().startswith("DATABASE"):
         match = None  # a link name is global: ``a.b`` is one name with a domain, not a schema
+    if postgres and match and match.group(4) and _head_object_type(match) in _POSTGRES_UNQUALIFIED:
+        match = None  # the engine rejects ``s.name`` for these: a dot never makes a schema
     if mysql and match and match.group(4) and match.group(2).upper() == "TABLESPACE":
         match = None  # a tablespace is global: ``a.b`` is a syntax error (1064), not a schema
     if dml and (

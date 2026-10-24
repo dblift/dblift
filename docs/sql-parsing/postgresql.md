@@ -218,9 +218,16 @@ nine family members in §13 (Redshift has its own, see [redshift.md](redshift.md
 the `postgres` branches of `dblift/core/sql_parser/sqlglot_statement_facts.py`. The
 corpus `tests/support/facts_corpus/postgresql.jsonl` and the ledger
 `postgresql.review.json` (every difference against the former extraction,
-explained) are the evidence, and `gated.json` gates the family. Known gaps:
-dblift/dblift#669 (event trigger, FDW, server, publication, operator class, text
-search and tablespace objects name nothing). sqlglot 30.23 has no `TABLESPACE`
+explained) are the evidence, and `gated.json` gates the family. sqlglot 30.23 returns `CREATE`, `ALTER` and
+`DROP` of an event trigger, foreign data wrapper, server, publication, operator class, text search
+dictionary, configuration, parser or template, and tablespace as commands, and the head names the
+object (`EVENT_TRIGGER`, `FOREIGN_DATA_WRAPPER`, `FOREIGN_SERVER`, `PUBLICATION`, `OPERATOR_CLASS`,
+`TEXT_SEARCH_DICTIONARY`, `TEXT_SEARCH_CONFIGURATION`, `TEXT_SEARCH_PARSER`,
+`TEXT_SEARCH_TEMPLATE`, `TABLESPACE`). Operator classes and text search objects take a schema; the
+other five belong to the database and PostgreSQL 16.14 rejects `s.name` for them with SQLSTATE
+42601 (measured 2026-10-24 with psql 16.14), so a dotted name there is left unnamed instead of read
+as schema and name. The head only names what it reads: the former extraction's guesses, such as
+the word `CLASS` of `CREATE OPERATOR CLASS`, are not carried over. sqlglot 30.23 has no `TABLESPACE`
 clause in its PostgreSQL grammar and returns `CREATE TABLE … TABLESPACE ts`, the same on an index
 and a materialized view, as a command: the object is named from the head and the diagnostic says
 `postgres TABLESPACE clause is not modelled by the grammar` (storage parameters alone,
