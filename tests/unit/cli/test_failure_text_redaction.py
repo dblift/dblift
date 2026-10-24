@@ -28,6 +28,11 @@ _SQLITE_TABLE = (
     "CREATE TABLE t (id INTEGER PRIMARY KEY, c TEXT CHECK (c <> 'forbidden'), u TEXT UNIQUE);\n"
 )
 SQLITE = {
+    "syntax-newline-in-value": (
+        _SQLITE_TABLE + f"INSERT INTO t VALUES (1, 'x\n{S}' 'y', 'u');\n",
+        2,
+        S,
+    ),
     "syntax-at-literal": (_SQLITE_TABLE + f"INSERT INTO t VALUES (1, 'a' '{S}', 'u');\n", 2, S),
     "check": (_SQLITE_TABLE + "INSERT INTO t VALUES (1, 'forbidden', 'u');\n", 2, _CHECK),
     "check-multi-row": (
@@ -59,6 +64,16 @@ _PG_TABLE = (
     "CREATE TABLE c (id INTEGER, pname TEXT REFERENCES p (name));\n"
 )
 PG = {
+    "cast-embedded-double-quote": (
+        _PG_TABLE + "INSERT INTO p VALUES (1, 'a', 'SEC\"RET-LITERAL-42'::int);\n",
+        3,
+        "RET-LITERAL-42",
+    ),
+    "unique-newline-in-value": (
+        _PG_TABLE + f"INSERT INTO p VALUES (1, 'x\n{S}', 1), (2, 'x\n{S}', 2);\n",
+        3,
+        S,
+    ),
     "unique-multi-row": (_PG_TABLE + f"INSERT INTO p VALUES (1, '{S}', 1), (2, '{S}', 2);\n", 3, S),
     "unique-update": (
         _PG_TABLE + f"INSERT INTO p VALUES (1, 'a', 1), (2, 'b', 2);\nUPDATE p SET name = '{S}';\n",
@@ -92,6 +107,11 @@ PG = {
 # --- MySQL --------------------------------------------------------------------------------------
 _MY_TABLE = "CREATE TABLE m (id INT PRIMARY KEY, name VARCHAR(80) UNIQUE, n INT NOT NULL);\n"
 MYSQL = {
+    "duplicate-newline-in-value": (
+        _MY_TABLE + f"INSERT INTO m VALUES (1, 'x\n{S}', 1), (2, 'x\n{S}', 2);\n",
+        2,
+        S,
+    ),
     "duplicate-entry": (_MY_TABLE + f"INSERT INTO m VALUES (1, '{S}', 1), (2, '{S}', 2);\n", 2, S),
     "backslash-escape": (
         _MY_TABLE + f"INSERT INTO m VALUES (1, 'it\\'s {S}', 1), (2, 'it\\'s {S}', 2);\n",

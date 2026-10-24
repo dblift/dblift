@@ -180,17 +180,21 @@ these ahead of time.
 ## Quoted Values Are Missing from a Database Error
 
 When a statement fails, the database driver often repeats values from it: PostgreSQL's `DETAIL:`
-line, MySQL's `Duplicate entry '...'` and `near '...'`, SQLite's `near "..."`. DBLift removes
-the driver's `DETAIL`, `HINT`, `QUERY`, `CONTEXT` and `LINE n:` lines and SQLAlchemy's
-`[SQL: ...]` and `[parameters: ...]` blocks from the error text before it reaches the console, the
-log files, the run result and the statement journal, and replaces what remains in single quotes,
-in `=(...)` groups, or in double quotes after a colon, `near` or `value` with `?`.
+line, MySQL's `Duplicate entry '...'` and `near '...'`, SQLite's `near "..."`, DB2's unexpected
+token. DBLift removes the driver's `DETAIL`, `HINT`, `QUERY`, `CONTEXT` and `LINE n:` lines and
+SQLAlchemy's `[SQL: ...]` and `[parameters: ...]` blocks from the error text before it reaches the
+console, the log files, the run result and the statement journal. In what remains, anything in
+single or double quotes (from the first quote to the last on the line) and every `=(...)` group is
+replaced with `?`.
 
-The statement number, the script name, the error class, constraint names in double quotes and
-error codes stay. A name the driver puts in single quotes, such as MySQL's `for key '...'`, is
-replaced with the value, because the two cannot be told apart. To see the whole error, run the
-statement in the database client. Statements printed at `--log-level debug` have their string
-literals masked as well.
+The statement number, the script name, the error class and error codes stay. Because a name cannot
+be told from a value, quoted names are replaced too: PostgreSQL's `relation "orders"`, a constraint
+in double quotes, MySQL's `for key '...'`. To see the whole error, run the statement in the
+database client. Statements printed at `--log-level debug` have their string literals masked.
+
+Two things are not masked. `--show-sql` prints the statements it is asked to show verbatim, and a
+message you raise yourself (`RAISE EXCEPTION '...'` in PostgreSQL, `SIGNAL ... MESSAGE_TEXT` in
+MySQL) is your own text and is kept.
 
 ## SQL Server: Full-text Catalog and Index Fail in Transactional Migration
 

@@ -110,21 +110,29 @@ _DRIVER_BLOCK_RE = re.compile(r"\s*\[(?:SQL|parameters):.*", re.IGNORECASE | re.
 _DRIVER_FIELD_RE = re.compile(
     r"^[ \t]*(?:DETAIL|HINT|QUERY|CONTEXT|STATEMENT|LINE\s+\d+)[ \t]*:", re.MULTILINE
 )
-# MySQL's syntax error quotes the rest of the statement and may itself contain quotes.
-_MYSQL_NEAR_RE = re.compile(r"\bnear '.*?' at line (\d+)|\bnear '.*", re.DOTALL)
+# MySQL's syntax error quotes the rest of the statement, newlines and quotes included.
+_MYSQL_NEAR_RE = re.compile(r"\bnear '.*?' at line (\d+)", re.DOTALL)
 _VALUE_GROUP_RE = re.compile(r"=\(.*\)|\bvalue is \(.*\)", re.IGNORECASE)
-# PostgreSQL quotes values, not only names, in double quotes after a colon, after ``value`` and
-# after ``near``; names (relation "t", constraint "c") are not preceded by these.
-_DOUBLE_QUOTED_VALUE_RE = re.compile(r'(?:: |\bnear |\bvalue )"(?:[^"]|"")*"', re.IGNORECASE)
 
 
-def _mask_single_quoted(line: str) -> str:
-    # First quote to last: drivers do not escape an apostrophe inside the value they quote.
-    first, last = line.find("'"), line.rfind("'")
-    if first < 0:
-        return line
-    # A lone quote never closes: it runs to the end of the line.
-    return line[:first] + "?" + (line[last + 1 :] if last > first else "")
+def _mask_quoted(text: str, quote: str) -> str:
+    """Replace quoted text with ``?``, from the first quote to the last, failing closed.
+
+    Drivers do not escape a quote inside the value they quote, so the span is not paired up. It is
+    taken per line; when a line holds an odd number of quotes (a quote that never closes, or a
+    value with a newline in it) it is taken across the whole message.
+    """
+    if quote not in text:
+        return text
+    lines = text.split("\n")
+    if any(line.count(quote) % 2 for line in lines):
+        first, last = text.find(quote), text.rfind(quote)
+        return text[:first] + "?" + (text[last + 1 :] if last > first else "")
+    masked = []
+    for line in lines:
+        first, last = line.find(quote), line.rfind(quote)
+        masked.append(line if first < 0 else line[:first] + "?" + line[last + 1 :])
+    return "\n".join(masked)
 
 
 def redact_driver_error_text(message: str) -> str:
@@ -132,21 +140,19 @@ def redact_driver_error_text(message: str) -> str:
 
     Drops SQLAlchemy's ``[SQL: ...]`` and ``[parameters: ...]`` blocks and everything from
     PostgreSQL's first ``DETAIL:`` / ``HINT:`` / ``QUERY:`` / ``CONTEXT:`` / ``LINE n:`` line, then
-    replaces MySQL's ``near '...'`` excerpt, every single-quoted string, every ``=(...)`` value
-    group and the double-quoted value after ``: ``, ``near`` or ``value`` with ``?``. Names in
-    double quotes, error classes and codes stay. Quoted constraint and key names in single quotes
-    (MySQL ``for key '...'``) are replaced too; that is the price of not telling them from values.
+    replaces MySQL's ``near '...'`` excerpt, anything in single quotes, anything in double quotes
+    and every ``=(...)`` value group with ``?``. Error classes, codes and plain words stay. Names
+    in quotes (PostgreSQL ``relation "t"``, MySQL ``for key '...'``) are replaced too: a name
+    cannot be told from a value, so the text fails closed.
     """
     text = _DRIVER_BLOCK_RE.sub("", message)
     field = _DRIVER_FIELD_RE.search(text)
     if field:
         text = text[: field.start()]
-    text = _MYSQL_NEAR_RE.sub(
-        lambda m: "near ?" + (f" at line {m.group(1)}" if m.group(1) else ""), text
-    )
-    text = "\n".join(_mask_single_quoted(line) for line in text.split("\n"))
+    text = _MYSQL_NEAR_RE.sub(lambda m: f"near ? at line {m.group(1)}", text)
+    text = _mask_quoted(text, "'")
     text = _VALUE_GROUP_RE.sub(lambda m: m.group(0).split("(", 1)[0] + "(?)", text)
-    text = _DOUBLE_QUOTED_VALUE_RE.sub(lambda m: m.group(0).split('"', 1)[0] + "?", text)
+    text = _mask_quoted(text, '"')
     return text.strip()
 
 

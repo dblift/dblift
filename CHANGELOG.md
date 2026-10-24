@@ -351,8 +351,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DETAIL:`, `CONTEXT:` and `LINE n:` lines, MySQL's `Duplicate entry '...'` and `near '...'`,
   SQLite's `near "..."` and a CHECK constraint's text, and SQLAlchemy's `[SQL: ...]` and
   `[parameters: ...]` blocks no longer reach the console, the text, JSON and HTML logs, the run
-  result or the statement journal; quoted values are replaced with `?`. The statement number,
-  error class and constraint names in double quotes stay. Statements printed at debug level have
+  result or the statement journal; text in quotes is replaced with `?`, names included. The statement
+  number and error class stay. Statements printed at debug level have
   their string literals masked.
 
 - **`info` now lists a failed undo.** After an undo script failed, `dblift info` (console, `--format json`, the Python API and the MCP `info` tool) showed a clean schema while `validate`, `migrate` and `undo` refused to run because of the failed history row. The failed undo now appears as an `Undo` row in the `Failed` state and is counted in the summary's failed total. Completed undos are still not listed.
