@@ -27,6 +27,7 @@ from dblift.cli.handlers.undo import _handle_undo
 from dblift.cli.handlers.validate import _handle_validate
 from dblift.cli.handlers.validate_sql import _handle_validate_sql
 from dblift.cli.premium_manifest import PremiumCommand, premium_stub_index, render_upsell
+from dblift.cli.presentation import command_presentation
 from dblift.core.exceptions import InvalidTargetVersionError
 from dblift.core.logger import Log
 from dblift.core.migration.target_version import available_versions, validate_target_version
@@ -127,7 +128,8 @@ def execute_single_command(
         license_tier=resolve_tier(args),
     )
     try:
-        return handler(ctx)
+        with command_presentation(client):
+            return handler(ctx)
     except CapabilityDeniedError as e:
         exit_license_required(e, log)
 

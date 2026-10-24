@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `SqlObjectType.TABLESPACE` names a tablespace, as the statement facts of the `mysql` grammar now
+  report one.
+
 ### Changed
 
 ### Fixed
@@ -20,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   MariaDB `DESCRIBE t`, `DESC t`, `EXPLAIN t`, `SHOW CREATE TABLE t`, `SHOW COLUMNS FROM t` and
   `SHOW INDEX FROM t` reference their table; they returned no object. Wildcard grants, role
   grants, grants to `'u'@'h'` and routines written with a signature stay unnamed.
+- The statement facts of the `mysql` grammar (MySQL and MariaDB) name the object of two forms that
+  came back unread: `CREATE`, `ALTER` and `DROP TABLESPACE ts` (MySQL) name the tablespace, and
+  `ALTER SEQUENCE [db.]s RESTART WITH 100` (MariaDB) names the sequence, as `CREATE SEQUENCE` and
+  `DROP SEQUENCE` already did. A qualified tablespace name and the `UNDO` forms stay unread. A
+  compound statement outside a program (`WHILE`, `IF`), `EXECUTE IMMEDIATE '…'` and the statements
+  inside a trigger or program body stay unread by design; `docs/sql-parsing/mysql.md` gives the
+  reason for each.
 - The HTML report of `migrate --dry-run --show-sql` and `undo --dry-run --show-sql` names the
   object type and name of each statement, as the report of an applied run does; those columns
   were empty. Each `MigrationSqlInfo` in `result.sql` carries the same per-statement
