@@ -155,8 +155,7 @@ class MigrationExecutor:
             state_manager=self.state_manager,
             quirks=self.provider.quirks,
         )
-        self.ui = MigrationUI(log)
-        self.migration_ui = self.ui  # Alias for backward compatibility/consistency
+        self._migration_ui: Optional[MigrationUI] = None
 
         # Initialize SQL analyzer and execution engine
         self.sql_analyzer = StatementReader(
@@ -187,6 +186,28 @@ class MigrationExecutor:
             config=self.config,
         )
 
+    @property
+    def migration_ui(self) -> MigrationUI:
+        """Preserve explicit UI access without constructing it for core operations."""
+        if self._migration_ui is None:
+            self._migration_ui = MigrationUI(self.log)
+        return self._migration_ui
+
+    @migration_ui.setter
+    def migration_ui(self, ui: MigrationUI) -> None:
+        """Retain an explicitly injected migration UI."""
+        self._migration_ui = ui
+
+    @property
+    def ui(self) -> MigrationUI:
+        """Historical alias for the optional migration UI."""
+        return self.migration_ui
+
+    @ui.setter
+    def ui(self, ui: MigrationUI) -> None:
+        """Retain injection through the historical UI alias."""
+        self.migration_ui = ui
+
     def _make_command_context(self) -> "BaseCommandContext":
         """Build a :class:`~core.migration.commands.base_command.BaseCommandContext`
         from this executor's shared infrastructure components.
@@ -210,7 +231,7 @@ class MigrationExecutor:
             execution_engine=self.execution_engine,
             migration_helpers=self.migration_helpers,
             state_manager=self.state_manager,
-            migration_ui=self.migration_ui,
+            migration_ui=self._migration_ui,  # type: ignore[arg-type]
             migration_rules=self.rules,
             journal=self.journal,
             placeholder_service=self.placeholder_service,
@@ -470,7 +491,7 @@ class MigrationExecutor:
         """Clean up resources when the executor is no longer needed."""
         # Call cleanup() on all major components if available
         for attr in ["provider", "history_manager", "script_manager", "validator", "ui"]:
-            obj = getattr(self, attr, None)
+            obj = self._migration_ui if attr == "ui" else getattr(self, attr, None)
             if obj and hasattr(obj, "cleanup"):
                 try:
                     obj.cleanup()

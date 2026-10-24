@@ -218,8 +218,7 @@ nine family members in §13 (Redshift has its own, see [redshift.md](redshift.md
 the `postgres` branches of `dblift/core/sql_parser/sqlglot_statement_facts.py`. The
 corpus `tests/support/facts_corpus/postgresql.jsonl` and the ledger
 `postgresql.review.json` (every difference against the former extraction,
-explained) are the evidence, and `gated.json` gates the family. Known gap:
-dblift/dblift#669 (`GRANT`/`REVOKE` name nothing). sqlglot 30.23 returns `CREATE`, `ALTER` and
+explained) are the evidence, and `gated.json` gates the family. sqlglot 30.23 returns `CREATE`, `ALTER` and
 `DROP` of an event trigger, foreign data wrapper, server, publication, operator class, text search
 dictionary, configuration, parser or template, and tablespace as commands, and the head names the
 object (`EVENT_TRIGGER`, `FOREIGN_DATA_WRAPPER`, `FOREIGN_SERVER`, `PUBLICATION`, `OPERATOR_CLASS`,
@@ -233,6 +232,17 @@ clause in its PostgreSQL grammar and returns `CREATE TABLE … TABLESPACE ts`, t
 and a materialized view, as a command: the object is named from the head and the diagnostic says
 `postgres TABLESPACE clause is not modelled by the grammar` (storage parameters alone,
 `WITH (fillfactor=70)`, parse normally).
+
+`GRANT` and `REVOKE` are DDL that only reference what they name: the securable is a `referenced`
+object and nothing is created, altered or dropped. `ON t`, `ON TABLE t` and `ON s.t` name a table
+(`s` is the schema), and the written kind names a `SEQUENCE`, `SCHEMA`, `DATABASE`, `TYPE`,
+`FUNCTION` or `PROCEDURE`. PostgreSQL 16.14 ran each of these forms and answered a missing object
+with 42P01, 3F000, 3D000, 42704 or 42883, never 42601. Left opaque, with the operation and the
+kind `DDL` and no object: `ON ALL TABLES IN SCHEMA s` (and the sequence and function forms), role
+grants (`GRANT r TO u`), a list of tables (`ON t1, t2`), `GRANTED BY`, `ON LANGUAGE`,
+`ON FOREIGN SERVER` and `ON TABLESPACE`, which sqlglot holds as commands; a routine written with
+a signature (`ON FUNCTION f(int)`), which sqlglot holds as a call and not as a name; and a
+three-part table name.
 
 `COPY t [(cols)] FROM|TO source [options]` is read from the table and the direction alone: `FROM`
 alters `t` with an `INSERT` event, `TO` references it, and every option after the source

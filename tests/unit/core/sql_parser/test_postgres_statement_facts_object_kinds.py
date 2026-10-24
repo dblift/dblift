@@ -261,13 +261,18 @@ def test_a_table_named_tablespace_still_carries_its_clause():
     assert facts.diagnostic.endswith("postgres TABLESPACE clause is not modelled by the grammar")
 
 
-@pytest.mark.parametrize("dialect", ["mysql", "oracle", "tsql"])
 @pytest.mark.parametrize(
-    "sql",
+    ("sql", "dialect"),
     [
-        "CREATE TABLESPACE ts ADD DATAFILE 'x'",
-        "CREATE SERVER srv FOREIGN DATA WRAPPER fdw",
-        "CREATE PUBLICATION pub",
+        # The mysql grammar names a tablespace with its own head, so it is not listed here.
+        (sql, dialect)
+        for sql in (
+            "CREATE TABLESPACE ts ADD DATAFILE 'x'",
+            "CREATE SERVER srv FOREIGN DATA WRAPPER fdw",
+            "CREATE PUBLICATION pub",
+        )
+        for dialect in ("mysql", "oracle", "tsql")
+        if not (dialect == "mysql" and "TABLESPACE" in sql)
     ],
 )
 def test_the_kinds_stay_unnamed_on_other_dialects(sql, dialect):
