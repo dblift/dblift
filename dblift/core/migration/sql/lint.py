@@ -1,7 +1,7 @@
 """``validate-sql``: a verdict for each migration script, from its findings.
 
-Scripts are linted alone, or as a delta: scripts applied together, in order, where a table
-an earlier script created is new for every later one (see ``lint_rules``).
+Scripts are linted alone, or in apply order as a delta. A table created earlier in the
+same script is new for subsequent statements (see ``lint_rules``).
 """
 
 from __future__ import annotations
@@ -206,21 +206,17 @@ def lint_files(
 ) -> List[ScriptLint]:
     """Lint each file after substituting the configured placeholders.
 
-    By default each file is linted alone, in the order given. With ``as_delta`` the files
-    are one delta, linted and returned in apply order: versioned scripts by version, then
-    repeatable scripts by name, then any other file in the order given. *existing_tables*
-    as for ``lint_analysis``.
+    By default each file is linted alone, in the order given. With ``as_delta`` files are
+    linted and returned in apply order: versioned scripts by version, then repeatable
+    scripts by name, then any other file in the order given. A table created in another
+    file may have rows by the time this file runs, so only a CREATE in the same file
+    exempts later statements. *existing_tables* as for ``lint_analysis``.
     """
     substitution = PlaceholderService(placeholders, log)
-    created: Set[str] = set()
     results = []
     for path in _apply_order(paths) if as_delta else paths:
         text = substitution.replace_placeholders(path.read_text(encoding="utf-8"))
-        result = lint_script(
-            text, dialect, path.name, created_before=created, existing_tables=existing_tables
-        )
-        if as_delta:
-            created |= result.created_tables
+        result = lint_script(text, dialect, path.name, existing_tables=existing_tables)
         results.append(result)
     return results
 

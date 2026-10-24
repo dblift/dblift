@@ -143,12 +143,12 @@ def delta(tmp_path: Path) -> list:
     return [v2, v1]
 
 
-def test_lint_files_as_a_delta_knows_the_tables_earlier_files_created(delta):
+def test_lint_files_as_a_delta_does_not_exempt_tables_created_in_earlier_files(delta):
     results = lint_files(delta, "postgresql", {}, MagicMock(), as_delta=True)
 
-    assert [(r.script, r.verdict, r.findings) for r in results] == [
-        ("V1__orders.sql", SAFE, ()),
-        ("V2__index.sql", SAFE, ()),
+    assert [(r.script, r.verdict, [f.code for f in r.findings]) for r in results] == [
+        ("V1__orders.sql", SAFE, []),
+        ("V2__index.sql", REVIEW, ["pg-index-not-concurrent", "pg-missing-lock-timeout"]),
     ]
 
 
@@ -317,14 +317,15 @@ def test_a_drop_whose_name_cannot_be_read_is_not_exempted_as_a_new_table(
 def test_a_drop_ending_in_an_ideographic_space_is_read_by_duckdb_as_a_drop_of_the_named_table(
     tmp_path: Path,
 ):
-    assert _delta_findings(tmp_path, "duckdb", f"DROP TABLE t{chr(0x3000)};") == ()
+    findings = _delta_findings(tmp_path, "duckdb", f"DROP TABLE t{chr(0x3000)};")
+
+    assert [f.code for f in findings] == ["drop-table"]
+    assert all("name could not be read" not in f.message for f in findings)
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
-def test_a_drop_of_a_table_created_earlier_in_the_delta_is_still_exempted(
-    tmp_path: Path, dialect: str
-):
-    assert _delta_findings(tmp_path, dialect, "DROP TABLE t;") == ()
+def test_a_drop_of_a_table_created_in_an_earlier_file_is_not_exempted(tmp_path: Path, dialect: str):
+    assert [f.code for f in _delta_findings(tmp_path, dialect, "DROP TABLE t;")] == ["drop-table"]
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb"])
@@ -345,7 +346,7 @@ def test_a_table_created_under_an_unreadable_name_is_not_a_new_table(tmp_path: P
     assert [f.code for f in results[1].findings if f.code == "drop-table"] == ["drop-table"]
 
 
-def test_a_drop_of_a_table_whose_creation_carried_a_diagnostic_is_still_exempted(
+def test_a_drop_of_a_table_whose_creation_carried_a_diagnostic_is_not_exempted(
     tmp_path: Path,
 ):
     dialect = "sqlite"
@@ -355,7 +356,7 @@ def test_a_drop_of_a_table_whose_creation_carried_a_diagnostic_is_still_exempted
         [tmp_path / "V1__c.sql", tmp_path / "V2__d.sql"], dialect, {}, MagicMock(), as_delta=True
     )
 
-    assert results[1].findings == ()
+    assert [f.code for f in results[1].findings] == ["drop-table"]
 
 
 def test_an_oracle_drop_whose_name_ends_with_an_ideographic_space_before_a_terminator_is_read(
