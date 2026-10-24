@@ -278,7 +278,9 @@ def client_from_config(
 
     # Create logger if not provided
     if logger is None:
-        logger = build_default_logger(config, None, None, None)
+        logger = build_default_logger(
+            config, kwargs.get("log_level"), kwargs.get("log_format"), kwargs.get("log_file")
+        )
 
     apply_derived_schema(client_config.database)
     provider = ProviderRegistry.create_provider(client_config, logger)

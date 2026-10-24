@@ -34,3 +34,16 @@ def test_test_files_are_named_by_subject() -> None:
     )
 
     assert offenders == []
+
+
+def test_no_editor_or_patch_leftovers_in_the_package() -> None:
+    """A stray ``.bak``, ``.orig`` or ``.rej`` copy of a module must not ship."""
+    repository = Path(__file__).resolve().parents[2]
+
+    leftovers = sorted(
+        str(path.relative_to(repository))
+        for suffix in ("bak", "orig", "rej")
+        for path in (repository / "dblift").rglob(f"*.{suffix}")
+    )
+
+    assert leftovers == []
