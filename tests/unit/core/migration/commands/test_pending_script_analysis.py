@@ -85,6 +85,19 @@ def test_migrate_dry_run_fills_analysis_on_pending_rows(tmp_path, project):
     assert rows["V3__py.py"]["analysis"] is None
 
 
+@pytest.mark.parametrize("command", [("info",), ("migrate", "--dry-run")])
+def test_pending_json_snippets_hide_sql_literals(tmp_path, project, command):
+    scripts, db = project
+    (scripts / "V2__drop.sql").write_text("INSERT INTO a VALUES ('private-token');")
+
+    payload = _payload(_run(tmp_path, *command, "--format", "json", scripts=scripts, db=db))
+
+    analysis = {m["script"]: m for m in payload["migrations"]}["V2__drop.sql"]["analysis"]
+    snippet = analysis["statements"][0]["snippet"]
+    assert "INSERT INTO a VALUES" in snippet
+    assert "private-token" not in snippet
+
+
 def test_dry_run_rows_carry_the_verdict(tmp_path, project):
     scripts, db = project
 

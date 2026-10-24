@@ -21,7 +21,7 @@ from dblift.core.exceptions import (
 )
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
-from dblift.core.sql_parser.redaction import bare_words
+from dblift.core.sql_parser.redaction import bare_words, mask_string_literals
 from dblift.core.sql_parser.statement_facts import DmlEffect, StatementFacts
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import strip_leading_sql_comments
@@ -270,7 +270,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             facts.kind,
             objects,
             full_table,
-            _snippet(body),
+            _snippet(body, dialect),
             sql=body,
             names_unread=facts.opaque and not facts.affected_objects,
             unread=_unread_reason(facts, body, hash_comment),
@@ -402,9 +402,9 @@ def _opaque_dialect(dialect: str) -> str:
     return ""
 
 
-def _snippet(body: str) -> str:
+def _snippet(body: str, dialect: str) -> str:
     # Some splitters keep the statement's ``;`` and some drop it; the snippet never shows it.
-    flat = " ".join(body.rstrip().rstrip(";").split())
+    flat = " ".join(mask_string_literals(body, dialect).rstrip().rstrip(";").split())
     return flat if len(flat) <= SNIPPET else flat[: SNIPPET - 1] + "…"
 
 

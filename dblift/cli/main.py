@@ -783,7 +783,7 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
 
     placeholders = _collect_placeholders(ctx.args, ctx.config)
     if placeholders:
-        ctx.log.debug(f"Using placeholders: {placeholders}")
+        ctx.log.debug(f"Using placeholders: {len(placeholders)} configured")
 
     if getattr(ctx.config, "strict_mode", False) or getattr(ctx.args, "strict_mode", False):
         ctx.config.strict_mode = True

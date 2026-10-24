@@ -85,6 +85,34 @@ def test_dispatch_logs_client_scripts_dir_not_stale_local_value(tmp_path):
 
 
 @pytest.mark.unit
+def test_dispatch_debug_log_does_not_expose_resolved_placeholder_values(tmp_path):
+    ctx = _ctx()
+    output = CommandOutput("table")
+    client = MagicMock()
+    client._get_scripts_dir.return_value = tmp_path
+    placeholders = {"sql_value": "'private-sql'", "path": "private-plain-text"}
+
+    with (
+        patch.object(
+            cli_main, "_resolve_scripts_directories", return_value=(tmp_path, [], True, {})
+        ),
+        patch.object(cli_main, "_build_command_client", return_value=client),
+        patch.object(cli_main, "_collect_placeholders", return_value=placeholders),
+        patch.object(cli_main, "_ensure_connection"),
+        patch.object(cli_main, "execute_single_command", return_value=(True, MagicMock())),
+        patch.object(cli_main, "_close_logs"),
+        patch("dblift.core.logger._formatters.TextFormatter") as formatter_cls,
+    ):
+        formatter_cls.return_value.format_header.return_value = None
+        cli_main._dispatch_command(ctx, output)
+
+    logged = "\n".join(str(call.args[0]) for call in ctx.log.debug.call_args_list if call.args)
+    assert "Using placeholders" in logged
+    assert "private-sql" not in logged
+    assert "private-plain-text" not in logged
+
+
+@pytest.mark.unit
 def test_effective_scripts_dir_falls_back_when_client_has_no_get_scripts_dir(tmp_path):
     """Clients without a callable ``_get_scripts_dir`` (e.g. config-only
     stand-ins) fall back to the locally-computed value instead of raising."""
