@@ -240,3 +240,30 @@ def test_api_info_refuses_an_unknown_configured_target_version(tmp_path):
     with DBLiftClient.from_config_file(str(_project(tmp_path, 9))) as client:
         with pytest.raises(InvalidTargetVersionError):
             client.info()
+
+
+def test_config_data_loader_refuses_empty_target_and_tolerates_other_shapes(tmp_path):
+    from dblift.config.dblift_config import DbliftConfig
+
+    def load(content):
+        path = tmp_path / "shape.yaml"
+        path.write_text(content)
+        return DbliftConfig.load_config_data_from_yaml(path)
+
+    assert load("- not\n- a mapping\n") == {}
+    assert load("environments: nope\ntarget_version: 2\n") == {
+        "environments": "nope",
+        "target_version": 2,
+    }
+    assert load("environments:\n  dev: nope\n")["environments"] == {"dev": "nope"}
+    with pytest.raises(InvalidTargetVersionError):
+        load("target_version: ''\n")
+    with pytest.raises(InvalidTargetVersionError):
+        load("environments:\n  dev:\n    target_version: ''\n")
+
+
+def test_load_config_refuses_empty_target_without_wrapping_it(tmp_path):
+    from dblift.config.dblift_config import load_config
+
+    with pytest.raises(InvalidTargetVersionError):
+        load_config(str(_project(tmp_path, target="")))
