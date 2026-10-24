@@ -510,8 +510,6 @@ def test_a_drop_of_a_kind_that_holds_no_rows_stays_safe_when_unread(dialect, sql
         ("oracle", "DROP SYNONYM s FORCE;"),
         ("sqlserver", "DROP CERTIFICATE c;"),
         ("duckdb", "DROP SECRET s;"),
-        ("db2", "DROP BUFFERPOOL b;"),
-        ("db2", "DROP MODULE m;"),
         ("snowflake", "DROP STAGE st;"),
         ("postgresql", "DROP;"),
         ("snowflake", "DROP EVENT TABLE e;"),
@@ -524,6 +522,24 @@ def test_a_drop_that_may_lose_data_or_cannot_be_classified_asks_for_a_review(dia
 
     assert result.verdict == "REVIEW"
     assert [f.code for f in result.findings] == ["drop-unread-object"]
+
+
+# Db2 DROP TABLESPACE drops the tables that live in it with their rows (measured on Db2 12.1.5.0,
+# 2026-10-24: the table was gone and SELECT from it was SQL0204N), so the table space the reader
+# names is judged as the tables it takes with it. DROP BUFFERPOOL and DROP STOGROUP fail while a
+# table space uses them (SQL0478N), and DROP MODULE removes definitions, not rows.
+def test_a_named_db2_table_space_drop_is_judged_as_a_table_drop():
+    result = lint_script("DROP TABLESPACE ts;", "db2")
+
+    assert [f.code for f in result.findings] == ["drop-table"]
+    assert result.verdict == lint_script("DROP TABLE t;", "db2").verdict
+
+
+@pytest.mark.parametrize(
+    "sql", ["DROP BUFFERPOOL b;", "DROP STOGROUP sg;", "DROP MODULE m;", "DROP TYPE t;"]
+)
+def test_a_named_db2_drop_that_holds_no_rows_is_safe(sql):
+    assert lint_script(sql, "db2").verdict == "SAFE"
 
 
 # A database link and a materialized view log are definitions: Oracle's DROP DATABASE LINK removes

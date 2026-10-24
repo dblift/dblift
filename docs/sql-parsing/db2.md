@@ -317,8 +317,13 @@ The statement facts of a Db2 script (the kind of a statement, the objects it nam
 | `CREATE [UNIQUE] INDEX name ON table` | CREATE | DDL | `INDEX` created, `TABLE` referenced | `indexed_table`; columns diagnostic |
 | `CREATE [OR REPLACE] {SEQUENCE, ALIAS, TRIGGER, PROCEDURE, FUNCTION} name` | CREATE | DDL | that type created (`ALIAS` is a synonym) | |
 | `CREATE SCHEMA name` | CREATE | DDL | `SCHEMA` created (one part) | |
+| `CREATE [LARGE, REGULAR, TEMPORARY, SYSTEM TEMPORARY, USER TEMPORARY] TABLESPACE name`, `CREATE STOGROUP name`, `CREATE BUFFERPOOL name` | CREATE | DDL | `TABLESPACE`, `STORAGE_GROUP` or `BUFFERPOOL` created (one part) | |
+| `CREATE [OR REPLACE] [DISTINCT] TYPE name`, `CREATE [OR REPLACE] MODULE name` | CREATE | DDL | `TYPE` or `MODULE` created | |
+| `CREATE [OR REPLACE] SYNONYM name` | CREATE | DDL | `SYNONYM` created (Db2 LUW keeps no separate synonym: the statement creates an alias, `SYSCAT.TABLES.TYPE = 'A'`, so it is typed as `ALIAS` is) | |
 | `ALTER {TABLE, VIEW, SEQUENCE, TRIGGER, PROCEDURE, FUNCTION} name`, `ALTER SCHEMA name` | ALTER | DDL | that type altered | `ALTER TABLE`: columns diagnostic |
+| `ALTER {TABLESPACE, STOGROUP, BUFFERPOOL} name` (one part), `ALTER {TYPE, MODULE} name` | ALTER | DDL | that type altered | |
 | `DROP {TABLE, VIEW, INDEX, SEQUENCE, ALIAS, SCHEMA, TRIGGER, PROCEDURE, FUNCTION} [IF EXISTS] name` | DROP | DDL | that type dropped (`SCHEMA`: one part) | |
+| `DROP {TABLESPACE, STOGROUP, BUFFERPOOL} name` (one part), `DROP {TYPE, DISTINCT TYPE, DATA TYPE, MODULE, SYNONYM} name` | DROP | DDL | that type dropped | no `IF EXISTS`: the server rejects it for these |
 | `RENAME [TABLE] name TO new`, `RENAME INDEX name TO new` | RENAME | DDL | `TABLE` or `INDEX` altered (the old name) | |
 | `COMMENT ON {TABLE, VIEW, INDEX, SEQUENCE, ALIAS, SCHEMA, TRIGGER, PROCEDURE, FUNCTION} name` | COMMENT | DDL | that type altered | |
 | `COMMENT ON COLUMN table.column` | COMMENT | DDL | `TABLE` altered (two or three parts; the last is the column) | |
@@ -333,6 +338,12 @@ The statement facts of a Db2 script (the kind of a statement, the objects it nam
 | `CALL name` | CALL | UNKNOWN | `PROCEDURE` referenced | opaque (`db2 CALL: procedure effects are not read`) |
 | `SET …` | SET | UNKNOWN | none | not opaque; `SET INTEGRITY` is opaque (`db2 SET INTEGRITY: tables not named`) |
 | `SELECT`, `VALUES`, `WITH` | that word | QUERY | none | not opaque, unless the statement holds `FINAL TABLE`, `NEW TABLE` or `OLD TABLE` (a data change inside a query): then opaque (`db2 data-change query: target not named`) |
+
+Table spaces, storage groups and buffer pools have one-part names (a qualified name is read by the server and refused with SQL0108N, so the reader leaves it unread); a type, module or synonym name has up to two parts. Measured on Db2 12.1.5.0 (community edition, 2026-10-24): `DROP TABLESPACE`, `DROP STOGROUP`, `DROP BUFFERPOOL`, `DROP TYPE`, `DROP MODULE` and `DROP SYNONYM` with `IF EXISTS`, `CREATE TYPE IF NOT EXISTS` and `CREATE MODULE IF NOT EXISTS` are SQL0104N, so they have no `IF EXISTS` group and stay opaque with the name-not-read diagnostic. The table space kind words are rows of their own and not an optional group, so `CREATE TABLESPACE large` names a table space `LARGE`. `ALTER SYNONYM` is not in the table.
+
+Forms left opaque: `EXECUTE IMMEDIATE` (the statement it runs is inside a string or a variable, so the reader names nothing, by decision; the server runs it only inside a compound statement or routine body and rejects it elsewhere with SQL0104N); `DROP DATABASE` and `DROP DB` (CLP commands; sent as SQL the server rejects them with SQL0104N, §6, so there is no database object to name); `DROP TABLESPACES a, b` and `DROP TABLESPACE a, b` (they drop several objects); `CREATE PUBLIC SYNONYM` and `DROP PUBLIC SYNONYM` (the alias lives in `SYSPUBLIC`, which a name with no schema would not say); `CREATE LOB TABLESPACE` (SQL0104N); `CREATE TYPE MAPPING` and `DROP TYPE MAPPING` (federated statements, not types); `DROP TYPE BODY` (SQL0104N).
+
+Like every head of the table, these rows read the words and the name and do not check the rest of the statement: `CREATE TABLESPACE ts IN STOGROUP sg` (SQL0104N on the server) and `CREATE TYPE mood AS ENUM (…)` (PostgreSQL syntax) are read as the creation of `TS` and `MOOD`.
 
 `ALTER INDEX`, `ALTER ALIAS` and `LABEL ON` are not in the table: the server rejects them with SQL0104N, so they are opaque. `CREATE TABLE IF NOT EXISTS` and `DROP TABLE IF EXISTS` run on the server and are read. The first word decides the kind of an opaque statement: `CREATE`, `ALTER`, `DROP`, `RENAME`, `COMMENT`, `DECLARE`, `GRANT`, `REVOKE` and `TRUNCATE` are `DDL`; `INSERT`, `UPDATE`, `DELETE` and `MERGE` are `DML`; `SELECT`, `WITH` and `VALUES` are `QUERY`; any other word is `UNKNOWN`.
 

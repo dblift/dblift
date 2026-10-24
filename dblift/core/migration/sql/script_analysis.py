@@ -56,6 +56,7 @@ _DATA_HOLDERS = frozenset(
         SqlObjectType.MATERIALIZED_VIEW.value,
         SqlObjectType.SCHEMA.value,
         SqlObjectType.DATABASE.value,
+        SqlObjectType.TABLESPACE.value,
     }
 )
 # The statements the facts reader may leave unread and ``statement-not-analysed`` still passes,
@@ -102,6 +103,7 @@ _ROW_HOLDERS = frozenset(
         SqlObjectType.TABLE.value,
         SqlObjectType.VIRTUAL_TABLE.value,
         SqlObjectType.MATERIALIZED_VIEW.value,
+        SqlObjectType.TABLESPACE.value,
     }
 )
 DISABLED_ANALYSIS = {
