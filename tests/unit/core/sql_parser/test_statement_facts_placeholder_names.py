@@ -104,3 +104,60 @@ def test_placeholder_fallback_head_has_no_object(dialect, sql):
     facts = ProviderRegistry.get_quirks(dialect).statement_facts(sql)
     assert facts.objects == ()
     assert facts.opaque and facts.diagnostic
+
+
+@pytest.mark.parametrize("dialect", ("postgresql", "cockroachdb", "redshift", "duckdb"))
+@pytest.mark.parametrize(
+    "sql",
+    (
+        "DROP TABLE $1",
+        "CREATE INDEX $1 ON t (id)",
+        "INSERT INTO $1 VALUES (1)",
+        "CREATE VIEW $1 AS SELECT 1",
+    ),
+)
+def test_positional_parameter_cannot_name_an_object(dialect, sql):
+    facts = ProviderRegistry.get_quirks(dialect).statement_facts(sql)
+    assert facts.objects == ()
+    assert facts.opaque and facts.diagnostic
+
+
+def test_snowflake_positional_parameter_cannot_name_an_index():
+    facts = ProviderRegistry.get_quirks("snowflake").statement_facts("CREATE INDEX $1 ON t (id)")
+    assert facts.objects == ()
+    assert facts.opaque and facts.diagnostic
+
+
+@pytest.mark.parametrize("dialect", ("postgresql", "cockroachdb", "redshift", "duckdb"))
+def test_positional_parameter_cannot_name_a_trigger(dialect):
+    sql = "CREATE TRIGGER $1 AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f()"
+    facts = ProviderRegistry.get_quirks(dialect).statement_facts(sql)
+    assert facts.objects == ()
+    assert facts.opaque and facts.diagnostic
+
+
+@pytest.mark.parametrize(
+    "dialect", ("postgresql", "cockroachdb", "redshift", "duckdb", "sqlite", "mysql")
+)
+def test_anonymous_placeholder_cannot_name_a_trigger(dialect):
+    sql = "CREATE TRIGGER ? AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f()"
+    facts = ProviderRegistry.get_quirks(dialect).statement_facts(sql)
+    assert facts.objects == ()
+    assert facts.opaque and facts.diagnostic
+
+
+def test_duckdb_at_name_is_not_hidden_by_a_value_parameter():
+    sql = "SELECT COUNT(*) INTO @n FROM t WHERE id = $1"
+    facts = ProviderRegistry.get_quirks("duckdb").statement_facts(sql)
+    assert [obj.name for obj in facts.objects] == ["n", "t"]
+    assert not facts.opaque
+
+
+@pytest.mark.parametrize("dialect", ("postgresql", "redshift", "duckdb"))
+@pytest.mark.parametrize(
+    "sql", ("DROP TABLE IF EXISTS $1", "CREATE TABLE IF NOT EXISTS $1 (id INT)")
+)
+def test_positional_parameter_after_existence_clause_is_unread(dialect, sql):
+    facts = ProviderRegistry.get_quirks(dialect).statement_facts(sql)
+    assert facts.objects == ()
+    assert facts.opaque and facts.diagnostic

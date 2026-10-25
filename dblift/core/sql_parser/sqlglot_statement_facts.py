@@ -596,9 +596,17 @@ _SNOWFLAKE_DYNAMIC_NAMES = "snowflake IDENTIFIER() names are not read"
 
 def _bind_name_part(part: Optional[exp.Expression], dialect: str, sql: str) -> bool:
     # Named Placeholder nodes also represent DuckDB's corpus SELECT ... INTO @n.
-    # SQLGlot gives these nodes no source span, so only unread anonymous markers here.
+    # SQLGlot gives them no source span, so unread anonymous or numeric markers only.
     if isinstance(part, exp.Placeholder):
-        return not part.this
+        return not part.this or part.name.isdecimal()
+    if isinstance(part, exp.Parameter) and isinstance(part.this, exp.Literal):
+        start, end = part.this.meta.get("start"), part.this.meta.get("end")
+        return (
+            isinstance(start, int)
+            and isinstance(end, int)
+            and start > 0
+            and sql[start - 1 : end + 1] == f"${part.name}"
+        )
     if (
         not isinstance(part, exp.Identifier)
         or part.args.get("quoted")
@@ -635,6 +643,8 @@ def _unread_names(ast: exp.Expr, dialect: str, sql: str = "") -> Optional[str]:
         ):
             return f"{dialect} keyword read where an object name belongs"
     if any(_bind_name_part(index.this, dialect, sql) for index in ast.find_all(exp.Index)):
+        return f"{dialect} placeholder read where an object name belongs"
+    if isinstance(ast, exp.Create) and _bind_name_part(ast.this, dialect, sql):
         return f"{dialect} placeholder read where an object name belongs"
     return None
 
