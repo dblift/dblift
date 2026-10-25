@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Snowflake `INSERT OVERWRITE` statement facts now flag the replacement of existing target rows
   and leave DML events unknown, instead of reporting an ordinary `INSERT`.
+- Pending SQL snippets in `info` and `migrate --dry-run` mask string literals, and DEBUG logs no
+  longer print resolved placeholder values.
 - The Db2 statement facts reader names the object of `CREATE`, `ALTER` and `DROP` for
   `TABLESPACE`, `STOGROUP`, `BUFFERPOOL`, `TYPE` and `MODULE`, and of `CREATE` and `DROP` for
   `SYNONYM` (typed `SYNONYM`, as `ALIAS` is: Db2 LUW creates an alias). They were reported as
