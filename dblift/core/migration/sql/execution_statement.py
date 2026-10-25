@@ -66,9 +66,18 @@ def classify_execution_statement(
 
     # A batch is not transactional when any of its statements is not: SQL Server refuses that
     # statement inside the transaction the whole batch would run in.
+    parser = _script_parser(dialect.lower())
     for statement in _statements_of(sql, dialect.lower()):
         # Comments between keywords are whitespace too, e.g. FORCE /* flush */ CHECKPOINT.
-        normalized = re.sub(r"\s+", " ", _without_comments(quirks, statement)).upper()
+        blanks = parser.spec.text_blanks if parser is not None and parser.spec.non_ascii_names else None
+        commentless = _without_comments(quirks, statement, blanks=blanks)
+        if parser is not None and parser.spec.non_ascii_names:
+            # PostgreSQL reads every non-ASCII character as part of a name, even one
+            # Python calls whitespace. Preserve that word boundary after masking comments.
+            commentless = "".join("_" if ord(char) >= 128 else char for char in commentless)
+            normalized = re.sub(f"[{re.escape(parser.spec.text_blanks)}]+", " ", commentless).upper()
+        else:
+            normalized = re.sub(r"\s+", " ", commentless).upper()
         for pattern, reason in quirks.non_transactional_sql_patterns:
             if re.match(pattern, normalized):
                 return ExecutionStatement(
@@ -185,7 +194,7 @@ def neutralise_transaction_statements(
     raise refuse(offender, explanation + ".")
 
 
-def _without_comments(quirks: Any, statement: str) -> str:
+def _without_comments(quirks: Any, statement: str, *, blanks: Optional[str] = None) -> str:
     """The statement with its comments gone, so ``COMMIT /* c */`` reads as ``COMMIT``."""
     from dblift.core.exceptions import ParserError
 
@@ -193,7 +202,7 @@ def _without_comments(quirks: Any, statement: str) -> str:
         statement = quirks.blank_comments(statement)
     except ParserError:  # a scanner refusal belongs to the split, which already passed
         pass
-    return strip_leading_comments(statement).strip()
+    return strip_leading_comments(statement).strip(blanks)
 
 
 def _position(statements: List[str], index: int, dialect: str, content: str) -> str:
