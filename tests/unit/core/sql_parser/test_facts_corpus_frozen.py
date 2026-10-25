@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict, List
 
 import pytest
@@ -52,6 +53,34 @@ def test_the_command_refuses_before_writing_any_file(
     assert cli.main(["record", current_arm()]) == 1
     assert "postgresql" in capsys.readouterr().out
     assert {f: family_file(f).read_bytes() for f in FAMILIES} == before
+
+
+def test_record_one_unfrozen_family_leaves_frozen_family_untouched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = {family: tmp_path / f"{family}.jsonl" for family in ("duckdb", "postgresql")}
+    for path in paths.values():
+        path.write_text('{"sql":"before"}\n', encoding="utf-8")
+    inputs = tmp_path / "inputs.jsonl"
+    inputs.write_text("", encoding="utf-8")
+    called = []
+
+    monkeypatch.setattr(cli, "FAMILIES", tuple(paths))
+    monkeypatch.setattr(cli, "INPUTS_FILE", inputs)
+    monkeypatch.setattr(cli, "family_file", paths.__getitem__)
+    monkeypatch.setattr(cli, "is_frozen", lambda family: family == "postgresql")
+    monkeypatch.setattr(cli, "check_arm", lambda *args: None)
+
+    def record_one(family, arm, rows, existing, frozen):
+        called.append((family, arm, frozen))
+        return [{"sql": "after"}]
+
+    monkeypatch.setattr(cli, "record_family", record_one)
+
+    assert cli.main(["record", "floor", "duckdb"]) == 0
+    assert called == [("duckdb", "floor", False)]
+    assert paths["duckdb"].read_text(encoding="utf-8") == '{"sql":"after"}\n'
+    assert paths["postgresql"].read_text(encoding="utf-8") == '{"sql":"before"}\n'
 
 
 def test_a_family_that_is_not_activated_cannot_be_recorded_as_frozen(
