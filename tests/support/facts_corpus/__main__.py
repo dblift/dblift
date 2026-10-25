@@ -1,6 +1,6 @@
 """Command line.
 
-``python -m tests.support.facts_corpus seed | record <arm> [--frozen] | measure``
+``python -m tests.support.facts_corpus seed | record <arm> [family] [--frozen] | measure``
 
 ``python -m tests.support.facts_corpus diff <family|all> [--report] [--json] [--skeleton]``
 compares the frozen object extraction with the statement facts. In a family listed in
@@ -35,17 +35,19 @@ from tests.support.facts_corpus.record import check_arm, is_frozen, record_famil
 from tests.support.facts_corpus.seed import seed, split
 
 
-def _record(arm: str, frozen: bool) -> int:
+def _record(arm: str, frozen: bool, selected: str | None = None) -> int:
     check_arm(arm, sqlglot.__version__, read_versions())
     inputs = read_rows(INPUTS_FILE)
-    frozen_families = [family for family in FAMILIES if is_frozen(family)]
+    selected_families = (selected,) if selected else FAMILIES
+    frozen_families = [family for family in selected_families if is_frozen(family)]
     if frozen_families and not frozen:
         print(
             "the recorded extraction is frozen for: " + ", ".join(frozen_families) + "; "
             "record them with --frozen, the others without"
         )
         return 1
-    for family in frozen_families if frozen else FAMILIES:
+    families_to_record = selected_families if selected or not frozen else frozen_families
+    for family in families_to_record:
         path = family_file(family)
         rows = record_family(family, arm, inputs, read_rows(path), frozen)
         path.write_text("".join(dumps(row) + "\n" for row in rows), encoding="utf-8")
@@ -102,8 +104,16 @@ def main(argv: list) -> int:
     command = argv[0] if argv else ""
     if command == "seed":
         print(seed(REPO_ROOT, INPUTS_FILE, CORPUS_DIR / "SOURCES.md"), "inputs")
-    elif command == "record" and len(argv) in (2, 3):
-        return _record(argv[1], "--frozen" in argv[2:])
+    elif command == "record" and len(argv) in (2, 3, 4):
+        args = argv[2:]
+        if any(arg != "--frozen" and arg not in FAMILIES for arg in args):
+            print(__doc__)
+            return 2
+        selected = [arg for arg in args if arg != "--frozen"]
+        if len(selected) > 1 or args.count("--frozen") > 1:
+            print(__doc__)
+            return 2
+        return _record(argv[1], "--frozen" in args, selected[0] if selected else None)
     elif command == "measure":
         _measure()
     elif command == "diff" and len(argv) >= 2 and families(argv[1]):
