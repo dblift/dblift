@@ -10,6 +10,7 @@ text.
 One recording moved on purpose: ``script_20`` ends in a zero-width space, which the engine reads as a
 blank, so the statement no longer carries it and its object is named. ``script_12`` and
 ``script_13`` lost the statement that was only a comment: a script cut into statements has none.
+The three ``COPY ... FROM 'file'`` facts recordings now carry ``copy-from-file`` action.
 """
 
 import dataclasses

@@ -41,6 +41,22 @@ from dblift.db.dml_analysis import (
 )
 
 _NAME = rf"(?:{DOUBLE_QUOTED_IDENTIFIER}|{BRACKET_IDENTIFIER}|{BACKTICK_IDENTIFIER}|[\w$]+)"
+_TSQL_STATISTICS_ARGUMENTS = re.compile(
+    rf"(?P<table>{_NAME}(?:\s*\.\s*{_NAME}){{0,2}})(?:\s+(?P<name>{_NAME}))?"
+    rf"(?:\s+WITH\s+(?:FULLSCAN|SAMPLE\s+(?:100|[1-9]?\d)\s+PERCENT))?",
+    re.IGNORECASE | re.ASCII,
+)
+
+
+def _tsql_statistics_name(text: str, dialect: str) -> bool:
+    tokens = Dialect.get_or_raise(dialect).tokenize(text)
+    return len(tokens) in {1, 3, 5} and all(
+        token.token_type
+        in ({TokenType.VAR, TokenType.IDENTIFIER} if position % 2 == 0 else {TokenType.DOT})
+        for position, token in enumerate(tokens)
+    )
+
+
 _HEAD = re.compile(
     rf"^\s*(CREATE|ALTER|DROP)\s+(?:(?:TEMP|TEMPORARY|UNIQUE|IF|NOT|EXISTS)\s+)*"
     rf"(VIRTUAL\s+TABLE|TABLE|VIEW|INDEX|TRIGGER)\s+(?:(?:IF|NOT|EXISTS)\s+)*"
@@ -1226,6 +1242,7 @@ def _copy_facts(node: exp.Copy, sql: str, *, dialect: str = "duckdb") -> Stateme
         affected_columns=tuple(column.name for column in columns) if importing else (),
         events=frozenset({"INSERT"}) if importing else None,
         target_sql=table.sql(dialect=dialect) if importing else None,
+        action="copy-from-file" if importing else None,
     )
 
 
@@ -2083,6 +2100,11 @@ def _redshift_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[Statement
     if isinstance(ast, exp.Copy):
         # The options follow the source and cannot change the table it loads; sqlglot misreads
         # some (``IGNOREHEADER 1``), so only the table, columns and source are checked.
+        if any(
+            not (parameter.name.isidentifier() or parameter.name.isdecimal())
+            for parameter in ast.args.get("params") or []
+        ):
+            return _copy_facts(ast, sql, dialect=dialect)
         loaded = ast.copy()
         loaded.set("params", None)
         return _copy_facts(loaded, sql, dialect=dialect)
@@ -2352,6 +2374,25 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         and (command := _mysql_command_facts(sql)) is not None
     ):
         return command
+    if (
+        dialect == "tsql"  # lint: allow-dialect-string: SQL Server statistics maintenance
+        and isinstance(ast, exp.Command)
+        and ast.this == "UPDATE STATISTICS"
+    ):
+        match = (
+            _TSQL_STATISTICS_ARGUMENTS.fullmatch(ast.expression.this)
+            if isinstance(ast.expression, exp.Literal)
+            else None
+        )
+        if match:
+            name = match.group("name")
+            if _tsql_statistics_name(match.group("table"), dialect) and (
+                name is None or _tsql_statistics_name(name, dialect)
+            ):
+                return StatementFacts("UPDATE STATISTICS", "DDL")
+        return StatementFacts(
+            "UPDATE STATISTICS", "UNKNOWN", diagnostic="tsql UPDATE STATISTICS tail is opaque"
+        )
     if (
         dialect == "snowflake"  # lint: allow-dialect-string: unread names in a Command
         and isinstance(ast, exp.Command)

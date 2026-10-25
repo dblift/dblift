@@ -2615,7 +2615,7 @@
      "updated_columns": []
     },
     "facts": {
-     "action": null,
+     "action": "copy-from-file",
      "affected_columns": [],
      "declared_column_comments": null,
      "declared_columns": [],
@@ -2655,7 +2655,7 @@
      "updated_columns": []
     },
     "facts": {
-     "action": null,
+     "action": "copy-from-file",
      "affected_columns": [
       "id",
       "Item Value"
@@ -2698,7 +2698,7 @@
      "updated_columns": []
     },
     "facts": {
-     "action": null,
+     "action": "copy-from-file",
      "affected_columns": [
       "id"
      ],
