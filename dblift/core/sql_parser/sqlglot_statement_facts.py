@@ -353,11 +353,22 @@ def _head_name_is_bounded(text: str, match: "re.Match[str]", groups: Tuple[int, 
     return not spans or spans[-1][1] >= len(text) or text[spans[-1][1]] != "."
 
 
+def _positional_bind_name(name: str, dialect: str) -> bool:
+    return bool(
+        dialect in {"oracle", "tsql", "sqlite"}  # lint: allow-dialect-string: $1 bind
+        and re.fullmatch(r"\$[0-9]+", name)
+    )
+
+
 def _head_tokens_prove_name(
     sql: str, dialect: str, prefix: str, names: Tuple[str, ...], routine: bool = False
 ) -> bool:
     """Check that a stripped head names the same source tokens, in the same order."""
     words = _clause_words(dialect, routine)
+    if any(
+        name[0] not in {'"', "`", "["} and _positional_bind_name(name, dialect) for name in names
+    ):
+        return False
     if not dialect or any(
         name[0] not in {'"', "`", "["} and name.upper() in words for name in names
     ):
@@ -583,7 +594,30 @@ def _snowflake_materialized_view_log_on(sql: str, ast: exp.Expr) -> bool:
 _SNOWFLAKE_DYNAMIC_NAMES = "snowflake IDENTIFIER() names are not read"
 
 
-def _unread_names(ast: exp.Expr, dialect: str) -> Optional[str]:
+def _bind_name_part(part: Optional[exp.Expression], dialect: str, sql: str) -> bool:
+    # Named Placeholder nodes also represent DuckDB's corpus SELECT ... INTO @n.
+    # SQLGlot gives them no source span, so unread anonymous or numeric markers only.
+    if isinstance(part, exp.Placeholder):
+        return not part.this or part.name.isdecimal()
+    if isinstance(part, exp.Parameter) and isinstance(part.this, exp.Literal):
+        start, end = part.this.meta.get("start"), part.this.meta.get("end")
+        return (
+            isinstance(start, int)
+            and isinstance(end, int)
+            and start > 0
+            and sql[start - 1 : end + 1] == f"${part.name}"
+        )
+    if (
+        not isinstance(part, exp.Identifier)
+        or part.args.get("quoted")
+        or not _positional_bind_name(part.name, dialect)
+    ):
+        return False
+    start, end = part.meta.get("start"), part.meta.get("end")
+    return isinstance(start, int) and isinstance(end, int) and sql[start : end + 1] == part.name
+
+
+def _unread_names(ast: exp.Expr, dialect: str, sql: str = "") -> Optional[str]:
     """Name why a relation is not an identifier written in the statement."""
     if isinstance(ast, exp.Copy):
         return None  # a COPY file path is a string, and the statement is opaque already
@@ -599,6 +633,8 @@ def _unread_names(ast: exp.Expr, dialect: str) -> Optional[str]:
         parts = [table.args.get(key) for key in ("this", "db", "catalog")]
         if snowflake and any(isinstance(part, (exp.Parameter, exp.Literal)) for part in parts):
             return _SNOWFLAKE_DYNAMIC_NAMES
+        if any(_bind_name_part(part, dialect, sql) for part in parts):
+            return f"{dialect} placeholder read where an object name belongs"
         if any(
             isinstance(part, exp.Identifier)
             and not part.args.get("quoted")
@@ -606,6 +642,10 @@ def _unread_names(ast: exp.Expr, dialect: str) -> Optional[str]:
             for part in parts
         ):
             return f"{dialect} keyword read where an object name belongs"
+    if any(_bind_name_part(index.this, dialect, sql) for index in ast.find_all(exp.Index)):
+        return f"{dialect} placeholder read where an object name belongs"
+    if isinstance(ast, exp.Create) and _bind_name_part(ast.this, dialect, sql):
+        return f"{dialect} placeholder read where an object name belongs"
     return None
 
 
@@ -2477,7 +2517,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             diagnostic=f"{dialect} relation qualification is not fully represented",
         )
 
-    unread_names = _unread_names(ast, dialect)
+    unread_names = _unread_names(ast, dialect, sql)
     if unread_names is not None:
         head = _head_facts(sql, "", dialect=dialect)
         return StatementFacts(head.operation, head.kind, diagnostic=unread_names)
