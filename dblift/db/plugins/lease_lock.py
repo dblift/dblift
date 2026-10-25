@@ -190,13 +190,16 @@ class LeaseLock:
                     return True
             except LeaseBusy:
                 last_busy = time.monotonic()
-            except BaseException:
-                # The row may have committed before an interrupt set _held.
-                self._held = True
+            except BaseException as exc:
                 try:
-                    self.release()
-                except Exception as exc:
-                    self.log.warning(f"Could not clean up the migration lock: {exc}")
+                    if isinstance(exc, Exception) and not acquired:
+                        self._store.close()
+                    else:
+                        # An interrupt may follow the committed insert before _held is set.
+                        self._held = True
+                        self.release()
+                except Exception as cleanup_error:
+                    self.log.warning(f"Could not clean up the migration lock: {cleanup_error}")
                 raise
             remaining = deadline - time.monotonic()
             if remaining <= 0:
