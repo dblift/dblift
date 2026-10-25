@@ -583,7 +583,7 @@ def _snowflake_materialized_view_log_on(sql: str, ast: exp.Expr) -> bool:
 _SNOWFLAKE_DYNAMIC_NAMES = "snowflake IDENTIFIER() names are not read"
 
 
-def _unread_names(ast: exp.Expr, dialect: str) -> Optional[str]:
+def _unread_names(ast: exp.Expr, dialect: str, sql: str = "") -> Optional[str]:
     """Name why a relation is not an identifier written in the statement."""
     if isinstance(ast, exp.Copy):
         return None  # a COPY file path is a string, and the statement is opaque already
@@ -599,6 +599,22 @@ def _unread_names(ast: exp.Expr, dialect: str) -> Optional[str]:
         parts = [table.args.get(key) for key in ("this", "db", "catalog")]
         if snowflake and any(isinstance(part, (exp.Parameter, exp.Literal)) for part in parts):
             return _SNOWFLAKE_DYNAMIC_NAMES
+        # Named Placeholder nodes also represent DuckDB's corpus SELECT ... INTO @n.
+        # SQLGlot gives these nodes no source span, so only unread anonymous markers here.
+        if any(isinstance(part, exp.Placeholder) and not part.this for part in parts):
+            return f"{dialect} placeholder read where an object name belongs"
+        if dialect in {"oracle", "tsql", "sqlite"}:  # lint: allow-dialect-string: $1 name proof
+            for part in parts:
+                if not isinstance(part, exp.Identifier) or part.args.get("quoted"):
+                    continue
+                start, end = part.meta.get("start"), part.meta.get("end")
+                if (
+                    isinstance(start, int)
+                    and isinstance(end, int)
+                    and sql[start : end + 1] == part.name
+                    and re.fullmatch(r"\$[0-9]+", part.name)
+                ):
+                    return f"{dialect} placeholder read where an object name belongs"
         if any(
             isinstance(part, exp.Identifier)
             and not part.args.get("quoted")
@@ -2477,7 +2493,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             diagnostic=f"{dialect} relation qualification is not fully represented",
         )
 
-    unread_names = _unread_names(ast, dialect)
+    unread_names = _unread_names(ast, dialect, sql)
     if unread_names is not None:
         head = _head_facts(sql, "", dialect=dialect)
         return StatementFacts(head.operation, head.kind, diagnostic=unread_names)
