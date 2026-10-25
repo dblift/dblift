@@ -12,9 +12,11 @@ from dblift.core.migration.sql.execution_statement import classify_execution_sta
         "CREATE INDEX CONCURRENTLY\u00a0ix ON t(a)",
         "CREATE\u00a0INDEX CONCURRENTLY ix ON t(a)",
         "VACUUM\u00a0t",
+        "CREATE\vINDEX CONCURRENTLY ix ON t(a)",
+        "CREATE\x1cINDEX CONCURRENTLY ix ON t(a)",
     ),
 )
-def test_non_ascii_name_character_does_not_separate_transaction_keywords(dialect, sql):
+def test_non_blank_character_does_not_separate_transaction_keywords(dialect, sql):
     assert classify_execution_statement(sql, dialect=dialect).can_execute_in_transaction
 
 
