@@ -1982,30 +1982,27 @@
   "reason": "Redshift creates the table named after INTO (a SELECT \u2026 INTO TEMP was run and its table read back); the reader names TABLE v_count (created), TABLE employees (referenced), the old analyzer path read the statement as a query and named nothing. Redshift answers SQLSTATE 42P01 (relation \"employees\" does not exist), not a syntax error.",
   "sql": "SELECT COUNT(*) INTO v_count FROM employees"
  },
- "3502ebdff2ba8590/analyzer": {
-  "class": "facts-adds-acted",
+ "3502ebdff2ba8590/hybrid": {
+  "class": "opaque-reader-gap",
   "facts": {
-   "events": [
-    "INSERT"
-   ],
-   "kind": "DML",
-   "objects": [
-    [
-     "items",
-     "TABLE",
-     "altered",
-     null
-    ]
-   ],
-   "operation": "COPY",
-   "target": "items",
-   "target_sql": "items"
+   "diagnostic": "redshift COPY source or destination is opaque",
+   "kind": "UNKNOWN",
+   "operation": "COPY"
   },
   "old": {
-   "analyzer": []
+   "hybrid": [
+    [
+     "TABLE",
+     "items",
+     "public"
+    ]
+   ]
   },
-  "path": "analyzer",
-  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"||\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names TABLE items (altered) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
+  "path": "hybrid",
+  "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"||\"); the COPY source is not one string literal, so the reader returns opaque facts while the old hybrid extraction names TABLE items. The statement never runs on this family.",
+  "rejected_by": {
+   "redshift 1.0.485645": "42601"
+  },
   "sql": "COPY items FROM '/tmp/' || 'items.csv'"
  },
  "350dbf9c8990d3b8/analyzer": {
