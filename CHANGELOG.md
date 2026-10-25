@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Statement facts leave object names written as bind placeholders unread and report a diagnostic,
   while placeholders in values and quoted object names keep their existing behavior.
+- PostgreSQL-family transaction checks no longer treat non-blank characters such as U+00A0 as
+  separators around `CONCURRENTLY` or `VACUUM`, avoiding a false autocommit classification.
 - SQL Server `CREATE FULLTEXT INDEX` statement facts now identify the unsupported grammar in
   their diagnostic while leaving the index identity unread.
 - Unread `CREATE TABLE` definitions and mixed `ALTER TABLE` column and constraint actions now
