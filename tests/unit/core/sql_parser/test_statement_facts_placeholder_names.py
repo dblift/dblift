@@ -52,3 +52,55 @@ def test_mysql_dollar_digit_remains_an_unquoted_name(dialect):
 def test_quoted_dollar_digit_remains_a_written_name(dialect, quoted_name):
     facts = ProviderRegistry.get_quirks(dialect).statement_facts(f"DROP TABLE {quoted_name}")
     assert [obj.name for obj in facts.objects] == ["$1"]
+
+
+@pytest.mark.parametrize(
+    "dialect, marker",
+    (
+        ("postgresql", "?"),
+        ("postgresql", "%s"),
+        ("mysql", "?"),
+        ("sqlite", "?"),
+        ("duckdb", "?"),
+        ("redshift", "?"),
+        ("snowflake", "?"),
+        ("oracle", "$1"),
+        ("sqlite", "$1"),
+        ("sqlserver", "$1"),
+    ),
+)
+def test_placeholder_index_name_leaves_all_objects_unread(dialect, marker):
+    facts = ProviderRegistry.get_quirks(dialect).statement_facts(f"CREATE INDEX {marker} ON t (id)")
+    assert facts.objects == ()
+    assert facts.opaque and facts.diagnostic
+
+
+@pytest.mark.parametrize(
+    "dialect, quoted_name",
+    (("postgresql", '"?"'), ("mysql", "`$1`"), ("sqlite", '"$1"')),
+)
+def test_quoted_index_name_remains_written(dialect, quoted_name):
+    facts = ProviderRegistry.get_quirks(dialect).statement_facts(
+        f"CREATE INDEX {quoted_name} ON t (id)"
+    )
+    assert [obj.name for obj in facts.objects] == [quoted_name[1:-1], "t"]
+
+
+def test_mysql_unquoted_dollar_digit_index_remains_written():
+    facts = ProviderRegistry.get_quirks("mysql").statement_facts("CREATE INDEX $1 ON t (id)")
+    assert [obj.name for obj in facts.objects] == ["$1", "t"]
+
+
+@pytest.mark.parametrize(
+    "dialect, sql",
+    (
+        ("sqlite", "CREATE TRIGGER $1 AFTER INSERT ON t BEGIN SELECT 1; END"),
+        ("oracle", "CREATE SYNONYM $1 FOR t"),
+        ("oracle", "DROP SYNONYM $1"),
+        ("oracle", "CREATE TRIGGER $1 AFTER INSERT ON t BEGIN SELECT 1; END"),
+    ),
+)
+def test_placeholder_fallback_head_has_no_object(dialect, sql):
+    facts = ProviderRegistry.get_quirks(dialect).statement_facts(sql)
+    assert facts.objects == ()
+    assert facts.opaque and facts.diagnostic
