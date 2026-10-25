@@ -10,7 +10,6 @@ from dblift.core.sql_parser.delimiter_script import DelimiterScript
 from dblift.core.sql_parser.driver_strip import refuse_edges_the_driver_strips
 from dblift.core.sql_parser.lexical_spec import BOM, LexicalSpec
 from dblift.core.sql_parser.parser_context import ParserContext
-from dblift.core.sql_parser.segment_script import SegmentScript
 from dblift.core.sql_parser.statement import Statement, execution_strings
 from dblift.core.sql_parser.tokens import Token, TokenType
 
@@ -28,7 +27,7 @@ class LexicalStatementParser(BaseStatementParser):
         comments: Optional[Sequence[Tuple[int, int]]] = None,
         delimiter_script: Optional[DelimiterScript] = None,
         terminator_records: Optional[List[Statement]] = None,
-        segment_script: Optional[SegmentScript] = None,
+        segment_records: Optional[List[Statement]] = None,
     ):
         """Bind token boundaries to their original source and plugin rules."""
         super().__init__(tokens, context, source)
@@ -65,9 +64,9 @@ class LexicalStatementParser(BaseStatementParser):
         # A terminator script is cut by its own assembly: its records are final too.
         assert (spec.terminator_script is None) == (terminator_records is None)
         self._terminator_records = terminator_records
-        # A segment script is cut between its ';' tokens: its records come from the tokens.
-        assert (spec.segment_script is None) == (segment_script is None)
-        self._segments = segment_script
+        # A segment script is cut between its ';' tokens as the scanner reads them.
+        assert (spec.segment_script is None) == (segment_records is None)
+        self._segment_records = segment_records
         self._script: Optional[ClientScript] = None
         if spec.client_script is not None:
             assert source is not None  # a client script is read line by line from its text
@@ -176,8 +175,8 @@ class LexicalStatementParser(BaseStatementParser):
             return list(self._delimiter_script.records)
         if self._terminator_records is not None:
             return list(self._terminator_records)
-        if self._segments is not None:
-            return self._segments.records(self.tokens)
+        if self._segment_records is not None:
+            return list(self._segment_records)
         if self._batches is not None:
             return self._batches.split(self.tokens)
         records: List[Statement] = []

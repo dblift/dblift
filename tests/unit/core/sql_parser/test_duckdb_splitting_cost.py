@@ -1,7 +1,7 @@
 """Splitting a DuckDB script costs a bounded number of operations per character, counted not timed.
 
 The stages are handed counting objects through the attributes production reads: the tokenizer's text and
-its five compiled patterns, the assembly's source, and the token list (``len()`` and ``tokens[i]`` only).
+its five compiled patterns, the assembly's source, and each token read from the stream.
 A shape grows the script fourfold; the count may grow at most fivefold. The counters are those of the Db2
 cost test (``tests/support/splitting_cost.py``).
 
@@ -36,11 +36,11 @@ from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_RULES, DUCKDB_SP
 from tests.support.splitting_cost import (
     OUTSIDE_EXEMPT,
     PACKAGE,
-    CountingParserTokens,
     CountingPattern,
     CountingText,
     CountingTokens,
     Meter,
+    TokenProxy,
     forbidden,
     import_closure,
 )
@@ -93,13 +93,14 @@ def counted(script: str, refusal: bool = False, meter: Optional[Meter] = None) -
     original = blank_pass.kept_stretches  # the pass each statement is read through alone
     alone = lambda sql, *args: original(CountingText(sql, meter), *args)  # noqa: E731
     with mock.patch.object(blank_pass, "kept_stretches", alone):
+        counted_tokens = CountingTokens(tokens, meter)
         SegmentScript(
             DUCKDB_RULES,
             CountingText(script, meter),
             tokenizer.origin,
             DUCKDB_SPEC.text_blanks,
             tokenizer.kept,
-        ).records(CountingTokens(tokens, meter))
+        ).records(counted_tokens[i] for i in range(len(counted_tokens)))
     return meter.count
 
 
@@ -121,8 +122,14 @@ def public_counted(script: str, refusal: bool = False) -> tuple[int, List]:
                     allow_empty=name in {"_seg_word_part", "_seg_kept_part"},
                 ),
             )
-        original_tokenize = wrapped.tokenize
-        wrapped.tokenize = lambda: CountingParserTokens(original_tokenize(), meter)
+        original_segment_tokens = wrapped._iter_segment_tokens
+
+        def counted_segment_tokens(rules):
+            for token in original_segment_tokens(rules):
+                meter.add(1)
+                yield TokenProxy(token, meter)
+
+        wrapped._iter_segment_tokens = counted_segment_tokens
         return wrapped
 
     with mock.patch.object(engine_module, "LexicalTokenizer", tokenizer):
@@ -226,6 +233,20 @@ def test_duckdb_public_split_has_bounded_cost_and_ordered_records():
     assert [r.source_start for r in records] == [0, *range(10, 10 + (LARGE - 1) * 15, 15)]
     assert records[0].text == "SELECT 1" and records[-1].text.endswith("SELECT 1")
     assert small > 0 and large <= BOUND * small
+
+
+def test_duckdb_public_split_counts_stream_token_reads(monkeypatch):
+    reads = []
+    original = TokenProxy.__getattr__
+
+    def counted_read(self, name):
+        reads.append(name)
+        return original(self, name)
+
+    monkeypatch.setattr(TokenProxy, "__getattr__", counted_read)
+    _, records = public_counted("SELECT 1; SELECT 2;")
+    assert len(records) == 2
+    assert reads, "public split skipped the counted token stream"
 
 
 def test_the_pattern_counter_charges_the_span_a_search_scans():

@@ -4,11 +4,12 @@ import logging
 from typing import List
 
 from dblift.core.exceptions import UnsafeStatementSplitError
-from dblift.core.sql_parser.lexical_spec import LexicalSpec
+from dblift.core.sql_parser.lexical_spec import BOM, LexicalSpec
 from dblift.core.sql_parser.lexical_statement_parser import LexicalStatementParser
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.segment_script import SegmentScript
 from dblift.core.sql_parser.statement import Statement, analysis_sql
+from dblift.core.sql_parser.tokens import Token
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +23,36 @@ class LexicalEngine:
 
     def _parser(self, script: str) -> LexicalStatementParser:
         tokenizer = LexicalTokenizer(script, spec=self.spec)
+        tokens: List[Token]
+        segment_records = None
         if tokenizer.delimiter_script is not None:
             if tokenizer.spec.refused_character:
                 tokenizer._refuse_character()
             while tokenizer.pos < len(tokenizer.sql):
                 tokenizer._next_token()
             tokenizer.delimiter_script.finish()
+            tokens = []
+        elif self.spec.segment_script is not None:
+            if tokenizer.spec.refused_character:
+                tokenizer._refuse_character()
+            segments = SegmentScript(
+                self.spec.segment_script,
+                script,
+                int(self.spec.leading_bom_is_blank and script.startswith(BOM)),
+                self.spec.text_blanks,
+                tokenizer.kept,
+            )
+            try:
+                segment_records = segments.records(
+                    tokenizer._iter_segment_tokens(self.spec.segment_script)
+                )
+            except UnsafeStatementSplitError:
+                if tokenizer.open_comment is not None:
+                    line, col = tokenizer.open_comment
+                    raise UnsafeStatementSplitError(
+                        f"unterminated block comment opened at line {line}, column {col}"
+                    ) from None
+                raise
             tokens = []
         else:
             tokens = tokenizer.tokenize()
@@ -44,17 +69,7 @@ class LexicalEngine:
             comments=tokenizer.comments,
             delimiter_script=tokenizer.delimiter_script,
             terminator_records=records,
-            segment_script=(
-                None
-                if self.spec.segment_script is None
-                else SegmentScript(
-                    self.spec.segment_script,
-                    script,
-                    tokenizer.origin,
-                    self.spec.text_blanks,
-                    tokenizer.kept,
-                )
-            ),
+            segment_records=segment_records,
         )
 
     @staticmethod
