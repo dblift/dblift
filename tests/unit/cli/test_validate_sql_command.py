@@ -70,6 +70,51 @@ def test_files_option_lints_exactly_the_files_given(tmp_path, scripts):
     assert [s["script"] for s in payload["scripts"]] == ["V1__users.sql"]
 
 
+def test_files_option_does_not_exempt_later_delete_after_insert(tmp_path):
+    first = tmp_path / "V1__create_and_fill.sql"
+    later = tmp_path / "V2__delete.sql"
+    first.write_text("CREATE TABLE t (id INT); INSERT INTO t VALUES (1);")
+    later.write_text("DELETE FROM t;")
+
+    proc = _run(
+        tmp_path,
+        "validate-sql",
+        "--dialect",
+        "postgresql",
+        "--format",
+        "json",
+        "--files",
+        str(later),
+        str(first),
+    )
+
+    scripts = json.loads(proc.stdout)["scripts"]
+    assert [s["script"] for s in scripts] == [first.name, later.name]
+    assert scripts[1]["verdict"] == "REVIEW"
+    assert "dml-no-where" in [f["code"] for f in scripts[1]["findings"]]
+
+
+def test_files_option_exempts_delete_after_create_in_the_same_script(tmp_path):
+    script = tmp_path / "V1__create_and_delete.sql"
+    script.write_text("CREATE TABLE t (id INT); DELETE FROM t;")
+
+    proc = _run(
+        tmp_path,
+        "validate-sql",
+        "--dialect",
+        "postgresql",
+        "--format",
+        "json",
+        "--files",
+        str(script),
+    )
+
+    payload = json.loads(proc.stdout)
+    assert proc.returncode == 0, proc.stderr
+    assert payload["scripts"][0]["verdict"] == "SAFE"
+    assert "dml-no-where" not in [f["code"] for f in payload["scripts"][0]["findings"]]
+
+
 def test_allow_directive_turns_unsafe_into_safe(tmp_path, scripts):
     target = scripts / "V2__drop_email.sql"
     target.write_text("-- dblift:allow drop-column, pg-missing-lock-timeout\n" + target.read_text())
