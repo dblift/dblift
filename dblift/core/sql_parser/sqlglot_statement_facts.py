@@ -3163,6 +3163,11 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             and target_table is not None
         ):
             target_table = _oracle_as_written(target_table)
+        snowflake_overwrite = (
+            dialect == "snowflake"  # lint: allow-dialect-string: INSERT OVERWRITE effect
+            and isinstance(ast, exp.Insert)
+            and ast.args.get("overwrite")
+        )
         return StatementFacts(
             operation,
             "DML",
@@ -3170,7 +3175,12 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             target,
             predicate,
             affected_columns=columns,
-            events=frozenset(events) if events else None,
+            events=frozenset(events) if events and not snowflake_overwrite else None,
+            diagnostic=(
+                "snowflake INSERT OVERWRITE replaces the target's existing rows"
+                if snowflake_overwrite
+                else None
+            ),
             target_sql=target_table.sql(dialect=dialect) if target_table is not None else None,
         )
 
