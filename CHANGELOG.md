@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Unread `CREATE TABLE` definitions and mixed `ALTER TABLE` column and constraint actions now
+  produce opaque statement facts with a diagnostic instead of raising an exception or naming a
+  spurious column.
 - Snowflake `INSERT OVERWRITE` statement facts now flag the replacement of existing target rows
   and leave DML events unknown, instead of reporting an ordinary `INSERT`.
 - Pending SQL snippets in `info` and `migrate --dry-run` mask string literals, and DEBUG logs no
