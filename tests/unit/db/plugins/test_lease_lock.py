@@ -269,6 +269,34 @@ def test_failed_acquire_closes_the_store():
     assert store.closed is True
 
 
+@pytest.mark.parametrize("close_fails", [False, True])
+def test_interrupt_after_acquire_releases_lock_and_preserves_exit(close_fails):
+    class InterruptedStore(_MemoryStore):
+        def try_acquire(self, token):
+            assert super().try_acquire(token) is True
+            raise SystemExit(143)
+
+        def close(self):
+            super().close()
+            if close_fails:
+                raise RuntimeError("close failed")
+
+    slot = _slot()
+    store = InterruptedStore(slot)
+    warnings = []
+    holder = LeaseLock(store, log=SimpleNamespace(warning=warnings.append), heartbeat=False)
+
+    with pytest.raises(SystemExit) as error:
+        holder.acquire(wait_timeout_seconds=0)
+
+    assert error.value.code == 143
+    assert slot.owner is None
+    assert store.closed is True
+    assert warnings == (
+        ["Could not clean up the migration lock: close failed"] if close_fails else []
+    )
+
+
 def test_lease_installs_no_signal_handlers():
     before = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
     slot = _slot()
