@@ -349,6 +349,8 @@ scope modifier, materialized-view modifiers, and four-part references whose
 AST does not retain every part in its table identity. An index without a resolved owning
 table, or a qualified index name SQLGlot misreads as its owner, is also
 opaque. `MERGE` remains DML with unknown effects; `EXEC` has unknown effects.
+`CREATE FULLTEXT INDEX` is also opaque, with a diagnostic naming its unsupported
+grammar; it has no separate index name in the SQL text.
 These are reader limits, not assertions
 that SQL Server rejects the statements. An unread statement still keeps a
 leading operation and kind where the text establishes them.

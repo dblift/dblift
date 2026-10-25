@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL Server `CREATE FULLTEXT INDEX` statement facts now identify the unsupported grammar in
+  their diagnostic while leaving the index identity unread.
 - Unread `CREATE TABLE` definitions and mixed `ALTER TABLE` column and constraint actions now
   produce opaque statement facts with a diagnostic instead of raising an exception or naming a
   spurious column.

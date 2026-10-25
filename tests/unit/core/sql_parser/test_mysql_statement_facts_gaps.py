@@ -690,6 +690,12 @@ def _plain(facts):
 
 
 TSQL_CHANGES = {
+    "CREATE FULLTEXT INDEX ON t (c)": {
+        "diagnostic": "tsql CREATE FULLTEXT INDEX grammar is not modelled"
+    },
+    "CREATE FULLTEXT INDEX fx ON ft (txt)": {
+        "diagnostic": "tsql CREATE FULLTEXT INDEX grammar is not modelled"
+    },
     "CREATE SCHEMA IF NOT EXISTS s": {"objects": [["s", "SCHEMA", "created", None]]},
     "CREATE SCHEMA s": {"objects": [["s", "SCHEMA", "created", None]]},
     "DELETE IGNORE FROM t": {"objects": [["t", "TABLE", "altered", None]]},
