@@ -775,6 +775,32 @@ def _column_constraints(definition: exp.ColumnDef) -> Tuple[DeclaredConstraint, 
     )
 
 
+def _unread_column_definition(definition: exp.ColumnDef) -> bool:
+    name = definition.this
+    constraints = definition.args.get("constraints") or []
+    computed = (
+        definition.args.get("kind") is None
+        and sum(
+            isinstance(constraint, exp.ColumnConstraint)
+            and isinstance(constraint.args.get("kind"), exp.ComputedColumnConstraint)
+            for constraint in constraints
+        )
+        == 1
+    )
+    return (
+        (not isinstance(definition.args.get("kind"), exp.DataType) and not computed)
+        or (
+            isinstance(name, exp.Identifier)
+            and not name.args.get("quoted")
+            and name.name.upper() == "CONSTRAINT"
+        )
+        or any(
+            not isinstance(constraint, exp.ColumnConstraint) or constraint.args.get("kind") is None
+            for constraint in constraints
+        )
+    )
+
+
 def _created_object_type(ast: exp.Create, dialect: str) -> SqlObjectType:
     """Select the created object type, including dialect-specific view properties."""
     kind = str(ast.args.get("kind") or "").upper()
@@ -1532,7 +1558,9 @@ def _oracle_index_table(sql: str, head: str, created: "re.Match[str]") -> Option
     )
 
 
-def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFacts:
+def _head_facts(
+    sql: str, diagnostic: str, *, dialect: str = "", parsed: bool = False
+) -> StatementFacts:
     """Classify a statement from its leading words when sqlglot cannot represent the body."""
     head = _blanked(sql, dialect)
     first = _FIRST_WORD.match(head)
@@ -1541,7 +1569,7 @@ def _head_facts(sql: str, diagnostic: str, *, dialect: str = "") -> StatementFac
         first = _FIRST_WORD.match(head)
     operation = first.group(1).upper() if first else "UNKNOWN"
     kind = _KINDS.get(operation, "UNKNOWN")
-    if dialect == "tsql":  # lint: allow-dialect-string: unread T-SQL names are not proven
+    if dialect == "tsql" and not parsed:  # lint: allow-dialect-string: unread T-SQL names
         if operation == "MERGE":
             kind = "DML"
         elif operation == "TRUNCATE":
@@ -2785,6 +2813,16 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
                     objects += (reference,)
                     indexed_table = reference.name
         definitions = schema_node.expressions if schema_node is not None else []
+        if any(
+            isinstance(definition, exp.ColumnDef) and _unread_column_definition(definition)
+            for definition in definitions
+        ):
+            return _head_facts(
+                sql,
+                f"{dialect} CREATE definitions are not fully represented",
+                dialect=dialect,
+                parsed=True,
+            )
         columns = tuple(
             x.name for x in definitions if isinstance(x, (exp.ColumnDef, exp.Identifier))
         )
@@ -2965,6 +3003,16 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
         )
         identity = _named(ast.this, object_type, "altered") if ast.this is not None else None
         actions = ast.args.get("actions") or []
+        if any(
+            isinstance(action, exp.ColumnDef) and _unread_column_definition(action)
+            for action in actions
+        ):
+            return _head_facts(
+                sql,
+                f"{dialect} ALTER actions are not fully represented",
+                dialect=dialect,
+                parsed=True,
+            )
         columns = tuple(action.name for action in actions if isinstance(action, exp.ColumnDef))
         action = "add-column" if columns else None
         added = [item for item in actions if isinstance(item, exp.ColumnDef)]
