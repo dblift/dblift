@@ -31,6 +31,107 @@ def test_alter_session_does_not_raise_on_any_dialect(dialect):
     assert read_statement_facts("ALTER SESSION SET LOCK_TIMEOUT = 0", dialect=dialect).operation
 
 
+@pytest.mark.parametrize("dialect", ("tsql", "oracle", "snowflake"))
+def test_mixed_alter_table_actions_are_opaque(dialect):
+    facts = read_statement_facts(
+        "ALTER TABLE orders ADD COLUMN note text, DROP CONSTRAINT chk", dialect=dialect
+    )
+
+    assert (facts.operation, facts.kind) == ("ALTER", "DDL")
+    assert [(obj.name, obj.role) for obj in facts.objects] == [
+        ("ORDERS" if dialect in {"oracle", "snowflake"} else "orders", "altered")
+    ]
+    assert facts.declared_columns == ()
+    assert facts.diagnostic
+
+
+@pytest.mark.parametrize("dialect", ("tsql", "oracle", "snowflake"))
+def test_unread_create_table_definition_is_opaque(dialect):
+    facts = read_statement_facts(
+        "CREATE TABLE orders (note text, DROP CONSTRAINT chk)", dialect=dialect
+    )
+
+    assert (facts.operation, facts.kind) == ("CREATE", "DDL")
+    assert [(obj.name, obj.role) for obj in facts.objects] == [
+        ("ORDERS" if dialect in {"oracle", "snowflake"} else "orders", "created")
+    ]
+    assert facts.declared_columns == ()
+    assert facts.diagnostic
+
+
+def test_tsql_alter_with_table_constraint_does_not_invent_a_column():
+    facts = read_statement_facts(
+        "ALTER TABLE orders ADD note int, CONSTRAINT ck CHECK (note > 0)", dialect="tsql"
+    )
+
+    assert (facts.operation, facts.kind) == ("ALTER", "DDL")
+    assert [(obj.name, obj.role) for obj in facts.objects] == [("orders", "altered")]
+    assert facts.declared_columns == ()
+    assert facts.declared_constraints == ()
+    assert facts.diagnostic
+
+
+@pytest.mark.parametrize(
+    ("suffix", "kind"),
+    [("CHECK (note > 0)", "CHECK"), ("REFERENCES other(id)", "FOREIGN_KEY")],
+)
+def test_tsql_single_column_constraints_stay_readable(suffix, kind):
+    facts = read_statement_facts(f"ALTER TABLE orders ADD note int {suffix}", dialect="tsql")
+
+    assert facts.declared_columns == ("note",)
+    assert [(detail.kind, detail.columns) for detail in facts.declared_constraints] == [
+        (kind, ("note",))
+    ]
+    assert facts.diagnostic is None
+
+
+@pytest.mark.parametrize(
+    ("sql", "operation", "role", "action"),
+    [
+        ("CREATE TABLE t (c AS (1 + 1))", "CREATE", "created", None),
+        ("ALTER TABLE t ADD c AS (1 + 1)", "ALTER", "altered", "add-column"),
+    ],
+)
+def test_tsql_computed_columns_keep_their_table_and_column(sql, operation, role, action):
+    facts = read_statement_facts(sql, dialect="tsql")
+
+    assert (facts.operation, facts.kind, facts.action) == (operation, "DDL", action)
+    assert [(obj.name, obj.role) for obj in facts.objects] == [("t", role)]
+    assert facts.declared_columns == ("c",)
+    assert facts.diagnostic is None
+
+
+@pytest.mark.parametrize(
+    ("sql", "operation", "role", "columns", "action"),
+    [
+        (
+            "CREATE TABLE t (a int, c AS (a + 1) PERSISTED UNIQUE)",
+            "CREATE",
+            "created",
+            ("a", "c"),
+            None,
+        ),
+        (
+            "ALTER TABLE t ADD c AS (1 + 1) PERSISTED UNIQUE",
+            "ALTER",
+            "altered",
+            ("c",),
+            "add-column",
+        ),
+    ],
+)
+def test_tsql_computed_unique_column_keeps_declared_facts(sql, operation, role, columns, action):
+    facts = read_statement_facts(sql, dialect="tsql")
+
+    assert (facts.operation, facts.kind, facts.action) == (operation, "DDL", action)
+    assert [(obj.name, obj.role) for obj in facts.objects] == [("t", role)]
+    assert facts.declared_columns == columns
+    assert [(detail.kind, detail.columns) for detail in facts.declared_constraints] == [
+        ("UNIQUE", ("c",))
+    ]
+    assert facts.diagnostic is None
+
+
 BLANKS = [c for c in map(chr, range(0x80, 0x10000)) if c.isspace()]
 BLANK_IDS = [f"U+{ord(c):04X}" for c in BLANKS]
 
