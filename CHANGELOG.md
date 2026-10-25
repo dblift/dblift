@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL Server `CREATE FULLTEXT INDEX` statement facts now identify the unsupported grammar in
+  their diagnostic while leaving the index identity unread.
 - Snowflake `INSERT OVERWRITE` statement facts now flag the replacement of existing target rows
   and leave DML events unknown, instead of reporting an ordinary `INSERT`.
 - Pending SQL snippets in `info` and `migrate --dry-run` mask string literals, and DEBUG logs no

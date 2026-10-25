@@ -2375,6 +2375,14 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
     ):
         return command
     if (
+        dialect == "tsql"  # lint: allow-dialect-string: SQL Server full-text index grammar
+        and isinstance(ast, exp.Command)
+        and re.match(r"^\s*CREATE\s+FULLTEXT\s+INDEX\b", _blanked(sql, dialect), re.I)
+    ):
+        return _head_facts(
+            sql, "tsql CREATE FULLTEXT INDEX grammar is not modelled", dialect=dialect
+        )
+    if (
         dialect == "tsql"  # lint: allow-dialect-string: SQL Server statistics maintenance
         and isinstance(ast, exp.Command)
         and ast.this == "UPDATE STATISTICS"
