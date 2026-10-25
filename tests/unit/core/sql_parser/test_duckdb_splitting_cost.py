@@ -1,7 +1,7 @@
 """Splitting a DuckDB script costs a bounded number of operations per character, counted not timed.
 
 The stages are handed counting objects through the attributes production reads: the tokenizer's text and
-its five compiled patterns, the assembly's source, and the token list (``len()`` and ``tokens[i]`` only).
+its five compiled patterns, the assembly's source, and each token read from the stream.
 A shape grows the script fourfold; the count may grow at most fivefold. The counters are those of the Db2
 cost test (``tests/support/splitting_cost.py``).
 
@@ -93,13 +93,14 @@ def counted(script: str, refusal: bool = False, meter: Optional[Meter] = None) -
     original = blank_pass.kept_stretches  # the pass each statement is read through alone
     alone = lambda sql, *args: original(CountingText(sql, meter), *args)  # noqa: E731
     with mock.patch.object(blank_pass, "kept_stretches", alone):
+        counted_tokens = CountingTokens(tokens, meter)
         SegmentScript(
             DUCKDB_RULES,
             CountingText(script, meter),
             tokenizer.origin,
             DUCKDB_SPEC.text_blanks,
             tokenizer.kept,
-        ).records(CountingTokens(tokens, meter))
+        ).records(counted_tokens[i] for i in range(len(counted_tokens)))
     return meter.count
 
 

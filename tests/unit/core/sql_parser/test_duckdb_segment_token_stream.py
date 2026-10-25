@@ -1,5 +1,8 @@
 """DuckDB splitting keeps records without retaining the entire token stream."""
 
+import pytest
+
+from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser import lexical_tokenizer
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
@@ -33,3 +36,18 @@ def test_split_does_not_retain_all_segment_tokens(monkeypatch):
     assert CountedToken.created == expected_count
     assert CountedToken.peak <= 32, f"retained {CountedToken.peak} live scanner tokens"
     assert CountedToken.live == 0
+
+
+def test_direct_tokenize_still_returns_a_list():
+    tokens = LexicalTokenizer("SELECT 1;", spec=DUCKDB_SPEC).tokenize()
+    assert isinstance(tokens, list)
+    assert [token.text for token in tokens] == ["SELECT", "1", ";"]
+
+
+def test_scanner_refusal_precedes_segment_blank_refusal():
+    script = "/* ' */ SELECT 1; \u3000SELECT 2; /* open"
+    with pytest.raises(
+        UnsafeStatementSplitError,
+        match="unterminated block comment opened at line 1, column 30",
+    ):
+        LexicalEngine(DUCKDB_SPEC).split(script)

@@ -1,6 +1,6 @@
 """Records of a segment script: the segments between ``;`` tokens."""
 
-from typing import List, Optional, Sequence, Tuple
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.blank_pass import (
@@ -37,7 +37,7 @@ class SegmentScript:
         self.kept = kept
         self.comment_tail = False
 
-    def records(self, tokens: Sequence[Token]) -> List[Statement]:
+    def records(self, tokens: Iterable[Token]) -> List[Statement]:
         """The records of the script, read with one cursor over ``tokens``.
 
         A segment runs from just after a ``;`` to the next one (or the end). It is a record when it
@@ -46,18 +46,25 @@ class SegmentScript:
         """
         found: List[Statement] = []
         start, line, code = self.origin, 1, False
-        for index in range(len(tokens)):
-            token = tokens[index]
+        refusal: Optional[UnsafeStatementSplitError] = None
+        end = len(self.source)
+        last_comment_tail = False
+        for token in tokens:
+            last_comment_tail = (
+                token.type == TokenType.COMMENT and token.pos + len(token.text) >= end
+            )
             if token.type == TokenType.DELIMITER:
-                self._finish(found, start, token.pos, ";", line, code)
+                if refusal is None:
+                    try:
+                        self._finish(found, start, token.pos, ";", line, code)
+                    except UnsafeStatementSplitError as error:
+                        refusal = error
                 start, line, code = token.pos + 1, token.line, False
             elif token.type != TokenType.COMMENT:
                 code = True
-        end = len(self.source)
-        last = tokens[-1] if tokens else None
-        self.comment_tail = (
-            last is not None and last.type == TokenType.COMMENT and last.pos + len(last.text) >= end
-        )
+        self.comment_tail = last_comment_tail
+        if refusal is not None:
+            raise refusal
         self._finish(found, start, end, None, line, code)
         return found
 

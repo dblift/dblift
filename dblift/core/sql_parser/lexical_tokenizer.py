@@ -312,11 +312,12 @@ class LexicalTokenizer(BaseTokenizer):
         self.origin = origin = 1 if self.spec.leading_bom_is_blank and sql.startswith(BOM) else 0
         self.pos = origin
         size = len(sql)
+        self._seg_kept.clear()
         if rules.blank_pass is not None:
             last = max(sql.rfind(blank) for blank in rules.blanks)
             if last >= origin:
-                self._seg_kept = kept_stretches(
-                    sql, origin, last, rules.line_comment_ends, rules.blank_pass
+                self._seg_kept.extend(
+                    kept_stretches(sql, origin, last, rules.line_comment_ends, rules.blank_pass)
                 )
         while self.pos < size:
             token = self._next_segment_token(rules)
