@@ -133,7 +133,7 @@ def divide(
                 and has_code(positions, start, offset - 1)
             ):
                 if first_blank[0] != line_start:
-                    found = _NOT_BLANK.search(source, line_start)
+                    found = _NOT_BLANK.search(source, line_start, offset + 1)
                     first_blank = (line_start, len(source) if found is None else found.start())
                 if first_blank[1] >= offset:
                     parts.append(source[start:offset].strip(text_blanks))

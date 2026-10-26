@@ -469,7 +469,10 @@ def _plain_source_findings(root: Path) -> dict[str, list[str]]:
     return findings
 
 
-def test_sqlserver_inventory_guard_detects_changed_helper_with_same_name(tmp_path):
+@pytest.mark.parametrize(
+    "scan", ("source.count('\\n')", "_patterns(rules).lone_cr.search(source, start)")
+)
+def test_sqlserver_inventory_guard_detects_changed_helper_with_same_name(tmp_path, scan):
     root = Path(batch_commands.__file__).parent
     for name in BATCH_INVENTORY:
         shutil.copyfile(root / name, tmp_path / name)
@@ -480,7 +483,7 @@ def test_sqlserver_inventory_guard_detects_changed_helper_with_same_name(tmp_pat
         for node in tree.body
         if isinstance(node, ast.FunctionDef) and node.name == "find_lone_cr"
     )
-    function.body.insert(1, ast.parse("source.count('\\n')").body[0])
+    function.body.insert(1, ast.parse(scan).body[0])
     path.write_text(ast.unparse(ast.fix_missing_locations(tree)), encoding="utf-8")
     assert _batch_inventory(tmp_path) == BATCH_INVENTORY
     assert _plain_source_findings(tmp_path)["batch_commands.py:find_lone_cr"]

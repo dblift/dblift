@@ -667,15 +667,7 @@ def _unbounded_regex_source_scan(call: ast.Call, source_names: set[str]) -> bool
         return False
     if method.attr in {"search", "match", "fullmatch", "finditer", "findall", "split"}:
         if call.args and _name(call.args[0]) in source_names:
-            if method.attr == "split":
-                return True
-            if len(call.args) > 2 and _bounded_plain_source_scan(call):
-                return False
-            return (
-                len(call.args) < 2
-                or isinstance(call.args[1], ast.Constant)
-                and call.args[1].value in (0, None)
-            )
+            return method.attr == "split" or not _bounded_plain_source_scan(call)
         return len(call.args) > 1 and _name(call.args[1]) in source_names
     if method.attr in {"sub", "subn"}:
         return any(_name(arg) in source_names for arg in call.args[1:3])
