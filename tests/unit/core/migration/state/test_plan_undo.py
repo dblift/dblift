@@ -294,6 +294,146 @@ def _legacy_generated_part(number: int, count: int) -> SimpleNamespace:
     )
 
 
+_PAIRED_HEADER = (
+    "-- Each undo part reverses only its matching sync part; `dblift undo` "
+    "applies the highest applied part first."
+)
+
+
+def _paired_parts(count: int = 2):
+    forwards = [_legacy_generated_part(number, count) for number in range(1, count + 1)]
+    undos = []
+    for number, forward in enumerate(forwards, 1):
+        forward.content += _PAIRED_HEADER + "\n"
+        undos.append(
+            SimpleNamespace(
+                script_name=forward.script_name.replace("V", "U", 1),
+                version=forward.version,
+                path=Path(forward.script_name.replace("V", "U", 1)),
+                content=(
+                    f"-- Part {number} of {count}; transactional.\n"
+                    "-- Split because dblift migrate refuses a file that mixes "
+                    "autocommit-only and transactional statements; dblift undo applies "
+                    "them from the highest part down.\n" + _PAIRED_HEADER + "\n"
+                ),
+                tags=[],
+            )
+        )
+    return forwards, undos
+
+
+def _paired_manager(applied, forwards, undos):
+    manager, state, _ = _manager(applied, [], forward_parts=forwards)
+    state.catalog = tuple(CatalogMigration(undo, AVAILABLE) for undo in undos)
+    return manager
+
+
+def test_partial_paired_set_undoes_only_applied_prefix() -> None:
+    forwards, undos = _paired_parts()
+    undos[0].content += "-- Desired model: example\n"
+    undos[1].content += "-- Base state: example\n"
+    first = _applied("9.1", 1)
+    first.script_name = forwards[0].script_name
+    plan = _plan(_paired_manager([first], forwards, undos))
+
+    assert plan.refusal is None
+    assert [(step.migration.version, step.undo_script.script_name) for step in plan.steps] == [
+        ("9.1", "U9_1__change.sql")
+    ]
+    assert [migration.version for migration in plan.selected] == ["9.1"]
+
+
+def test_partial_paired_set_undoes_first_part_after_second_part_failed() -> None:
+    forwards, undos = _paired_parts()
+    first = _applied("9.1", 7)
+    failed_second = _applied("9.2", 8, success=False)
+    first.script_name, failed_second.script_name = (part.script_name for part in forwards)
+
+    plan = _plan(_paired_manager([first, failed_second], forwards, undos))
+
+    assert plan.refusal is None
+    assert _versions(plan) == ["9.1"]
+
+
+def test_complete_paired_set_undoes_highest_part_first() -> None:
+    forwards, undos = _paired_parts()
+    applied = [_applied("9.1", 1), _applied("9.2", 2)]
+    for row, forward in zip(applied, forwards):
+        row.script_name = forward.script_name
+
+    plan = _plan(_paired_manager(applied, forwards, undos))
+
+    assert plan.refusal is None
+    assert _versions(plan) == ["9.2", "9.1"]
+
+
+@pytest.mark.parametrize(
+    "bad_undo", ["missing", "old", "malformed", "wrong-count", "wrong-index", "duplicate"]
+)
+def test_partial_paired_set_refuses_without_exact_undo_pair(bad_undo: str) -> None:
+    forwards, undos = _paired_parts()
+    first = _applied("9.1", 1)
+    first.script_name = forwards[0].script_name
+    if bad_undo == "missing":
+        undos.pop(1)
+    elif bad_undo == "old":
+        undos[1].content = undos[1].content.replace(_PAIRED_HEADER, "-- old whole-change undo")
+    elif bad_undo == "malformed":
+        undos[0].content = undos[0].content.replace(_PAIRED_HEADER, _PAIRED_HEADER + " altered")
+    elif bad_undo == "wrong-count":
+        undos[1].content = undos[1].content.replace("Part 2 of 2", "Part 2 of 3")
+    elif bad_undo == "duplicate":
+        undos.append(_undo_script("9.1"))
+    else:
+        undos[1].content = undos[1].content.replace("Part 2 of 2", "Part 1 of 2")
+
+    plan = _plan(_paired_manager([first], forwards, undos))
+
+    assert plan.steps == ()
+    assert plan.refusal is not None
+
+
+def test_complete_paired_set_refuses_old_whole_change_undo_header() -> None:
+    forwards, undos = _paired_parts()
+    applied = [_applied("9.1", 1), _applied("9.2", 2)]
+    for row, forward in zip(applied, forwards):
+        row.script_name = forward.script_name
+    undos[1].content = undos[1].content.replace(_PAIRED_HEADER, "-- old whole-change undo")
+
+    plan = _plan(_paired_manager(applied, forwards, undos))
+
+    assert plan.steps == ()
+    assert "per-part undo" in (plan.refusal or "")
+
+
+@pytest.mark.parametrize("ranks", [(1, 3), (2, 1)])
+def test_paired_set_refuses_noncontiguous_or_out_of_order_history(ranks) -> None:
+    forwards, undos = _paired_parts(3)
+    applied = [_applied("9.1", ranks[0]), _applied("9.2", ranks[1])]
+    for row, forward in zip(applied, forwards):
+        row.script_name = forward.script_name
+    applied.sort(key=lambda row: row.installed_rank)
+
+    plan = _plan(_paired_manager(applied, forwards, undos))
+
+    assert plan.steps == ()
+    assert plan.refusal is not None
+
+
+def test_duplicate_paired_group_refuses_partial_undo() -> None:
+    forwards, undos = _paired_parts()
+    duplicate = _legacy_generated_part(1, 2)
+    duplicate.content += _PAIRED_HEADER + "\n"
+    duplicate.path = Path("other") / duplicate.script_name
+    first = _applied("9.1", 1)
+    first.script_name = forwards[0].script_name
+
+    plan = _plan(_paired_manager([first], forwards + [duplicate], undos))
+
+    assert plan.steps == ()
+    assert "ambiguous" in (plan.refusal or "")
+
+
 def test_partial_legacy_generated_set_refuses_undo_before_resolving_scripts() -> None:
     parts = [_legacy_generated_part(1, 2), _legacy_generated_part(2, 2)]
     applied = _applied("9.1", 1)

@@ -75,6 +75,10 @@ _PART_ORDERS = (
     _PART_SIGNATURE + "apply them in order.",
     _PART_SIGNATURE + "dblift undo applies them from the highest part down.",
 )
+_PAIRED_PART_HEADER = (
+    "-- Each undo part reverses only its matching sync part; `dblift undo` "
+    "applies the highest applied part first."
+)
 
 
 def _generated_part_groups(
@@ -128,6 +132,37 @@ def _expected_part_names(parts: Dict[int, Migration], count: int) -> Dict[str, s
     return names
 
 
+def _has_matching_paired_undo(
+    state: MigrationState, version: str, forward_name: str, count: int
+) -> bool:
+    matches = [
+        record.migration
+        for record in state.catalog
+        if record.eligibility == MigrationEligibility.UNDO_AVAILABLE
+        and str(record.migration.version) == version
+    ]
+    if (
+        len(matches) != 1
+        or matches[0].script_name != "U" + forward_name[1:]
+        or not isinstance(matches[0].content, str)
+    ):
+        return False
+    lines = matches[0].content.splitlines()
+    header = _PART_HEADER.match(lines[0]) if lines else None
+    filename = _PART_NAME.match(forward_name)
+    if filename is None:
+        return False
+    number = int(filename[2])
+    return (
+        header is not None
+        and int(header[1]) == number
+        and int(header[2]) == count
+        and len(lines) > 2
+        and lines[1] == _PART_ORDERS[1]
+        and lines[2] == _PAIRED_PART_HEADER
+    )
+
+
 def _include_generated_part_groups(
     state: MigrationState,
     selected: List[Migration],
@@ -153,6 +188,7 @@ def _include_generated_part_groups(
         str(m.version): m
         for m in applied
         if m.version
+        and is_migration_success(m.success)
         and installed_rank(m) == version_ranks[str(m.version)].versioned
         and not migration_rules._is_currently_undone(
             str(m.version), applied, version_ranks=version_ranks
@@ -170,19 +206,57 @@ def _include_generated_part_groups(
             or current[version].script_name != name
             or not any(part.script_name == name for part in parts.values())
         ]
-        if invalid or len(parts) != count or missing:
+        if invalid or len(parts) != count:
             detail = (
                 "a generated part file is missing"
                 if len(parts) != count
-                else "a generated part is absent from applied history"
+                else "ambiguous part headers"
             )
+            return selected, (
+                f"Cannot undo a partially applied generated part set: {detail}. "
+                "Check migration history and recover this set manually."
+            )
+        paired_markers = [
+            len(part.content.splitlines()) > 2
+            and part.content.splitlines()[2] == _PAIRED_PART_HEADER
+            for part in parts.values()
+        ]
+        paired = all(paired_markers) and all(
+            _has_matching_paired_undo(state, version, name, count)
+            for version, name in expected.items()
+        )
+        if any(paired_markers) and not paired:
+            return selected, (
+                "Cannot undo a generated part set without matching per-part undo scripts. "
+                "Check the generated files and recover this set manually."
+            )
+        if missing and paired:
+            ranks = [
+                installed_rank(current[version])
+                for version in expected
+                if version in current and current[version].script_name == expected[version]
+            ]
+            paired = (
+                paired and bool(ranks) and ranks == list(range(ranks[0], ranks[0] + len(ranks)))
+            )
+            paired = paired and len(ranks) == len(expected) - len(missing)
+            paired = paired and all(
+                version in current and current[version].script_name == name
+                for version, name in list(expected.items())[: len(ranks)]
+            )
+        if missing and not paired:
+            detail = "a generated part is absent from applied history"
             if missing:
                 detail += f": {', '.join(missing)}"
             return selected, (
                 "Cannot undo a partially applied generated part set: "
                 f"{detail}. Check migration history and recover this set manually."
             )
-        members = [current[version] for version in expected]
+        members = [
+            current[version]
+            for version in expected
+            if version in current and current[version].script_name == expected[version]
+        ]
         if [installed_rank(member) for member in members] != sorted(
             installed_rank(member) for member in members
         ):
