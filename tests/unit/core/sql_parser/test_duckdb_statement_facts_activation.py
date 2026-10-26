@@ -86,6 +86,8 @@ def test_unresolved_schema_selection_stays_opaque(sql):
         "SET search_path s",
         "SET search_path 's'",
         'SET search_path "s"',
+        'SET schema="s,main"',
+        'SET schema="a""b"',
     ],
 )
 def test_native_rejected_namespace_forms_are_not_claimed(sql):
@@ -99,6 +101,21 @@ def test_native_rejected_namespace_forms_are_not_claimed(sql):
         connection.close()
 
     assert DuckDBQuirks().statement_facts(sql).opaque
+
+
+def test_native_multi_entry_quoted_search_path_is_not_one_selected_namespace():
+    duckdb = pytest.importorskip("duckdb")
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE SCHEMA s")
+        connection.execute("CREATE SCHEMA b")
+        connection.execute('SET search_path="s,b"')
+        current = connection.execute("SELECT current_schema()").fetchone()[0]
+    finally:
+        connection.close()
+
+    assert current == "s"
+    assert DuckDBQuirks().statement_facts('SET search_path="s,b"').opaque
 
 
 @pytest.mark.parametrize(
