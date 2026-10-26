@@ -142,13 +142,15 @@ def test_empty_yaml_target_version_is_rejected_by_cli(tmp_path):
     result = _cli(tmp_path, config, "migrate")
     assert result.returncode != 0
     assert "Invalid target version ''" in result.stdout + result.stderr
+    assert "Available versions:" not in result.stdout + result.stderr
     assert _tables(tmp_path) == set()
 
 
 def test_empty_yaml_target_version_is_rejected_by_api(tmp_path):
     config = _project(tmp_path, target="")
-    with pytest.raises(InvalidTargetVersionError):
+    with pytest.raises(InvalidTargetVersionError) as raised:
         DBLiftClient.from_config_file(str(config))
+    assert "Available versions:" not in str(raised.value)
     assert _tables(tmp_path) == set()
 
 
