@@ -2835,7 +2835,12 @@ def read_statement_facts(
     if dialect == "duckdb":  # lint: allow-dialect-string: DuckDB metadata statement mappings
         if isinstance(ast, exp.Comment) and ast.args.get("kind") == "TABLE":
             identity = _named(ast.this, SqlObjectType.TABLE, "altered")
-            return StatementFacts("COMMENT", "DDL", (identity,) if identity else ())
+            value = ast.args.get("expression")
+            if identity is None or not isinstance(value, exp.Literal) or not value.is_string:
+                return StatementFacts(
+                    "COMMENT", "DDL", diagnostic="duckdb COMMENT ON TABLE value is not read"
+                )
+            return StatementFacts("COMMENT", "DDL", (identity,), table_comment=value.this)
         if isinstance(ast, (exp.Show, exp.Describe)):
             return _metadata_facts(ast, ast)
 

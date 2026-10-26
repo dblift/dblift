@@ -37,6 +37,115 @@ def test_plugin_comment_only_facts_have_no_diagnostic():
     assert facts.objects == ()
 
 
+@pytest.mark.parametrize(
+    ("sql", "action", "target"),
+    [
+        ("SET schema 's'", "SELECT_NAMESPACE", "s"),
+        ("SET schema='s'", "SELECT_NAMESPACE", "s"),
+        ("SET schema=s", "SELECT_NAMESPACE", "s"),
+        ("USE s", "SELECT_NAMESPACE", "s"),
+        ("SET search_path=s", "SELECT_NAMESPACE", "s"),
+        ("SET search_path='s'", "SELECT_NAMESPACE", "s"),
+        ("RESET schema", "RESET_NAMESPACE", None),
+        ("RESET search_path", "RESET_NAMESPACE", None),
+    ],
+)
+def test_plain_namespace_selection_has_a_session_fact(sql, action, target):
+    facts = DuckDBQuirks().statement_facts(sql)
+
+    assert not facts.opaque
+    assert facts.action == action
+    assert facts.target == target
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SET search_path='s,main'",
+        "SET schema='s' extra",
+        "USE s.extra",
+        "SET schema current_schema()",
+    ],
+)
+def test_unresolved_schema_selection_stays_opaque(sql):
+    assert DuckDBQuirks().statement_facts(sql).opaque
+
+
+def test_null_table_comment_keeps_target_and_removal_value():
+    facts = DuckDBQuirks().statement_facts("COMMENT ON TABLE main.t IS NULL")
+
+    assert not facts.opaque
+    assert facts.operation == "COMMENT"
+    assert [(obj.name, obj.schema, obj.role) for obj in facts.objects] == [("t", "main", "altered")]
+    assert facts.table_comment is None
+
+
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        ("COMMENT ON TABLE t IS 'O''Brien'", "O'Brien"),
+        ("COMMENT ON TABLE t IS ''", ""),
+    ],
+)
+def test_table_comment_facts_carry_literal_value(sql, expected):
+    facts = DuckDBQuirks().statement_facts(sql)
+
+    assert not facts.opaque
+    assert facts.table_comment == expected
+
+
+def test_selected_schema_does_not_resolve_an_unqualified_comment_target():
+    duckdb = pytest.importorskip("duckdb")
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE SCHEMA s")
+        connection.execute("CREATE TABLE main.t(id INT)")
+        connection.execute("SET schema 's'")
+        connection.execute("COMMENT ON TABLE t IS 'main table'")
+        rows = connection.execute(
+            "SELECT schema_name, comment FROM duckdb_tables() WHERE table_name = 't'"
+        ).fetchall()
+    finally:
+        connection.close()
+
+    selection = DuckDBQuirks().statement_facts("SET schema 's'")
+    comment = DuckDBQuirks().statement_facts("COMMENT ON TABLE t IS 'main table'")
+    assert selection.target == "s"
+    assert comment.objects[0].schema is None
+    assert rows == [("main", "main table")]
+
+
+def test_namespace_selector_can_name_an_attached_catalog():
+    duckdb = pytest.importorskip("duckdb")
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("ATTACH ':memory:' AS other")
+        connection.execute("SET schema 'other'")
+        current = connection.execute("SELECT current_catalog(), current_schema()").fetchone()
+    finally:
+        connection.close()
+
+    facts = DuckDBQuirks().statement_facts("SET schema 'other'")
+    assert (facts.action, facts.target) == ("SELECT_NAMESPACE", "other")
+    assert current == ("other", "main")
+
+
+def test_null_table_comment_really_removes_the_comment():
+    duckdb = pytest.importorskip("duckdb")
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE TABLE t(id INT)")
+        connection.execute("COMMENT ON TABLE t IS 'documented'")
+        connection.execute("COMMENT ON TABLE t IS NULL")
+        comment = connection.execute(
+            "SELECT comment FROM duckdb_tables() WHERE schema_name = 'main' AND table_name = 't'"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+
+    assert comment is None
+
+
 @pytest.mark.parametrize("mode", ["regex", "hybrid", "sqlglot"])
 @pytest.mark.parametrize("sql", [CTE_UPDATE, COPY_FROM])
 def test_factory_preserves_mutation_target_in_each_supported_mode(mode, sql):
