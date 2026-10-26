@@ -146,7 +146,7 @@ def neutralise_transaction_statements(
 
     quirks = ProviderRegistry.get_quirks(dialect.lower())
     policy_texts: List[Optional[str]] = [None] * len(statements)
-    if records is not None:
+    if records is not None and execution_strings(records) == statements:
         policy_texts = [
             record.policy_text
             for record in records
