@@ -72,9 +72,14 @@ def test_schema_name_with_dropped_prefix_is_unread(dialect, sql):
         "CREATE DATABASE .s",
         "DROP DATABASE .s",
         "DROP INDEX .ix",
+        "CREATE SEQUENCE .s",
+        "DROP SEQUENCE .s",
+        "DROP FUNCTION .f",
+        "DROP PROCEDURE .p",
+        "DROP TRIGGER .tr",
     ),
 )
-def test_mariadb_leading_dot_is_not_a_schema_database_or_index_name(sql):
+def test_mariadb_leading_dot_is_not_a_nonrelation_name(sql):
     facts = ProviderRegistry.get_quirks("mariadb").statement_facts(sql)
 
     assert facts.objects == ()
