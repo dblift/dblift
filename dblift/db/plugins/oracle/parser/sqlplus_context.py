@@ -41,7 +41,7 @@ def extract_sqlplus_context(raw_sql: str) -> SqlplusContext:
     """Scan raw SQL line-by-line for the directives the executor reads.
 
     Does not parse SQL — works on raw text before the tokeniser runs.
-    Line comments (--) and block comments (/* ... */) are stripped first.
+    The shared lexical masking view strips line and block comments first.
     """
     ctx = SqlplusContext()
     for line in strip_comments(raw_sql).splitlines():

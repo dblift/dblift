@@ -415,26 +415,6 @@ def test_the_record_bound_flags_decide_where_a_record_ends():
     assert [r.source_end for r in other] == [27, len(script)]
 
 
-def test_a_word_in_a_line_is_alone_on_it_as_the_plugin_helper_says():
-    import random
-
-    from dblift.core.sql_parser.lexical_tokenizer import is_alone_on_line
-    from dblift.db.plugins.oracle.parser.oracle_tokenizer import (
-        is_alone_on_line as plugin_is_alone_on_line,
-    )
-
-    rng = random.Random(7)
-    atoms = ["/", ".", " ", "\t", "\n", "\r\n", "x", "a/b", " ", " ", "\f", "'", "--"]
-    checked = 0
-    for _ in range(3000):
-        script = "".join(rng.choice(atoms) for _ in range(rng.randrange(1, 14)))
-        for pos, char in enumerate(script):
-            if char in "/.":
-                assert is_alone_on_line(script, pos) == plugin_is_alone_on_line(script, pos)
-                checked += 1
-    assert checked > 1000
-
-
 @pytest.mark.parametrize(
     "script, expected",
     [

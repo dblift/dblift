@@ -343,11 +343,11 @@ statement text is never altered; the previous scanner raised `TokenizerError`
 in strict mode for such a character (the `strict_tokenizer` argument is removed).
 
 SQL\*Plus directive masking for comments (`strip_comments`,
-`strip_sql_comments`, `extract_sqlplus_context`) keeps its own scanner
-(`_comments.py`, `_sqlplus.py` and `sqlplus_context.py`, which read the Oracle
-tokenizer with `directives=False` and its `is_alone_on_line` helper); this
-change does not alter it. Moving it onto the
-engine is a separate change with its own rows.
+`strip_sql_comments`, `extract_sqlplus_context`) reads a separate masking view
+through the shared lexical engine. The Oracle masking rules in `ORACLE_SPEC`
+retain the older directive regexes and statement boundaries. The frozen
+masking guard and generated differential corpus pin that view independently
+from execution splitting.
 
 ### Behaviour that differs from the previous scanner
 
