@@ -24,6 +24,7 @@ from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
 from tests.support.splitting_cost import (
     CountingParserTokens,
     CountingPattern,
+    CountingPlainText,
     CountingText,
     Meter,
     loop_findings,
@@ -47,11 +48,11 @@ IDENTIFIERS = {
 }
 
 
-def counted(script: str) -> int:
+def counted(script: str, *, lone_cr=None, variable_in_code=None) -> int:
     meter = Meter()
     original_command = tokenizer_module.read_command
-    original_lone_cr = tokenizer_module.find_lone_cr
-    original_code = tokenizer_module.refuse_variable_in_code
+    original_lone_cr = lone_cr or tokenizer_module.find_lone_cr
+    original_code = variable_in_code or tokenizer_module.refuse_variable_in_code
     original_lexeme = tokenizer_module.refuse_variable_in_lexeme
     original_positions = batch_script.code_positions
     original_divide = batch_script.divide
@@ -63,15 +64,19 @@ def counted(script: str) -> int:
 
     def find_lone_cr(rules, source, start, end):
         meter.add(end - start)
-        return original_lone_cr(rules, source._value, start, end)
+        return original_lone_cr(rules, CountingPlainText(source._value, meter), start, end)
 
     def refuse_variable_in_code(rules, client_name, source, start, end, line):
         meter.add(end - start)
-        return original_code(rules, client_name, source._value, start, end, line)
+        return original_code(
+            rules, client_name, CountingPlainText(source._value, meter), start, end, line
+        )
 
     def refuse_variable_in_lexeme(rules, client_name, source, start, end, line):
         meter.add(end - start)
-        return original_lexeme(rules, client_name, source._value, start, end, line)
+        return original_lexeme(
+            rules, client_name, CountingPlainText(source._value, meter), start, end, line
+        )
 
     def code_positions(rules, source, spans, lexeme_starts):
         meter.add(sum(hi - lo for lo, hi in spans))
@@ -116,6 +121,28 @@ def test_sqlserver_identifier_cost_grows_linearly(shape):
     make = IDENTIFIERS[shape]
     small, large = counted(make(SMALL)), counted(make(LARGE))
     assert small > 0 and large <= BOUND * small, (shape, small, large)
+
+
+@pytest.mark.parametrize("helper", ("lone_cr", "variable_in_code"))
+def test_sqlserver_cost_counts_a_plain_helper_rescan(helper):
+    if helper == "lone_cr":
+
+        def rescanning(rules, source, start, end):
+            source.count("\n")
+            return batch_commands.find_lone_cr(rules, source, start, end)
+
+    else:
+
+        def rescanning(rules, client_name, source, start, end, line):
+            source.count("\n")
+            return batch_commands.refuse_variable_in_code(
+                rules, client_name, source, start, end, line
+            )
+
+    make = SHAPES["many GO batches"]
+    keyword = {helper: rescanning}
+    small, large = counted(make(SMALL), **keyword), counted(make(LARGE), **keyword)
+    assert large > BOUND * small, (helper, small, large)
 
 
 def test_sqlserver_cost_detects_a_prefix_rescan_per_comment(monkeypatch):
@@ -189,7 +216,7 @@ def test_sqlserver_cost_detects_a_whole_source_scan_outside_a_loop(function, mon
     make = SHAPES["many GO batches"]
     small, large = counted(make(SMALL)), counted(make(LARGE))
     assert namespace["visits"]  # the injected scan ran through the public split path
-    assert large <= BOUND * small  # today's slice charge misses the whole-source work
+    assert large > BOUND * small
     assert loop_findings(ast.parse(mutant), plain_source=True) != [], (
         function.__name__,
         small,
@@ -220,7 +247,7 @@ def test_sqlserver_cost_detects_a_whole_source_scan_through_a_local_name(
     make = SHAPES["many GO batches"]
     small, large = counted(make(SMALL)), counted(make(LARGE))
     assert namespace["visits"]
-    assert large <= BOUND * small  # the helper still receives a plain string
+    assert large > BOUND * small
     assert (
         loop_findings(
             ast.parse(mutant),
@@ -306,6 +333,28 @@ def test_sqlserver_source_guard_rejects_full_or_prefix_counts_in_a_loop(scan):
 
 def test_sqlserver_source_guard_rejects_explicit_whole_source_bounds_outside_a_loop():
     source = "def helper(source):\n    source.count('\\n', 0, len(source))\n"
+    assert loop_findings(ast.parse(source), plain_source=True) != []
+
+
+def test_sqlserver_source_guard_rejects_native_regex_whole_source_scan():
+    for source in (
+        "def helper(source):\n    re.search('never-present', source)\n",
+        "def helper(source):\n    pattern.search(source)\n",
+    ):
+        assert loop_findings(ast.parse(source), plain_source=True) != []
+
+
+def test_sqlserver_source_guard_keeps_bounded_native_regex_search():
+    source = "def helper(source, start, end):\n    pattern.search(source, start, end)\n"
+    assert loop_findings(ast.parse(source), plain_source=True) == []
+
+
+@pytest.mark.parametrize(
+    "call",
+    ("pattern.search(source, start)", "pattern.search(source, start, None)"),
+)
+def test_sqlserver_source_guard_rejects_unbounded_regex_suffix_scan(call):
+    source = f"def helper(source, start):\n    {call}\n"
     assert loop_findings(ast.parse(source), plain_source=True) != []
 
 
@@ -401,18 +450,43 @@ def test_sqlserver_batch_helper_inventory_is_explicit():
 
 def test_sqlserver_all_classified_plain_source_helpers_are_guarded():
     root = Path(batch_commands.__file__).parent
+    assert _plain_source_findings(root) == {}
+
+
+def _plain_source_findings(root: Path) -> dict[str, list[str]]:
     functions = _batch_functions(root)
+    findings = {}
     for filename, decisions in BATCH_COST_DECISIONS.items():
         for name, decision in decisions.items():
             if decision.startswith("plain source:"):
-                assert (
-                    loop_findings(
-                        functions[filename][name],
-                        plain_source=True,
-                        source_parameter=BATCH_SOURCE_PARAMETER[filename][name],
-                    )
-                    == []
-                ), name
+                found = loop_findings(
+                    functions[filename][name],
+                    plain_source=True,
+                    source_parameter=BATCH_SOURCE_PARAMETER[filename][name],
+                )
+                if found:
+                    findings[f"{filename}:{name}"] = found
+    return findings
+
+
+@pytest.mark.parametrize(
+    "scan", ("source.count('\\n')", "_patterns(rules).lone_cr.search(source, start)")
+)
+def test_sqlserver_inventory_guard_detects_changed_helper_with_same_name(tmp_path, scan):
+    root = Path(batch_commands.__file__).parent
+    for name in BATCH_INVENTORY:
+        shutil.copyfile(root / name, tmp_path / name)
+    path = tmp_path / "batch_commands.py"
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == "find_lone_cr"
+    )
+    function.body.insert(1, ast.parse(scan).body[0])
+    path.write_text(ast.unparse(ast.fix_missing_locations(tree)), encoding="utf-8")
+    assert _batch_inventory(tmp_path) == BATCH_INVENTORY
+    assert _plain_source_findings(tmp_path)["batch_commands.py:find_lone_cr"]
 
 
 def test_sqlserver_no_script_classification_does_not_read_the_script():

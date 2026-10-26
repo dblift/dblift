@@ -151,6 +151,80 @@ class CountingText:
         return result
 
 
+class CountingPlainText(str):
+    """Count Python string scans in helpers that also require a string for native regex.
+
+    Native regex reads a ``str`` subclass without calling its methods, so callers must
+    separately charge the bounded regex span before passing this object to a helper.
+    """
+
+    def __new__(cls, value: str, meter: Meter) -> "CountingPlainText":
+        result = str.__new__(cls, value)
+        result.meter = meter
+        return result
+
+    def count(self, sub: str, start: int = 0, end: Optional[int] = None) -> int:
+        self.meter.add(max(0, (len(self) if end is None else min(end, len(self))) - start))
+        return str.count(self, sub, start, len(self) if end is None else end)
+
+    def find(self, sub: str, start: int = 0, end: Optional[int] = None) -> int:
+        stop = len(self) if end is None else end
+        found = str.find(self, sub, start, stop)
+        self.meter.add(found - start + len(sub) if found >= 0 else max(0, stop - start))
+        return found
+
+    def rfind(self, sub: str, start: int = 0, end: Optional[int] = None) -> int:
+        stop = len(self) if end is None else end
+        found = str.rfind(self, sub, start, stop)
+        self.meter.add(stop - found if found >= 0 else max(0, stop - start))
+        return found
+
+    def __getitem__(self, key: Any) -> str:
+        result = str.__getitem__(self, key)
+        self.meter.add(len(result) if isinstance(key, slice) else 1)
+        return result
+
+    def split(self, *args: Any) -> List[str]:
+        self.meter.add(len(self))
+        return str.split(self, *args)
+
+    def splitlines(self, *args: Any) -> List[str]:
+        self.meter.add(len(self))
+        return str.splitlines(self, *args)
+
+    def lower(self) -> str:
+        self.meter.add(len(self))
+        return str.lower(self)
+
+    def upper(self) -> str:
+        self.meter.add(len(self))
+        return str.upper(self)
+
+    def replace(self, *args: Any) -> str:
+        self.meter.add(len(self))
+        return str.replace(self, *args)
+
+    def strip(self, *args: Any) -> str:
+        self.meter.add(len(self))
+        return str.strip(self, *args)
+
+    def lstrip(self, *args: Any) -> str:
+        self.meter.add(len(self))
+        return str.lstrip(self, *args)
+
+    def rstrip(self, *args: Any) -> str:
+        self.meter.add(len(self))
+        return str.rstrip(self, *args)
+
+    def partition(self, *args: Any) -> Tuple[str, str, str]:
+        self.meter.add(len(self))
+        return str.partition(self, *args)
+
+    def rpartition(self, *args: Any) -> Tuple[str, str, str]:
+        self.meter.add(len(self))
+        return str.rpartition(self, *args)
+
+
 class CountingPattern:
     """A compiled pattern with a certified local scan shape, not a regex VM-step counter."""
 
@@ -587,6 +661,19 @@ def _bounded_plain_source_scan(call: ast.Call) -> bool:
     return not full_start and not full_end
 
 
+def _unbounded_regex_source_scan(call: ast.Call, source_names: set[str]) -> bool:
+    method = call.func
+    if not isinstance(method, ast.Attribute):
+        return False
+    if method.attr in {"search", "match", "fullmatch", "finditer", "findall", "split"}:
+        if call.args and _name(call.args[0]) in source_names:
+            return method.attr == "split" or not _bounded_plain_source_scan(call)
+        return len(call.args) > 1 and _name(call.args[1]) in source_names
+    if method.attr in {"sub", "subn"}:
+        return any(_name(arg) in source_names for arg in call.args[1:3])
+    return False
+
+
 def loop_findings(
     tree: ast.AST, *, plain_source: bool = False, source_parameter: Optional[int] = None
 ) -> List[str]:
@@ -636,6 +723,8 @@ def loop_findings(
     loops = [n for n in ast.walk(tree) if isinstance(n, (ast.For, ast.While))]
     if plain_source:
         for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and _unbounded_regex_source_scan(node, source_names):
+                found.append(f"unbounded regex source scan at line {node.lineno}")
             if (
                 isinstance(node, ast.Subscript)
                 and isinstance(node.slice, ast.Slice)
