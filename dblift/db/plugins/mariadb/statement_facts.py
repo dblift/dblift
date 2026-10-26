@@ -45,6 +45,15 @@ def _alter_sequence_options_are_proven(sql: str, facts: StatementFacts) -> bool:
             "WITH": TokenType.WITH,
             "CACHE": TokenType.CACHE,
             "START": TokenType.BEGIN,
+            "AS": TokenType.ALIAS,
+            "TINYINT": TokenType.TINYINT,
+            "SMALLINT": TokenType.SMALLINT,
+            "MEDIUMINT": TokenType.MEDIUMINT,
+            "INT": TokenType.INT,
+            "INTEGER": TokenType.INT,
+            "BIGINT": TokenType.BIGINT,
+            "SIGNED": TokenType.BIGINT,
+            "UNSIGNED": TokenType.UBIGINT,
         }
         if (
             at < len(tokens)
@@ -111,6 +120,14 @@ def _alter_sequence_options_are_proven(sql: str, facts: StatementFacts) -> bool:
             option = "MAXVALUE"
         elif word("NOCYCLE") or word("CYCLE"):
             option = "CYCLE"
+        elif word("AS"):
+            option = "AS"
+            if not any(
+                word(type_name)
+                for type_name in ("TINYINT", "SMALLINT", "MEDIUMINT", "INT", "INTEGER", "BIGINT")
+            ):
+                return False
+            word("SIGNED") or word("UNSIGNED")
         elif word("INCREMENT"):
             option = "INCREMENT"
             word("BY") or word("=")
@@ -139,6 +156,17 @@ def _alter_sequence_options_are_proven(sql: str, facts: StatementFacts) -> bool:
         elif word("RESTART"):
             option = "RESTART"
             if (word("WITH") or word("=")) and not number():
+                return False
+            if (
+                at < len(tokens)
+                and tokens[at].token_type
+                in {
+                    TokenType.NUMBER,
+                    TokenType.PLUS,
+                    TokenType.DASH,
+                }
+                and not number()
+            ):
                 return False
         else:
             return False
