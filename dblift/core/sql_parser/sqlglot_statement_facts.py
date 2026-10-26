@@ -2965,13 +2965,12 @@ def read_statement_facts(
                 if reference:
                     objects += (reference,)
                     indexed_table = reference.name
-        definitions = (
-            schema_node.expressions
-            if schema_node is not None and ast.args.get("partition_parent") is None
-            else []
-        )
+        definitions = schema_node.expressions if schema_node is not None else []
+        partition_override = ast.args.get("partition_parent") is not None
         if any(
-            isinstance(definition, exp.ColumnDef) and _unread_column_definition(definition)
+            isinstance(definition, exp.ColumnDef)
+            and not partition_override
+            and _unread_column_definition(definition)
             for definition in definitions
         ):
             return _head_facts(
@@ -2981,7 +2980,9 @@ def read_statement_facts(
                 parsed=True,
             )
         columns = tuple(
-            x.name for x in definitions if isinstance(x, (exp.ColumnDef, exp.Identifier))
+            x.name
+            for x in definitions
+            if not partition_override and isinstance(x, (exp.ColumnDef, exp.Identifier))
         )
         constraints = tuple(
             detail

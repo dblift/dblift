@@ -3,7 +3,7 @@
 import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
-from dblift.core.sql_parser.statement_facts import NamedObject
+from dblift.core.sql_parser.statement_facts import DeclaredConstraint, NamedObject
 from dblift.db.provider_registry import ProviderRegistry
 
 
@@ -35,6 +35,21 @@ def test_foreign_table_partition_of_reads_created_and_parent(sql, parent):
     )
     assert (facts.operation, facts.kind) == ("CREATE", "DDL")
     assert facts.objects == (created, referenced)
+    assert not facts.opaque
+
+
+def test_foreign_partition_explicit_check_is_reported_without_inherited_columns():
+    facts = ProviderRegistry.get_quirks("postgresql").statement_facts(
+        "CREATE FOREIGN TABLE ft_check PARTITION OF parent_check "
+        "(CONSTRAINT ck CHECK (c > 0)) DEFAULT SERVER srv"
+    )
+
+    assert facts.objects == (
+        NamedObject("ft_check", SqlObjectType.TABLE, "created"),
+        NamedObject("parent_check", SqlObjectType.TABLE, "referenced"),
+    )
+    assert facts.declared_columns == ()
+    assert facts.declared_constraints == (DeclaredConstraint("CHECK", ("c",), "ck"),)
     assert not facts.opaque
 
 
