@@ -104,3 +104,14 @@ def test_unread_procedural_update_still_fails_closed():
 
     assert analyze_dml(statement, quirks=quirks).events is None
     assert updates_restore_key(statement, ["id"], quirks=quirks) is True
+
+
+@pytest.mark.parametrize(
+    "statement", ("SELECT * FROM", "VALUES (", "WITH c AS (SELECT 1) SELECT * FROM")
+)
+def test_unread_db2_query_still_fails_closed(statement):
+    quirks = ProviderRegistry.get_quirks("db2")
+
+    assert quirks.statement_facts(statement).events is None
+    assert analyze_dml(statement, quirks=quirks).events is None
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is True
