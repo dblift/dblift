@@ -22,15 +22,19 @@ _CREATE_MACRO_HEAD = re.compile(
 )
 _QUALIFIER_PART = re.compile(_IDENTIFIER)
 _SCHEMA_NAME = r"[A-Za-z_][A-Za-z0-9_$]*"
+_QUOTED_SCHEMA_NAME = r'"(?:[^"]|"")+"'
 _SET_SCHEMA = re.compile(
     rf"\s*SET\s+(?:schema|search_path)\s*=\s*"
-    rf"(?:'(?P<quoted>{_SCHEMA_NAME})'|(?P<bare>{_SCHEMA_NAME}))\s*;?\s*\Z",
+    rf"(?:'(?P<quoted>{_SCHEMA_NAME})'|(?P<bare>{_SCHEMA_NAME})"
+    rf"|(?P<identifier>{_QUOTED_SCHEMA_NAME}))\s*;?\s*\Z",
     re.IGNORECASE,
 )
 _SET_SCHEMA_LITERAL = re.compile(
     rf"\s*SET\s+schema\s+'(?P<name>{_SCHEMA_NAME})'\s*;?\s*\Z", re.IGNORECASE
 )
-_USE_SCHEMA = re.compile(rf"\s*USE\s+({_IDENTIFIER}(?:\.{_IDENTIFIER})?)\s*;?\s*\Z", re.IGNORECASE)
+_USE_SCHEMA = re.compile(
+    rf"\s*USE\s+({_IDENTIFIER}(?:\s*\.\s*{_IDENTIFIER})?)\s*;?\s*\Z", re.IGNORECASE
+)
 _RESET_SCHEMA = re.compile(r"\s*RESET\s+(?:schema|search_path)\s*;?\s*\Z", re.IGNORECASE)
 _NULL_TABLE_COMMENT = re.compile(
     rf"\s*COMMENT\s+ON\s+TABLE\s+({_IDENTIFIER}(?:\s*\.\s*{_IDENTIFIER}){{0,2}})"
@@ -65,7 +69,9 @@ def _schema_selection(text: str) -> Optional[StatementFacts]:
         return StatementFacts(
             "SET",
             "SESSION",
-            target=selected.group("quoted") or selected.group("bare"),
+            target=selected.group("quoted")
+            or selected.group("bare")
+            or selected.group("identifier"),
             action="SELECT_NAMESPACE",
         )
     selected = _SET_SCHEMA_LITERAL.fullmatch(text)

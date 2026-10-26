@@ -43,12 +43,16 @@ def test_plugin_comment_only_facts_have_no_diagnostic():
         ("SET schema 's'", "SELECT_NAMESPACE", "s"),
         ("SET schema='s'", "SELECT_NAMESPACE", "s"),
         ("SET schema=s", "SELECT_NAMESPACE", "s"),
+        ('SET schema="s"', "SELECT_NAMESPACE", '"s"'),
         ("USE s", "SELECT_NAMESPACE", "s"),
         ('USE "s"', "SELECT_NAMESPACE", '"s"'),
         ("USE memory.s", "SELECT_NAMESPACE", "memory.s"),
         ('USE "memory"."s"', "SELECT_NAMESPACE", '"memory"."s"'),
+        ("USE s . b", "SELECT_NAMESPACE", "s . b"),
+        ('USE "s" . "b"', "SELECT_NAMESPACE", '"s" . "b"'),
         ("SET search_path=s", "SELECT_NAMESPACE", "s"),
         ("SET search_path='s'", "SELECT_NAMESPACE", "s"),
+        ('SET search_path="s"', "SELECT_NAMESPACE", '"s"'),
         ("RESET schema", "RESET_NAMESPACE", None),
         ("RESET search_path", "RESET_NAMESPACE", None),
     ],
@@ -76,7 +80,13 @@ def test_unresolved_schema_selection_stays_opaque(sql):
 
 @pytest.mark.parametrize(
     "sql",
-    ["SET schema s", "SET search_path s", "SET search_path 's'"],
+    [
+        "SET schema s",
+        'SET schema "s"',
+        "SET search_path s",
+        "SET search_path 's'",
+        'SET search_path "s"',
+    ],
 )
 def test_native_rejected_namespace_forms_are_not_claimed(sql):
     duckdb = pytest.importorskip("duckdb")
@@ -113,6 +123,41 @@ def test_native_use_preserves_the_written_namespace(sql, target):
     assert not facts.opaque
     assert (facts.action, facts.target) == ("SELECT_NAMESPACE", target)
     assert current == ("memory", "s")
+
+
+@pytest.mark.parametrize("sql", ['SET schema="s"', 'SET search_path="s"'])
+def test_native_quoted_set_selector_keeps_the_quotes(sql):
+    duckdb = pytest.importorskip("duckdb")
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE SCHEMA s")
+        connection.execute(sql)
+        current = connection.execute("SELECT current_catalog(), current_schema()").fetchone()
+    finally:
+        connection.close()
+
+    facts = DuckDBQuirks().statement_facts(sql)
+    assert not facts.opaque
+    assert (facts.action, facts.target) == ("SELECT_NAMESPACE", '"s"')
+    assert current == ("memory", "s")
+
+
+@pytest.mark.parametrize("sql", ["USE s . b", 'USE "s" . "b"'])
+def test_native_use_with_space_around_dot_keeps_raw_target(sql):
+    duckdb = pytest.importorskip("duckdb")
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("ATTACH ':memory:' AS s")
+        connection.execute("CREATE SCHEMA s.b")
+        connection.execute(sql)
+        current = connection.execute("SELECT current_catalog(), current_schema()").fetchone()
+    finally:
+        connection.close()
+
+    facts = DuckDBQuirks().statement_facts(sql)
+    assert not facts.opaque
+    assert (facts.action, facts.target) == ("SELECT_NAMESPACE", sql.removeprefix("USE "))
+    assert current == ("s", "b")
 
 
 def test_null_table_comment_keeps_target_and_removal_value():
