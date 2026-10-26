@@ -109,16 +109,16 @@ class LexicalEngine:
         batches = parser._batches
         self.last_policy_texts = []
         for record in records:
+            view = self._policy_projection(script, masked, record)
             if (
-                batches is not None
+                view is not None
+                and batches is not None
                 and batches._server_spec is not None
                 and record.source_start is not None
                 and record.source_end is not None
                 and batches._comment_nests(record.source_start, record.source_end)
             ):
                 view = self._server_policy_projection(record, batches._server_spec)
-            else:
-                view = self._policy_projection(script, masked, record)
             self.last_policy_texts.append(view)
         self._report(parser)
         return records
