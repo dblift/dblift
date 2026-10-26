@@ -43,5 +43,7 @@ def test_repeated_insert_words_do_not_require_a_read_per_character(spec):
     tokenizer = CountingTokenizer(script, spec=spec)
     tokens = tokenizer.tokenize()
 
-    assert sum(token.type == TokenType.KEYWORD and token.text == "INSERT" for token in tokens) == 100
+    assert (
+        sum(token.type == TokenType.KEYWORD and token.text == "INSERT" for token in tokens) == 100
+    )
     assert tokenizer.reads < len(script) // 2
