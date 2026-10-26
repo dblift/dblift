@@ -42,6 +42,9 @@ def test_plugin_comment_only_facts_have_no_diagnostic():
     [
         ("SET schema 's'", "SELECT_NAMESPACE", "s"),
         ("SET schema='s'", "SELECT_NAMESPACE", "s"),
+        ("SET schema='a.s'", "SELECT_NAMESPACE", "a.s"),
+        ("SET schema 'a.s'", "SELECT_NAMESPACE", "a.s"),
+        ("SET schema=a.s", "SELECT_NAMESPACE", "a.s"),
         ("SET schema=s", "SELECT_NAMESPACE", "s"),
         ('SET schema="s"', "SELECT_NAMESPACE", '"s"'),
         ("USE s", "SELECT_NAMESPACE", "s"),
@@ -52,6 +55,7 @@ def test_plugin_comment_only_facts_have_no_diagnostic():
         ('USE "s" . "b"', "SELECT_NAMESPACE", '"s" . "b"'),
         ("SET search_path=s", "SELECT_NAMESPACE", "s"),
         ("SET search_path='s'", "SELECT_NAMESPACE", "s"),
+        ("SET search_path='a.s'", "SELECT_NAMESPACE", "a.s"),
         ('SET search_path="s"', "SELECT_NAMESPACE", '"s"'),
         ("RESET schema", "RESET_NAMESPACE", None),
         ("RESET search_path", "RESET_NAMESPACE", None),
@@ -70,6 +74,7 @@ def test_plain_namespace_selection_has_a_session_fact(sql, action, target):
     [
         "SET search_path='s,main'",
         "SET schema='s' extra",
+        "SET schema='a.b.c'",
         "USE a.b.c",
         "SET schema current_schema()",
     ],
@@ -280,6 +285,26 @@ def test_namespace_selector_can_name_an_attached_catalog():
     facts = DuckDBQuirks().statement_facts("SET schema 'other'")
     assert (facts.action, facts.target) == ("SELECT_NAMESPACE", "other")
     assert current == ("other", "main")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    ["SET schema='a.s'", "SET schema 'a.s'", "SET schema=a.s", "SET search_path='a.s'"],
+)
+def test_dotted_namespace_selector_can_name_an_attached_schema(sql):
+    duckdb = pytest.importorskip("duckdb")
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("ATTACH ':memory:' AS a")
+        connection.execute("CREATE SCHEMA a.s")
+        connection.execute(sql)
+        current = connection.execute("SELECT current_catalog(), current_schema()").fetchone()
+    finally:
+        connection.close()
+
+    facts = DuckDBQuirks().statement_facts(sql)
+    assert (facts.action, facts.target) == ("SELECT_NAMESPACE", "a.s")
+    assert current == ("a", "s")
 
 
 def test_null_table_comment_really_removes_the_comment():
