@@ -85,6 +85,11 @@ def _scan_line(sql: str, start: int, eol: int) -> Tuple[int, bool]:
     return -1, not quote
 
 
+_PLAIN_WORD = re.compile(r"[A-Za-z_][A-Za-z0-9_$#]*")
+_SQLITE_WORD = re.compile(r"[A-Za-z0-9_$]+")
+_SQLITE_BLANKS = re.compile(r"[ \t\n\f\r]+")
+
+
 class LexicalTokenizer(BaseTokenizer):
     """Use the base character scanner with the selected plugin's lexical rules."""
 
@@ -198,6 +203,42 @@ class LexicalTokenizer(BaseTokenizer):
         self._seg_prefixed = False
         if self._segment is not None:
             self._init_segment_script(self._segment)
+
+    def read(self, n: int = 1) -> str:
+        """Advance over a source span while retaining exact line and column offsets."""
+        result = self.sql[self.pos : self.pos + n]
+        self.pos += len(result)
+        lines = result.count("\n")
+        if lines:
+            self.line += lines
+            self.col = len(result) - result.rfind("\n")
+        else:
+            self.col += len(result)
+        return result
+
+    def _span_token(self, kind: TokenType, end: int) -> Token:
+        """Adapt a source span to the public token stream after consuming it once."""
+        start, line, col = self.pos, self.line, self.col
+        text = self.read(end - start)
+        return Token(kind, text, start, line, col, self.parens_depth)
+
+    def _plain_word_token(self) -> Optional[Token]:
+        """Read an ASCII code word as one span when no dialect lexeme can begin there."""
+        if not isinstance(self.sql, str):
+            return None
+        match = _PLAIN_WORD.match(self.sql, self.pos)
+        if match is None:
+            return None
+        end = match.end()
+        following = self.sql[end : end + 1]
+        if following and (following == "'" or self._is_word_char(following)):
+            return None
+        kind = (
+            TokenType.KEYWORD
+            if match.group().upper() in self.SQL_KEYWORDS
+            else TokenType.IDENTIFIER
+        )
+        return self._span_token(kind, end)
 
     def tokenize(self) -> List[Token]:
         """Read every token; a delimiter script then refuses what it left open."""
@@ -631,6 +672,13 @@ class LexicalTokenizer(BaseTokenizer):
 
         char = self.peek()
 
+        # Plain code has no quote, comment or directive opener. Keep its source
+        # span in the shared scanner and adapt it to the public Token contract.
+        if char.isascii() and (char.isalpha() or char == "_"):
+            plain = self._plain_word_token()
+            if plain is not None:
+                return plain
+
         # psql's ``\;`` adds a ';' to the query buffer without ending the
         # statement (spec §4): one token, so the parser can combine around it.
         if (
@@ -698,7 +746,33 @@ class LexicalTokenizer(BaseTokenizer):
             )
 
         # Delegate to base class for other token types
+        if char.isascii() and char.isdigit():
+            return self._handle_number_span()
+        if char == ";":
+            return self._handle_delimiter()
+        rules = self.spec.client_script
+        if (
+            char in self.SYMBOL_CHARS
+            and self.peek(2) not in ("--", "/*")
+            and (rules is None or char not in (rules.line_terminator, rules.discard_line))
+        ):
+            return self._handle_symbol()
         return super()._next_token()
+
+    def _handle_number_span(self) -> Token:
+        """Read the base scanner's number grammar with one source-span read."""
+        end, size, sql = self.pos, len(self.sql), self.sql
+        while end < size:
+            char = sql[end]
+            if char.isdigit() or char == ".":
+                end += 1
+            elif char.upper() == "E":
+                end += 1
+                if end < size and sql[end] in "+-":
+                    end += 1
+            else:
+                break
+        return self._span_token(TokenType.IDENTIFIER, end)
 
     def _meta_at_line_start(self) -> bool:
         """Check a candidate prefix using each intervening source character only once."""
@@ -730,8 +804,13 @@ class LexicalTokenizer(BaseTokenizer):
         """Read SQLite lexemes using the same token stream as other dialects."""
         if self.pos == 0 and self.peek() == "\ufeff":
             self.read()
-        while self.pos < len(self.sql) and self.peek() in " \t\n\f\r":
-            self.read()
+        if isinstance(self.sql, str):
+            blanks = _SQLITE_BLANKS.match(self.sql, self.pos)
+            if blanks is not None:
+                self.read(blanks.end() - self.pos)
+        else:
+            while self.pos < len(self.sql) and self.peek() in " \t\n\f\r":
+                self.read()
         if self.pos >= len(self.sql):
             return None
         char = self.peek()
@@ -742,6 +821,17 @@ class LexicalTokenizer(BaseTokenizer):
         if char == ";":
             return self._handle_delimiter()
         start, line, col = self.pos, self.line, self.col
+        if isinstance(self.sql, str) and char.isascii() and (char.isalnum() or char in "_$"):
+            match = _SQLITE_WORD.match(self.sql, start)
+            assert match is not None
+            following = self.sql[match.end() : match.end() + 1]
+            if not following or ord(following) < 128:
+                kind = (
+                    TokenType.KEYWORD
+                    if match.group().upper() in self.SQL_KEYWORDS
+                    else TokenType.IDENTIFIER
+                )
+                return self._span_token(kind, match.end())
         if (char.isascii() and (char.isalnum() or char in "_$")) or ord(char) >= 128:
             while self.pos < len(self.sql):
                 word_char = self.peek()
@@ -759,13 +849,10 @@ class LexicalTokenizer(BaseTokenizer):
 
     def _handle_sqlite_quote(self, opener: str) -> Token:
         """A SQLite quote runs to its first closer, or to end of script."""
-        start, line, col = self.pos, self.line, self.col
         closer = "]" if opener == "[" else opener
-        self.read()
-        end = self.sql.find(closer, self.pos)
-        self.read(len(self.sql) - self.pos if end < 0 else end + 1 - self.pos)
+        end = self.sql.find(closer, self.pos + 1)
         kind = TokenType.STRING if opener == "'" else TokenType.IDENTIFIER
-        return Token(kind, self.sql[start : self.pos], start, line, col, self.parens_depth)
+        return self._span_token(kind, len(self.sql) if end < 0 else end + 1)
 
     def _handle_migration_placeholder(self) -> Token:
         """Read a ${…} placeholder as one identifier-like token.
@@ -970,26 +1057,19 @@ class LexicalTokenizer(BaseTokenizer):
     def _handle_standard_string(self) -> Token:
         """Read ``'...'``: a doubled quote is part of the string. Linear in the string length."""
         start_pos, start_line, start_col = self.pos, self.line, self.col
-        quote = self.read()
+        quote = self.sql[start_pos]
+        cursor = start_pos + 1
         while True:
-            end = self.sql.find(quote, self.pos)
+            end = self.sql.find(quote, cursor)
             if end < 0:
-                self.read(len(self.sql) - self.pos)
+                self.read(len(self.sql) - start_pos)
                 raise UnsafeStatementSplitError(
                     f"unterminated string opened at line {start_line}, column {start_col}"
                 )
-            self.read(end + 1 - self.pos)
-            if self.peek() != quote:
+            if self.sql[end + 1 : end + 2] != quote:
                 break
-            self.read()
-        return Token(
-            TokenType.STRING,
-            self.sql[start_pos : self.pos],
-            start_pos,
-            start_line,
-            start_col,
-            self.parens_depth,
-        )
+            cursor = end + 2
+        return self._span_token(TokenType.STRING, end + 1)
 
     def _handle_escape_string(self, quote: str = "'") -> Token:
         """Read a backslash-escaped literal closed by ``quote``, including an optional E prefix.
@@ -1134,22 +1214,29 @@ class LexicalTokenizer(BaseTokenizer):
     def _skip_whitespace(self) -> None:
         """Skip what ``str.isspace`` accepts; a character that is not a blank ends the line head."""
         if self._batches is None:
+            end, sql, size = self.pos, self.sql, len(self.sql)
             if self.spec.unread_blanks_are_code:
-                while self.pos < len(self.sql) and self.sql[self.pos] in self.spec.text_blanks:
-                    self.read()
+                while end < size and sql[end] in self.spec.text_blanks:
+                    end += 1
             else:
-                super()._skip_whitespace()
+                while end < size and sql[end].isspace():
+                    end += 1
+            if end > self.pos:
+                self.read(end - self.pos)
             return
         blanks = self._batches.blanks
         self._region_start = self.pos
-        while self.pos < len(self.sql) and self.sql[self.pos].isspace():
-            char = self.sql[self.pos]
+        end, sql, size = self.pos, self.sql, len(self.sql)
+        while end < size and sql[end].isspace():
+            char = sql[end]
             if char == "\n":
                 self._line_head = True
-                self._region_start = self.pos + 1
+                self._region_start = end + 1
             elif char not in blanks:
                 self._line_head = False
-            self.read()
+            end += 1
+        if end > self.pos:
+            self.read(end - self.pos)
 
     def _is_keyword_start(self) -> bool:
         """A name also begins at a non-ASCII character when the spec says the engine reads it so."""
