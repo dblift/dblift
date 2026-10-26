@@ -60,3 +60,18 @@ def test_refusal_uses_supplied_record_line_without_rescanning() -> None:
             records=records,
             record_policy_texts=splitter.last_policy_texts(script),
         )
+
+
+@pytest.mark.parametrize("policy_texts", [[], [None, None]])
+def test_supplied_policy_views_must_align_with_records(policy_texts) -> None:
+    script = "SELECT 1;"
+    records = StatementSplitter("sqlite").split(script)
+    with pytest.raises(TransactionStatementError, match="scanner policy views"):
+        neutralise_transaction_statements(
+            execution_strings(records),
+            dialect="sqlite",
+            log=NullLog(),
+            content=script,
+            records=records,
+            record_policy_texts=policy_texts,
+        )

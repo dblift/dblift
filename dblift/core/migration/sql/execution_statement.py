@@ -149,12 +149,17 @@ def neutralise_transaction_statements(
             f"{script_name}: execution strings do not match the supplied scanner records; "
             "none of its statements were executed"
         )
-    policy_texts: List[Optional[str]] = [None] * len(statements)
     if (
         records is not None
         and record_policy_texts is not None
-        and len(record_policy_texts) == len(records)
+        and len(record_policy_texts) != len(records)
     ):
+        raise TransactionStatementError(
+            f"{script_name}: scanner policy views do not match the supplied scanner records; "
+            "none of its statements were executed"
+        )
+    policy_texts: List[Optional[str]] = [None] * len(statements)
+    if records is not None and record_policy_texts is not None:
         policy_texts = [
             policy_text
             for record, policy_text in zip(records, record_policy_texts)
@@ -163,7 +168,10 @@ def neutralise_transaction_statements(
             for _ in range(record.repeat)
         ]
         if len(policy_texts) != len(statements):
-            policy_texts = [None] * len(statements)
+            raise TransactionStatementError(
+                f"{script_name}: scanner policy views do not match execution strings; "
+                "none of its statements were executed"
+            )
     prepared = PreparedStatements(statements, policy_texts) if records is not None else statements
     patterns = quirks.transaction_control_sql_patterns
     if not patterns:
