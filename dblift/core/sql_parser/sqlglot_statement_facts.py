@@ -2966,8 +2966,11 @@ def read_statement_facts(
                     objects += (reference,)
                     indexed_table = reference.name
         definitions = schema_node.expressions if schema_node is not None else []
+        partition_override = ast.args.get("partition_parent") is not None
         if any(
-            isinstance(definition, exp.ColumnDef) and _unread_column_definition(definition)
+            isinstance(definition, exp.ColumnDef)
+            and not partition_override
+            and _unread_column_definition(definition)
             for definition in definitions
         ):
             return _head_facts(
@@ -2977,7 +2980,9 @@ def read_statement_facts(
                 parsed=True,
             )
         columns = tuple(
-            x.name for x in definitions if isinstance(x, (exp.ColumnDef, exp.Identifier))
+            x.name
+            for x in definitions
+            if not partition_override and isinstance(x, (exp.ColumnDef, exp.Identifier))
         )
         constraints = tuple(
             detail
@@ -3178,7 +3183,18 @@ def read_statement_facts(
             "ALTER",
             "DDL",
             ((identity,) if identity else ())
-            + tuple(ref for definition in added for ref in _referenced(definition)),
+            + tuple(ref for definition in added for ref in _referenced(definition))
+            + (
+                tuple(
+                    ref
+                    for item in actions
+                    if item.args.get("parent") is not None
+                    for ref in _referenced(item)
+                )
+                # lint: allow-dialect-string: PostgreSQL foreign-table parents
+                if dialect == "postgres" and kind == "FOREIGN TABLE"
+                else ()
+            ),
             declared_columns=columns,
             declared_constraints=tuple(
                 detail for definition in added for detail in _column_constraints(definition)

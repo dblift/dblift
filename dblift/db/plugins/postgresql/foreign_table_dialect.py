@@ -21,7 +21,26 @@ class ForeignTableOption(exp.Expression):
 class ForeignTableCreate(exp.Create):
     """A foreign-table creation with parsed server and inherited parents."""
 
-    arg_types = {**exp.Create.arg_types, "server": True, "options": False, "inherits": False}
+    arg_types = {
+        **exp.Create.arg_types,
+        "server": True,
+        "options": False,
+        "inherits": False,
+        "partition_parent": False,
+        "partition_bound": False,
+    }
+
+
+class ForeignPartitionBound(exp.Expression):
+    """A validated partition bound with its parsed operands."""
+
+    arg_types = {"kind": True, "expressions": False, "upper": False}
+
+
+class ForeignTableAction(exp.Expression):
+    """A fully consumed foreign-table alteration."""
+
+    arg_types = {"kind": True, "this": False, "parent": False, "value": False}
 
 
 class ForeignColumnOptions(exp.Expression):
@@ -41,15 +60,19 @@ _COLUMN_CONSTRAINTS = (
 _LIKE_OPTIONS = frozenset({"COMMENTS", "CONSTRAINTS", "DEFAULTS", "GENERATED", "STATISTICS", "ALL"})
 
 
-def _foreign_definition_supported(node: exp.Expr) -> bool:
+def _foreign_definition_supported(node: exp.Expr, *, partition: bool = False) -> bool:
     if isinstance(node, exp.AddConstraint):
         return bool(node.expressions) and all(
-            _foreign_definition_supported(item) for item in node.expressions
+            _foreign_definition_supported(item, partition=partition) for item in node.expressions
         )
     if isinstance(node, exp.ColumnDef):
         return (
             isinstance(node.this, exp.Identifier)
-            and isinstance(node.args.get("kind"), exp.DataType)
+            and (
+                (node.args.get("kind") is None and bool(node.args.get("constraints")))
+                if partition
+                else isinstance(node.args.get("kind"), exp.DataType)
+            )
             and all(
                 isinstance(constraint, exp.ColumnConstraint)
                 and isinstance(constraint.args.get("kind"), _COLUMN_CONSTRAINTS)
@@ -61,6 +84,8 @@ def _foreign_definition_supported(node: exp.Expr) -> bool:
             node.expressions[0], exp.CheckColumnConstraint
         )
     if isinstance(node, exp.LikeProperty):
+        if partition:
+            return False
         source = node.this
         return (
             isinstance(source, exp.Table)
@@ -195,6 +220,56 @@ class ForeignTableParser(PostgresParser):
             return None
         return options
 
+    def _foreign_bound_values(self) -> list[exp.Expr] | None:
+        if not self._match(TokenType.L_PAREN):
+            return None
+        first = self._parse_disjunction()
+        if first is None:
+            return None
+        values = [first]
+        while self._match(TokenType.COMMA):
+            value = self._parse_disjunction()
+            if value is None:
+                return None
+            values.append(value)
+        if not self._match(TokenType.R_PAREN):
+            return None
+        return values
+
+    def _foreign_partition_bound(self) -> ForeignPartitionBound | None:
+        if self._match_text_seq("DEFAULT"):
+            return ForeignPartitionBound(kind="DEFAULT")
+        if not self._match_text_seq("FOR", "VALUES"):
+            return None
+        if self._match_text_seq("IN"):
+            values = self._foreign_bound_values()
+            return ForeignPartitionBound(kind="IN", expressions=values) if values else None
+        if self._match_text_seq("FROM"):
+            lower = self._foreign_bound_values()
+            if lower and self._match_text_seq("TO"):
+                upper = self._foreign_bound_values()
+                if upper:
+                    return ForeignPartitionBound(kind="FROM", expressions=lower, upper=upper)
+            return None
+        if self._match_text_seq("WITH") and self._match(TokenType.L_PAREN):
+            if not self._match_text_seq("MODULUS"):
+                return None
+            modulus = self._parse_number()
+            if not isinstance(modulus, exp.Literal) or not modulus.is_int or int(modulus.this) < 1:
+                return None
+            if not self._match(TokenType.COMMA) or not self._match_text_seq("REMAINDER"):
+                return None
+            remainder = self._parse_number()
+            if (
+                not isinstance(remainder, exp.Literal)
+                or not remainder.is_int
+                or not 0 <= int(remainder.this) < int(modulus.this)
+            ):
+                return None
+            if self._match(TokenType.R_PAREN):
+                return ForeignPartitionBound(kind="WITH", expressions=[modulus, remainder])
+        return None
+
     def _parse_create(self) -> exp.Create | exp.Command:
         start = self._prev
         if not self._match_text_seq("FOREIGN", "TABLE"):
@@ -203,13 +278,31 @@ class ForeignTableParser(PostgresParser):
         table = self._foreign_table_target()
         if table is None:
             return self._parse_as_command(start)
-        self._foreign_schema = True
-        try:
-            this = self._parse_schema(this=table)
-        finally:
-            self._foreign_schema = False
+        partition_parent = None
+        partition_bound = None
+        this: exp.Expr | None
+        if self._match_text_seq("PARTITION", "OF"):
+            partition_parent = self._foreign_table_target()
+            if partition_parent is None:
+                return self._parse_as_command(start)
+            self._foreign_schema = True
+            try:
+                this = self._parse_schema(this=table)
+            finally:
+                self._foreign_schema = False
+            if this is table:
+                this = exp.Schema(this=table)
+            partition_bound = self._foreign_partition_bound()
+            if partition_bound is None:
+                return self._parse_as_command(start)
+        else:
+            self._foreign_schema = True
+            try:
+                this = self._parse_schema(this=table)
+            finally:
+                self._foreign_schema = False
         inherits: list[exp.Table] = []
-        if self._match_text_seq("INHERITS"):
+        if partition_parent is None and self._match_text_seq("INHERITS"):
             if not self._match(TokenType.L_PAREN):
                 return self._parse_as_command(start)
             while True:
@@ -223,7 +316,10 @@ class ForeignTableParser(PostgresParser):
                 return self._parse_as_command(start)
         if (
             not isinstance(this, exp.Schema)
-            or not all(_foreign_definition_supported(node) for node in this.expressions)
+            or not all(
+                _foreign_definition_supported(node, partition=partition_parent is not None)
+                for node in this.expressions
+            )
             or not self._match_text_seq("SERVER")
         ):
             return self._parse_as_command(start)
@@ -242,6 +338,8 @@ class ForeignTableParser(PostgresParser):
                 server=server,
                 options=options,
                 inherits=inherits,
+                partition_parent=partition_parent,
+                partition_bound=partition_bound,
             )
         )
 
@@ -259,6 +357,60 @@ class ForeignTableParser(PostgresParser):
             return self._parse_as_command(start)
         if self._curr and self._curr.token_type == TokenType.STAR:
             return self._parse_as_command(start)
+        action_index = self._index
+        action = None
+        if self._match_text_seq("SET", "SCHEMA"):
+            schema = self._parse_id_var(any_token=False)
+            if isinstance(schema, exp.Identifier) and schema.name:
+                action = ForeignTableAction(kind="SET SCHEMA", this=schema)
+        elif self._match_text_seq("OWNER", "TO"):
+            owner = self._parse_id_var(any_token=False)
+            if isinstance(owner, exp.Identifier) and owner.name:
+                action = ForeignTableAction(kind="OWNER TO", this=owner)
+        elif self._match_texts(("ENABLE", "DISABLE")):
+            verb = self._prev.text.upper()
+            if self._match_text_seq("TRIGGER"):
+                trigger = self._parse_id_var(any_token=False)
+                if isinstance(trigger, exp.Identifier) and trigger.name:
+                    action = ForeignTableAction(kind=f"{verb} TRIGGER", this=trigger)
+        elif self._match_text_seq("NO", "INHERIT"):
+            parent = self._foreign_table_target()
+            if parent is not None:
+                action = ForeignTableAction(kind="NO INHERIT", parent=parent)
+        elif self._match_text_seq("INHERIT"):
+            parent = self._foreign_table_target()
+            if parent is not None:
+                action = ForeignTableAction(kind="INHERIT", parent=parent)
+        if action is not None:
+            if self._curr:
+                return self._parse_as_command(start)
+            return self.expression(
+                exp.Alter(
+                    this=table, kind="FOREIGN TABLE", exists=exists, only=only, actions=[action]
+                )
+            )
+        if self._match_text_seq("ALTER"):
+            self._match(TokenType.COLUMN)
+            column = self._parse_id_var(any_token=False)
+            if isinstance(column, exp.Identifier) and self._match_text_seq("SET", "STORAGE"):
+                storage = self._parse_id_var(any_token=False)
+                if (
+                    isinstance(storage, exp.Identifier)
+                    and storage.name.upper() in {"PLAIN", "EXTERNAL", "EXTENDED", "MAIN"}
+                    and not self._curr
+                ):
+                    return self.expression(
+                        exp.Alter(
+                            this=table,
+                            kind="FOREIGN TABLE",
+                            exists=exists,
+                            only=only,
+                            actions=[
+                                ForeignTableAction(kind="SET STORAGE", this=column, value=storage)
+                            ],
+                        )
+                    )
+            self._retreat(action_index)
         if self._curr and self._curr.text.upper() == "OPTIONS":
             options = self._foreign_options(alter=True)
             if options is None or self._curr:
@@ -288,6 +440,27 @@ class ForeignTableParser(PostgresParser):
                         actions=[ForeignColumnOptions(this=column, expressions=options)],
                     )
                 )
+        if self._match_text_seq("ADD"):
+            actions = self._parse_alter_table_add()
+            if (
+                actions
+                and all(_foreign_alter_action_supported(item) for item in actions)
+                and self._prev.token_type == TokenType.COMMA
+                and self._curr
+                and self._curr.text.upper() == "OPTIONS"
+            ):
+                options = self._foreign_options(alter=True)
+                if options is not None and not self._curr:
+                    return self.expression(
+                        exp.Alter(
+                            this=table,
+                            kind="FOREIGN TABLE",
+                            exists=exists,
+                            only=only,
+                            actions=actions,
+                            options=options,
+                        )
+                    )
         self._retreat(table_index)
         self._foreign_alter = True
         self._foreign_unread_tail = False

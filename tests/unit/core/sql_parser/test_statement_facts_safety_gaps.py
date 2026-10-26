@@ -133,8 +133,6 @@ def test_alter_sequence_names_its_sequence_through_each_mysql_plugin(plugin):
 @pytest.mark.parametrize(
     ("plugin", "sql", "operation"),
     [
-        ("postgresql", "CREATE FOREIGN TABLE ft PARTITION OF parent DEFAULT SERVER s", "CREATE"),
-        ("postgresql", "ALTER FOREIGN TABLE ft SET SCHEMA ns", "ALTER"),
         ("postgresql", "DROP FOREIGN TABLE ft*", "DROP"),
     ],
 )
