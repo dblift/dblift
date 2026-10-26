@@ -206,6 +206,11 @@ def test_mysql_classifier_guard_rejects_a_native_regex_whole_source_scan() -> No
     assert loop_findings(ast.parse(mutant), plain_source=True, source_parameter=1)
 
 
+def test_mysql_classifier_plain_source_is_guarded() -> None:
+    source = textwrap.dedent(inspect.getsource(delimiter_commands.classify_line))
+    assert loop_findings(ast.parse(source), plain_source=True, source_parameter=1) == []
+
+
 def test_mysql_public_split_counts_repeated_record_prefixes(monkeypatch) -> None:
     original = LexicalEngine.split
 
