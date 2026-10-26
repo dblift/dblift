@@ -76,7 +76,26 @@ def test_unread_db2_create_table_still_fails_closed():
 def test_session_set_does_not_update_a_restore_key(dialect, statement):
     quirks = ProviderRegistry.get_quirks(dialect)
 
+    assert quirks.statement_facts(statement).events == frozenset()
+    assert analyze_dml(statement, quirks=quirks).events == set()
     assert updates_restore_key(statement, ["id"], quirks=quirks) is False
+
+
+@pytest.mark.parametrize(
+    ("dialect", "statement"),
+    [
+        ("db2", "SET INTEGRITY FOR t IMMEDIATE CHECKED"),
+        ("db2", "SET CURRENT SCHEMA = 'APP"),
+        ("mysql", "SET @id = 1"),
+        ("postgresql", "SET ROLE writer"),
+    ],
+)
+def test_unread_set_still_fails_closed(dialect, statement):
+    quirks = ProviderRegistry.get_quirks(dialect)
+
+    assert quirks.statement_facts(statement).events is None
+    assert analyze_dml(statement, quirks=quirks).events is None
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is True
 
 
 def test_unread_procedural_update_still_fails_closed():

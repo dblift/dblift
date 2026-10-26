@@ -152,7 +152,7 @@ def test_select_into_creates_its_table(sql, created, sources):
 
 def test_a_plain_select_stays_a_query():
     assert _pg("SELECT * FROM t") == StatementFacts(
-        "SELECT", "QUERY", (NamedObject("t", T.TABLE, "referenced"),)
+        "SELECT", "QUERY", (NamedObject("t", T.TABLE, "referenced"),), events=frozenset()
     )
 
 

@@ -626,11 +626,22 @@ class Db2StatementFactsReader:
         if first == "SET":
             if ups[1:2] == ["INTEGRITY"]:
                 return _opaque(first, "UNKNOWN", SET_INTEGRITY)
+            if (
+                ups[1:3] == ["CURRENT", "SCHEMA"]
+                and len(words) == 5
+                and words[3].text == "="
+                and words[4].type in {TokenType.STRING, TokenType.KEYWORD}
+                and (
+                    words[4].type is TokenType.KEYWORD
+                    or (words[4].text.endswith("'") and words[4].text.count("'") % 2 == 0)
+                )
+            ):
+                return StatementFacts(first, "UNKNOWN", events=frozenset())
             return StatementFacts(first, "UNKNOWN")
         if first in _QUERY:
             if _holds_data_change(ups):
                 return _opaque(first, kind, DATA_CHANGE_QUERY)
-            return StatementFacts(first, kind)
+            return StatementFacts(first, kind, events=frozenset())
         for head in HEADS:
             at = _match(ups, head)
             if at is None:

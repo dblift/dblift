@@ -2653,6 +2653,26 @@ def read_statement_facts(
             sql, f"{dialect} {construct} is opaque to statement facts", dialect=dialect
         )
 
+    if isinstance(ast, exp.Set) and len(ast.expressions) == 1:
+        item = ast.expressions[0]
+        if isinstance(item, exp.SetItem):
+            if (
+                dialect == "mysql"  # lint: allow-dialect-string: MySQL SET NAMES grammar
+                and item.args.get("kind") == "NAMES"
+                and isinstance(item.this, exp.Var)
+            ):
+                return StatementFacts("SET", "UNKNOWN", events=frozenset())
+            assignment = item.this
+            if (
+                dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL search_path
+                and isinstance(assignment, exp.EQ)
+                and isinstance(assignment.this, exp.Column)
+                and assignment.this.name.lower() == "search_path"
+                and not assignment.this.table
+                and isinstance(assignment.expression, exp.Var)
+            ):
+                return StatementFacts("SET", "UNKNOWN", events=frozenset())
+
     if (
         dialect != "tsql"  # lint: allow-dialect-string: T-SQL has its own name guard
         and not (
@@ -3072,6 +3092,7 @@ def read_statement_facts(
             declared_constraints=constraints,
             indexed_table=indexed_table,
             indexed_columns=indexed_columns,
+            events=frozenset() if object_type == SqlObjectType.TABLE and not diagnostic else None,
             diagnostic=diagnostic,
         )
 
@@ -3596,7 +3617,7 @@ def read_statement_facts(
                 if created is not None:
                     sources = _referenced(ast, tuple(into.find_all(exp.Table)))
                     return StatementFacts("SELECT", "DML", (created,) + sources)
-        return StatementFacts("SELECT", "QUERY", _referenced(ast))
+        return StatementFacts("SELECT", "QUERY", _referenced(ast), events=frozenset())
     if dialect in _GRANT_DIALECTS and isinstance(ast, (exp.Grant, exp.Revoke)):
         return _grant_facts(ast, sql, dialect)
     return _head_facts(
