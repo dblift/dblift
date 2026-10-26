@@ -496,6 +496,10 @@ class LexicalStatementParser(BaseStatementParser):
         ends_at_line = (
             self._script is not None and terminator.text == self._script.rules.line_terminator
         )
+        if ends_at_line and text.endswith(";"):
+            analysis = text[:-1].rstrip(self.text_blanks) + ";"
+            if analysis != text:
+                analysis_statements = (analysis,)
         sends_text = self.spec.sqlite_shell or ends_at_line
         if self.spec.raw_segment_records:
             sends_text = True
