@@ -651,8 +651,14 @@ def _table_name_matches_source(
         for first, second in zip(name_tokens, name_tokens[1:])
     ):
         return False
+    direct_kind = (
+        str(table.parent.args.get("kind") or "").upper()
+        if isinstance(table.parent, (exp.Create, exp.Drop))
+        else ""
+    )
+    leading_dot_allowed = allow_leading_dot and direct_kind not in {"SCHEMA", "DATABASE", "INDEX"}
     if (
-        not allow_leading_dot
+        not leading_dot_allowed
         and first
         and tokens[first - 1].token_type == TokenType.DOT
         and (first < 2 or tokens[first - 2].token_type not in {TokenType.VAR, TokenType.IDENTIFIER})

@@ -111,6 +111,23 @@ def test_mariadb_leading_dot_uses_the_default_database():
     assert not facts.opaque
 
 
+@pytest.mark.parametrize(
+    "sql,names",
+    (
+        ("CREATE TABLE .t (id INT)", ("t",)),
+        ("DROP TABLE .t", ("t",)),
+        ("CREATE VIEW .v AS SELECT 1", ("v",)),
+        ("DROP VIEW .v", ("v",)),
+        ("CREATE INDEX ix ON .t(a)", ("ix", "t")),
+    ),
+)
+def test_mariadb_leading_dot_relation_names_remain_readable(sql, names):
+    facts = ProviderRegistry.get_quirks("mariadb").statement_facts(sql)
+
+    assert tuple(obj.name for obj in facts.objects) == names
+    assert not facts.opaque
+
+
 def test_sqlserver_omitted_schema_does_not_publish_a_wrong_identity():
     facts = ProviderRegistry.get_quirks("sqlserver").statement_facts("SELECT * FROM db..t")
 
