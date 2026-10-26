@@ -651,12 +651,19 @@ def _table_name_matches_source(
         for first, second in zip(name_tokens, name_tokens[1:])
     ):
         return False
-    direct_kind = (
-        str(table.parent.args.get("kind") or "").upper()
-        if isinstance(table.parent, (exp.Create, exp.Drop))
-        else ""
+    parent = table.parent
+    while isinstance(parent, (exp.Schema, exp.Subquery)):
+        parent = parent.parent
+    relation_role = (
+        isinstance(parent, (exp.From, exp.Join, exp.Insert, exp.Update, exp.Delete, exp.Merge))
+        or isinstance(parent, (exp.TruncateTable, exp.Reference))
+        or (isinstance(parent, exp.Index) and table.arg_key == "table")
+        or (
+            isinstance(parent, (exp.Create, exp.Drop, exp.Alter))
+            and str(parent.args.get("kind") or "").upper() in {"TABLE", "VIEW"}
+        )
     )
-    leading_dot_allowed = allow_leading_dot and direct_kind not in {"SCHEMA", "DATABASE", "INDEX"}
+    leading_dot_allowed = allow_leading_dot and relation_role
     if (
         not leading_dot_allowed
         and first

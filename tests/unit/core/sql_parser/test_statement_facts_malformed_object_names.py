@@ -124,6 +124,12 @@ def test_mariadb_leading_dot_uses_the_default_database():
         ("CREATE VIEW .v AS SELECT 1", ("v",)),
         ("DROP VIEW .v", ("v",)),
         ("CREATE INDEX ix ON .t(a)", ("ix", "t")),
+        ("SELECT * FROM t JOIN .u ON t.id=u.id", ("t", "u")),
+        ("INSERT INTO .t VALUES (1)", ("t",)),
+        ("UPDATE .t SET x=1", ("t",)),
+        ("DELETE FROM .t", ("t",)),
+        ("ALTER TABLE .t ADD COLUMN x INT", ("t",)),
+        ("TRUNCATE TABLE .t", ("t",)),
     ),
 )
 def test_mariadb_leading_dot_relation_names_remain_readable(sql, names):
