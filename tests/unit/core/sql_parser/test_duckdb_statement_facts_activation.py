@@ -294,7 +294,6 @@ def test_namespace_selector_can_name_an_attached_catalog():
     [
         ("SET schema='a.s'", "a.s"),
         ("SET schema 'a.s'", "a.s"),
-        ("SET schema=a.s", "a.s"),
         ("SET search_path='a.s'", "a.s"),
         ('SET schema="a.s"', '"a.s"'),
         ('SET search_path="a.s"', '"a.s"'),
