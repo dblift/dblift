@@ -240,9 +240,11 @@ class LexicalTokenizer(BaseTokenizer):
                 eol = self._eol(self.pos)
                 comment = self.sql.find("--", self.pos, eol)
                 end = comment if comment >= 0 else eol
-                line = self.sql[line_start:end].upper()
+                line = self.sql[line_start:end].upper().strip()
+                if line.endswith(";"):
+                    line = line[:-1].rstrip()
                 if not self.sql[line_start : self.pos].strip() and any(
-                    pattern.match(line.strip()) for pattern in rules.directives
+                    pattern.match(line) for pattern in rules.directives
                 ):
                     directives.append((line_start, end))
                     self.read(end - self.pos)
