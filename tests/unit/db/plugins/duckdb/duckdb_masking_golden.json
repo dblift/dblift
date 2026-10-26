@@ -3284,7 +3284,7 @@
    "output": {
     "blank": "CREATE TABLE \"a;b\" (x INT)  ",
     "dml": {
-     "events": null,
+     "events": [],
      "table": "",
      "updated_columns": []
     },
@@ -3298,7 +3298,7 @@
      "declared_constraints": [],
      "diagnostic": null,
      "error": null,
-     "events": null,
+     "events": [],
      "indexed_columns": null,
      "indexed_table": null,
      "kind": "DDL",
@@ -3980,7 +3980,7 @@
    "output": {
     "blank": "CREATE TABLE \"caf\u00e9\" (a INT)",
     "dml": {
-     "events": null,
+     "events": [],
      "table": "",
      "updated_columns": []
     },
@@ -3994,7 +3994,7 @@
      "declared_constraints": [],
      "diagnostic": null,
      "error": null,
-     "events": null,
+     "events": [],
      "indexed_columns": null,
      "indexed_table": null,
      "kind": "DDL",
