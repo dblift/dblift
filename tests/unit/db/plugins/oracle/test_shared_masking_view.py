@@ -14,6 +14,7 @@ from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
         ("SELECT (1;\nPROMPT it's -- c\n);", ([(11, 23)], [(23, 27)])),
         ("PROMPT hi -- c", ([(0, 10)], [(10, 14)])),
         ("EXIT -- c\nSELECT 1;", ([(0, 5)], [(5, 9)])),
+        ("PROMPT; -- c", ([(0, 8)], [(8, 12)])),
     ],
 )
 def test_shared_masking_view_preserves_directive_and_comment_spans(script, expected):
