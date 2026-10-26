@@ -1,6 +1,9 @@
 """A parsed or fallback head cannot discard malformed parts of an object name."""
 
+import sys
+
 import pytest
+from sqlglot.dialects import Dialect
 
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -144,3 +147,23 @@ def test_sqlserver_omitted_schema_does_not_publish_a_wrong_identity():
 
     assert facts.objects == ()
     assert facts.opaque and facts.diagnostic
+
+
+def test_name_proof_does_not_retokenize_a_statement_without_table_names():
+    tokenizations = []
+
+    def count_source_proof_scan(frame, event, _arg):
+        if event == "call" and frame.f_code is Dialect.tokenize.__code__:
+            caller = frame.f_back
+            if caller is not None and caller.f_code.co_name == "_unread_names":
+                tokenizations.append(frame.f_locals.get("self"))
+
+    try:
+        sys.setprofile(count_source_proof_scan)
+        facts = ProviderRegistry.get_quirks("postgresql").statement_facts("SELECT 1")
+    finally:
+        sys.setprofile(None)
+
+    assert facts.objects == ()
+    assert not facts.opaque
+    assert tokenizations == []
