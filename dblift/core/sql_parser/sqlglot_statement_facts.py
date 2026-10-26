@@ -3178,7 +3178,18 @@ def read_statement_facts(
             "ALTER",
             "DDL",
             ((identity,) if identity else ())
-            + tuple(ref for definition in added for ref in _referenced(definition)),
+            + tuple(ref for definition in added for ref in _referenced(definition))
+            + (
+                tuple(
+                    ref
+                    for item in actions
+                    if item.args.get("parent") is not None
+                    for ref in _referenced(item)
+                )
+                # lint: allow-dialect-string: PostgreSQL foreign-table parents
+                if dialect == "postgres" and kind == "FOREIGN TABLE"
+                else ()
+            ),
             declared_columns=columns,
             declared_constraints=tuple(
                 detail for definition in added for detail in _column_constraints(definition)
