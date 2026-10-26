@@ -132,3 +132,18 @@ def test_stale_policy_records_cannot_hide_transaction_control(statement):
             content=statement,
             records=records,
         )
+
+
+def test_stale_records_cannot_hide_transaction_inside_a_combined_unit():
+    script = r"SELECT 1 \; COMMIT;"
+    sent = execution_strings(StatementSplitter("postgresql").split(script))
+    stale_records = StatementSplitter("postgresql").split("SELECT 1;")
+
+    with pytest.raises(TransactionStatementError):
+        neutralise_transaction_statements(
+            sent,
+            dialect="postgresql",
+            log=NullLog(),
+            content=script,
+            records=stale_records,
+        )
