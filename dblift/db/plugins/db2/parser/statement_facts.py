@@ -641,7 +641,11 @@ class Db2StatementFactsReader:
         if first in _QUERY:
             if _holds_data_change(ups):
                 return _opaque(first, kind, DATA_CHANGE_QUERY)
-            return StatementFacts(first, kind, events=frozenset())
+            # Head tokens do not validate Db2 query grammar. Only this literal form has
+            # a complete shape here; other queries may be malformed or hide writes.
+            if first == "SELECT" and len(words) == 2 and words[1].text == "1":
+                return StatementFacts(first, kind, events=frozenset())
+            return StatementFacts(first, kind)
         for head in HEADS:
             at = _match(ups, head)
             if at is None:
