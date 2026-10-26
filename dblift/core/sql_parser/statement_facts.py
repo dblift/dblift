@@ -83,6 +83,7 @@ class StatementFacts:
     error: Optional[str] = None
     target_sql: Optional[str] = None
     cte_writes: Tuple[DmlEffect, ...] = ()
+    renamed_to: Optional[NamedObject] = None
 
     @property
     def opaque(self) -> bool:

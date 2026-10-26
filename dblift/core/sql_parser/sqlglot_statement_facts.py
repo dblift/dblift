@@ -3166,6 +3166,46 @@ def read_statement_facts(
         object_type = _ddl_object_type(kind, dialect)
         identity = _named(ast.this, object_type, "altered") if ast.this is not None else None
         actions = ast.args.get("actions") or []
+        renamed_to = None
+        added_constraint = None
+        if (
+            dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL table lifecycle grammar
+            and kind == "TABLE"
+            and identity
+            and len(actions) == 1
+        ):
+            sole_action = actions[0]
+            if (
+                isinstance(sole_action, exp.AlterRename)
+                and isinstance(sole_action.this, exp.Table)
+                and isinstance(sole_action.this.this, exp.Identifier)
+                and not sole_action.this.db
+                and not sole_action.this.catalog
+                and not ast.args.get("only")
+                and not ast.args.get("options")
+            ):
+                destination = _named(sole_action.this, SqlObjectType.TABLE, "created")
+                if destination is not None:
+                    renamed_to = replace(
+                        destination,
+                        schema=identity.schema,
+                        schema_quoted=identity.schema_quoted,
+                    )
+            elif isinstance(sole_action, exp.AddConstraint) and len(sole_action.expressions) == 1:
+                declaration = sole_action.expressions[0]
+                if (
+                    isinstance(declaration, exp.Constraint)
+                    and len(declaration.expressions) == 1
+                    and isinstance(declaration.expressions[0], exp.PrimaryKey)
+                    and declaration.expressions[0].expressions
+                    and all(
+                        isinstance(column, exp.Identifier)
+                        for column in declaration.expressions[0].expressions
+                    )
+                    and not ast.args.get("not_valid")
+                    and not ast.args.get("options")
+                ):
+                    added_constraint = _declared_constraint(declaration)
         if any(
             isinstance(action, exp.ColumnDef) and _unread_column_definition(action)
             for action in actions
@@ -3198,9 +3238,11 @@ def read_statement_facts(
             declared_columns=columns,
             declared_constraints=tuple(
                 detail for definition in added for detail in _column_constraints(definition)
-            ),
+            )
+            + ((added_constraint,) if added_constraint else ()),
             action=action,
             diagnostic=None if ast.this is not None else f"{dialect} ALTER names no object",
+            renamed_to=renamed_to,
         )
 
     if (
