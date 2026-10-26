@@ -64,6 +64,23 @@ def test_schema_name_with_dropped_prefix_is_unread(dialect, sql):
     assert facts.opaque and facts.diagnostic
 
 
+@pytest.mark.parametrize(
+    "sql",
+    (
+        "CREATE SCHEMA .s",
+        "DROP SCHEMA .s",
+        "CREATE DATABASE .s",
+        "DROP DATABASE .s",
+        "DROP INDEX .ix",
+    ),
+)
+def test_mariadb_leading_dot_is_not_a_schema_database_or_index_name(sql):
+    facts = ProviderRegistry.get_quirks("mariadb").statement_facts(sql)
+
+    assert facts.objects == ()
+    assert facts.opaque and facts.diagnostic
+
+
 @pytest.mark.parametrize("dialect", ("postgresql", "mysql", "sqlite", "duckdb"))
 def test_ordinary_qualified_name_remains_readable(dialect):
     facts = ProviderRegistry.get_quirks(dialect).statement_facts("INSERT INTO s.t VALUES (1)")
