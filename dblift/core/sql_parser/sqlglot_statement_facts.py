@@ -2462,7 +2462,7 @@ def _grant_facts(ast: exp.Grant | exp.Revoke, sql: str, dialect: str) -> Stateme
         ):
             return opaque
     identity = _named(securable, object_type, "referenced")
-    return StatementFacts(operation, "DDL", (identity,)) if identity else opaque
+    return StatementFacts(operation, "DDL", (identity,), events=frozenset()) if identity else opaque
 
 
 def _metadata_facts(ast: exp.Show | exp.Describe, read: exp.Expr) -> StatementFacts:

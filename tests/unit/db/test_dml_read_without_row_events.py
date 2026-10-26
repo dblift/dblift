@@ -64,6 +64,35 @@ def test_unread_db2_create_table_still_fails_closed():
     assert updates_restore_key(statement, ["id"], quirks=quirks) is True
 
 
+@pytest.mark.parametrize("dialect", ["postgresql", "mysql", "mariadb"])
+@pytest.mark.parametrize("statement", ["GRANT SELECT ON t TO u", "REVOKE SELECT ON t FROM u"])
+def test_read_privilege_change_has_no_row_events(dialect, statement):
+    quirks = ProviderRegistry.get_quirks(dialect)
+    facts = quirks.statement_facts(statement)
+
+    assert facts.kind == "DDL"
+    assert not facts.opaque
+    assert facts.events == frozenset()
+    assert analyze_dml(statement, quirks=quirks).events == set()
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is False
+
+
+@pytest.mark.parametrize(
+    ("dialect", "statement"),
+    [
+        ("postgresql", "GRANT SELECT ON ALL TABLES IN SCHEMA s TO u"),
+        ("mysql", "GRANT ALL ON *.* TO u"),
+        ("mariadb", "GRANT ALL ON *.* TO u"),
+    ],
+)
+def test_unread_privilege_change_keeps_unknown_row_events(dialect, statement):
+    quirks = ProviderRegistry.get_quirks(dialect)
+
+    assert quirks.statement_facts(statement).events is None
+    assert analyze_dml(statement, quirks=quirks).events is None
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is True
+
+
 @pytest.mark.parametrize(
     ("dialect", "statement"),
     (
