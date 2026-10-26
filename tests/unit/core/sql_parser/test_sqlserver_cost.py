@@ -345,11 +345,17 @@ def test_sqlserver_source_guard_rejects_native_regex_whole_source_scan():
 
 
 def test_sqlserver_source_guard_keeps_bounded_native_regex_search():
-    for source in (
-        "def helper(source, start, end):\n    pattern.search(source, start, end)\n",
-        "def helper(source, start):\n    pattern.search(source, start)\n",
-    ):
-        assert loop_findings(ast.parse(source), plain_source=True) == []
+    source = "def helper(source, start, end):\n    pattern.search(source, start, end)\n"
+    assert loop_findings(ast.parse(source), plain_source=True) == []
+
+
+@pytest.mark.parametrize(
+    "call",
+    ("pattern.search(source, start)", "pattern.search(source, start, None)"),
+)
+def test_sqlserver_source_guard_rejects_unbounded_regex_suffix_scan(call):
+    source = f"def helper(source, start):\n    {call}\n"
+    assert loop_findings(ast.parse(source), plain_source=True) != []
 
 
 @pytest.mark.parametrize(
