@@ -890,6 +890,52 @@ def _declared_constraint(
     return None
 
 
+def _postgres_table_alter_tokens_match(
+    sql: str, ast: exp.Alter, tail: list[TokenType | str | exp.Identifier]
+) -> bool:
+    """Prove every source token belongs to a supported PostgreSQL table action."""
+    table = ast.this
+    if (
+        not isinstance(table, exp.Table)
+        or not isinstance(table.this, exp.Identifier)
+        or table.catalog
+    ):
+        return False
+    expected: list[TokenType | str | exp.Identifier] = [TokenType.ALTER, TokenType.TABLE]
+    if ast.args.get("exists"):
+        expected.extend(("IF", TokenType.EXISTS))
+    if ast.args.get("only"):
+        expected.append(TokenType.ONLY)
+    if table.db:
+        schema = table.args.get("db")
+        if not isinstance(schema, exp.Identifier):
+            return False
+        expected.extend((schema, TokenType.DOT))
+    expected.append(table.this)
+    expected.extend(tail)
+    grammar = "postgres"  # lint: allow-dialect-string: PostgreSQL table action source proof
+    tokens = Dialect.get_or_raise(grammar).tokenize(sql)
+    if tokens and tokens[-1].token_type == TokenType.SEMICOLON:
+        tokens.pop()
+    if len(tokens) != len(expected):
+        return False
+    for token, part in zip(tokens, expected):
+        if isinstance(part, exp.Identifier):
+            if (
+                token.token_type not in {TokenType.VAR, TokenType.IDENTIFIER}
+                or token.start != part.meta.get("start")
+                or token.end != part.meta.get("end")
+                or token.text != part.name
+            ):
+                return False
+        elif isinstance(part, str):
+            if token.token_type != TokenType.VAR or token.text.upper() != part:
+                return False
+        elif token.token_type != part:
+            return False
+    return True
+
+
 def _referenced(node: exp.Expr, skip: Tuple[exp.Expr, ...] = ()) -> Tuple[NamedObject, ...]:
     """Tables a statement reads: query sources and foreign key targets, not common table names."""
     ctes = {cte.alias.lower() for cte in node.find_all(exp.CTE)}
@@ -3168,6 +3214,7 @@ def read_statement_facts(
         actions = ast.args.get("actions") or []
         renamed_to = None
         added_constraint = None
+        lifecycle_diagnostic = None
         if (
             dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL table lifecycle grammar
             and kind == "TABLE"
@@ -3175,26 +3222,36 @@ def read_statement_facts(
             and len(actions) == 1
         ):
             sole_action = actions[0]
-            if (
-                isinstance(sole_action, exp.AlterRename)
-                and isinstance(sole_action.this, exp.Table)
-                and isinstance(sole_action.this.this, exp.Identifier)
-                and not sole_action.this.db
-                and not sole_action.this.catalog
-                and not ast.args.get("only")
-                and not ast.args.get("options")
-            ):
-                destination = _named(sole_action.this, SqlObjectType.TABLE, "created")
-                if destination is not None:
-                    renamed_to = replace(
-                        destination,
-                        schema=identity.schema,
-                        schema_quoted=identity.schema_quoted,
+            if isinstance(sole_action, exp.AlterRename):
+                destination = sole_action.this
+                if (
+                    isinstance(destination, exp.Table)
+                    and isinstance(destination.this, exp.Identifier)
+                    and not destination.db
+                    and not destination.catalog
+                    and not ast.args.get("only")
+                    and not ast.args.get("options")
+                    and not ast.args.get("not_valid")
+                    and _postgres_table_alter_tokens_match(
+                        sql, ast, [TokenType.RENAME, "TO", destination.this]
                     )
+                ):
+                    named = _named(destination, SqlObjectType.TABLE, "created")
+                    if named is not None:
+                        renamed_to = replace(
+                            named,
+                            schema=identity.schema,
+                            schema_quoted=identity.schema_quoted,
+                        )
+                elif isinstance(destination, exp.Table) and isinstance(
+                    destination.this, exp.Identifier
+                ):
+                    lifecycle_diagnostic = "postgres ALTER TABLE rename source is not fully read"
             elif isinstance(sole_action, exp.AddConstraint) and len(sole_action.expressions) == 1:
                 declaration = sole_action.expressions[0]
                 if (
                     isinstance(declaration, exp.Constraint)
+                    and isinstance(declaration.this, exp.Identifier)
                     and len(declaration.expressions) == 1
                     and isinstance(declaration.expressions[0], exp.PrimaryKey)
                     and declaration.expressions[0].expressions
@@ -3205,7 +3262,31 @@ def read_statement_facts(
                     and not ast.args.get("not_valid")
                     and not ast.args.get("options")
                 ):
-                    added_constraint = _declared_constraint(declaration)
+                    primary = declaration.expressions[0]
+                    tail: list[TokenType | str | exp.Identifier] = [
+                        "ADD",
+                        TokenType.CONSTRAINT,
+                        declaration.this,
+                        TokenType.PRIMARY_KEY,
+                        TokenType.L_PAREN,
+                    ]
+                    for index, column in enumerate(primary.expressions):
+                        if index:
+                            tail.append(TokenType.COMMA)
+                        tail.append(column)
+                    tail.append(TokenType.R_PAREN)
+                    if _postgres_table_alter_tokens_match(sql, ast, tail):
+                        added_constraint = _declared_constraint(declaration)
+                    else:
+                        lifecycle_diagnostic = (
+                            "postgres ALTER TABLE constraint source is not fully read"
+                        )
+                elif isinstance(declaration, exp.Constraint) and any(
+                    isinstance(child, exp.PrimaryKey) for child in declaration.expressions
+                ):
+                    lifecycle_diagnostic = (
+                        "postgres ALTER TABLE constraint source is not fully read"
+                    )
         if any(
             isinstance(action, exp.ColumnDef) and _unread_column_definition(action)
             for action in actions
@@ -3241,7 +3322,9 @@ def read_statement_facts(
             )
             + ((added_constraint,) if added_constraint else ()),
             action=action,
-            diagnostic=None if ast.this is not None else f"{dialect} ALTER names no object",
+            diagnostic=(
+                lifecycle_diagnostic if ast.this is not None else f"{dialect} ALTER names no object"
+            ),
             renamed_to=renamed_to,
         )
 
