@@ -9,15 +9,34 @@ from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
+from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 from dblift.db.plugins.sqlite.parser.lexical_spec import SQLITE_SPEC
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
+from dblift.db.plugins.sqlserver.parser.sqlserver_tokenizer import SQLServerTokenizer
 from dblift.db.plugins.sqlserver.quirks import SqlserverQuirks
 from tests.support.facts_parser import facts_parser
 
 SCRIPT = "CREATE TABLE a (x INT);\nSELECT 1;\nGO\nSELECT 2\nGO 2\n"
+
+
+def test_client_and_server_comment_views_keep_distinct_boundaries():
+    script = "/* a /* b */\nGO\n*/\nSELECT 1\nGO"
+    client = LexicalTokenizer(script, spec=SQLSERVER_SPEC)
+    client.tokenize()
+    assert client.comments == [(0, 12)]
+    records = LexicalEngine(SQLSERVER_SPEC).split(script)
+    assert [(record.text, record.terminator) for record in records] == [
+        ("/* a /* b */", "GO"),
+        ("*/\nSELECT 1", "GO"),
+    ]
+    server = SQLServerTokenizer(script).tokenize()
+    assert [(token.text, token.line) for token in server if token.type == TokenType.KEYWORD] == [
+        ("SELECT", 4)
+    ]
 
 
 def test_the_quirks_hand_the_engine_its_spec():

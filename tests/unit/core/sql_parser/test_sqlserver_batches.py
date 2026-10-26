@@ -12,8 +12,22 @@ from dataclasses import replace
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.sql_parser.batch_script import BatchScript
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
+
+
+def test_batch_records_accept_one_pass_tokens():
+    script = "SELECT 'x';\nGO\nSELECT 2"
+    tokenizer = LexicalTokenizer(script, spec=SQLSERVER_SPEC)
+    tokens = tokenizer.tokenize()
+    rules = SQLSERVER_SPEC.batch_script
+    assert rules is not None
+    batches = BatchScript(rules, script, "sqlcmd", tokenizer.comments, SQLSERVER_SPEC.text_blanks)
+    expected = batches.split(tokens)
+    assert batches.split(iter(tokens)) == expected
+
 
 # Recorded: (name, script, outcome). Outcome: ("ok", records, strings) or ("error", class, message).
 CASES = [
