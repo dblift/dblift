@@ -27,6 +27,26 @@ def test_malformed_object_name_is_unread(dialect, sql):
 
 
 @pytest.mark.parametrize("dialect", ("postgresql", "mysql", "sqlite", "duckdb"))
+@pytest.mark.parametrize(
+    "sql",
+    (
+        "INSERT INTO t* VALUES (1)",
+        "UPDATE t* SET x = 1",
+        "DELETE FROM t* WHERE x = 1",
+        "SELECT * FROM t*",
+        "SELECT * FROM t, .u",
+        "SELECT * FROM (.t)",
+    ),
+)
+def test_parsed_name_with_attached_junk_or_dropped_prefix_is_unread(dialect, sql):
+    facts = ProviderRegistry.get_quirks(dialect).statement_facts(sql)
+
+    assert facts.objects == ()
+    assert facts.target is None
+    assert facts.opaque and facts.diagnostic
+
+
+@pytest.mark.parametrize("dialect", ("postgresql", "mysql", "sqlite", "duckdb"))
 def test_ordinary_qualified_name_remains_readable(dialect):
     facts = ProviderRegistry.get_quirks(dialect).statement_facts("INSERT INTO s.t VALUES (1)")
 
