@@ -54,12 +54,14 @@ def _manager(
     *,
     current_version: Optional[str] = "9",
     eligibility: MigrationEligibility = AVAILABLE,
+    forward_parts: Sequence[SimpleNamespace] = (),
 ):
     """A manager whose history is ``applied`` and whose catalog holds ``U`` scripts."""
     scripts = [_undo_script(v) for v in undo_versions]
     state = MigrationState(
         current_version=current_version if applied else None,
-        catalog=tuple(CatalogMigration(s, eligibility) for s in scripts),
+        catalog=tuple(CatalogMigration(s, eligibility) for s in scripts)
+        + tuple(CatalogMigration(s, PENDING) for s in forward_parts),
         applied_objects=[a for a in applied if a.type != MigrationType.UNDO_SQL],
         all_applied_objects=applied,
     )
@@ -276,6 +278,120 @@ def test_a_target_outside_the_group_leaves_it_alone() -> None:
 
     assert plan.steps == () and plan.group_additions == ()
     assert plan.target_boundary_in_group is False
+
+
+def _legacy_generated_part(number: int, count: int) -> SimpleNamespace:
+    return SimpleNamespace(
+        script_name=f"V9_{number}__change.sql",
+        version=f"9.{number}",
+        content=(
+            f"-- Part {number} of {count}; transactional.\n"
+            "-- Split because dblift migrate refuses a file that mixes "
+            "autocommit-only and transactional statements; apply them in order.\n"
+        ),
+        tags=[],
+    )
+
+
+def test_partial_legacy_generated_set_refuses_undo_before_resolving_scripts() -> None:
+    parts = [_legacy_generated_part(1, 2), _legacy_generated_part(2, 2)]
+    applied = _applied("9.1", 1)
+    applied.script_name = parts[0].script_name
+    manager, _, _ = _manager([applied], ["9.1"], forward_parts=parts)
+
+    plan = _plan(manager)
+
+    assert plan.steps == ()
+    assert plan.refusal is not None
+    assert "partially applied" in plan.refusal
+    assert "V9_2__change.sql" in plan.refusal
+
+
+def test_partial_tagged_generated_set_also_refuses_undo() -> None:
+    tag = f"{GROUP_TAG_PREFIX}V9"
+    parts = [_legacy_generated_part(1, 2), _legacy_generated_part(2, 2)]
+    for part in parts:
+        part.tags = [tag]
+        part.script_name = part.script_name.replace(".sql", f"[{tag}].sql")
+    applied = _applied("9.1", 1, tags=[tag])
+    applied.script_name = parts[0].script_name
+    manager, _, _ = _manager([applied], ["9.1"], forward_parts=parts)
+
+    plan = _plan(manager)
+
+    assert plan.steps == ()
+    assert "partially applied" in (plan.refusal or "")
+
+
+def test_complete_legacy_generated_set_is_selected_whole_highest_first() -> None:
+    parts = [_legacy_generated_part(1, 2), _legacy_generated_part(2, 2)]
+    applied = [_applied("9.1", 1), _applied("9.2", 2)]
+    for row, part in zip(applied, parts):
+        row.script_name = part.script_name
+    manager, _, _ = _manager(applied, ["9.1", "9.2"], forward_parts=parts)
+
+    plan = _plan(manager)
+
+    assert _versions(plan) == ["9.2", "9.1"]
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "-- Part 1 of 2; transactional.\nSELECT 1;\n",
+        "-- Part 2 of 2; transactional.\n"
+        "-- Split because dblift migrate refuses a file that mixes modes.\n",
+    ],
+)
+def test_ordinary_or_malformed_part_header_does_not_infer_group_from_version(content) -> None:
+    v1, v2 = _applied("9.1", 1), _applied("9.2", 2)
+    part = _legacy_generated_part(1, 2)
+    part.content = content
+    manager, _, _ = _manager([v1, v2], ["9.1", "9.2"], forward_parts=[part])
+
+    assert _versions(_plan(manager)) == ["9.2"]
+
+
+def test_a_missing_generated_part_file_refuses_undo() -> None:
+    part = _legacy_generated_part(1, 2)
+    applied = _applied("9.1", 1)
+    applied.script_name = part.script_name
+    manager, _, _ = _manager([applied], ["9.1"], forward_parts=[part])
+
+    plan = _plan(manager)
+
+    assert plan.steps == ()
+    assert "part file is missing" in (plan.refusal or "")
+
+
+def test_duplicate_generated_part_number_refuses_undo() -> None:
+    first = _legacy_generated_part(1, 2)
+    duplicate = _legacy_generated_part(1, 2)
+    second = _legacy_generated_part(2, 2)
+    applied = [_applied("9.1", 1), _applied("9.2", 2)]
+    for row, part in zip(applied, (first, second)):
+        row.script_name = part.script_name
+    manager, _, _ = _manager(applied, ["9.1", "9.2"], forward_parts=[first, duplicate, second])
+
+    plan = _plan(manager)
+
+    assert plan.steps == ()
+    assert plan.refusal is not None
+
+
+def test_same_generated_version_in_two_directories_refuses_ambiguous_undo() -> None:
+    first = _legacy_generated_part(1, 2)
+    second = _legacy_generated_part(1, 2)
+    first.path = Path("/a/V9_1__change.sql")
+    second.path = Path("/b/V9_1__change.sql")
+    applied = _applied("9.1", 1)
+    applied.script_name = first.script_name
+    manager, _, _ = _manager([applied], ["9.1"], forward_parts=[first, second])
+
+    plan = _plan(manager)
+
+    assert plan.steps == ()
+    assert "ambiguous generated part set" in (plan.refusal or "")
 
 
 @pytest.mark.parametrize("values", [None, "", " , "])

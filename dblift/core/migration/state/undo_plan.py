@@ -2,19 +2,28 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from dblift.core.migration.migration import Migration, MigrationType
-from dblift.core.migration.rules.migration_rules import MigrationRules, expand_undo_set_to_groups
+from dblift.core.migration.rules.migration_rules import (
+    MigrationRules,
+    expand_undo_set_to_groups,
+    group_tag_of,
+)
 from dblift.core.migration.state.migration_selector import normalize_filter
 from dblift.core.migration.state.migration_state import (
     MigrationEligibility,
     MigrationReadSnapshot,
     MigrationState,
 )
-from dblift.core.migration.state.rank_wins import installed_rank, latest_successful_ranks
+from dblift.core.migration.state.rank_wins import (
+    VersionRankState,
+    installed_rank,
+    latest_successful_ranks,
+)
 from dblift.core.migration.version_utils import compare_versions, is_migration_success
 
 if TYPE_CHECKING:
@@ -50,6 +59,104 @@ class UndoPlan:
     target_boundary_in_group: bool = False
     selected: Tuple[Migration, ...] = ()
     missing_undo_script: Optional[Migration] = None
+
+
+_PART_HEADER = re.compile(r"^-- Part (\d+) of (\d+); ")
+_PART_NAME = re.compile(r"^V(.+)_(\d+)__(.+)\.sql$")
+_PART_SIGNATURE = "-- Split because dblift migrate refuses a file that mixes "
+
+
+def _generated_part_groups(
+    state: MigrationState,
+) -> Dict[str, Tuple[int, Dict[int, Migration], bool]]:
+    """Read generated part identity from catalog files, including older untagged files.
+
+    The old writer records part/count in a two-line header. Its filename is
+    checked against that header before being used as a group key; an ordinary
+    migration with an ``_n`` version is never treated as a generated part.
+    """
+    groups: Dict[str, Tuple[int, Dict[int, Migration], bool]] = {}
+    for record in state.catalog:
+        migration = record.migration
+        content = vars(migration).get("content")
+        name = migration.script_name
+        if not isinstance(content, str) or not isinstance(name, str):
+            continue
+        lines = content.splitlines()
+        if len(lines) < 2 or not lines[1].startswith(_PART_SIGNATURE):
+            continue
+        header = _PART_HEADER.match(lines[0])
+        filename = _PART_NAME.match(name)
+        if header is None or filename is None:
+            continue
+        number, count = int(header[1]), int(header[2])
+        if number != int(filename[2]) or not 1 <= number <= count:
+            continue
+        tag = group_tag_of(migration)
+        parent = str(Path(vars(migration).get("path") or name).parent)
+        key = tag or f"legacy:{parent}:{filename[1]}:{filename[3]}"
+        expected, parts, invalid = groups.setdefault(key, (count, {}, False))
+        invalid = invalid or count != expected or number in parts
+        if number not in parts:
+            parts[number] = migration
+        groups[key] = (expected, parts, invalid)
+    return groups
+
+
+def _include_generated_part_groups(
+    state: MigrationState,
+    selected: List[Migration],
+    applied: List[Migration],
+    migration_rules: MigrationRules,
+    version_ranks: Dict[str, VersionRankState],
+) -> Tuple[List[Migration], Optional[str]]:
+    """Refuse incomplete generated sets and widen complete ones before SQL runs."""
+    groups = _generated_part_groups(state)
+    if not groups or not selected:
+        return selected, None
+    versions_seen: Dict[str, int] = {}
+    for _, parts, _ in groups.values():
+        for part in parts.values():
+            version = str(part.version)
+            versions_seen[version] = versions_seen.get(version, 0) + 1
+    if any(versions_seen.get(str(m.version), 0) > 1 for m in selected):
+        return (
+            selected,
+            "Cannot undo an ambiguous generated part set: a version exists in multiple groups.",
+        )
+    current = {
+        str(m.version): m
+        for m in applied
+        if m.version
+        and installed_rank(m) == version_ranks[str(m.version)].versioned
+        and not migration_rules._is_currently_undone(
+            str(m.version), applied, version_ranks=version_ranks
+        )
+    }
+    expanded = list(selected)
+    for count, parts, invalid in groups.values():
+        versions = {str(part.version) for part in parts.values()}
+        if not versions.intersection(str(m.version) for m in expanded):
+            continue
+        missing = [
+            parts[n].script_name
+            for n in sorted(parts)
+            if str(parts[n].version) not in current
+            or current[str(parts[n].version)].script_name != parts[n].script_name
+        ]
+        if invalid or len(parts) != count or missing:
+            detail = ", ".join(missing) if missing else "a generated part file is missing"
+            return selected, (
+                "Cannot undo a partially applied generated part set: "
+                f"{detail}. Check migration history and recover this set manually."
+            )
+        first = next(
+            i for i, migration in enumerate(expanded) if str(migration.version) in versions
+        )
+        expanded = [migration for migration in expanded if str(migration.version) not in versions]
+        members = [current[str(parts[number].version)] for number in sorted(parts, reverse=True)]
+        expanded[first:first] = members
+    return expanded, None
 
 
 def plan_undo(
@@ -189,6 +296,18 @@ def plan_undo(
                 version_ranks=version_ranks,
             )
             target_boundary_in_group = bool(added)
+
+    migrations_to_undo, part_refusal = _include_generated_part_groups(
+        state, migrations_to_undo, applied_migrations, migration_rules, version_ranks
+    )
+    if part_refusal:
+        return UndoPlan(
+            state=state,
+            current_version=current_version,
+            steps=(),
+            refusal=part_refusal,
+            selected=tuple(migrations_to_undo),
+        )
 
     # Resolve every undo script before any write so a missing script
     # anywhere in the plan refuses the real run exactly like the dry run,
