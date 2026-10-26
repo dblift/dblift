@@ -121,4 +121,8 @@ class SqlglotStatementFactsReader:
                 name="sqlglot",
             ) from exc
 
-        return read_statement_facts(sql, dialect=self.dialect)
+        return read_statement_facts(
+            sql,
+            dialect=self.dialect,
+            allow_leading_dot=self.spec is not None and self.spec.allow_leading_dot_relation,
+        )

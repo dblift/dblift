@@ -12,7 +12,7 @@ from typing import Optional, Tuple, TypeVar
 from sqlglot import exp, parse_one
 from sqlglot.dialects import Dialect
 from sqlglot.errors import ParseError, TokenError
-from sqlglot.tokens import TokenType
+from sqlglot.tokens import Token, TokenType
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
@@ -501,6 +501,12 @@ def _head_tokens_prove_name(
         return False
     if len(source) > len(proposed) and source[len(proposed)].token_type == TokenType.DOT:
         return False  # a further name part means the proposed identity is incomplete
+    if (
+        len(source) > len(proposed)
+        and source[len(proposed)].token_type == TokenType.STAR
+        and source[len(proposed)].start == source[len(proposed) - 1].end + 1
+    ):
+        return False  # a wildcard attached to the name is not a proven identity
     if len(source) > len(proposed) and source[len(proposed)].token_type in {
         TokenType.L_BRACE,
         TokenType.R_BRACE,
@@ -617,7 +623,63 @@ def _bind_name_part(part: Optional[exp.Expression], dialect: str, sql: str) -> b
     return isinstance(start, int) and isinstance(end, int) and sql[start : end + 1] == part.name
 
 
-def _unread_names(ast: exp.Expr, dialect: str, sql: str = "") -> Optional[str]:
+def _table_name_matches_source(
+    table: exp.Table,
+    tokens: list[Token],
+    token_positions: dict[int, int],
+    allow_leading_dot: bool,
+) -> bool:
+    """Reject empty or omitted source components in a parsed table name."""
+    identifiers = table.parts
+    if not identifiers or any(not isinstance(part, exp.Identifier) for part in identifiers):
+        return True  # other name forms have their own guards
+    if any(not part.name for part in identifiers):
+        return False
+    first_start = identifiers[0].meta.get("start")
+    last_start = identifiers[-1].meta.get("start")
+    if not isinstance(first_start, int) or not isinstance(last_start, int):
+        return True  # some synthetic table nodes have no source position
+    first = token_positions.get(first_start)
+    last = token_positions.get(last_start)
+    if first is None or last is None:
+        return True  # a rewritten or synthetic node has no matching source tokens
+    if tokens[first].text != identifiers[0].meta.get("written", identifiers[0].name):
+        return True
+    name_tokens = tokens[first : last + 1]
+    if any(
+        first.token_type == second.token_type == TokenType.DOT
+        for first, second in zip(name_tokens, name_tokens[1:])
+    ):
+        return False
+    parent = table.parent
+    while isinstance(parent, (exp.Schema, exp.Subquery)):
+        parent = parent.parent
+    relation_role = (
+        isinstance(parent, (exp.From, exp.Join, exp.Insert, exp.Update, exp.Delete, exp.Merge))
+        or isinstance(parent, (exp.TruncateTable, exp.Reference))
+        or (isinstance(parent, exp.Index) and table.arg_key == "table")
+        or (
+            isinstance(parent, (exp.Create, exp.Drop, exp.Alter))
+            and str(parent.args.get("kind") or "").upper() in {"TABLE", "VIEW"}
+        )
+    )
+    leading_dot_allowed = allow_leading_dot and relation_role
+    if (
+        not leading_dot_allowed
+        and first
+        and tokens[first - 1].token_type == TokenType.DOT
+        and (first < 2 or tokens[first - 2].token_type not in {TokenType.VAR, TokenType.IDENTIFIER})
+    ):
+        return False
+    if last + 1 < len(tokens) and tokens[last + 1].token_type == TokenType.STAR:
+        if tokens[last + 1].start == tokens[last].end + 1:
+            return False
+    return True
+
+
+def _unread_names(
+    ast: exp.Expr, dialect: str, sql: str = "", allow_leading_dot: bool = False
+) -> Optional[str]:
     """Name why a relation is not an identifier written in the statement."""
     if isinstance(ast, exp.Copy):
         return None  # a COPY file path is a string, and the statement is opaque already
@@ -629,7 +691,15 @@ def _unread_names(ast: exp.Expr, dialect: str, sql: str = "") -> Optional[str]:
         and str(ast.args.get("kind") or "").upper() in _PROGRAM_KINDS
     )
     words = _clause_words(dialect, routine)
+    tokens: Optional[list[Token]] = None
+    token_positions: dict[int, int] = {}
     for table in ast.find_all(exp.Table):
+        if sql:
+            if tokens is None:
+                tokens = Dialect.get_or_raise(dialect).tokenize(sql)
+                token_positions = {token.start: index for index, token in enumerate(tokens)}
+            if not _table_name_matches_source(table, tokens, token_positions, allow_leading_dot):
+                return f"{dialect} object name is not fully represented by the grammar"
         parts = [table.args.get(key) for key in ("this", "db", "catalog")]
         if snowflake and any(isinstance(part, (exp.Parameter, exp.Literal)) for part in parts):
             return _SNOWFLAKE_DYNAMIC_NAMES
@@ -2340,7 +2410,9 @@ def _mysql_metadata_table(ast: exp.Show | exp.Describe, sql: str) -> Optional[ex
     return table
 
 
-def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
+def read_statement_facts(
+    sql: str, *, dialect: str, allow_leading_dot: bool = False
+) -> StatementFacts:
     """Read one already-split statement; never retry a second extractor.
 
     Text that does not tokenize is reported as an error. A statement the grammar does not
@@ -2517,7 +2589,7 @@ def read_statement_facts(sql: str, *, dialect: str) -> StatementFacts:
             diagnostic=f"{dialect} relation qualification is not fully represented",
         )
 
-    unread_names = _unread_names(ast, dialect, sql)
+    unread_names = _unread_names(ast, dialect, sql, allow_leading_dot)
     if unread_names is not None:
         head = _head_facts(sql, "", dialect=dialect)
         return StatementFacts(head.operation, head.kind, diagnostic=unread_names)

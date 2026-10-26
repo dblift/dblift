@@ -340,6 +340,8 @@ class LexicalSpec:
     refused_character: str = ""
     refused_character_name: str = ""
     refused_reason: str = ""
+    #: Whether a table name may begin with a dot and use the default database.
+    allow_leading_dot_relation: bool = False
 
     @property
     def trailing_edge_blanks(self) -> str:
