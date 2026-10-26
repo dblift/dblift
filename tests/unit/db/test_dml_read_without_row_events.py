@@ -115,3 +115,40 @@ def test_unread_db2_query_still_fails_closed(statement):
     assert quirks.statement_facts(statement).events is None
     assert analyze_dml(statement, quirks=quirks).events is None
     assert updates_restore_key(statement, ["id"], quirks=quirks) is True
+
+
+@pytest.mark.parametrize(
+    "statement",
+    (
+        "SELECT 2",
+        "SELECT id FROM t",
+        "SELECT 1 FROM SYSIBM.SYSDUMMY1",
+        "VALUES 2",
+        "WITH c AS (SELECT id FROM t) SELECT id FROM c",
+    ),
+)
+def test_valid_db2_query_has_no_row_events(statement):
+    quirks = ProviderRegistry.get_quirks("db2")
+
+    assert quirks.statement_facts(statement).events == frozenset()
+    assert analyze_dml(statement, quirks=quirks).events == set()
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is False
+
+
+@pytest.mark.parametrize(
+    "statement",
+    (
+        "SELECT",
+        "SELECT /*",
+        "SELECT id FROM",
+        "SELECT 1 FROM SYSIBM.",
+        "WITH c AS (SELECT 1) SELECT * FROM",
+        "WITH changed AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 2)) SELECT id FROM changed",
+    ),
+)
+def test_unread_or_data_changing_db2_query_has_unknown_row_events(statement):
+    quirks = ProviderRegistry.get_quirks("db2")
+
+    assert quirks.statement_facts(statement).events is None
+    assert analyze_dml(statement, quirks=quirks).events is None
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is True
