@@ -911,10 +911,17 @@ def _unread_column_definition(definition: exp.ColumnDef) -> bool:
     )
 
 
+def _ddl_object_type(kind: str, dialect: str) -> SqlObjectType:
+    if dialect == "postgres":  # lint: allow-dialect-string: PostgreSQL foreign-table grammar
+        if kind == "FOREIGN TABLE":
+            return SqlObjectType.TABLE
+    return SqlObjectType.__members__.get(kind, SqlObjectType.UNKNOWN)
+
+
 def _created_object_type(ast: exp.Create, dialect: str) -> SqlObjectType:
     """Select the created object type, including dialect-specific view properties."""
     kind = str(ast.args.get("kind") or "").upper()
-    object_type = SqlObjectType.__members__.get(kind, SqlObjectType.UNKNOWN)
+    object_type = _ddl_object_type(kind, dialect)
     if dialect == "tsql" and kind in {  # lint: allow-dialect-string: T-SQL index modifiers
         "CLUSTERED INDEX",
         "NONCLUSTERED INDEX",
@@ -2411,7 +2418,11 @@ def _mysql_metadata_table(ast: exp.Show | exp.Describe, sql: str) -> Optional[ex
 
 
 def read_statement_facts(
-    sql: str, *, dialect: str, allow_leading_dot: bool = False
+    sql: str,
+    *,
+    dialect: str,
+    allow_leading_dot: bool = False,
+    read_dialect: Optional[type[Dialect]] = None,
 ) -> StatementFacts:
     """Read one already-split statement; never retry a second extractor.
 
@@ -2460,7 +2471,7 @@ def read_statement_facts(
         if bracketed is not None:
             return bracketed
     try:
-        ast = parse_one(_UPDATE_OR.sub(r"\1", sql), read=dialect)
+        ast = parse_one(_UPDATE_OR.sub(r"\1", sql), read=read_dialect or dialect)
         if dialect == "oracle" and ast is not None:  # lint: allow-dialect-string: Oracle folding
             unread_reason = (
                 "oracle name holds a letter whose upper-case form is not one character"
@@ -2980,7 +2991,7 @@ def read_statement_facts(
 
     if isinstance(ast, exp.Drop):
         kind = str(ast.args.get("kind") or "").upper()
-        object_type = SqlObjectType.__members__.get(kind, SqlObjectType.UNKNOWN)
+        object_type = _ddl_object_type(kind, dialect)
         if dialect == "snowflake" and (  # lint: allow-dialect-string: unmodelled Snowflake DDL
             object_type == SqlObjectType.UNKNOWN or kind == "ROLE"
         ):
@@ -3110,9 +3121,8 @@ def read_statement_facts(
         return StatementFacts("DROP", "DDL", dropped_objects, indexed_table=indexed_table)
 
     if isinstance(ast, exp.Alter):
-        object_type = SqlObjectType.__members__.get(
-            str(ast.args.get("kind") or "").upper(), SqlObjectType.UNKNOWN
-        )
+        kind = str(ast.args.get("kind") or "").upper()
+        object_type = _ddl_object_type(kind, dialect)
         identity = _named(ast.this, object_type, "altered") if ast.this is not None else None
         actions = ast.args.get("actions") or []
         if any(

@@ -9,6 +9,8 @@ from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
 from dblift.db.feature_gate import FeatureGate
+from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
+from dblift.db.plugins.postgresql.statement_facts import PostgresqlStatementFactsReader
 
 # Each entry: (compiled regex, ErrorCategory). Sourced by
 # ``DatabaseErrorClassifier`` via ``error_patterns()`` (ADR-26 A2).
@@ -87,6 +89,15 @@ class PostgresqlQuirks(BaseQuirks):
         """Initialize PostgreSQL quirks with the dialect name."""
         super().__init__(dialect_name=dialect_name)
 
+    def statement_facts_reader(self) -> "StatementFactsReader":
+        """Use the foreign-table grammar only for PostgreSQL itself."""
+        if (
+            self.dialect_name == "postgresql"
+            and self.statement_facts_class is SqlglotStatementFactsReader
+        ):
+            return PostgresqlStatementFactsReader(self.sqlglot_dialect, self.lexical_spec())
+        return super().statement_facts_reader()
+
     def error_patterns(self) -> "List[Tuple[re.Pattern[str], ErrorCategory]]":
         """PostgreSQL SQLSTATE-class error-classification patterns (ADR-26 A2)."""
         return _ERROR_PATTERNS
@@ -108,8 +119,6 @@ class PostgresqlQuirks(BaseQuirks):
 
     def lexical_spec(self) -> "LexicalSpec":
         """The lexical specification shared by PostgreSQL-compatible plugins."""
-        from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
-
         return POSTGRESQL_SPEC
 
     def blank_comments(self, sql: str) -> str:

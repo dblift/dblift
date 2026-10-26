@@ -4,6 +4,7 @@ import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.statement_facts import NamedObject, SqlglotStatementFactsReader
+from dblift.db.plugins.postgresql.statement_facts import PostgresqlStatementFactsReader
 from dblift.db.provider_registry import ProviderRegistry
 
 
@@ -19,10 +20,12 @@ def test_yugabyte_has_its_own_sqlglot_facts_reader():
     assert type(reader) is not SqlglotStatementFactsReader
     assert vars(type(quirks)).get("statement_facts_class") is type(reader)
     assert reader.dialect == "postgres"
-    for plugin in ("postgresql", "cockroachdb"):
-        assert type(ProviderRegistry.get_quirks(plugin).statement_facts_reader()) is (
-            SqlglotStatementFactsReader
-        )
+    assert type(ProviderRegistry.get_quirks("postgresql").statement_facts_reader()) is (
+        PostgresqlStatementFactsReader
+    )
+    assert type(ProviderRegistry.get_quirks("cockroachdb").statement_facts_reader()) is (
+        SqlglotStatementFactsReader
+    )
 
 
 @pytest.mark.parametrize(
@@ -130,9 +133,9 @@ def test_alter_sequence_names_its_sequence_through_each_mysql_plugin(plugin):
 @pytest.mark.parametrize(
     ("plugin", "sql", "operation"),
     [
-        ("postgresql", "CREATE FOREIGN TABLE ft (id integer) SERVER s", "CREATE"),
-        ("postgresql", "ALTER FOREIGN TABLE ft ADD COLUMN c integer", "ALTER"),
-        ("postgresql", "DROP FOREIGN TABLE ft", "DROP"),
+        ("postgresql", "CREATE FOREIGN TABLE ft PARTITION OF parent DEFAULT SERVER s", "CREATE"),
+        ("postgresql", "ALTER FOREIGN TABLE ft SET SCHEMA ns", "ALTER"),
+        ("postgresql", "DROP FOREIGN TABLE ft*", "DROP"),
     ],
 )
 def test_unsupported_ddl_keeps_names_opaque_until_the_grammar_supports_it(plugin, sql, operation):
