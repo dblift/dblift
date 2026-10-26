@@ -64,6 +64,127 @@ def test_unread_db2_create_table_still_fails_closed():
     assert updates_restore_key(statement, ["id"], quirks=quirks) is True
 
 
+@pytest.mark.parametrize("dialect", ["postgresql", "mysql", "mariadb"])
+@pytest.mark.parametrize("statement", ["GRANT SELECT ON t TO u", "REVOKE SELECT ON t FROM u"])
+def test_read_privilege_change_has_no_row_events(dialect, statement):
+    quirks = ProviderRegistry.get_quirks(dialect)
+    facts = quirks.statement_facts(statement)
+
+    assert facts.kind == "DDL"
+    assert not facts.opaque
+    assert facts.events == frozenset()
+    assert analyze_dml(statement, quirks=quirks).events == set()
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is False
+
+
+@pytest.mark.parametrize(
+    ("dialect", "statement"),
+    [
+        ("postgresql", "GRANT SELECT ON ALL TABLES IN SCHEMA s TO u"),
+        ("mysql", "GRANT ALL ON *.* TO u"),
+        ("mariadb", "GRANT ALL ON *.* TO u"),
+    ],
+)
+def test_unread_privilege_change_keeps_unknown_row_events(dialect, statement):
+    quirks = ProviderRegistry.get_quirks(dialect)
+
+    assert quirks.statement_facts(statement).events is None
+    assert analyze_dml(statement, quirks=quirks).events is None
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is True
+
+
+@pytest.mark.parametrize(
+    ("dialect", "statement"),
+    [
+        ("duckdb", "SHOW TABLES"),
+        ("duckdb", "DESCRIBE t"),
+        ("mysql", "SHOW CREATE TABLE t"),
+        ("mysql", "DESCRIBE t"),
+        ("postgresql", "COMMENT ON TABLE t IS 'note'"),
+        ("oracle", "COMMENT ON TABLE t IS 'note'"),
+        ("redshift", "COMMENT ON TABLE t IS 'note'"),
+        ("duckdb", "COMMENT ON TABLE t IS 'note'"),
+    ],
+)
+def test_read_metadata_statement_has_no_row_events(dialect, statement):
+    quirks = ProviderRegistry.get_quirks(dialect)
+    facts = quirks.statement_facts(statement)
+
+    assert not facts.opaque
+    assert facts.events == frozenset()
+    assert analyze_dml(statement, quirks=quirks).events == set()
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is False
+
+
+@pytest.mark.parametrize(
+    ("dialect", "statement"),
+    [
+        ("mysql", "SHOW STATUS"),
+        ("duckdb", "COMMENT ON TABLE t IS x"),
+        ("postgresql", "COMMENT ON TABLE t IS x"),
+    ],
+)
+def test_unread_metadata_statement_keeps_unknown_row_events(dialect, statement):
+    quirks = ProviderRegistry.get_quirks(dialect)
+
+    assert quirks.statement_facts(statement).events is None
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is True
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "mysql", "sqlite", "duckdb"])
+def test_read_simple_create_index_has_no_row_events(dialect):
+    quirks = ProviderRegistry.get_quirks(dialect)
+    statement = "CREATE INDEX ix ON t (id)"
+    facts = quirks.statement_facts(statement)
+
+    assert not facts.opaque
+    assert facts.indexed_columns == ("id",)
+    assert facts.events == frozenset()
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is False
+
+
+@pytest.mark.parametrize("dialect", ["postgresql", "sqlite", "duckdb"])
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "CREATE INDEX ix ON t ((id + 1))",
+        "CREATE INDEX ix ON t (id) WHERE id > 0",
+        "CREATE INDEX ix ON t (id) WHERE lower(name) = 'x'",
+    ],
+)
+def test_unread_index_expression_keeps_unknown_row_events(dialect, statement):
+    quirks = ProviderRegistry.get_quirks(dialect)
+
+    assert quirks.statement_facts(statement).events is None
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is True
+
+
+@pytest.mark.parametrize(
+    ("dialect", "statement"),
+    [
+        ("postgresql", "COPY t TO STDOUT"),
+        ("postgresql", "COPY t TO '/tmp/t.csv'"),
+        ("duckdb", "COPY t TO '/tmp/t.csv'"),
+    ],
+)
+def test_read_copy_to_file_or_stream_has_no_row_events(dialect, statement):
+    quirks = ProviderRegistry.get_quirks(dialect)
+    facts = quirks.statement_facts(statement)
+
+    assert facts.kind == "QUERY"
+    assert not facts.opaque
+    assert facts.events == frozenset()
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is False
+
+
+def test_copy_to_program_keeps_unknown_row_events():
+    quirks = ProviderRegistry.get_quirks("postgresql")
+    statement = "COPY t TO PROGRAM 'command'"
+
+    assert quirks.statement_facts(statement).events is None
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is True
+
+
 @pytest.mark.parametrize(
     ("dialect", "statement"),
     (
