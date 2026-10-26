@@ -360,6 +360,19 @@ def test_generated_group_keeps_highest_first_order_with_interleaved_migration() 
     assert _versions(_plan(manager, target_version="0")) == ["9.2", "10", "9.1"]
 
 
+def test_generated_part_widening_inserts_only_missing_member_by_application_rank() -> None:
+    parts = [_legacy_generated_part(1, 2), _legacy_generated_part(2, 2)]
+    first, unrelated, last = _applied("9.1", 1), _applied("10", 2), _applied("9.2", 3)
+    first.script_name, last.script_name = (part.script_name for part in parts)
+    manager, _, _ = _manager([first, unrelated, last], ["9.1", "9.2", "10"], forward_parts=parts)
+
+    assert _versions(_plan(manager, target_version="0", exclude_versions=["9.1"])) == [
+        "9.2",
+        "10",
+        "9.1",
+    ]
+
+
 def test_generated_group_preserves_reverse_install_order_of_other_migrations() -> None:
     parts = [_legacy_generated_part(1, 2), _legacy_generated_part(2, 2)]
     first, second, ten, eight = (
@@ -374,6 +387,35 @@ def test_generated_group_preserves_reverse_install_order_of_other_migrations() -
     )
 
     assert _versions(_plan(manager, target_version="0")) == ["8", "10", "9.2", "9.1"]
+
+
+def test_generated_group_preserves_existing_tagged_group_selection_order() -> None:
+    parts = [_legacy_generated_part(1, 2), _legacy_generated_part(2, 2)]
+    tag = f"{GROUP_TAG_PREFIX}feature"
+    first, second = _applied("9.1", 1), _applied("9.2", 2)
+    twelve, eleven = _applied("12", 3, tags=[tag]), _applied("11", 4, tags=[tag])
+    first.script_name, second.script_name = (part.script_name for part in parts)
+    manager, _, _ = _manager(
+        [first, second, twelve, eleven], ["9.1", "9.2", "12", "11"], forward_parts=parts
+    )
+
+    assert _versions(_plan(manager, target_version="0")) == ["12", "11", "9.2", "9.1"]
+
+
+def test_generated_part_widening_refuses_conflicting_existing_selection_order() -> None:
+    parts = [_legacy_generated_part(1, 2), _legacy_generated_part(2, 2)]
+    tag = f"{GROUP_TAG_PREFIX}feature"
+    first, second = _applied("9.1", 1), _applied("9.2", 2)
+    ten, eight = _applied("10", 3, tags=[tag]), _applied("8", 4, tags=[tag])
+    first.script_name, second.script_name = (part.script_name for part in parts)
+    manager, _, _ = _manager(
+        [first, second, ten, eight], ["9.1", "9.2", "10", "8"], forward_parts=parts
+    )
+
+    plan = _plan(manager, target_version="0", exclude_versions=["9.2"])
+
+    assert plan.steps == ()
+    assert "order" in (plan.refusal or "")
 
 
 @pytest.mark.parametrize("malformed_sibling", [False, True])

@@ -159,12 +159,10 @@ def _include_generated_part_groups(
         )
     }
     expanded = list(selected)
-    touched = False
     for count, parts, invalid in groups.values():
         expected = _expected_part_names(parts, count)
         if not any(expected.get(str(m.version)) == m.script_name for m in expanded):
             continue
-        touched = True
         missing = [
             name
             for version, name in expected.items()
@@ -193,11 +191,41 @@ def _include_generated_part_groups(
                 "Check migration history and recover this set manually."
             )
         selected_versions = {str(m.version) for m in expanded}
-        expanded.extend(
-            member for member in members if str(member.version) not in selected_versions
-        )
-    if touched:
-        expanded.sort(key=installed_rank, reverse=True)
+        for member in reversed(members):
+            if str(member.version) in selected_versions:
+                continue
+            rank = installed_rank(member)
+            if any(installed_rank(existing) == rank for existing in expanded):
+                return (
+                    selected,
+                    "Cannot undo a generated part set with ambiguous application order.",
+                )
+            first = max(
+                (
+                    index + 1
+                    for index, existing in enumerate(expanded)
+                    if installed_rank(existing) > rank
+                ),
+                default=0,
+            )
+            last = min(
+                (
+                    index
+                    for index, existing in enumerate(expanded)
+                    if installed_rank(existing) < rank
+                ),
+                default=len(expanded),
+            )
+            if first > last:
+                return (
+                    selected,
+                    "Cannot undo a generated part set without changing existing undo order.",
+                )
+            expanded.insert(first, member)
+            selected_versions.add(str(member.version))
+        positions = [expanded.index(member) for member in reversed(members)]
+        if positions != sorted(positions):
+            return selected, "Cannot undo a generated part set out of part order."
     return expanded, None
 
 
