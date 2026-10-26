@@ -139,12 +139,12 @@ def _include_generated_part_groups(
     groups = _generated_part_groups(state)
     if not groups or not selected:
         return selected, None
-    versions_seen: Dict[str, int] = {}
+    versions_seen: Dict[Tuple[str, str], int] = {}
     for _, parts, _ in groups.values():
         for part in parts.values():
-            version = str(part.version)
-            versions_seen[version] = versions_seen.get(version, 0) + 1
-    if any(versions_seen.get(str(m.version), 0) > 1 for m in selected):
+            identity = (str(part.version), part.script_name)
+            versions_seen[identity] = versions_seen.get(identity, 0) + 1
+    if any(versions_seen.get((str(m.version), m.script_name), 0) > 1 for m in selected):
         return (
             selected,
             "Cannot undo an ambiguous generated part set: a version exists in multiple groups.",
@@ -162,11 +162,7 @@ def _include_generated_part_groups(
     touched = False
     for count, parts, invalid in groups.values():
         expected = _expected_part_names(parts, count)
-        present_versions = {str(part.version) for part in parts.values()}
-        if not any(
-            str(m.version) in present_versions or expected.get(str(m.version)) == m.script_name
-            for m in expanded
-        ):
+        if not any(expected.get(str(m.version)) == m.script_name for m in expanded):
             continue
         touched = True
         missing = [

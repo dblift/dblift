@@ -405,6 +405,14 @@ def test_surviving_generated_header_does_not_claim_unrelated_same_version() -> N
     assert _versions(_plan(manager)) == ["9.2"]
 
 
+def test_generated_header_does_not_claim_ordinary_history_at_its_own_version() -> None:
+    part = _legacy_generated_part(1, 2)
+    ordinary = _applied("9.1", 1)
+    manager, _, _ = _manager([ordinary], ["9.1"], forward_parts=[part])
+
+    assert _versions(_plan(manager)) == ["9.1"]
+
+
 @pytest.mark.parametrize(
     "content",
     [
