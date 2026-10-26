@@ -88,7 +88,7 @@ def _scan_line(sql: str, start: int, eol: int) -> Tuple[int, bool]:
 class LexicalTokenizer(BaseTokenizer):
     """Use the base character scanner with the selected plugin's lexical rules."""
 
-    def __init__(self, sql: str, *, spec: LexicalSpec):
+    def __init__(self, sql: str, *, spec: LexicalSpec, masking_view: bool = False):
         """Read source positions with the plugin's lexical policies."""
         delimiter_rules = spec.delimiter_script
         terminator_rules = spec.terminator_script
@@ -122,8 +122,10 @@ class LexicalTokenizer(BaseTokenizer):
         # (position, opener length) of the last alternative-quote lookup.
         self._opener_at = (-1, 0)
         rules = spec.client_script
-        self._reads_directives = rules is not None and bool(
-            rules.directives or rules.prefix_directives
+        self._reads_directives = (
+            not masking_view
+            and rules is not None
+            and bool(rules.directives or rules.prefix_directives)
         )
         # Whether a statement can begin at the cursor, and the statement being read:
         # its head words, and whether that head makes it a unit.
@@ -218,6 +220,48 @@ class LexicalTokenizer(BaseTokenizer):
             token = self._next_token()
             if token is not None and token.type != TokenType.EOF:
                 yield token
+
+    def masking_spans(self) -> Tuple[List[Tuple[int, int]], List[Tuple[int, int]]]:
+        """Read a client's comment-mask view with the shared lexeme scanner."""
+        rules = self.spec.masking
+        if rules is None:
+            raise ValueError("this dialect has no masking view")
+        client_rules = self.spec.client_script
+        assert client_rules is not None
+        directives: List[Tuple[int, int]] = []
+        at_start = True
+        in_unit = False
+        while self.pos < len(self.sql):
+            self._skip_whitespace()
+            if self.pos >= len(self.sql):
+                break
+            if at_start:
+                line_start = self.sql.rfind("\n", 0, self.pos) + 1
+                eol = self._eol(self.pos)
+                comment = self.sql.find("--", self.pos, eol)
+                end = comment if comment >= 0 else eol
+                line = self.sql[line_start:end].upper().strip()
+                if line.endswith(";"):
+                    line = line[:-1].rstrip()
+                if not self.sql[line_start : self.pos].strip() and any(
+                    pattern.match(line) for pattern in rules.directives
+                ):
+                    directives.append((line_start, end))
+                    self.read(end - self.pos)
+                    continue
+            token = self._next_sql_token()
+            if token is None or token.type in (TokenType.COMMENT, TokenType.EOF):
+                continue
+            if at_start:
+                at_start = False
+                end = self.sql.find(";", token.pos)
+                head = self.sql[token.pos : end if end >= 0 else None].strip()
+                in_unit = bool(rules.unit_start.match(head) or rules.anonymous_start.match(head))
+            if token.text == client_rules.line_terminator and is_alone_on_line(self.sql, token.pos):
+                at_start, in_unit = True, False
+            elif token.text == ";" and not in_unit:
+                at_start = True
+        return directives, self.comments
 
     def _refuse_character(self) -> None:
         """Refuse the script when it holds the specification's ``refused_character``.

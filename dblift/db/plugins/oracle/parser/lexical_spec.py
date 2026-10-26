@@ -1,5 +1,6 @@
 """Oracle lexical facts from docs/sql-parsing/oracle.md."""
 
+import re
 from typing import Tuple
 
 from dblift.core.sql_parser.lexical_spec import (
@@ -9,7 +10,9 @@ from dblift.core.sql_parser.lexical_spec import (
     HeadPattern,
     HeadStep,
     LexicalSpec,
+    MaskingRules,
 )
+from dblift.db.plugins.oracle.parser.masking_rules import SQLPLUS_DIRECTIVES
 
 _BLOCK = (("DECLARE",), ("BEGIN",))
 _UNITS = tuple(
@@ -138,5 +141,16 @@ ORACLE_SPEC = LexicalSpec(
         substitution_char="&",
         exec_wrapper=("BEGIN ", "; END;"),
         driver_strips_edges=True,
+    ),
+    masking=MaskingRules(
+        directives=tuple(d.pattern for d in SQLPLUS_DIRECTIVES if d.filter_from_execution)
+        + tuple(d.pattern for d in SQLPLUS_DIRECTIVES if not d.filter_from_execution),
+        unit_start=re.compile(
+            r"^CREATE\s+(?:OR\s+REPLACE\s+)?(?:(?:NON)?EDITIONABLE\s+)?"
+            r"(?:PROCEDURE|FUNCTION|PACKAGE\s+BODY|PACKAGE|TRIGGER|TYPE\s+BODY|TYPE"
+            r"|COMPOUND\s+TRIGGER|(?:AND\s+(?:RESOLVE|COMPILE)\s+)?JAVA\s+SOURCE)",
+            re.IGNORECASE,
+        ),
+        anonymous_start=re.compile(r"^(?:DECLARE|BEGIN)\b", re.IGNORECASE),
     ),
 )

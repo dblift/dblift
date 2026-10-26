@@ -14,8 +14,7 @@ different contexts with subtly different needs:
   preserved). Used as the first stage of the statement splitter
   where column alignment would otherwise trip up boundary regexes.
 
-Comments are found with :class:`OracleTokenizer`, the same scanner the
-tokenizer split path uses, so ``--`` and ``/*`` inside plain and
+Comments are found with the shared lexical engine, so ``--`` and ``/*`` inside plain and
 q-quoted literals (``'a -- b'``, ``q'[--]'``) are kept as data, and
 SQL*Plus directive lines (``REM don't run twice``) are left untouched.
 """
@@ -24,8 +23,8 @@ from __future__ import annotations
 
 import re
 
-from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.oracle.parser._sqlplus import tokenize_outside_sqlplus_directives
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 
 __all__ = ["strip_comments", "strip_sql_comments"]
 
@@ -33,7 +32,7 @@ _HORIZONTAL_WS = re.compile(r"[ \t]+")
 
 
 def _remove_comments(sql: str) -> str:
-    """Cut out every comment the Oracle tokenizer finds, literals untouched.
+    """Cut out every comment the shared masking view finds, literals untouched.
 
     A line comment runs to (not including) the newline; a block comment to
     the first ``*/`` (Oracle comments do not nest). An unterminated ``/*``
@@ -43,21 +42,13 @@ def _remove_comments(sql: str) -> str:
     """
     if "--" not in sql and "/*" not in sql:
         return sql
-    tokens, _ = tokenize_outside_sqlplus_directives(sql)
+    _, comments = LexicalEngine(ORACLE_SPEC).masking_spans(sql)
     parts = []
     last = 0
-    for token in tokens:
-        if token.type is not TokenType.COMMENT:
-            continue
-        if sql.startswith("--", token.pos):
-            end = sql.find("\n", token.pos)
-            end = end if end != -1 else len(sql)
-        else:
-            end = sql.find("*/", token.pos + 2)
-            if end == -1:
-                break
-            end += 2
-        parts.append(sql[last : token.pos])
+    for start, end in comments:
+        if sql.startswith("/*", start) and not sql.endswith("*/", start, end):
+            break
+        parts.append(sql[last:start])
         last = end
     parts.append(sql[last:])
     return "".join(parts)

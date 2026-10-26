@@ -67,10 +67,11 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
         )
 
     def test_oracle_tokenizer_claims_double_quotes_and_q_quotes(self) -> None:
-        from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
+        from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
+        from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 
         self._assert_no_drops(
-            OracleTokenizer,
+            LexicalTokenizer,
             [
                 'CREATE TABLE "MyTable" (id NUMBER);',
                 "SELECT q'[O'Reilly]' FROM dual;",
@@ -79,6 +80,7 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
                 'INSERT INTO t ("Col") VALUES (1);',
                 "SELECT 1 || 2 FROM dual;",
             ],
+            spec=ORACLE_SPEC,
         )
 
     def test_postgresql_tokenizer_claims_dollar_quotes_and_quoted_idents(self) -> None:

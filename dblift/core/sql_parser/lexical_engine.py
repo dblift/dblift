@@ -1,9 +1,11 @@
 """One lexical entry point for splitting and comment masking."""
 
 import logging
+import warnings
 from typing import Iterable, List, Optional
 
 from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.sql_parser.base_tokenizer import TokenizerWarning
 from dblift.core.sql_parser.lexical_spec import BOM, LexicalSpec
 from dblift.core.sql_parser.lexical_statement_parser import LexicalStatementParser
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
@@ -201,3 +203,10 @@ class LexicalEngine:
         if self.spec.segment_script is not None:
             return masked[tokenizer.origin :]  # a segment script's byte order mark is not text
         return masked[1:] if self.spec.sqlite_shell and script.startswith("\ufeff") else masked
+
+    def masking_spans(self, script: str) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
+        """Return directive and comment spans from the client's masking view."""
+        tokenizer = LexicalTokenizer(script, spec=self.spec, masking_view=True)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", TokenizerWarning)
+            return tokenizer.masking_spans()

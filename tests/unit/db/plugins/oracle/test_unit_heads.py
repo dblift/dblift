@@ -4,13 +4,22 @@ import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.statement_reader import StatementReader
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.oracle.parser._unit_heads import head_decided
-from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
+from dblift.core.sql_parser.unit_heads import decide
+from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 
 
 def _head(sql):
-    return [t for t in OracleTokenizer(sql).tokenize() if t.type != TokenType.EOF][:8]
+    return [
+        t for t in LexicalTokenizer(sql, spec=ORACLE_SPEC).tokenize() if t.type != TokenType.EOF
+    ][:8]
+
+
+def head_decided(tokens):
+    rules = ORACLE_SPEC.client_script
+    assert rules is not None
+    return decide(rules.unit_heads, [t.text.upper() for t in tokens], rules.max_head_tokens)
 
 
 UNIT_HEADS = [
