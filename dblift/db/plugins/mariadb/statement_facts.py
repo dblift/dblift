@@ -107,11 +107,7 @@ def _alter_sequence_options_are_proven(sql: str, facts: StatementFacts) -> bool:
     seen: set[str] = set()
     while at < len(tokens):
         if word("NO"):
-            option = (
-                "MINVALUE"
-                if word("MINVALUE")
-                else "MAXVALUE" if word("MAXVALUE") else "CYCLE" if word("CYCLE") else None
-            )
+            option = "MINVALUE" if word("MINVALUE") else "MAXVALUE" if word("MAXVALUE") else None
             if option is None:
                 return False
         elif word("NOMINVALUE"):
