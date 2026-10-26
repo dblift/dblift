@@ -143,9 +143,17 @@ def test_read_simple_create_index_has_no_row_events(dialect):
     assert updates_restore_key(statement, ["id"], quirks=quirks) is False
 
 
-def test_unread_index_expression_keeps_unknown_row_events():
-    quirks = ProviderRegistry.get_quirks("postgresql")
-    statement = "CREATE INDEX ix ON t ((id + 1))"
+@pytest.mark.parametrize("dialect", ["postgresql", "sqlite", "duckdb"])
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "CREATE INDEX ix ON t ((id + 1))",
+        "CREATE INDEX ix ON t (id) WHERE id > 0",
+        "CREATE INDEX ix ON t (id) WHERE lower(name) = 'x'",
+    ],
+)
+def test_unread_index_expression_keeps_unknown_row_events(dialect, statement):
+    quirks = ProviderRegistry.get_quirks(dialect)
 
     assert quirks.statement_facts(statement).events is None
     assert updates_restore_key(statement, ["id"], quirks=quirks) is True

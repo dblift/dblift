@@ -3095,6 +3095,11 @@ def read_statement_facts(
         diagnostic = f"{dialect} virtual table module arguments are opaque" if virtual else None
         if isinstance(subject, exp.Index) and indexed_columns is None:
             diagnostic = f"{dialect} index expression columns are opaque"
+        index_has_only_columns = (
+            isinstance(subject, exp.Index)
+            and (params := subject.args.get("params")) is not None
+            and not any(value for key, value in params.args.items() if key != "columns")
+        )
         return StatementFacts(
             "CREATE",
             "DDL",
@@ -3107,7 +3112,11 @@ def read_statement_facts(
                 frozenset()
                 if (
                     (object_type == SqlObjectType.TABLE and schema_node is not None)
-                    or (object_type == SqlObjectType.INDEX and indexed_columns is not None)
+                    or (
+                        object_type == SqlObjectType.INDEX
+                        and indexed_columns is not None
+                        and index_has_only_columns
+                    )
                 )
                 and not ast.args.get("replace")
                 and not ast.args.get("expression")
