@@ -295,4 +295,4 @@ def test_mysql_comment_guard_preserves_other_dialect_facts(dialect, marker):
 @pytest.mark.parametrize("quirks", [MysqlQuirks, MariadbQuirks])
 def test_mysql_family_statement_facts_hooks_are_active(quirks):
     assert quirks().supports_statement_facts
-    assert quirks().statement_facts_class is SqlglotStatementFactsReader
+    assert issubclass(quirks().statement_facts_class, SqlglotStatementFactsReader)

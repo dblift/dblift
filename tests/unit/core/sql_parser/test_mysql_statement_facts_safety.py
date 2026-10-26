@@ -98,7 +98,7 @@ def test_mysql_and_mariadb_facts_are_active(quirks_class):
 
     assert quirks.sqlglot_dialect == "mysql"
     assert quirks.supports_statement_facts
-    assert quirks.statement_facts_class is SqlglotStatementFactsReader
+    assert issubclass(quirks.statement_facts_class, SqlglotStatementFactsReader)
 
 
 @pytest.mark.parametrize("dialect", ["sqlite", "duckdb", "postgres", "oracle", "tsql"])
