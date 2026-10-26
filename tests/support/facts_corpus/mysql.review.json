@@ -2319,6 +2319,33 @@
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took `test` from its head; the reader names nothing.",
     "sql": "MERGE INTO test USING other ON (test.id = other.id)"
   },
+  "3924c2ff839ce47d": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "trigger: mysql DROP TRIGGER ON clause is not supported",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "https://github.com/dblift/dblift/issues/775",
+    "old": {
+      "analyzer": [
+        [
+          "TRIGGER",
+          "default_schema.users_bi"
+        ]
+      ],
+      "hybrid": [
+        [
+          "TRIGGER",
+          "users_bi",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "MySQL 8.4 DROP TRIGGER syntax ends with [schema_name.]trigger_name; it has no ON table clause (https://dev.mysql.com/doc/refman/8.4/en/drop-trigger.html). The frozen text extraction named the trigger from this unsupported head, while the reader leaves its identity opaque. Tracked in issue #775.",
+    "sql": "DROP TRIGGER users_bi ON users"
+  },
   "3a233d627c0c1e06": {
     "class": "role-differs",
     "facts": {
@@ -2472,6 +2499,33 @@
     "path": "analyzer",
     "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [\"a\"\"b\"] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) STRING(a\"b) R_BRACKET(]) L_PAREN(() VAR(id) INT(int). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [\"a\"\"b\"] (id int)"
+  },
+  "3bb4e2c5b872f698": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "trigger: mysql DROP TRIGGER ON clause is not supported",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "https://github.com/dblift/dblift/issues/775",
+    "old": {
+      "analyzer": [
+        [
+          "TRIGGER",
+          "default_schema.my_trigger"
+        ]
+      ],
+      "hybrid": [
+        [
+          "TRIGGER",
+          "my_trigger",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "MySQL 8.4 DROP TRIGGER syntax ends with [schema_name.]trigger_name; it has no ON table clause (https://dev.mysql.com/doc/refman/8.4/en/drop-trigger.html). The frozen text extraction named the trigger from this unsupported head, while the reader leaves its identity opaque. Tracked in issue #775.",
+    "sql": "DROP TRIGGER my_trigger ON my_table"
   },
   "3c188fc0a2909f33/analyzer": {
     "class": "opaque-reader-gap",
@@ -5602,6 +5656,33 @@
     "reason": "The proposed head takes a name from brackets, while mysql's source tokenizer does not produce the matching single IDENTIFIER/VAR name token at that position. The token prefix is recorded below; no native grammar rejection is inferred. Source head: 'CREATE TABLE [a]]b]]c] (id int)'; dialect tokens: CREATE(CREATE) TABLE(TABLE) L_BRACKET([) VAR(a) R_BRACKET(]) R_BRACKET(]) VAR(b) R_BRACKET(]). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
     "sql": "CREATE TABLE [a]]b]]c] (id int)"
   },
+  "8c71d100a80a073e": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "mysql DROP TRIGGER ON clause is not supported",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "https://github.com/dblift/dblift/issues/775",
+    "old": {
+      "analyzer": [
+        [
+          "TRIGGER",
+          "default_schema.my trigger"
+        ]
+      ],
+      "hybrid": [
+        [
+          "TRIGGER",
+          "my trigger",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "MySQL 8.4 DROP TRIGGER syntax ends with [schema_name.]trigger_name; it has no ON table clause (https://dev.mysql.com/doc/refman/8.4/en/drop-trigger.html). The frozen text extraction named the trigger from this unsupported head, while the reader leaves its identity opaque. Tracked in issue #775.",
+    "sql": "DROP TRIGGER \"my trigger\" ON my_table"
+  },
   "8cb881d12fef59a1/analyzer": {
     "class": "opaque-reader-gap",
     "facts": {
@@ -6824,6 +6905,33 @@
       "MySQL 8.4.11": "1064"
     },
     "sql": "DROP cannot be reversed"
+  },
+  "afa844944baef2cf": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "trigger: mysql DROP TRIGGER ON clause is not supported",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "https://github.com/dblift/dblift/issues/775",
+    "old": {
+      "analyzer": [
+        [
+          "TRIGGER",
+          "default_schema.trg_items_touch"
+        ]
+      ],
+      "hybrid": [
+        [
+          "TRIGGER",
+          "trg_items_touch",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "MySQL 8.4 DROP TRIGGER syntax ends with [schema_name.]trigger_name; it has no ON table clause (https://dev.mysql.com/doc/refman/8.4/en/drop-trigger.html). The frozen text extraction named the trigger from this unsupported head, while the reader leaves its identity opaque. Tracked in issue #775.",
+    "sql": "DROP TRIGGER IF EXISTS trg_items_touch ON public.items"
   },
   "afc454048e7de087/analyzer": {
     "class": "opaque-reader-gap",
@@ -9721,6 +9829,33 @@
     "path": "hybrid",
     "reason": "Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20). The text extraction took nothing from its head; the reader names `test_proc`.",
     "sql": "CREATE OR REPLACE PROCEDURE test_proc IS\n        BEGIN\n            INSERT INTO test_table VALUES (1);\n            COMMIT"
+  },
+  "faae6108307176c5": {
+    "class": "opaque-reader-gap",
+    "facts": {
+      "diagnostic": "trigger: mysql DROP TRIGGER ON clause is not supported",
+      "kind": "DDL",
+      "operation": "DROP"
+    },
+    "issue": "https://github.com/dblift/dblift/issues/775",
+    "old": {
+      "analyzer": [
+        [
+          "TRIGGER",
+          "default_schema.my_trigger"
+        ]
+      ],
+      "hybrid": [
+        [
+          "TRIGGER",
+          "my_trigger",
+          null
+        ]
+      ]
+    },
+    "path": "both",
+    "reason": "MySQL 8.4 DROP TRIGGER syntax ends with [schema_name.]trigger_name; it has no ON table clause (https://dev.mysql.com/doc/refman/8.4/en/drop-trigger.html). The frozen text extraction named the trigger from this unsupported head, while the reader leaves its identity opaque. Tracked in issue #775.",
+    "sql": "DROP TRIGGER IF EXISTS my_trigger ON myschema.my_table"
   },
   "fbacf9aaedf32281/hybrid": {
     "class": "opaque-reader-gap",
