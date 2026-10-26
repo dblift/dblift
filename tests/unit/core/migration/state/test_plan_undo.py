@@ -366,6 +366,12 @@ def test_generated_group_keeps_highest_first_order_with_interleaved_migration() 
         "-- Part 1 of 2; transactional.\nSELECT 1;\n",
         "-- Part 2 of 2; transactional.\n"
         "-- Split because dblift migrate refuses a file that mixes modes.\n",
+        "-- Part 1 of 2; transactional. altered\n"
+        "-- Split because dblift migrate refuses a file that mixes autocommit-only "
+        "and transactional statements; apply them in order.\n",
+        "-- Part 1 of 2; transactional.\n"
+        "-- Split because dblift migrate refuses a file that mixes autocommit-only "
+        "and transactional statements; apply them in order. altered\n",
     ],
 )
 def test_ordinary_or_malformed_part_header_does_not_infer_group_from_version(content) -> None:
@@ -374,7 +380,7 @@ def test_ordinary_or_malformed_part_header_does_not_infer_group_from_version(con
     part.content = content
     manager, _, _ = _manager([v1, v2], ["9.1", "9.2"], forward_parts=[part])
 
-    assert _versions(_plan(manager)) == ["9.2"]
+    assert _versions(_plan(manager, target_version="0")) == ["9.2", "9.1"]
 
 
 def test_a_missing_generated_part_file_refuses_undo() -> None:

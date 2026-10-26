@@ -62,9 +62,19 @@ class UndoPlan:
     missing_undo_script: Optional[Migration] = None
 
 
-_PART_HEADER = re.compile(r"^-- Part (\d+) of (\d+); ")
+_PART_HEADER = re.compile(
+    r"^-- Part (\d+) of (\d+); (?:transactional|autocommit-only \(.+\)|"
+    r"no statements; keeps every sync part paired with an undo part)\.$"
+)
 _PART_NAME = re.compile(r"^V(.+)_(\d+)__(.+)\.sql$")
-_PART_SIGNATURE = "-- Split because dblift migrate refuses a file that mixes "
+_PART_SIGNATURE = (
+    "-- Split because dblift migrate refuses a file that mixes autocommit-only "
+    "and transactional statements; "
+)
+_PART_ORDERS = (
+    _PART_SIGNATURE + "apply them in order.",
+    _PART_SIGNATURE + "dblift undo applies them from the highest part down.",
+)
 
 
 def _generated_part_groups(
@@ -83,7 +93,7 @@ def _generated_part_groups(
         if not isinstance(content, str) or not isinstance(name, str):
             continue
         lines = content.splitlines()
-        if len(lines) < 2 or not lines[1].startswith(_PART_SIGNATURE):
+        if len(lines) < 2 or lines[1] not in _PART_ORDERS:
             continue
         header = _PART_HEADER.match(lines[0])
         filename = _PART_NAME.match(name)
