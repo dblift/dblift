@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import cmp_to_key
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
@@ -77,7 +78,7 @@ def _generated_part_groups(
     """
     groups: Dict[str, Tuple[int, Dict[int, Migration], bool]] = {}
     for migration in state.resolved_objects or ():
-        content = vars(migration).get("content")
+        content = migration.content
         name = migration.script_name
         if not isinstance(content, str) or not isinstance(name, str):
             continue
@@ -92,7 +93,7 @@ def _generated_part_groups(
         if number != int(filename[2]) or not 1 <= number <= count:
             continue
         tag = group_tag_of(migration)
-        parent = str(Path(vars(migration).get("path") or name).parent)
+        parent = str(Path(migration.path or name).parent)
         key = tag or f"legacy:{parent}:{filename[1]}:{filename[3]}"
         expected, parts, invalid = groups.setdefault(key, (count, {}, False))
         invalid = invalid or count != expected or number in parts
@@ -133,10 +134,12 @@ def _include_generated_part_groups(
         )
     }
     expanded = list(selected)
+    touched = False
     for count, parts, invalid in groups.values():
         versions = {str(part.version) for part in parts.values()}
         if not versions.intersection(str(m.version) for m in expanded):
             continue
+        touched = True
         missing = [
             parts[n].script_name
             for n in sorted(parts)
@@ -155,7 +158,13 @@ def _include_generated_part_groups(
         expanded = [migration for migration in expanded if str(migration.version) not in versions]
         members = [current[str(parts[number].version)] for number in sorted(parts, reverse=True)]
         expanded[first:first] = members
+    if touched:
+        expanded.sort(key=cmp_to_key(_compare_migration_versions), reverse=True)
     return expanded, None
+
+
+def _compare_migration_versions(first: Migration, second: Migration) -> int:
+    return compare_versions(str(first.version), str(second.version))
 
 
 def plan_undo(

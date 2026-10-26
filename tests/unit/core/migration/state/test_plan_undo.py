@@ -284,6 +284,7 @@ def _legacy_generated_part(number: int, count: int) -> SimpleNamespace:
     return SimpleNamespace(
         script_name=f"V9_{number}__change.sql",
         version=f"9.{number}",
+        path=Path(f"V9_{number}__change.sql"),
         content=(
             f"-- Part {number} of {count}; transactional.\n"
             "-- Split because dblift migrate refuses a file that mixes "
@@ -333,6 +334,15 @@ def test_complete_legacy_generated_set_is_selected_whole_highest_first() -> None
     plan = _plan(manager)
 
     assert _versions(plan) == ["9.2", "9.1"]
+
+
+def test_generated_group_keeps_highest_first_order_with_interleaved_migration() -> None:
+    parts = [_legacy_generated_part(1, 2), _legacy_generated_part(2, 2)]
+    first, unrelated, last = _applied("9.1", 1), _applied("10", 2), _applied("9.2", 3)
+    first.script_name, last.script_name = (part.script_name for part in parts)
+    manager, _, _ = _manager([first, unrelated, last], ["9.1", "9.2", "10"], forward_parts=parts)
+
+    assert _versions(_plan(manager, target_version="0")) == ["10", "9.2", "9.1"]
 
 
 @pytest.mark.parametrize(
