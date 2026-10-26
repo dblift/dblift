@@ -655,11 +655,7 @@ def _table_name_matches_source(
         not allow_leading_dot
         and first
         and tokens[first - 1].token_type == TokenType.DOT
-        and not isinstance(table.parent, exp.Index)
-        and not (
-            isinstance(table.parent, (exp.Create, exp.Drop))
-            and str(table.parent.args.get("kind") or "").upper() == "SCHEMA"
-        )
+        and (first < 2 or tokens[first - 2].token_type not in {TokenType.VAR, TokenType.IDENTIFIER})
     ):
         return False
     if last + 1 < len(tokens) and tokens[last + 1].token_type == TokenType.STAR:
