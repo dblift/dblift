@@ -34,6 +34,7 @@ def test_create_table_facts_keep_the_table_and_schema_identity():
         "DDL",
         (NamedObject("Items", SqlObjectType.TABLE, "created", "Sales"),),
         declared_columns=("id",),
+        events=frozenset(),
     )
 
 

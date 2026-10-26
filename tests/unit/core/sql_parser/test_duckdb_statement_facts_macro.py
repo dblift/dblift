@@ -66,6 +66,7 @@ def test_other_duckdb_ddl_keeps_table_identity(operation):
             ),
         ),
         declared_columns=("id",) if operation == "CREATE" else (),
+        events=frozenset() if operation == "CREATE" else None,
     )
 
 

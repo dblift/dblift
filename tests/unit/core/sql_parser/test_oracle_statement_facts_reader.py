@@ -272,6 +272,7 @@ def test_a_table_created_with_a_tablespace_clause_is_read_by_the_grammar():
         (NamedObject("EMP", T.TABLE, "created", "HR"),),
         declared_columns=("id",),
         declared_constraints=facts.declared_constraints,
+        events=frozenset(),
     )
 
 

@@ -29,6 +29,12 @@ _DML = frozenset("INSERT UPDATE DELETE MERGE".split())
 _QUERY = frozenset("SELECT WITH VALUES".split())
 _TRANSACTION = frozenset("COMMIT ROLLBACK SAVEPOINT RELEASE".split())
 _DATA_CHANGE = frozenset("FINAL NEW OLD".split())
+_QUERY_RESERVED = frozenset(
+    """SELECT WITH VALUES FROM WHERE AS INTO FOR UPDATE DELETE INSERT MERGE FINAL NEW OLD
+    TABLE JOIN INNER LEFT RIGHT FULL CROSS ON UNION EXCEPT INTERSECT GROUP ORDER HAVING
+    FETCH OFFSET LIMIT DISTINCT ALL RECURSIVE CONNECT START BY CASE WHEN THEN ELSE END
+    SET RETURNING USING CALL CREATE ALTER DROP""".split()
+)
 
 #: Words that are never a name part.
 STOP_WORDS: FrozenSet[str] = frozenset(
@@ -595,6 +601,96 @@ def _holds_data_change(ups: List[str]) -> bool:
     return any(a in _DATA_CHANGE and b == "TABLE" for a, b in zip(ups, ups[1:]))
 
 
+def _query_name(words: List[Token], at: int, max_parts: int = 2) -> int:
+    """Read a bounded ordinary or quoted name; return its end, or the original offset."""
+    name = _read_name(words, at, max_parts, _QUERY_RESERVED)
+    if name is None:
+        return at
+    end = name[2]
+    return at if any(_is_unterminated(token) for token in words[at:end]) else end
+
+
+def _query_atom(words: List[Token], at: int) -> int:
+    if at >= len(words):
+        return at
+    token = words[at]
+    if (
+        token.type is TokenType.STRING
+        and len(token.text) >= 2
+        and token.text.startswith("'")
+        and token.text.endswith("'")
+        and "'" not in token.text[1:-1].replace("''", "")
+    ):
+        return at + 1
+    if token.type is TokenType.SYMBOL and token.text.isascii() and token.text.isdecimal():
+        return at + 1
+    return _query_name(words, at)
+
+
+def _complete_query(words: List[Token], depth: int = 0) -> bool:
+    """Prove a small Db2 read-query form, including every nested CTE body."""
+    if not words or depth > 16 or words[0].type is not TokenType.KEYWORD:
+        return False
+    first = words[0].text.upper()
+    if first == "WITH":
+        at = 1
+        while True:
+            end = _query_name(words, at, 1)
+            if end == at or end + 1 >= len(words) or words[end].text.upper() != "AS":
+                return False
+            if not _is_symbol(words[end + 1], "("):
+                return False
+            start = end + 2
+            level = 1
+            at = start
+            while at < len(words) and level:
+                level += _is_symbol(words[at], "(") - _is_symbol(words[at], ")")
+                at += 1
+            if level or not _complete_query(words[start : at - 1], depth + 1):
+                return False
+            if at >= len(words) or not _is_symbol(words[at], ","):
+                return _complete_query(words[at:], depth + 1)
+            at += 1
+    if first not in ("SELECT", "VALUES"):
+        return False
+    at = 1
+    if first == "VALUES" and at < len(words) and _is_symbol(words[at], "("):
+        at += 1
+        closing = True
+    else:
+        closing = False
+    star = first == "SELECT" and at < len(words) and _is_symbol(words[at], "*")
+    needs_source = False
+    if star:
+        at += 1
+    else:
+        while True:
+            if at < len(words) and words[at].type in (TokenType.KEYWORD, TokenType.IDENTIFIER):
+                needs_source = True
+            end = _query_atom(words, at)
+            if end == at:
+                return False
+            at = end
+            if at < len(words) and _is_symbol(words[at], ","):
+                at += 1
+                continue
+            break
+    if closing:
+        if at >= len(words) or not _is_symbol(words[at], ")"):
+            return False
+        at += 1
+    if first == "SELECT" and at < len(words) and words[at].text.upper() == "FROM":
+        source = at + 1
+        at = _query_name(words, source)
+        if at == source:
+            return False
+    elif star:
+        return False
+    elif needs_source:
+        return False
+    return at == len(words)
+
+
 def _is_client_command(ups: List[str]) -> bool:
     if ups[0] in DB2_RULES.command_words:
         return True
@@ -613,7 +709,8 @@ class Db2StatementFactsReader:
         """Read one already-split statement."""
         # The tokenizer drops a leading BOM, which would shift every token offset.
         sql = sql[1:] if sql.startswith("\ufeff") else sql
-        words = _words(LexicalTokenizer(sql, spec=self.spec).tokenize())
+        tokens = LexicalTokenizer(sql, spec=self.spec).tokenize()
+        words = _words(tokens)
         if not words:
             return _opaque("UNKNOWN", "UNKNOWN", NOT_CLASSIFIED.format(word="UNKNOWN"))
         ups = [t.text.upper() if t.type is TokenType.KEYWORD else "" for t in words]
@@ -626,10 +723,26 @@ class Db2StatementFactsReader:
         if first == "SET":
             if ups[1:2] == ["INTEGRITY"]:
                 return _opaque(first, "UNKNOWN", SET_INTEGRITY)
+            if (
+                ups[1:3] == ["CURRENT", "SCHEMA"]
+                and len(words) == 5
+                and words[3].text == "="
+                and words[4].type is TokenType.STRING
+                and words[4].text.endswith("'")
+                and words[4].text.count("'") % 2 == 0
+            ):
+                return StatementFacts(first, "UNKNOWN", events=frozenset())
             return StatementFacts(first, "UNKNOWN")
         if first in _QUERY:
             if _holds_data_change(ups):
                 return _opaque(first, kind, DATA_CHANGE_QUERY)
+            if all(
+                t.type is not TokenType.COMMENT
+                or not t.text.startswith("/*")
+                or t.text.endswith("*/")
+                for t in tokens
+            ) and _complete_query(words):
+                return StatementFacts(first, kind, events=frozenset())
             return StatementFacts(first, kind)
         for head in HEADS:
             at = _match(ups, head)
