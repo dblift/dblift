@@ -40,3 +40,60 @@ def test_postgresql_index_owner_and_drop_keep_quote_provenance():
     assert owner.name_quoted is dropped.name_quoted is altered.name_quoted is True
     assert index.name == "Ix"
     assert index.name_quoted is True
+
+
+@pytest.mark.parametrize(
+    "sql, identity_field, expected",
+    [
+        ('SELECT * FROM Foo JOIN "Foo" ON true', "name_quoted", [False, True]),
+        ('SELECT * FROM App.foo JOIN "App".foo ON true', "schema_quoted", [False, True]),
+        (
+            'MERGE INTO target AS t USING (SELECT a.id FROM Foo a JOIN "Foo" b '
+            "ON a.id=b.id) s ON t.id=s.id WHEN MATCHED THEN UPDATE SET id=s.id",
+            "name_quoted",
+            [False, True],
+        ),
+    ],
+)
+def test_postgresql_references_keep_quote_distinct_sources(sql, identity_field, expected):
+    facts = ProviderRegistry.get_quirks("postgresql").statement_facts(sql)
+    references = [obj for obj in facts.objects if obj.role == "referenced"]
+
+    assert [getattr(obj, identity_field) for obj in references] == expected
+
+
+def test_duckdb_copy_query_keeps_quote_distinct_sources():
+    facts = ProviderRegistry.get_quirks("duckdb").statement_facts(
+        "COPY (SELECT * FROM Foo JOIN \"Foo\" ON true) TO 'x.csv'"
+    )
+
+    assert [obj.name_quoted for obj in facts.objects] == [False, True]
+
+
+def test_postgresql_quoted_table_is_not_an_unquoted_cte_alias():
+    facts = ProviderRegistry.get_quirks("postgresql").statement_facts(
+        'WITH foo AS (SELECT 1) SELECT * FROM "Foo"'
+    )
+
+    assert [(obj.name, obj.name_quoted) for obj in facts.objects] == [("Foo", True)]
+
+
+@pytest.mark.parametrize("verb, role", [("CREATE", "created"), ("DROP", "dropped")])
+def test_postgresql_schema_identity_keeps_ast_quote_provenance(verb, role):
+    plain = _object(f"{verb} SCHEMA App", role, "SCHEMA")
+    quoted = _object(f'{verb} SCHEMA "App"', role, "SCHEMA")
+
+    assert plain.name == quoted.name == "App"
+    assert plain.name_quoted is False
+    assert quoted.name_quoted is True
+
+
+def test_postgresql_trigger_identity_keeps_ast_quote_provenance():
+    trigger = _object(
+        'CREATE TRIGGER "Tg" AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f()',
+        "created",
+        "TRIGGER",
+    )
+
+    assert trigger.name == "Tg"
+    assert trigger.name_quoted is True
