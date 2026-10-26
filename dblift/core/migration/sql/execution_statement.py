@@ -145,8 +145,10 @@ def neutralise_transaction_statements(
     from dblift.db.provider_registry import ProviderRegistry
 
     quirks = ProviderRegistry.get_quirks(dialect.lower())
+    if records is not None and execution_strings(records) != statements:
+        records = None
     policy_texts: List[Optional[str]] = [None] * len(statements)
-    if records is not None and execution_strings(records) == statements:
+    if records is not None:
         policy_texts = [
             record.policy_text
             for record in records
