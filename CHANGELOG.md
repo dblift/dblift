@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - An empty YAML `target_version` is still rejected, without incorrectly claiming that no versioned
   migration scripts were found before the scripts have been scanned.
+- Statement facts leave incomplete object names such as `db..t`, leading `.t` outside MariaDB,
+  and `t*` unnamed with a diagnostic, instead of reporting a table or mutation target from the
+  readable fragment. MariaDB's valid leading `.t` remains readable.
 - Statement facts leave object names written as bind placeholders unread and report a diagnostic,
   while placeholders in values and quoted object names keep their existing behavior.
 - PostgreSQL-family transaction checks no longer treat non-blank characters such as U+00A0 as
