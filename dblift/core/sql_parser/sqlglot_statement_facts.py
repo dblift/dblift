@@ -3092,7 +3092,16 @@ def read_statement_facts(
             declared_constraints=constraints,
             indexed_table=indexed_table,
             indexed_columns=indexed_columns,
-            events=frozenset() if object_type == SqlObjectType.TABLE and not diagnostic else None,
+            events=(
+                frozenset()
+                if object_type == SqlObjectType.TABLE
+                and schema_node is not None
+                and not ast.args.get("replace")
+                and not ast.args.get("expression")
+                and not ast.args.get("clone")
+                and not diagnostic
+                else None
+            ),
             diagnostic=diagnostic,
         )
 

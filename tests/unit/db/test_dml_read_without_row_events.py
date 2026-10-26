@@ -66,6 +66,25 @@ def test_unread_db2_create_table_still_fails_closed():
 
 @pytest.mark.parametrize(
     ("dialect", "statement"),
+    (
+        ("snowflake", "CREATE TABLE t AS SELECT id FROM src"),
+        ("snowflake", "CREATE TABLE t CLONE src"),
+        ("snowflake", "CREATE OR REPLACE TABLE t (id INT)"),
+        ("snowflake", "CREATE OR REPLACE TABLE t AS SELECT id FROM src"),
+        ("postgresql", "CREATE TABLE t AS SELECT id FROM src"),
+        ("duckdb", "CREATE TABLE t AS SELECT id FROM src"),
+    ),
+)
+def test_table_creation_with_unproved_row_effects_stays_unknown(dialect, statement):
+    quirks = ProviderRegistry.get_quirks(dialect)
+
+    assert quirks.statement_facts(statement).events is None
+    assert analyze_dml(statement, quirks=quirks).events is None
+    assert updates_restore_key(statement, ["id"], quirks=quirks) is True
+
+
+@pytest.mark.parametrize(
+    ("dialect", "statement"),
     [
         ("db2", "SET CURRENT SCHEMA = 'APP'"),
         ("mysql", "SET NAMES utf8mb4"),
@@ -86,6 +105,7 @@ def test_session_set_does_not_update_a_restore_key(dialect, statement):
     [
         ("db2", "SET INTEGRITY FOR t IMMEDIATE CHECKED"),
         ("db2", "SET CURRENT SCHEMA = 'APP"),
+        ("db2", "SET CURRENT SCHEMA = UPDATE"),
         ("mysql", "SET @id = 1"),
         ("postgresql", "SET ROLE writer"),
     ],

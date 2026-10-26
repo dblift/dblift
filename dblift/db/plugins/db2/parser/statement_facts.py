@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import FrozenSet, Iterator, List, Optional, Tuple
 
@@ -36,8 +35,6 @@ _QUERY_RESERVED = frozenset(
     FETCH OFFSET LIMIT DISTINCT ALL RECURSIVE CONNECT START BY CASE WHEN THEN ELSE END
     SET RETURNING USING CALL CREATE ALTER DROP""".split()
 )
-_QUERY_INTEGER = re.compile(r"[0-9]+\Z")
-_QUERY_STRING = re.compile(r"'(?:[^']|'')*'\Z", re.DOTALL)
 
 #: Words that are never a name part.
 STOP_WORDS: FrozenSet[str] = frozenset(
@@ -606,33 +603,26 @@ def _holds_data_change(ups: List[str]) -> bool:
 
 def _query_name(words: List[Token], at: int, max_parts: int = 2) -> int:
     """Read a bounded ordinary or quoted name; return its end, or the original offset."""
-    i = at
-    for part in range(max_parts):
-        if i >= len(words):
-            return at
-        token = words[i]
-        if token.type is TokenType.KEYWORD:
-            if token.text.upper() in _QUERY_RESERVED:
-                return at
-        elif token.type is TokenType.IDENTIFIER:
-            if _is_unterminated(token) or token.text == '""':
-                return at
-        else:
-            return at
-        i += 1
-        if i >= len(words) or not _is_symbol(words[i], "."):
-            return i
-        i += 1
-    return at
+    name = _read_name(words, at, max_parts, _QUERY_RESERVED)
+    if name is None:
+        return at
+    end = name[2]
+    return at if any(_is_unterminated(token) for token in words[at:end]) else end
 
 
 def _query_atom(words: List[Token], at: int) -> int:
     if at >= len(words):
         return at
     token = words[at]
-    if token.type is TokenType.STRING and _QUERY_STRING.fullmatch(token.text):
+    if (
+        token.type is TokenType.STRING
+        and len(token.text) >= 2
+        and token.text.startswith("'")
+        and token.text.endswith("'")
+        and "'" not in token.text[1:-1].replace("''", "")
+    ):
         return at + 1
-    if token.type is TokenType.SYMBOL and _QUERY_INTEGER.fullmatch(token.text):
+    if token.type is TokenType.SYMBOL and token.text.isascii() and token.text.isdecimal():
         return at + 1
     return _query_name(words, at)
 
@@ -737,11 +727,9 @@ class Db2StatementFactsReader:
                 ups[1:3] == ["CURRENT", "SCHEMA"]
                 and len(words) == 5
                 and words[3].text == "="
-                and words[4].type in {TokenType.STRING, TokenType.KEYWORD}
-                and (
-                    words[4].type is TokenType.KEYWORD
-                    or (words[4].text.endswith("'") and words[4].text.count("'") % 2 == 0)
-                )
+                and words[4].type is TokenType.STRING
+                and words[4].text.endswith("'")
+                and words[4].text.count("'") % 2 == 0
             ):
                 return StatementFacts(first, "UNKNOWN", events=frozenset())
             return StatementFacts(first, "UNKNOWN")
