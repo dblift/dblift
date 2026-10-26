@@ -187,16 +187,16 @@
 {"facts":{"diagnostic":"duckdb Comment has no statement facts mapping","kind":"DDL","operation":"COMMENT"},"inputs":["e668b082ca202cf3"],"old":null,"sql":"COMMENT ON COLUMN users.email IS 'contact'"}
 {"facts":{"diagnostic":"duckdb Comment has no statement facts mapping","kind":"DDL","operation":"COMMENT"},"inputs":["ab56e829bd7b839d"],"old":null,"sql":"COMMENT ON INDEX idx IS 'note'"}
 {"facts":{"diagnostic":"duckdb Comment has no statement facts mapping","kind":"DDL","operation":"COMMENT"},"inputs":["3f4f31194b81ce62"],"old":null,"sql":"COMMENT ON SEQUENCE seq IS 'note'"}
-{"facts":{"kind":"DDL","objects":[["child","TABLE","altered",null]],"operation":"COMMENT"},"inputs":["291da9c80e13e058"],"old":null,"sql":"COMMENT ON TABLE child IS 'note'"}
-{"facts":{"kind":"DDL","objects":[["orders","TABLE","altered",null]],"operation":"COMMENT"},"inputs":["48c8bd634401c71d"],"old":null,"sql":"COMMENT ON TABLE orders IS 'desc'"}
-{"facts":{"kind":"DDL","objects":[["orders","TABLE","altered","public"]],"operation":"COMMENT"},"inputs":["59b31d7e708a676e"],"old":null,"sql":"COMMENT ON TABLE public.orders IS 'x'"}
-{"facts":{"kind":"DDL","objects":[["t","TABLE","altered",null]],"operation":"COMMENT"},"inputs":["2b9b07300c97ad8a"],"old":null,"sql":"COMMENT ON TABLE t IS 'desc'"}
+{"facts":{"kind":"DDL","objects":[["child","TABLE","altered",null]],"operation":"COMMENT","table_comment":"note"},"inputs":["291da9c80e13e058"],"old":null,"sql":"COMMENT ON TABLE child IS 'note'"}
+{"facts":{"kind":"DDL","objects":[["orders","TABLE","altered",null]],"operation":"COMMENT","table_comment":"desc"},"inputs":["48c8bd634401c71d"],"old":null,"sql":"COMMENT ON TABLE orders IS 'desc'"}
+{"facts":{"kind":"DDL","objects":[["orders","TABLE","altered","public"]],"operation":"COMMENT","table_comment":"x"},"inputs":["59b31d7e708a676e"],"old":null,"sql":"COMMENT ON TABLE public.orders IS 'x'"}
+{"facts":{"kind":"DDL","objects":[["t","TABLE","altered",null]],"operation":"COMMENT","table_comment":"desc"},"inputs":["2b9b07300c97ad8a"],"old":null,"sql":"COMMENT ON TABLE t IS 'desc'"}
 {"facts":{"diagnostic":"duckdb grammar is not modelled for this statement","kind":"DDL","operation":"COMMENT"},"inputs":["80f378d7c56003b4"],"old":null,"sql":"COMMENT ON TABLE t1"}
-{"facts":{"kind":"DDL","objects":[["users","TABLE","altered",null]],"operation":"COMMENT"},"inputs":["882b9eaf9e7f3c4e"],"old":null,"sql":"COMMENT ON TABLE users IS 'people'"}
-{"facts":{"kind":"DDL","objects":[["users","TABLE","altered",null]],"operation":"COMMENT"},"inputs":["55ec0b53a831f64d"],"old":null,"sql":"COMMENT ON TABLE users IS 'x'"}
-{"facts":{"kind":"DDL","objects":[["x","TABLE","altered",null]],"operation":"COMMENT"},"inputs":["f2463fb35b1639b1"],"old":null,"sql":"COMMENT ON TABLE x IS 'desc'"}
-{"facts":{"kind":"DDL","objects":[["y","TABLE","altered",null]],"operation":"COMMENT"},"inputs":["b6d7940cd605f9e6"],"old":null,"sql":"COMMENT ON TABLE y IS 'x'"}
-{"facts":{"kind":"DDL","objects":[["z","TABLE","altered",null]],"operation":"COMMENT"},"inputs":["e335a81d5cd9ff68"],"old":null,"sql":"COMMENT ON TABLE z IS 'x'"}
+{"facts":{"kind":"DDL","objects":[["users","TABLE","altered",null]],"operation":"COMMENT","table_comment":"people"},"inputs":["882b9eaf9e7f3c4e"],"old":null,"sql":"COMMENT ON TABLE users IS 'people'"}
+{"facts":{"kind":"DDL","objects":[["users","TABLE","altered",null]],"operation":"COMMENT","table_comment":"x"},"inputs":["55ec0b53a831f64d"],"old":null,"sql":"COMMENT ON TABLE users IS 'x'"}
+{"facts":{"kind":"DDL","objects":[["x","TABLE","altered",null]],"operation":"COMMENT","table_comment":"desc"},"inputs":["f2463fb35b1639b1"],"old":null,"sql":"COMMENT ON TABLE x IS 'desc'"}
+{"facts":{"kind":"DDL","objects":[["y","TABLE","altered",null]],"operation":"COMMENT","table_comment":"x"},"inputs":["b6d7940cd605f9e6"],"old":null,"sql":"COMMENT ON TABLE y IS 'x'"}
+{"facts":{"kind":"DDL","objects":[["z","TABLE","altered",null]],"operation":"COMMENT","table_comment":"x"},"inputs":["e335a81d5cd9ff68"],"old":null,"sql":"COMMENT ON TABLE z IS 'x'"}
 {"facts":{"diagnostic":"duckdb Comment has no statement facts mapping","kind":"DDL","operation":"COMMENT"},"inputs":["e5131d0f67fcf2ae"],"old":null,"sql":"COMMENT ON VIEW v IS 'note'"}
 {"facts":{"diagnostic":"duckdb Commit has no statement facts mapping","kind":"UNKNOWN","operation":"COMMIT"},"inputs":["22a5d49ae02bc5a7","290e85525de37fcc","2db35aa37c4005aa","3b2e41c4d4cb5607","64791e990c5f0154","6517f928de564172","709af6c113d652e6","734ab12cc53099a4","79663c1d3b43ceaf","832675d521592aa5","a3ce8a7cd4cb86ac","b5e5a30cfd12ea36","e1c8fa0be0d26378"],"old":null,"sql":"COMMIT"}
 {"facts":{"diagnostic":"duckdb grammar is not modelled for this statement","kind":"UNKNOWN","operation":"COPY"},"inputs":["dc26bc50abf8ce9c"],"old":null,"sql":"COPY"}
@@ -1535,7 +1535,7 @@
 {"facts":{"affected_columns":["w"],"events":["UPDATE"],"kind":"DML","objects":[["z","TABLE","altered",null]],"operation":"UPDATE","target":"z","target_sql":"z"},"inputs":["b225814832ee89b5"],"old":null,"sql":"UPDATE z SET w=1"}
 {"facts":{"diagnostic":"duckdb Use has no statement facts mapping","kind":"UNKNOWN","operation":"USE"},"inputs":["9b19503aee6066cf"],"old":null,"sql":"USE SCHEMA \"APP\""}
 {"facts":{"diagnostic":"duckdb Use has no statement facts mapping","kind":"UNKNOWN","operation":"USE"},"inputs":["65073fa8ad12ac9c"],"old":null,"sql":"USE SCHEMA \"app\""}
-{"facts":{"diagnostic":"duckdb Use has no statement facts mapping","kind":"UNKNOWN","operation":"USE"},"inputs":["be7e67674480f8aa"],"old":null,"sql":"USE master"}
+{"facts":{"action":"SELECT_NAMESPACE","kind":"SESSION","operation":"USE","target":"master"},"inputs":["be7e67674480f8aa"],"old":null,"sql":"USE master"}
 {"facts":{"diagnostic":"duckdb Command is opaque to statement facts","kind":"DDL","operation":"VACUUM"},"inputs":["0a4540e8c33c7122"],"old":null,"sql":"VACUUM"}
 {"facts":{"diagnostic":"duckdb Column has no statement facts mapping","kind":"QUERY","operation":"VALUES"},"inputs":["e79a072083e5946b"],"old":null,"sql":"VALUES"}
 {"facts":{"diagnostic":"duckdb grammar is not modelled for this statement","kind":"QUERY","operation":"VALUES"},"inputs":["f5cd3dc0131fcc77"],"old":null,"sql":"VALUES ${a"}
