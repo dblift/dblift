@@ -12,6 +12,7 @@ from dblift.db.plugins.mysql.quirks import MysqlQuirks
     [
         "RESTART WITH 100",
         "RESTART",
+        "RESTART;",
         "RESTART=100",
         "RESTART 10",
         "AS TINYINT UNSIGNED",
@@ -57,7 +58,14 @@ def test_mariadb_alter_sequence_quoted_and_qualified_names(sql, name, schema):
     [
         "ALTER SEQUENCE s",
         "ALTER SEQUENCE s RESTART WITH",
+        "ALTER SEQUENCE s RESTART WITH +",
+        "ALTER SEQUENCE s RESTART +",
         "ALTER SEQUENCE s RESTART WITH 1 EXTRA",
+        "ALTER SEQUENCE s MINVALUE",
+        "ALTER SEQUENCE s MAXVALUE",
+        "ALTER SEQUENCE s START WITH",
+        "ALTER SEQUENCE IF s RESTART",
+        "ALTER SEQUENCE s RESTART -- trailing comment",
         "ALTER SEQUENCE s INCREMENT BY 1.5",
         "ALTER SEQUENCE s CACHE x",
         "ALTER SEQUENCE s NO CACHE",
