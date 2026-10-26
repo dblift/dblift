@@ -691,13 +691,15 @@ def _unread_names(
         and str(ast.args.get("kind") or "").upper() in _PROGRAM_KINDS
     )
     words = _clause_words(dialect, routine)
-    tokens = Dialect.get_or_raise(dialect).tokenize(sql) if sql else []
-    token_positions = {token.start: index for index, token in enumerate(tokens)}
+    tokens: Optional[list[Token]] = None
+    token_positions: dict[int, int] = {}
     for table in ast.find_all(exp.Table):
-        if sql and not _table_name_matches_source(
-            table, tokens, token_positions, allow_leading_dot
-        ):
-            return f"{dialect} object name is not fully represented by the grammar"
+        if sql:
+            if tokens is None:
+                tokens = Dialect.get_or_raise(dialect).tokenize(sql)
+                token_positions = {token.start: index for index, token in enumerate(tokens)}
+            if not _table_name_matches_source(table, tokens, token_positions, allow_leading_dot):
+                return f"{dialect} object name is not fully represented by the grammar"
         parts = [table.args.get(key) for key in ("this", "db", "catalog")]
         if snowflake and any(isinstance(part, (exp.Parameter, exp.Literal)) for part in parts):
             return _SNOWFLAKE_DYNAMIC_NAMES
