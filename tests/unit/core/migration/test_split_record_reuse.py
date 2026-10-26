@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import create_engine, text
 
 from dblift.api import DBLiftClient
+from dblift.core.exceptions import TransactionStatementError
 from dblift.core.logger import NullLog
 from dblift.core.migration.sql.execution_statement import (
     PreparedStatements,
@@ -117,3 +118,17 @@ def test_multi_statement_batch_keeps_constituent_classification():
     assert len(records) == 1
     assert len(records[0].analysis_statements) == 2
     assert records[0].policy_text is None
+
+
+@pytest.mark.parametrize("statement", ["COMMIT", "BEGIN TRANSACTION"])
+def test_stale_policy_records_cannot_hide_transaction_control(statement):
+    records = StatementSplitter("sqlite").split("SELECT 1;")
+
+    with pytest.raises(TransactionStatementError):
+        neutralise_transaction_statements(
+            [statement],
+            dialect="sqlite",
+            log=NullLog(),
+            content=statement,
+            records=records,
+        )
