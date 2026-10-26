@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from dblift.db.feature_gate import FeatureGate
+from dblift.db.plugins.mariadb.statement_facts import MariadbStatementFactsReader
 from dblift.db.plugins.mysql.quirks import MysqlQuirks
 
 if TYPE_CHECKING:
@@ -28,6 +29,8 @@ class MariadbQuirks(MysqlQuirks):
     modern versions.
 
     """
+
+    statement_facts_class = MariadbStatementFactsReader
 
     def lexical_spec(self) -> "LexicalSpec":
         """The lexical specification the shared engine splits MariaDB scripts with."""
