@@ -31,7 +31,7 @@ class StatementSplitter:
         self.logger = logger
         spec = ProviderRegistry.get_quirks(self.dialect).lexical_spec()
         self._engine = LexicalEngine(spec) if spec is not None else None
-        self._last: Optional[Tuple[str, List[Statement]]] = None
+        self._last: Optional[Tuple[str, List[Statement], List[Optional[str]]]] = None
 
     def _refusing(self, split: Callable[[], _T]) -> _T:
         """Run *split*; a refusal passes through, any other failure becomes one."""
@@ -47,7 +47,8 @@ class StatementSplitter:
     def split(self, sql: str) -> List[Statement]:
         """The records of *sql* as the dialect's scanner cuts them, or its refusal."""
         records = self._split(sql)
-        self._last = (sql, records)
+        policy_texts = self._engine.last_policy_texts if self._engine is not None else []
+        self._last = (sql, records, list(policy_texts))
         return list(records)
 
     def last_split(self, sql: str) -> List[Statement]:
@@ -60,6 +61,13 @@ class StatementSplitter:
         if last is not None and last[0] == sql:
             return list(last[1])
         return self.split(sql)
+
+    def last_policy_texts(self, sql: str) -> List[Optional[str]]:
+        """Scanner policy views for the most recent split of *sql*, without rescanning it."""
+        if self._last is None or self._last[0] != sql:
+            self.split(sql)
+        assert self._last is not None
+        return list(self._last[2])
 
     def _split(self, sql: str) -> List[Statement]:
         engine = self._engine

@@ -128,6 +128,7 @@ def neutralise_transaction_statements(
     script_name: str = "the script",
     content: str = "",
     records: Optional[List[Statement]] = None,
+    record_policy_texts: Optional[List[Optional[str]]] = None,
 ) -> List[str]:
     """*statements* with a script's ``BEGIN ... COMMIT`` envelope dropped, or a refusal.
 
@@ -148,10 +149,14 @@ def neutralise_transaction_statements(
     if records is not None and execution_strings(records) != statements:
         records = None
     policy_texts: List[Optional[str]] = [None] * len(statements)
-    if records is not None:
+    if (
+        records is not None
+        and record_policy_texts is not None
+        and len(record_policy_texts) == len(records)
+    ):
         policy_texts = [
-            record.policy_text
-            for record in records
+            policy_text
+            for record, policy_text in zip(records, record_policy_texts)
             if record.kind in ("sql", "copy_stdin")
             or (record.kind == "directive" and record.execution_text is not None)
             for _ in range(record.repeat)

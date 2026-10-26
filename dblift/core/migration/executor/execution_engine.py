@@ -404,6 +404,7 @@ class ExecutionEngine:
             script_name=migration.script_name,
             content=content,
             records=analyzer.statement_splitter.last_split(content),
+            record_policy_texts=analyzer.statement_splitter.last_policy_texts(content),
         )
 
     def _reset_provider_schema_cache(self) -> None:

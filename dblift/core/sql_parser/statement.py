@@ -38,9 +38,6 @@ class Statement:
     # sends for this record when it is not ``text``. None sends ``text`` (SQL and COPY) or
     # nothing (a directive: only one with text to send is sent).
     execution_text: Optional[str] = field(default=None, compare=False)
-    # Execution text with comments blanked by the original script scan. None when
-    # the text was transformed and cannot be mapped back to source offsets.
-    policy_text: Optional[str] = field(default=None, compare=False)
 
 
 def executable_records(records: Iterable[Statement]) -> List[Statement]:

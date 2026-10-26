@@ -64,18 +64,26 @@ def test_migrate_does_not_rescan_each_statement_for_execution_policy(tmp_path, a
 
 def test_record_policy_view_blanks_comments_but_preserves_quoted_text():
     sql = "SELECT '/* stays */'; INSERT /* ignored */ INTO t VALUES (1);"
-    records = StatementSplitter("sqlite").split(sql)
+    splitter = StatementSplitter("sqlite")
+    splitter.split(sql)
+    policy_texts = splitter.last_policy_texts(sql)
 
-    assert records[0].policy_text == "SELECT '/* stays */'"
-    assert records[1].policy_text.split() == ["INSERT", "INTO", "t", "VALUES", "(1)"]
+    assert policy_texts[0] == "SELECT '/* stays */'"
+    assert policy_texts[1].split() == ["INSERT", "INTO", "t", "VALUES", "(1)"]
 
 
 def test_repeated_batch_policy_views_stay_aligned_with_execution_strings():
     sql = "SELECT 1;\nGO 0\nCREATE /* flush */ INDEX ix ON t(a);\nGO 2"
-    records = StatementSplitter("sqlserver").split(sql)
+    splitter = StatementSplitter("sqlserver")
+    records = splitter.split(sql)
     sent = execution_strings(records)
     prepared = neutralise_transaction_statements(
-        sent, dialect="sqlserver", log=NullLog(), content=sql, records=records
+        sent,
+        dialect="sqlserver",
+        log=NullLog(),
+        content=sql,
+        records=records,
+        record_policy_texts=splitter.last_policy_texts(sql),
     )
 
     assert isinstance(prepared, PreparedStatements)
@@ -85,10 +93,16 @@ def test_repeated_batch_policy_views_stay_aligned_with_execution_strings():
 
 def test_transaction_policy_uses_comment_blank_from_original_scan():
     sql = "CREATE /* flush */ INDEX CONCURRENTLY ix ON t(a);"
-    records = StatementSplitter("postgresql").split(sql)
+    splitter = StatementSplitter("postgresql")
+    records = splitter.split(sql)
     sent = execution_strings(records)
     prepared = neutralise_transaction_statements(
-        sent, dialect="postgresql", log=NullLog(), content=sql, records=records
+        sent,
+        dialect="postgresql",
+        log=NullLog(),
+        content=sql,
+        records=records,
+        record_policy_texts=splitter.last_policy_texts(sql),
     )
 
     assert not classify_execution_statement(
@@ -102,7 +116,12 @@ def test_cached_split_carries_policy_views_for_copy_and_following_sql():
     sent = splitter.split_statements(sql)
     records = splitter.last_split(sql)
     prepared = neutralise_transaction_statements(
-        sent, dialect="postgresql", log=NullLog(), content=sql, records=records
+        sent,
+        dialect="postgresql",
+        log=NullLog(),
+        content=sql,
+        records=records,
+        record_policy_texts=splitter.last_policy_texts(sql),
     )
 
     assert len(prepared) == len(prepared.policy_texts) == 2
@@ -111,18 +130,19 @@ def test_cached_split_carries_policy_views_for_copy_and_following_sql():
 
 
 def test_multi_statement_batch_keeps_constituent_classification():
-    records = StatementSplitter("sqlserver").split(
-        "SELECT 1; BACKUP DATABASE db TO DISK = 'x';\nGO"
-    )
+    sql = "SELECT 1; BACKUP DATABASE db TO DISK = 'x';\nGO"
+    splitter = StatementSplitter("sqlserver")
+    records = splitter.split(sql)
 
     assert len(records) == 1
     assert len(records[0].analysis_statements) == 2
-    assert records[0].policy_text is None
+    assert splitter.last_policy_texts(sql) == [None]
 
 
 @pytest.mark.parametrize("statement", ["COMMIT", "BEGIN TRANSACTION"])
 def test_stale_policy_records_cannot_hide_transaction_control(statement):
-    records = StatementSplitter("sqlite").split("SELECT 1;")
+    splitter = StatementSplitter("sqlite")
+    records = splitter.split("SELECT 1;")
 
     with pytest.raises(TransactionStatementError):
         neutralise_transaction_statements(
@@ -131,13 +151,15 @@ def test_stale_policy_records_cannot_hide_transaction_control(statement):
             log=NullLog(),
             content=statement,
             records=records,
+            record_policy_texts=splitter.last_policy_texts("SELECT 1;"),
         )
 
 
 def test_stale_records_cannot_hide_transaction_inside_a_combined_unit():
     script = r"SELECT 1 \; COMMIT;"
     sent = execution_strings(StatementSplitter("postgresql").split(script))
-    stale_records = StatementSplitter("postgresql").split("SELECT 1;")
+    splitter = StatementSplitter("postgresql")
+    stale_records = splitter.split("SELECT 1;")
 
     with pytest.raises(TransactionStatementError):
         neutralise_transaction_statements(
@@ -146,4 +168,5 @@ def test_stale_records_cannot_hide_transaction_inside_a_combined_unit():
             log=NullLog(),
             content=script,
             records=stale_records,
+            record_policy_texts=splitter.last_policy_texts("SELECT 1;"),
         )

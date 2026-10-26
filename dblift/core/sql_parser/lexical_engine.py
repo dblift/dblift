@@ -1,8 +1,7 @@
 """One lexical entry point for splitting and comment masking."""
 
 import logging
-from dataclasses import replace
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.lexical_spec import BOM, LexicalSpec
@@ -21,6 +20,7 @@ class LexicalEngine:
     def __init__(self, spec: LexicalSpec):
         """Bind the immutable plugin specification."""
         self.spec = spec
+        self.last_policy_texts: List[Optional[str]] = []
 
     def _parser(self, script: str) -> LexicalStatementParser:
         tokenizer = LexicalTokenizer(script, spec=self.spec)
@@ -94,6 +94,7 @@ class LexicalEngine:
 
     def split(self, script: str) -> List[Statement]:
         """Return source-positioned execution units and analysis projections."""
+        self.last_policy_texts = []
         parser = self._parser(script)
         records = parser.split()
         masked = script
@@ -105,12 +106,14 @@ class LexicalEngine:
                 cursor = end
             parts.append(script[cursor:])
             masked = "".join(parts)
-        records = [self._policy_projection(script, masked, record) for record in records]
+        self.last_policy_texts = [
+            self._policy_projection(script, masked, record) for record in records
+        ]
         self._report(parser)
         return records
 
     @staticmethod
-    def _policy_projection(script: str, masked: str, record: Statement) -> Statement:
+    def _policy_projection(script: str, masked: str, record: Statement) -> Optional[str]:
         """Project comment blanks from the scan that produced this execution unit."""
         sent = record.text if record.execution_text is None else record.execution_text
         if (
@@ -119,11 +122,11 @@ class LexicalEngine:
             or record.multi
             or (record.analysis_statements is not None and len(record.analysis_statements) > 1)
         ):
-            return record
+            return None
         offset = script.find(sent, record.source_start, record.source_end)
         if offset < 0:
-            return record
-        return replace(record, policy_text=masked[offset : offset + len(sent)])
+            return None
+        return masked[offset : offset + len(sent)]
 
     def split_statements(self, script: str) -> List[str]:
         """Return execution text, preserving the established terminator contract."""
