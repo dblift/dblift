@@ -651,8 +651,19 @@ def _table_name_matches_source(
         for first, second in zip(name_tokens, name_tokens[1:])
     ):
         return False
-    if not allow_leading_dot and first >= 2 and tokens[first - 1].token_type == TokenType.DOT:
-        if tokens[first - 2].text.upper() in {"UPDATE", "FROM", "INTO", "TABLE", "JOIN"}:
+    if (
+        not allow_leading_dot
+        and first
+        and tokens[first - 1].token_type == TokenType.DOT
+        and not isinstance(table.parent, exp.Index)
+        and not (
+            isinstance(table.parent, (exp.Create, exp.Drop))
+            and str(table.parent.args.get("kind") or "").upper() == "SCHEMA"
+        )
+    ):
+        return False
+    if last + 1 < len(tokens) and tokens[last + 1].token_type == TokenType.STAR:
+        if tokens[last + 1].start == tokens[last].end + 1:
             return False
     return True
 

@@ -124,6 +124,5 @@ class SqlglotStatementFactsReader:
         return read_statement_facts(
             sql,
             dialect=self.dialect,
-            allow_leading_dot=self.spec is not None
-            and self.spec.name == "mariadb",  # lint: allow-dialect-string: MariaDB permits .table
+            allow_leading_dot=self.spec is not None and self.spec.allow_leading_dot_relation,
         )
