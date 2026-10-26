@@ -1,6 +1,7 @@
 """One lexical entry point for splitting and comment masking."""
 
 import logging
+from dataclasses import replace
 from typing import Iterable, List
 
 from dblift.core.exceptions import UnsafeStatementSplitError
@@ -95,8 +96,34 @@ class LexicalEngine:
         """Return source-positioned execution units and analysis projections."""
         parser = self._parser(script)
         records = parser.split()
+        masked = script
+        if parser._comments:
+            parts: List[str] = []
+            cursor = 0
+            for start, end in parser._comments:
+                parts.extend((script[cursor:start], " " * (end - start)))
+                cursor = end
+            parts.append(script[cursor:])
+            masked = "".join(parts)
+        records = [self._policy_projection(script, masked, record) for record in records]
         self._report(parser)
         return records
+
+    @staticmethod
+    def _policy_projection(script: str, masked: str, record: Statement) -> Statement:
+        """Project comment blanks from the scan that produced this execution unit."""
+        sent = record.text if record.execution_text is None else record.execution_text
+        if (
+            record.source_start is None
+            or record.source_end is None
+            or record.multi
+            or (record.analysis_statements is not None and len(record.analysis_statements) > 1)
+        ):
+            return record
+        offset = script.find(sent, record.source_start, record.source_end)
+        if offset < 0:
+            return record
+        return replace(record, policy_text=masked[offset : offset + len(sent)])
 
     def split_statements(self, script: str) -> List[str]:
         """Return execution text, preserving the established terminator contract."""
