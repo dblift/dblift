@@ -214,6 +214,22 @@ def test_quoted_catalog_qualified_null_comment_keeps_raw_target():
         ("t", "memory.main", True)
     ]
     assert facts.target_sql == '"memory"."main"."t"'
+    assert facts.objects[0].catalog == "memory"
+
+
+@pytest.mark.parametrize(
+    "sql, catalog",
+    [
+        ('COMMENT ON TABLE a."b.c".t IS NULL', "a"),
+        ('COMMENT ON TABLE "a.b".c.t IS NULL', "a.b"),
+    ],
+)
+def test_null_comment_keeps_dotted_catalog_boundary(sql, catalog):
+    facts = DuckDBQuirks().statement_facts(sql)
+
+    assert not facts.opaque
+    assert facts.objects[0].schema == "a.b.c"
+    assert facts.objects[0].catalog == catalog
 
 
 @pytest.mark.parametrize(

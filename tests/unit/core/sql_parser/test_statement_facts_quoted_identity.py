@@ -70,6 +70,32 @@ def test_duckdb_copy_query_keeps_quote_distinct_sources():
     assert [obj.name_quoted for obj in facts.objects] == [False, True]
 
 
+@pytest.mark.parametrize(
+    "left, right, catalogs",
+    [
+        ('"memory.foo".t', "memory.foo.t", [None, "memory"]),
+        ('a."b.c".t', '"a.b".c.t', ["a", "a.b"]),
+    ],
+)
+def test_duckdb_flattened_schema_keeps_catalog_boundary(left, right, catalogs):
+    quirks = ProviderRegistry.get_quirks("duckdb")
+    objects = [
+        quirks.statement_facts(f"CREATE TABLE {name}(id INT)").objects[0] for name in (left, right)
+    ]
+
+    assert objects[0].schema == objects[1].schema
+    assert [getattr(obj, "catalog", None) for obj in objects] == catalogs
+
+
+def test_duckdb_same_flattened_sources_remain_distinct():
+    facts = ProviderRegistry.get_quirks("duckdb").statement_facts(
+        'SELECT * FROM a."b.c".t JOIN "a.b".c.t ON true'
+    )
+
+    assert len(facts.objects) == 2
+    assert [getattr(obj, "catalog", None) for obj in facts.objects] == ["a", "a.b"]
+
+
 def test_postgresql_quoted_table_is_not_an_unquoted_cte_alias():
     facts = ProviderRegistry.get_quirks("postgresql").statement_facts(
         'WITH foo AS (SELECT 1) SELECT * FROM "Foo"'

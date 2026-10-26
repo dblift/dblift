@@ -16,8 +16,9 @@ if TYPE_CHECKING:
 class NamedObject:
     """An object named by a statement and the role it plays there.
 
-    Quote flags preserve AST identifier provenance for consumers that resolve
-    dialect-specific identity. ``None`` means the reader did not establish it.
+    Quote flags and ``catalog`` preserve AST identifier provenance for consumers
+    that resolve dialect-specific identity. ``schema`` retains its flattened
+    projection for existing callers. ``None`` means the reader did not establish it.
     """
 
     name: str
@@ -26,6 +27,7 @@ class NamedObject:
     schema: Optional[str] = None
     name_quoted: Optional[bool] = field(default=None, compare=False)
     schema_quoted: Optional[bool] = field(default=None, compare=False)
+    catalog: Optional[str] = field(default=None, compare=False)
 
     def as_sql_object(self, default_schema: Optional[str] = None, dialect: str = "") -> SqlObject:
         """Project identity into the established public object shape."""

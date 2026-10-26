@@ -106,6 +106,7 @@ def _null_table_comment(text: str) -> Optional[StatementFacts]:
                 schema,
                 name_quoted=parts[-1].startswith('"'),
                 schema_quoted=parts[0].startswith('"') if len(parts) == 2 else None,
+                catalog=_unquoted(parts[0]) if len(parts) == 3 else None,
             ),
         ),
         target_sql=match.group(1),

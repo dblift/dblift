@@ -565,11 +565,20 @@ def _named(node: exp.Expression, kind: SqlObjectType, role: str) -> Optional[Nam
         schema,
         name_quoted=_identifier_quoted(name_node),
         schema_quoted=_identifier_quoted(schema_node),
+        catalog=table.catalog or None,
     )
 
 
 def _named_source_key(obj: NamedObject) -> tuple[object, ...]:
-    return (obj.name, obj.type, obj.role, obj.schema, obj.name_quoted, obj.schema_quoted)
+    return (
+        obj.name,
+        obj.type,
+        obj.role,
+        obj.schema,
+        obj.name_quoted,
+        obj.schema_quoted,
+        obj.catalog,
+    )
 
 
 def _append_distinct_named(objects: list[NamedObject], candidate: Optional[NamedObject]) -> None:
