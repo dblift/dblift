@@ -69,15 +69,14 @@ _PART_SIGNATURE = "-- Split because dblift migrate refuses a file that mixes "
 def _generated_part_groups(
     state: MigrationState,
 ) -> Dict[str, Tuple[int, Dict[int, Migration], bool]]:
-    """Read generated part identity from catalog files, including older untagged files.
+    """Read generated part identity from resolved files, including older untagged files.
 
     The old writer records part/count in a two-line header. Its filename is
     checked against that header before being used as a group key; an ordinary
     migration with an ``_n`` version is never treated as a generated part.
     """
     groups: Dict[str, Tuple[int, Dict[int, Migration], bool]] = {}
-    for record in state.catalog:
-        migration = record.migration
+    for migration in state.resolved_objects or ():
         content = vars(migration).get("content")
         name = migration.script_name
         if not isinstance(content, str) or not isinstance(name, str):

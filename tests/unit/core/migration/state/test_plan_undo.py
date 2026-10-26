@@ -60,10 +60,10 @@ def _manager(
     scripts = [_undo_script(v) for v in undo_versions]
     state = MigrationState(
         current_version=current_version if applied else None,
-        catalog=tuple(CatalogMigration(s, eligibility) for s in scripts)
-        + tuple(CatalogMigration(s, PENDING) for s in forward_parts),
+        catalog=tuple(CatalogMigration(s, eligibility) for s in scripts),
         applied_objects=[a for a in applied if a.type != MigrationType.UNDO_SQL],
         all_applied_objects=applied,
+        resolved_objects=list(forward_parts),
     )
     manager = MigrationStateManager(MagicMock(), MagicMock(), MagicMock(), MagicMock())
     manager.build_state = MagicMock(return_value=state)
