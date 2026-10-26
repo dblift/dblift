@@ -192,6 +192,24 @@ def test_sqlserver_nested_comment_before_nontransactional_statement_is_blank():
     ).can_execute_in_transaction
 
 
+def test_sqlserver_nested_comment_batch_checks_every_statement():
+    sql = "SELECT /* outer /* inner */ outer */ 1; BACKUP DATABASE d TO DISK='x';\nGO"
+    splitter = StatementSplitter("sqlserver")
+    sent = splitter.split_statements(sql)
+    prepared = neutralise_transaction_statements(
+        sent,
+        dialect="sqlserver",
+        log=NullLog(),
+        content=sql,
+        records=splitter.last_split(sql),
+        record_policy_texts=splitter.last_policy_texts(sql),
+    )
+
+    assert not classify_execution_statement(
+        prepared[0], dialect="sqlserver", policy_text=prepared.policy_texts[0]
+    ).can_execute_in_transaction
+
+
 @pytest.mark.parametrize("statement", ["COMMIT", "BEGIN TRANSACTION"])
 def test_stale_policy_records_cannot_hide_transaction_control(statement):
     splitter = StatementSplitter("sqlite")
