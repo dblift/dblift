@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `dblift[cli]` now installs SQLGlot through the `analysis` extra, so command-line installs
+  include the SQL analysis dependency by default. The base install remains lightweight.
 - Db2 and PostgreSQL statement splitting consume tokens as they are scanned, reducing peak memory
   for migration scripts with many short statements while preserving statement boundaries.
 - SQL migration transaction checks reuse comment-masked statement views from the script scan,
