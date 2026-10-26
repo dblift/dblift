@@ -76,8 +76,7 @@ def test_record_policy_view_blanks_comments_but_preserves_quoted_text():
     "sql",
     [
         "SELECT 12345678901234567890; SELECT 98765432109876543210;",
-        "SELECT 12345678901234567890; SELECT /* comment */ 5; "
-        "SELECT 98765432109876543210;",
+        "SELECT 12345678901234567890; SELECT /* comment */ 5; " "SELECT 98765432109876543210;",
     ],
 )
 def test_comment_free_units_reuse_the_execution_text_storage(sql):
@@ -171,6 +170,24 @@ def test_sqlserver_server_nested_comment_keeps_transaction_policy():
     )
 
     assert classify_execution_statement(
+        prepared[0], dialect="sqlserver", policy_text=prepared.policy_texts[0]
+    ).can_execute_in_transaction
+
+
+def test_sqlserver_nested_comment_before_nontransactional_statement_is_blank():
+    sql = "CREATE /* outer /* inner */ outer */ FULLTEXT CATALOG c;\nGO"
+    splitter = StatementSplitter("sqlserver")
+    sent = splitter.split_statements(sql)
+    prepared = neutralise_transaction_statements(
+        sent,
+        dialect="sqlserver",
+        log=NullLog(),
+        content=sql,
+        records=splitter.last_split(sql),
+        record_policy_texts=splitter.last_policy_texts(sql),
+    )
+
+    assert not classify_execution_statement(
         prepared[0], dialect="sqlserver", policy_text=prepared.policy_texts[0]
     ).can_execute_in_transaction
 

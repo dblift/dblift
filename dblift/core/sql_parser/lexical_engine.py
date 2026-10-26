@@ -106,9 +106,20 @@ class LexicalEngine:
                 cursor = end
             parts.append(script[cursor:])
             masked = "".join(parts)
-        self.last_policy_texts = [
-            self._policy_projection(script, masked, record) for record in records
-        ]
+        batches = parser._batches
+        self.last_policy_texts = []
+        for record in records:
+            if (
+                batches is not None
+                and batches._server_spec is not None
+                and record.source_start is not None
+                and record.source_end is not None
+                and batches._comment_nests(record.source_start, record.source_end)
+            ):
+                view = self._server_policy_projection(record, batches._server_spec)
+            else:
+                view = self._policy_projection(script, masked, record)
+            self.last_policy_texts.append(view)
         self._report(parser)
         return records
 
@@ -126,7 +137,30 @@ class LexicalEngine:
         offset = script.find(sent, record.source_start, record.source_end)
         if offset < 0:
             return None
-        return masked[offset : offset + len(sent)]
+        if masked is script:
+            return sent
+        view = masked[offset : offset + len(sent)]
+        return sent if view == sent else view
+
+    @staticmethod
+    def _server_policy_projection(record: Statement, spec: LexicalSpec) -> Optional[str]:
+        """Read a nested client comment as the server reads just this affected batch."""
+        sent = record.text if record.execution_text is None else record.execution_text
+        tokenizer = LexicalTokenizer(sent, spec=spec)
+        try:
+            tokenizer.tokenize()
+        except UnsafeStatementSplitError:
+            return None
+        if tokenizer.open_comment is not None:
+            return None
+        parts: List[str] = []
+        cursor = 0
+        for start, end in tokenizer.comments:
+            parts.extend((sent[cursor:start], " " * (end - start)))
+            cursor = end
+        parts.append(sent[cursor:])
+        view = "".join(parts)
+        return sent if view == sent else view
 
     def split_statements(self, script: str) -> List[str]:
         """Return execution text, preserving the established terminator contract."""
