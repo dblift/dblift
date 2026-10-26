@@ -44,6 +44,9 @@ def test_plugin_comment_only_facts_have_no_diagnostic():
         ("SET schema='s'", "SELECT_NAMESPACE", "s"),
         ("SET schema=s", "SELECT_NAMESPACE", "s"),
         ("USE s", "SELECT_NAMESPACE", "s"),
+        ('USE "s"', "SELECT_NAMESPACE", '"s"'),
+        ("USE memory.s", "SELECT_NAMESPACE", "memory.s"),
+        ('USE "memory"."s"', "SELECT_NAMESPACE", '"memory"."s"'),
         ("SET search_path=s", "SELECT_NAMESPACE", "s"),
         ("SET search_path='s'", "SELECT_NAMESPACE", "s"),
         ("RESET schema", "RESET_NAMESPACE", None),
@@ -63,12 +66,53 @@ def test_plain_namespace_selection_has_a_session_fact(sql, action, target):
     [
         "SET search_path='s,main'",
         "SET schema='s' extra",
-        "USE s.extra",
+        "USE a.b.c",
         "SET schema current_schema()",
     ],
 )
 def test_unresolved_schema_selection_stays_opaque(sql):
     assert DuckDBQuirks().statement_facts(sql).opaque
+
+
+@pytest.mark.parametrize(
+    "sql",
+    ["SET schema s", "SET search_path s", "SET search_path 's'"],
+)
+def test_native_rejected_namespace_forms_are_not_claimed(sql):
+    duckdb = pytest.importorskip("duckdb")
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE SCHEMA s")
+        with pytest.raises(duckdb.ParserException):
+            connection.execute(sql)
+    finally:
+        connection.close()
+
+    assert DuckDBQuirks().statement_facts(sql).opaque
+
+
+@pytest.mark.parametrize(
+    ("sql", "target"),
+    [
+        ('USE "s"', '"s"'),
+        ("USE memory.s", "memory.s"),
+        ('USE "memory"."s"', '"memory"."s"'),
+    ],
+)
+def test_native_use_preserves_the_written_namespace(sql, target):
+    duckdb = pytest.importorskip("duckdb")
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE SCHEMA s")
+        connection.execute(sql)
+        current = connection.execute("SELECT current_catalog(), current_schema()").fetchone()
+    finally:
+        connection.close()
+
+    facts = DuckDBQuirks().statement_facts(sql)
+    assert not facts.opaque
+    assert (facts.action, facts.target) == ("SELECT_NAMESPACE", target)
+    assert current == ("memory", "s")
 
 
 def test_null_table_comment_keeps_target_and_removal_value():
@@ -78,6 +122,36 @@ def test_null_table_comment_keeps_target_and_removal_value():
     assert facts.operation == "COMMENT"
     assert [(obj.name, obj.schema, obj.role) for obj in facts.objects] == [("t", "main", "altered")]
     assert facts.table_comment is None
+
+
+def test_catalog_qualified_null_table_comment_keeps_the_full_target():
+    duckdb = pytest.importorskip("duckdb")
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE TABLE main.t(id INT)")
+        connection.execute("COMMENT ON TABLE main.t IS 'old'")
+        connection.execute("COMMENT ON TABLE memory.main.t IS NULL")
+        removed = connection.execute(
+            "SELECT comment FROM duckdb_tables() WHERE schema_name = 'main' AND table_name = 't'"
+        ).fetchone()[0]
+    finally:
+        connection.close()
+
+    facts = DuckDBQuirks().statement_facts("COMMENT ON TABLE memory.main.t IS NULL")
+    assert not facts.opaque
+    assert [(obj.name, obj.schema) for obj in facts.objects] == [("t", "memory.main")]
+    assert facts.table_comment is None
+    assert removed is None
+
+
+def test_quoted_catalog_qualified_null_comment_keeps_raw_target():
+    facts = DuckDBQuirks().statement_facts('COMMENT ON TABLE "memory"."main"."t" IS NULL')
+
+    assert not facts.opaque
+    assert [(obj.name, obj.schema, obj.name_quoted) for obj in facts.objects] == [
+        ("t", "memory.main", True)
+    ]
+    assert facts.target_sql == '"memory"."main"."t"'
 
 
 @pytest.mark.parametrize(

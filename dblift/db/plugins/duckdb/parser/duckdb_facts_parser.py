@@ -23,14 +23,18 @@ _CREATE_MACRO_HEAD = re.compile(
 _QUALIFIER_PART = re.compile(_IDENTIFIER)
 _SCHEMA_NAME = r"[A-Za-z_][A-Za-z0-9_$]*"
 _SET_SCHEMA = re.compile(
-    rf"\s*SET\s+(?:schema|search_path)\s*(?:=\s*|\s+)"
+    rf"\s*SET\s+(?:schema|search_path)\s*=\s*"
     rf"(?:'(?P<quoted>{_SCHEMA_NAME})'|(?P<bare>{_SCHEMA_NAME}))\s*;?\s*\Z",
     re.IGNORECASE,
 )
-_USE_SCHEMA = re.compile(rf"\s*USE\s+({_SCHEMA_NAME})\s*;?\s*\Z", re.IGNORECASE)
+_SET_SCHEMA_LITERAL = re.compile(
+    rf"\s*SET\s+schema\s+'(?P<name>{_SCHEMA_NAME})'\s*;?\s*\Z", re.IGNORECASE
+)
+_USE_SCHEMA = re.compile(rf"\s*USE\s+({_IDENTIFIER}(?:\.{_IDENTIFIER})?)\s*;?\s*\Z", re.IGNORECASE)
 _RESET_SCHEMA = re.compile(r"\s*RESET\s+(?:schema|search_path)\s*;?\s*\Z", re.IGNORECASE)
 _NULL_TABLE_COMMENT = re.compile(
-    rf"\s*COMMENT\s+ON\s+TABLE\s+({_IDENTIFIER}(?:\s*\.\s*{_IDENTIFIER})?)\s+IS\s+NULL\s*;?\s*\Z",
+    rf"\s*COMMENT\s+ON\s+TABLE\s+({_IDENTIFIER}(?:\s*\.\s*{_IDENTIFIER}){{0,2}})"
+    r"\s+IS\s+NULL\s*;?\s*\Z",
     re.IGNORECASE,
 )
 # What the shared reader reports for a macro it parses as a function but does not name. A macro it
@@ -64,6 +68,11 @@ def _schema_selection(text: str) -> Optional[StatementFacts]:
             target=selected.group("quoted") or selected.group("bare"),
             action="SELECT_NAMESPACE",
         )
+    selected = _SET_SCHEMA_LITERAL.fullmatch(text)
+    if selected is not None:
+        return StatementFacts(
+            "SET", "SESSION", target=selected.group("name"), action="SELECT_NAMESPACE"
+        )
     selected = _USE_SCHEMA.fullmatch(text)
     if selected is not None:
         return StatementFacts("USE", "SESSION", target=selected.group(1), action="SELECT_NAMESPACE")
@@ -78,7 +87,8 @@ def _null_table_comment(text: str) -> Optional[StatementFacts]:
     if match is None:
         return None
     parts = _QUALIFIER_PART.findall(match.group(1))
-    name, schema = _unquoted(parts[-1]), _unquoted(parts[0]) if len(parts) == 2 else None
+    name = _unquoted(parts[-1])
+    schema = ".".join(_unquoted(part) for part in parts[:-1]) or None
     return StatementFacts(
         "COMMENT",
         "DDL",
@@ -89,9 +99,10 @@ def _null_table_comment(text: str) -> Optional[StatementFacts]:
                 "altered",
                 schema,
                 name_quoted=parts[-1].startswith('"'),
-                schema_quoted=parts[0].startswith('"') if schema else None,
+                schema_quoted=parts[0].startswith('"') if len(parts) == 2 else None,
             ),
         ),
+        target_sql=match.group(1),
     )
 
 
