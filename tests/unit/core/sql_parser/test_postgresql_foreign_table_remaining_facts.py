@@ -11,6 +11,7 @@ from dblift.db.provider_registry import ProviderRegistry
     ("sql", "parent"),
     [
         ("CREATE FOREIGN TABLE ft PARTITION OF parent DEFAULT SERVER srv", "parent"),
+        ("CREATE FOREIGN TABLE ft PARTITION OF parent (c NOT NULL) DEFAULT SERVER srv", "parent"),
         (
             "CREATE FOREIGN TABLE s.ft PARTITION OF s.parent FOR VALUES IN (1) SERVER srv",
             "s.parent",
@@ -84,6 +85,8 @@ def test_foreign_table_inheritance_action_reads_parent(action):
         "CREATE FOREIGN TABLE ft PARTITION OF parent FOR VALUES WITH (MODULUS 0, REMAINDER 1) SERVER srv",
         "CREATE FOREIGN TABLE ft PARTITION OF parent FOR VALUES WITH (MODULUS 4, REMAINDER 4) SERVER srv",
         "CREATE FOREIGN TABLE ft PARTITION OF parent DEFAULT SERVER srv trailing",
+        "CREATE FOREIGN TABLE ft PARTITION OF parent DEFAULT INHERITS (other) SERVER srv",
+        "CREATE FOREIGN TABLE ft PARTITION OF parent (c integer) DEFAULT SERVER srv",
         "CREATE FOREIGN TABLE s..ft PARTITION OF parent DEFAULT SERVER srv",
         "CREATE FOREIGN TABLE ft PARTITION OF s..parent DEFAULT SERVER srv",
         "ALTER FOREIGN TABLE ft SET SCHEMA",

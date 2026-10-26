@@ -2965,7 +2965,11 @@ def read_statement_facts(
                 if reference:
                     objects += (reference,)
                     indexed_table = reference.name
-        definitions = schema_node.expressions if schema_node is not None else []
+        definitions = (
+            schema_node.expressions
+            if schema_node is not None and ast.args.get("partition_parent") is None
+            else []
+        )
         if any(
             isinstance(definition, exp.ColumnDef) and _unread_column_definition(definition)
             for definition in definitions

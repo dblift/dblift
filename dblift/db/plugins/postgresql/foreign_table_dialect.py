@@ -60,15 +60,19 @@ _COLUMN_CONSTRAINTS = (
 _LIKE_OPTIONS = frozenset({"COMMENTS", "CONSTRAINTS", "DEFAULTS", "GENERATED", "STATISTICS", "ALL"})
 
 
-def _foreign_definition_supported(node: exp.Expr) -> bool:
+def _foreign_definition_supported(node: exp.Expr, *, partition: bool = False) -> bool:
     if isinstance(node, exp.AddConstraint):
         return bool(node.expressions) and all(
-            _foreign_definition_supported(item) for item in node.expressions
+            _foreign_definition_supported(item, partition=partition) for item in node.expressions
         )
     if isinstance(node, exp.ColumnDef):
         return (
             isinstance(node.this, exp.Identifier)
-            and isinstance(node.args.get("kind"), exp.DataType)
+            and (
+                (node.args.get("kind") is None and bool(node.args.get("constraints")))
+                if partition
+                else isinstance(node.args.get("kind"), exp.DataType)
+            )
             and all(
                 isinstance(constraint, exp.ColumnConstraint)
                 and isinstance(constraint.args.get("kind"), _COLUMN_CONSTRAINTS)
@@ -80,6 +84,8 @@ def _foreign_definition_supported(node: exp.Expr) -> bool:
             node.expressions[0], exp.CheckColumnConstraint
         )
     if isinstance(node, exp.LikeProperty):
+        if partition:
+            return False
         source = node.this
         return (
             isinstance(source, exp.Table)
@@ -277,8 +283,16 @@ class ForeignTableParser(PostgresParser):
         this: exp.Expr | None
         if self._match_text_seq("PARTITION", "OF"):
             partition_parent = self._foreign_table_target()
-            partition_bound = self._foreign_partition_bound() if partition_parent else None
-            this = exp.Schema(this=table)
+            if partition_parent is None:
+                return self._parse_as_command(start)
+            self._foreign_schema = True
+            try:
+                this = self._parse_schema(this=table)
+            finally:
+                self._foreign_schema = False
+            if this is table:
+                this = exp.Schema(this=table)
+            partition_bound = self._foreign_partition_bound()
             if partition_bound is None:
                 return self._parse_as_command(start)
         else:
@@ -288,7 +302,7 @@ class ForeignTableParser(PostgresParser):
             finally:
                 self._foreign_schema = False
         inherits: list[exp.Table] = []
-        if self._match_text_seq("INHERITS"):
+        if partition_parent is None and self._match_text_seq("INHERITS"):
             if not self._match(TokenType.L_PAREN):
                 return self._parse_as_command(start)
             while True:
@@ -302,7 +316,10 @@ class ForeignTableParser(PostgresParser):
                 return self._parse_as_command(start)
         if (
             not isinstance(this, exp.Schema)
-            or not all(_foreign_definition_supported(node) for node in this.expressions)
+            or not all(
+                _foreign_definition_supported(node, partition=partition_parent is not None)
+                for node in this.expressions
+            )
             or not self._match_text_seq("SERVER")
         ):
             return self._parse_as_command(start)
