@@ -303,12 +303,11 @@ Code in `dblift/core/sql_parser/` and `dblift/db/plugins/sqlserver/parser/`:
 
 ### Current implementation gaps
 
-Behaviours kept from the previous scanner on purpose and recorded here (each has
-a test; none is changed by the move to the engine):
+Legacy quirks and their current status (each has a test):
 
-- A batch holding only a form feed, a vertical tab or a no-break space is a batch
-  with code: the splitter returns an empty-text record where sqlcmd runs nothing
-  (row 31, listed in `KNOWN_GAPS` of the conformance test).
+- The previous scanner returned an empty-text record for a batch holding only
+  a form feed, vertical tab or no-break space. The shared engine drops these
+  batches, as sqlcmd does (row 31; `KNOWN_GAPS` is empty).
   A batch holding only U+001C is a record with that character as its text (not an
   empty one); the executor skips it. How sqlcmd reads a batch holding only U+001C is
   unmeasured.

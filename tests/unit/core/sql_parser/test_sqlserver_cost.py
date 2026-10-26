@@ -150,6 +150,7 @@ def test_sqlserver_cost_detects_a_prefix_rescan_per_comment(monkeypatch):
 
     def rescanning_parser(self, script):
         parser = original(self, script)
+        parser.tokens = list(parser.tokens)  # consume the lazy stream to populate comment extents
         for start, _ in parser._comments:
             script[:start].count("\n")
         return parser
@@ -160,19 +161,9 @@ def test_sqlserver_cost_detects_a_prefix_rescan_per_comment(monkeypatch):
     assert large > BOUND * small, (small, large)
 
 
-def test_sqlserver_cost_detects_a_token_prefix_copy_in_the_parser(monkeypatch):
-    original = LexicalEngine._parser
-
-    def rescanning_parser(self, script):
-        parser = original(self, script)
-        for index in range(len(parser.tokens)):
-            parser.tokens[:index]
-        return parser
-
-    monkeypatch.setattr(LexicalEngine, "_parser", rescanning_parser)
-    make = SHAPES["many GO batches"]
-    small, large = counted(make(SMALL)), counted(make(LARGE))
-    assert large > BOUND * small, (small, large)
+def test_sqlserver_parser_does_not_materialize_the_token_stream():
+    parser = LexicalEngine(SQLSERVER_SPEC)._parser(SHAPES["many GO batches"](SMALL))
+    assert iter(parser.tokens) is parser.tokens
 
 
 @pytest.mark.parametrize("pattern", ("ab|ac|d", "a||b", "(?:a+)+|b"))

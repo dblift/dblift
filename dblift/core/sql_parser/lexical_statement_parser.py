@@ -1,6 +1,6 @@
 """Shared token-stream statement splitting driven by lexical specifications."""
 
-from typing import Iterable, Iterator, List, Optional, Sequence, Tuple, cast
+from typing import Iterable, Iterator, List, Optional, Sequence, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
@@ -187,8 +187,7 @@ class LexicalStatementParser(BaseStatementParser):
         if self._segment_records is not None:
             return list(self._segment_records)
         if self._batches is not None:
-            assert isinstance(self.tokens, Sequence)
-            return self._batches.split(cast(Sequence[Token], self.tokens))
+            return self._batches.split(self.tokens)
         records: List[Statement] = []
         current: List[Token] = []
 
