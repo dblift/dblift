@@ -71,6 +71,10 @@ def test_foreign_table_ddl_does_not_invent_a_name(sql):
             "ALTER",
             ("ft",),
         ),
+        ("ALTER FOREIGN TABLE ft RENAME COLUMN old TO new", "ALTER", ("ft",)),
+        ("ALTER FOREIGN TABLE ft DROP COLUMN old CASCADE", "ALTER", ("ft",)),
+        ("ALTER FOREIGN TABLE ft ALTER COLUMN id SET DEFAULT 1", "ALTER", ("ft",)),
+        ("ALTER FOREIGN TABLE ft ALTER COLUMN id TYPE text", "ALTER", ("ft",)),
         ("DROP FOREIGN TABLE ft, other_ft CASCADE", "DROP", ("ft", "other_ft")),
     ],
 )
@@ -105,6 +109,7 @@ def test_foreign_table_supported_options_and_targets_are_read(sql, operation, na
         "ALTER FOREIGN TABLE ft DROP COLUMN",
         "ALTER FOREIGN TABLE ft ALTER COLUMN c SET DEFAULT",
         "ALTER FOREIGN TABLE ft ALTER COLUMN c TYPE text USING",
+        "ALTER FOREIGN TABLE ft ALTER COLUMN c TYPE text COLLATE",
     ],
 )
 def test_foreign_table_unread_or_malformed_tail_stays_opaque(sql):

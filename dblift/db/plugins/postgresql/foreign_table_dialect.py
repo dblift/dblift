@@ -82,14 +82,68 @@ def _foreign_alter_action_supported(action: exp.Expr) -> bool:
     if isinstance(action, (exp.ColumnDef, exp.AddConstraint)):
         return _foreign_definition_supported(action)
     if isinstance(action, exp.Drop):
-        return action.args.get("kind") in {"COLUMN", "CONSTRAINT"}
-    return isinstance(action, (exp.AlterColumn, exp.RenameColumn, exp.AlterRename))
+        targets = list(action.args.get("tables") or ())
+        kind = action.args.get("kind")
+        return len(targets) == 1 and (
+            (kind == "COLUMN" and _simple_column(targets[0]))
+            or (kind == "CONSTRAINT" and _simple_table(targets[0]))
+        )
+    if isinstance(action, exp.RenameColumn):
+        return _simple_column(action.this) and _simple_column(action.args.get("to"))
+    if isinstance(action, exp.AlterRename):
+        return _simple_table(action.this)
+    if isinstance(action, exp.AlterColumn):
+        return (
+            isinstance(action.this, exp.Identifier)
+            and not action.args.get("using")
+            and not action.args.get("exists")
+            and (
+                isinstance(action.args.get("dtype"), exp.DataType)
+                or action.args.get("default") is not None
+                or action.args.get("drop") is True
+                or action.args.get("allow_null") is not None
+            )
+        )
+    return False
+
+
+def _simple_column(node: exp.Expr | None) -> bool:
+    return (
+        isinstance(node, exp.Column)
+        and isinstance(node.this, exp.Identifier)
+        and bool(node.this.name)
+        and not any(value for key, value in node.args.items() if key != "this")
+    )
+
+
+def _simple_table(node: exp.Expr | None) -> bool:
+    return (
+        isinstance(node, exp.Table)
+        and isinstance(node.this, exp.Identifier)
+        and bool(node.this.name)
+        and not any(value for key, value in node.args.items() if key != "this")
+    )
 
 
 class ForeignTableParser(PostgresParser):
     """Extend PostgreSQL DDL only where all foreign-table tokens are consumed."""
 
     _foreign_schema = False
+    _foreign_alter = False
+    _foreign_unread_tail = False
+
+    def _parse_alter_table_alter(self) -> exp.Expr | None:
+        node = super()._parse_alter_table_alter()
+        if (
+            self._foreign_alter
+            and isinstance(node, exp.AlterColumn)
+            and (
+                (self._prev.token_type == TokenType.USING and not node.args.get("using"))
+                or (self._prev.token_type == TokenType.COLLATE and not node.args.get("collate"))
+            )
+        ):
+            self._foreign_unread_tail = True
+        return node
 
     def _parse_column_constraint(self) -> exp.Expr | None:
         if self._foreign_schema and self._curr and self._curr.text.upper() == "OPTIONS":
@@ -235,10 +289,16 @@ class ForeignTableParser(PostgresParser):
                     )
                 )
         self._retreat(table_index)
-        node = super()._parse_alter()
+        self._foreign_alter = True
+        self._foreign_unread_tail = False
+        try:
+            node = super()._parse_alter()
+        finally:
+            self._foreign_alter = False
         if isinstance(node, exp.Alter) and node.args.get("kind") == "TABLE":
             if (
-                not node.args.get("actions")
+                self._foreign_unread_tail
+                or not node.args.get("actions")
                 or any(
                     not _foreign_alter_action_supported(action) for action in node.args["actions"]
                 )
