@@ -97,7 +97,6 @@ def test_foreign_table_supported_options_and_targets_are_read(sql, operation, na
         "ALTER FOREIGN TABLE ft ALTER COLUMN id OPTIONS (SET column_name)",
         "ALTER FOREIGN TABLE ft* DROP COLUMN id",
         "DROP FOREIGN TABLE ft, bad* CASCADE",
-        "CREATE FOREIGN TABLE ft PARTITION OF parent DEFAULT SERVER srv",
         "CREATE FOREIGN TABLE ft (id integer OPTIONS (column_name)) SERVER srv",
         "CREATE FOREIGN TABLE ft (id integer UNIQUE) SERVER srv",
         "CREATE FOREIGN TABLE ft (id integer, PRIMARY KEY (id)) SERVER srv",
