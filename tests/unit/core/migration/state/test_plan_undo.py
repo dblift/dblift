@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.rules.migration_rules import GROUP_TAG_PREFIX, MigrationRules
 from dblift.core.migration.state.migration_state import (
     CatalogMigration,
@@ -306,6 +306,21 @@ def test_partial_legacy_generated_set_refuses_undo_before_resolving_scripts() ->
     assert plan.refusal is not None
     assert "partially applied" in plan.refusal
     assert "V9_2__change.sql" in plan.refusal
+
+
+def test_real_resolved_files_include_applied_and_pending_parts(tmp_path: Path) -> None:
+    files = []
+    for number in (1, 2):
+        part = _legacy_generated_part(number, 2)
+        path = tmp_path / part.script_name
+        path.write_text(part.content + "SELECT 1;\n", encoding="utf-8")
+        files.append(Migration(script_path=path, checksum=None))
+    applied = _applied("9.1", 1)
+    applied.script_name = files[0].script_name
+    manager, state, _ = _manager([applied], ["9.1"], forward_parts=files)
+
+    assert [part.version for part in state.resolved_objects or []] == ["9.1", "9.2"]
+    assert "partially applied" in (_plan(manager).refusal or "")
 
 
 def test_partial_tagged_generated_set_also_refuses_undo() -> None:
