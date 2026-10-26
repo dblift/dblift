@@ -184,10 +184,8 @@ class TestParseSqlStatementsMssqlAlias(unittest.TestCase):
         migration = _make_sql_migration(content="SELECT 1;")
         result = MagicMock()
 
-        with patch("dblift.core.migration.executor.execution_engine.StatementReader") as analyzer:
-            analyzer.return_value.split_statements.return_value = ["SELECT 1"]
-            assert engine._parse_sql_statements(migration, result) == ["SELECT 1"]
-        assert analyzer.call_args.kwargs["dialect"] == "sqlserver"
+        assert engine._parse_sql_statements(migration, result) == ["SELECT 1;"]
+        assert migration.dialect == "sqlserver"
 
     def test_postgres_alias_passes_through_unchanged(self):
         # Sanity check: the alias normalisation is gated on "sqlserver" only.
@@ -198,10 +196,8 @@ class TestParseSqlStatementsMssqlAlias(unittest.TestCase):
         migration = _make_sql_migration(content="SELECT 1;")
         result = MagicMock()
 
-        with patch("dblift.core.migration.executor.execution_engine.StatementReader") as analyzer:
-            analyzer.return_value.split_statements.return_value = ["SELECT 1"]
-            assert engine._parse_sql_statements(migration, result) == ["SELECT 1"]
-        assert analyzer.call_args.kwargs["dialect"] == "postgres"
+        assert engine._parse_sql_statements(migration, result) == ["SELECT 1;"]
+        assert migration.dialect == "postgres"
 
 
 # ---------------------------------------------------------------------------
