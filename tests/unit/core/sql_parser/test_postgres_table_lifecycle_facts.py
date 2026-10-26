@@ -1,9 +1,14 @@
 """PostgreSQL table lifecycle facts needed by schema consumers."""
 
 import pytest
+from sqlglot import exp, parse_one
+from sqlglot.tokens import TokenType
 
 from dblift.core.sql_model.base import SqlObjectType
-from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
+from dblift.core.sql_parser.sqlglot_statement_facts import (
+    _postgres_table_alter_tokens_match,
+    read_statement_facts,
+)
 from dblift.core.sql_parser.statement_facts import DeclaredConstraint, NamedObject
 
 
@@ -36,6 +41,28 @@ def test_qualified_table_and_quoted_primary_key_names_are_read():
 
     assert facts.declared_constraints == (
         DeclaredConstraint("PRIMARY_KEY", ("Id", "Code"), "PkChild"),
+    )
+
+
+def test_only_table_add_primary_key_exposes_declared_constraint():
+    facts = _pg("ALTER TABLE ONLY t ADD CONSTRAINT pk_t PRIMARY KEY(id)")
+
+    assert facts.declared_constraints == (DeclaredConstraint("PRIMARY_KEY", ("id",), "pk_t"),)
+
+
+def test_table_rename_source_proof_rejects_a_different_table_name():
+    original = "ALTER TABLE child RENAME TO old_child"
+    ast = parse_one(original, read="postgres")
+    assert isinstance(ast, exp.Alter)
+    rename = ast.args["actions"][0]
+    assert isinstance(rename, exp.AlterRename)
+    tail = [TokenType.RENAME, "TO", rename.this.this]
+
+    assert _postgres_table_alter_tokens_match(original, ast, tail)
+    assert not _postgres_table_alter_tokens_match(
+        "ALTER TABLE other RENAME TO old_child",
+        ast,
+        tail,
     )
 
 
