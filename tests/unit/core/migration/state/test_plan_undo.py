@@ -357,7 +357,52 @@ def test_generated_group_keeps_highest_first_order_with_interleaved_migration() 
     first.script_name, last.script_name = (part.script_name for part in parts)
     manager, _, _ = _manager([first, unrelated, last], ["9.1", "9.2", "10"], forward_parts=parts)
 
-    assert _versions(_plan(manager, target_version="0")) == ["10", "9.2", "9.1"]
+    assert _versions(_plan(manager, target_version="0")) == ["9.2", "10", "9.1"]
+
+
+def test_generated_group_preserves_reverse_install_order_of_other_migrations() -> None:
+    parts = [_legacy_generated_part(1, 2), _legacy_generated_part(2, 2)]
+    first, second, ten, eight = (
+        _applied("9.1", 1),
+        _applied("9.2", 2),
+        _applied("10", 3),
+        _applied("8", 4),
+    )
+    first.script_name, second.script_name = (part.script_name for part in parts)
+    manager, _, _ = _manager(
+        [first, second, ten, eight], ["9.1", "9.2", "10", "8"], forward_parts=parts
+    )
+
+    assert _versions(_plan(manager, target_version="0")) == ["8", "10", "9.2", "9.1"]
+
+
+@pytest.mark.parametrize("malformed_sibling", [False, True])
+def test_selected_missing_or_malformed_generated_sibling_refuses_undo(
+    malformed_sibling: bool,
+) -> None:
+    parts = [_legacy_generated_part(1, 2), _legacy_generated_part(2, 2)]
+    first, second = _applied("9.1", 1), _applied("9.2", 2)
+    first.script_name, second.script_name = (part.script_name for part in parts)
+    if malformed_sibling:
+        parts[1].content = "-- Part 2 of 2; transactional. altered\n"
+        resolved = parts
+    else:
+        resolved = parts[:1]
+    manager, _, _ = _manager([first, second], ["9.1", "9.2"], forward_parts=resolved)
+
+    plan = _plan(manager)
+
+    assert plan.steps == ()
+    assert "partially applied generated part set" in (plan.refusal or "")
+
+
+def test_surviving_generated_header_does_not_claim_unrelated_same_version() -> None:
+    part = _legacy_generated_part(1, 2)
+    first, ordinary = _applied("9.1", 1), _applied("9.2", 2)
+    first.script_name = part.script_name
+    manager, _, _ = _manager([first, ordinary], ["9.1", "9.2"], forward_parts=[part])
+
+    assert _versions(_plan(manager)) == ["9.2"]
 
 
 @pytest.mark.parametrize(

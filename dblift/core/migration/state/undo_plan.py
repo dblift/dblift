@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from functools import cmp_to_key
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
@@ -14,6 +13,7 @@ from dblift.core.migration.rules.migration_rules import (
     expand_undo_set_to_groups,
     group_tag_of,
 )
+from dblift.core.migration.scripting.filename_parser import parse_migration_filename
 from dblift.core.migration.state.migration_selector import normalize_filter
 from dblift.core.migration.state.migration_state import (
     MigrationEligibility,
@@ -113,6 +113,21 @@ def _generated_part_groups(
     return groups
 
 
+def _expected_part_names(parts: Dict[int, Migration], count: int) -> Dict[str, str]:
+    """Expected history names, derived only from a validated generated header."""
+    seed = next(iter(parts.values()))
+    filename = _PART_NAME.match(seed.script_name)
+    if filename is None:
+        return {}
+    names: Dict[str, str] = {}
+    for number in range(1, count + 1):
+        name = f"V{filename[1]}_{number}__{filename[3]}.sql"
+        version = parse_migration_filename(name).version
+        if version is not None:
+            names[version] = name
+    return names
+
+
 def _include_generated_part_groups(
     state: MigrationState,
     selected: List[Migration],
@@ -146,35 +161,48 @@ def _include_generated_part_groups(
     expanded = list(selected)
     touched = False
     for count, parts, invalid in groups.values():
-        versions = {str(part.version) for part in parts.values()}
-        if not versions.intersection(str(m.version) for m in expanded):
+        expected = _expected_part_names(parts, count)
+        present_versions = {str(part.version) for part in parts.values()}
+        if not any(
+            str(m.version) in present_versions or expected.get(str(m.version)) == m.script_name
+            for m in expanded
+        ):
             continue
         touched = True
         missing = [
-            parts[n].script_name
-            for n in sorted(parts)
-            if str(parts[n].version) not in current
-            or current[str(parts[n].version)].script_name != parts[n].script_name
+            name
+            for version, name in expected.items()
+            if version not in current
+            or current[version].script_name != name
+            or not any(part.script_name == name for part in parts.values())
         ]
         if invalid or len(parts) != count or missing:
-            detail = ", ".join(missing) if missing else "a generated part file is missing"
+            detail = (
+                "a generated part file is missing"
+                if len(parts) != count
+                else "a generated part is absent from applied history"
+            )
+            if missing:
+                detail += f": {', '.join(missing)}"
             return selected, (
                 "Cannot undo a partially applied generated part set: "
                 f"{detail}. Check migration history and recover this set manually."
             )
-        first = next(
-            i for i, migration in enumerate(expanded) if str(migration.version) in versions
+        members = [current[version] for version in expected]
+        if [installed_rank(member) for member in members] != sorted(
+            installed_rank(member) for member in members
+        ):
+            return selected, (
+                "Cannot undo a generated part set applied out of part order. "
+                "Check migration history and recover this set manually."
+            )
+        selected_versions = {str(m.version) for m in expanded}
+        expanded.extend(
+            member for member in members if str(member.version) not in selected_versions
         )
-        expanded = [migration for migration in expanded if str(migration.version) not in versions]
-        members = [current[str(parts[number].version)] for number in sorted(parts, reverse=True)]
-        expanded[first:first] = members
     if touched:
-        expanded.sort(key=cmp_to_key(_compare_migration_versions), reverse=True)
+        expanded.sort(key=installed_rank, reverse=True)
     return expanded, None
-
-
-def _compare_migration_versions(first: Migration, second: Migration) -> int:
-    return compare_versions(str(first.version), str(second.version))
 
 
 def plan_undo(
