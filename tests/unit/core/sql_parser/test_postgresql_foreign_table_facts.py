@@ -102,6 +102,9 @@ def test_foreign_table_supported_options_and_targets_are_read(sql, operation, na
         "ALTER FOREIGN TABLE ft RENAME COLUMN c TO d .garbage",
         "ALTER FOREIGN TABLE ft DROP COLUMN c .garbage",
         "ALTER FOREIGN TABLE ft ALTER COLUMN c TYPE text USING 1",
+        "ALTER FOREIGN TABLE ft DROP COLUMN",
+        "ALTER FOREIGN TABLE ft ALTER COLUMN c SET DEFAULT",
+        "ALTER FOREIGN TABLE ft ALTER COLUMN c TYPE text USING",
     ],
 )
 def test_foreign_table_unread_or_malformed_tail_stays_opaque(sql):
