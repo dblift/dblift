@@ -72,6 +72,23 @@ def test_record_policy_view_blanks_comments_but_preserves_quoted_text():
     assert policy_texts[1].split() == ["INSERT", "INTO", "t", "VALUES", "(1)"]
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT 12345678901234567890; SELECT 98765432109876543210;",
+        "SELECT 12345678901234567890; SELECT /* comment */ 5; "
+        "SELECT 98765432109876543210;",
+    ],
+)
+def test_comment_free_units_reuse_the_execution_text_storage(sql):
+    splitter = StatementSplitter("sqlite")
+    records = splitter.split(sql)
+    policy_texts = splitter.last_policy_texts(sql)
+
+    assert policy_texts[0] is records[0].text
+    assert policy_texts[-1] is records[-1].text
+
+
 def test_repeated_batch_policy_views_stay_aligned_with_execution_strings():
     sql = "SELECT 1;\nGO 0\nCREATE /* flush */ INDEX ix ON t(a);\nGO 2"
     splitter = StatementSplitter("sqlserver")
@@ -137,6 +154,25 @@ def test_multi_statement_batch_keeps_constituent_classification():
     assert len(records) == 1
     assert len(records[0].analysis_statements) == 2
     assert splitter.last_policy_texts(sql) == [None]
+
+
+def test_sqlserver_server_nested_comment_keeps_transaction_policy():
+    sql = "CREATE /* outer /* inner */ FULLTEXT CATALOG fake */ TABLE t (id int);\nGO"
+    splitter = StatementSplitter("sqlserver")
+    records = splitter.split(sql)
+    sent = execution_strings(records)
+    prepared = neutralise_transaction_statements(
+        sent,
+        dialect="sqlserver",
+        log=NullLog(),
+        content=sql,
+        records=records,
+        record_policy_texts=splitter.last_policy_texts(sql),
+    )
+
+    assert classify_execution_statement(
+        prepared[0], dialect="sqlserver", policy_text=prepared.policy_texts[0]
+    ).can_execute_in_transaction
 
 
 @pytest.mark.parametrize("statement", ["COMMIT", "BEGIN TRANSACTION"])
