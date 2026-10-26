@@ -59,7 +59,13 @@ def _created_macro(text: str, diagnostic: Optional[str]) -> Optional[NamedObject
         return None
     parts = [_unquoted(part) for part in _QUALIFIER_PART.findall(head.group(2))]
     schema = parts[-2] if len(parts) > 1 else None
-    return NamedObject(parts[-1], SqlObjectType.FUNCTION, "created", schema)
+    return NamedObject(
+        parts[-1],
+        SqlObjectType.FUNCTION,
+        "created",
+        schema,
+        catalog=parts[0] if len(parts) == 3 else None,
+    )
 
 
 def _schema_selection(text: str) -> Optional[StatementFacts]:
