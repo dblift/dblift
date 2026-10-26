@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional, Protocol, Tuple
 
 from dblift.core.sql_model.base import SqlObject, SqlObjectType
@@ -14,12 +14,18 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class NamedObject:
-    """An object named by a statement and the role it plays there."""
+    """An object named by a statement and the role it plays there.
+
+    Quote flags preserve AST identifier provenance for consumers that resolve
+    dialect-specific identity. ``None`` means the reader did not establish it.
+    """
 
     name: str
     type: SqlObjectType
     role: str
     schema: Optional[str] = None
+    name_quoted: Optional[bool] = field(default=None, compare=False)
+    schema_quoted: Optional[bool] = field(default=None, compare=False)
 
     def as_sql_object(self, default_schema: Optional[str] = None, dialect: str = "") -> SqlObject:
         """Project identity into the established public object shape."""

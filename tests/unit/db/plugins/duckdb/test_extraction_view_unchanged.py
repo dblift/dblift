@@ -27,6 +27,7 @@ from dblift.core.sql_parser.redaction import (
     describe_statement,
     mask_string_literals,
 )
+from dblift.core.sql_parser.statement_facts import NamedObject
 from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBStatementFactsReader
 from dblift.db.plugins.duckdb.provider import DuckDBProvider
 from dblift.db.provider_registry import ProviderRegistry
@@ -46,10 +47,12 @@ def plain(value: Any, depth: int = 0) -> Any:
         return type(value).__name__
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         # ``cte_writes`` was added after the recording and is empty on every recorded input.
+        # Quoted identity is verified separately; it was not part of this recording.
+        unrecorded = {"name_quoted", "schema_quoted"} if isinstance(value, NamedObject) else ()
         return {
             f.name: plain(getattr(value, f.name), depth + 1)
             for f in dataclasses.fields(value)
-            if f.name != "cte_writes" or getattr(value, f.name)
+            if f.name not in unrecorded and (f.name != "cte_writes" or getattr(value, f.name))
         }
     if isinstance(value, enum.Enum):
         return value.name

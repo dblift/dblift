@@ -540,15 +540,43 @@ def _head_tokens_prove_name(
     return all(token.token_type == TokenType.DOT for token in parts[1::2])
 
 
+def _identifier_quoted(node: Optional[exp.Expression]) -> Optional[bool]:
+    return bool(node.args.get("quoted")) if isinstance(node, exp.Identifier) else None
+
+
 def _named(node: exp.Expression, kind: SqlObjectType, role: str) -> Optional[NamedObject]:
     table = node if isinstance(node, exp.Table) else node.find(exp.Table)
     if isinstance(node, exp.Index):
         name = node.this.name if isinstance(node.this, exp.Identifier) else ""
-        return NamedObject(name, kind, role) if name else None
+        return (
+            NamedObject(name, kind, role, name_quoted=_identifier_quoted(node.this))
+            if name
+            else None
+        )
     if not isinstance(table, exp.Table) or not table.name:
         return None
     schema = ".".join(part for part in (table.catalog, table.db) if part) or None
-    return NamedObject(table.name, kind, role, schema)
+    name_node = table.this
+    schema_node = table.args.get("db") if not table.catalog else None
+    return NamedObject(
+        table.name,
+        kind,
+        role,
+        schema,
+        name_quoted=_identifier_quoted(name_node),
+        schema_quoted=_identifier_quoted(schema_node),
+    )
+
+
+def _named_source_key(obj: NamedObject) -> tuple[object, ...]:
+    return (obj.name, obj.type, obj.role, obj.schema, obj.name_quoted, obj.schema_quoted)
+
+
+def _append_distinct_named(objects: list[NamedObject], candidate: Optional[NamedObject]) -> None:
+    if candidate is not None and all(
+        _named_source_key(existing) != _named_source_key(candidate) for existing in objects
+    ):
+        objects.append(candidate)
 
 
 def _snowflake_schema_has_discarded_prefix(sql: str, table: exp.Table) -> bool:
@@ -872,8 +900,7 @@ def _referenced(node: exp.Expr, skip: Tuple[exp.Expr, ...] = ()) -> Tuple[NamedO
         if not table.db and table.name.lower() in ctes:
             continue
         reference = _named(table, SqlObjectType.TABLE, "referenced")
-        if reference is not None and reference not in found:
-            found.append(reference)
+        _append_distinct_named(found, reference)
     return tuple(found)
 
 
@@ -1072,14 +1099,13 @@ def _cte_statement_facts(ast: exp.Expr, dialect: str) -> Optional[StatementFacts
             return None
         effects.append(effect)
         targets.append(table)
-        if altered not in objects:
-            objects.append(altered)
+        _append_distinct_named(objects, altered)
     for table in ast.find_all(exp.Table):
         if any(table is target for target in targets) or not table.name:
             continue
         reference = _named(table, SqlObjectType.TABLE, "referenced")
-        if reference is not None and reference not in objects and not _names_a_visible_cte(table):
-            objects.append(reference)
+        if not _names_a_visible_cte(table):
+            _append_distinct_named(objects, reference)
     if not isinstance(ast, _CTE_WRITES):
         return StatementFacts(
             "SELECT", "DML" if effects else "QUERY", tuple(objects), cte_writes=tuple(effects)
@@ -1176,8 +1202,7 @@ def _merge_referenced(node: exp.Merge, upper: bool = False) -> Tuple[NamedObject
         for source in scope.sources.values():
             if isinstance(source, exp.Table) and not _names_a_visible_cte(source, upper):
                 reference = _named(source, SqlObjectType.TABLE, "referenced")
-                if reference is not None and reference not in found:
-                    found.append(reference)
+                _append_distinct_named(found, reference)
     return tuple(found)
 
 
@@ -1284,8 +1309,7 @@ def _postgres_merge_facts(node: exp.Merge) -> Optional[StatementFacts]:
         for source in scope.sources.values():
             if isinstance(source, exp.Table):
                 reference = originals[id(source)]
-                if reference is not None and reference not in references:
-                    references.append(reference)
+                _append_distinct_named(references, reference)
     if any(id(source) not in seen_tables for source in scoped.find_all(exp.Table)):
         return None
     identity = _named(table, SqlObjectType.TABLE, "altered")
@@ -1329,8 +1353,7 @@ def _copy_query_referenced(query: exp.Subquery, sql: str) -> Optional[Tuple[Name
                 if source.this.args.get("quoted") and (start is None or sql[start] != '"'):
                     return None
                 reference = original_names[id(source)]
-                if reference is not None and reference not in found:
-                    found.append(reference)
+                _append_distinct_named(found, reference)
     return tuple(found)
 
 
@@ -2839,7 +2862,12 @@ def read_statement_facts(
             and not subject.catalog
             and not subject.name
         ):
-            identity = NamedObject(subject.db, object_type, "created")
+            identity = NamedObject(
+                subject.db,
+                object_type,
+                "created",
+                name_quoted=_identifier_quoted(subject.args.get("db")),
+            )
         if (
             dialect == "tsql"  # lint: allow-dialect-string: T-SQL schema name is in Table.db
             and object_type == SqlObjectType.SCHEMA
@@ -2855,7 +2883,9 @@ def read_statement_facts(
             and isinstance(subject, exp.Identifier)
             and subject.name
         ):
-            identity = NamedObject(subject.name, object_type, "created")
+            identity = NamedObject(
+                subject.name, object_type, "created", name_quoted=_identifier_quoted(subject)
+            )
         if (
             dialect == "mysql"  # lint: allow-dialect-string: MySQL names a schema as a database
             and object_type == SqlObjectType.SCHEMA
@@ -3028,7 +3058,13 @@ def read_statement_facts(
             and object_type == SqlObjectType.SCHEMA
         ):
             dropped_objects = tuple(
-                NamedObject(node.db, object_type, "dropped", node.catalog or None)
+                NamedObject(
+                    node.db,
+                    object_type,
+                    "dropped",
+                    node.catalog or None,
+                    name_quoted=_identifier_quoted(node.args.get("db")),
+                )
                 for node in targets
                 if isinstance(node, exp.Table) and node.db
             )
