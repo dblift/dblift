@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Protocol, Tuple
+from typing import TYPE_CHECKING, Optional, Protocol, Tuple
 
 from dblift.core.sql_model.base import SqlObject, SqlObjectType
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
+
+if TYPE_CHECKING:
+    from sqlglot.dialects import Dialect
 
 
 @dataclass(frozen=True)
@@ -108,6 +111,10 @@ class SqlglotStatementFactsReader:
         self.dialect = dialect
         self.spec = spec
 
+    def read_dialect(self) -> Optional[type["Dialect"]]:
+        """Return a plugin-owned SQLGlot dialect when its grammar extends the base dialect."""
+        return None
+
     def read(self, sql: str) -> StatementFacts:
         """Read one already-split statement."""
         try:
@@ -125,4 +132,5 @@ class SqlglotStatementFactsReader:
             sql,
             dialect=self.dialect,
             allow_leading_dot=self.spec is not None and self.spec.allow_leading_dot_relation,
+            read_dialect=self.read_dialect(),
         )
