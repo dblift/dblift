@@ -544,11 +544,30 @@ def _named(node: exp.Expression, kind: SqlObjectType, role: str) -> Optional[Nam
     table = node if isinstance(node, exp.Table) else node.find(exp.Table)
     if isinstance(node, exp.Index):
         name = node.this.name if isinstance(node.this, exp.Identifier) else ""
-        return NamedObject(name, kind, role) if name else None
+        return (
+            NamedObject(name, kind, role, name_quoted=bool(node.this.args.get("quoted")))
+            if name
+            else None
+        )
     if not isinstance(table, exp.Table) or not table.name:
         return None
     schema = ".".join(part for part in (table.catalog, table.db) if part) or None
-    return NamedObject(table.name, kind, role, schema)
+    name_node = table.this
+    schema_node = table.args.get("db") if not table.catalog else None
+    return NamedObject(
+        table.name,
+        kind,
+        role,
+        schema,
+        name_quoted=(
+            bool(name_node.args.get("quoted")) if isinstance(name_node, exp.Identifier) else None
+        ),
+        schema_quoted=(
+            bool(schema_node.args.get("quoted"))
+            if isinstance(schema_node, exp.Identifier)
+            else None
+        ),
+    )
 
 
 def _snowflake_schema_has_discarded_prefix(sql: str, table: exp.Table) -> bool:
