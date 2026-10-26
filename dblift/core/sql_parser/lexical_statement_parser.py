@@ -44,7 +44,7 @@ class LexicalStatementParser(BaseStatementParser):
         self.spec = spec
         self.TERMINATOR_RESPECTS_PARENS = spec.terminator_respects_parens
         self.text_blanks = spec.text_blanks
-        self._comments: Sequence[Tuple[int, int]] = comments or ()
+        self._comments: Sequence[Tuple[int, int]] = comments if comments is not None else ()
         self._head: List[str] = []
         self._head_limit = max(map(len, spec.routine_heads), default=0)
         self._raw_segment_start = 0

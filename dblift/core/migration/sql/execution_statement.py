@@ -23,6 +23,15 @@ class ExecutionStatement:
     transaction_reason: Optional[str] = None
 
 
+class PreparedStatements(list[str]):
+    """Execution strings and scanner-derived policy views kept in the same order."""
+
+    def __init__(self, statements: List[str], policy_texts: List[Optional[str]]):
+        """Keep each policy view at the same index as its execution string."""
+        super().__init__(statements)
+        self.policy_texts = policy_texts
+
+
 @lru_cache(maxsize=None)
 def _script_parser(dialect: str) -> Any:
     """The dialect's lexical engine, which owns execution and analysis script boundaries."""
@@ -55,7 +64,11 @@ def execution_units(sql: str, dialect: str) -> Optional[List[str]]:
 
 
 def classify_execution_statement(
-    sql: str, *, dialect: str, statement_type: str = "UNKNOWN"
+    sql: str,
+    *,
+    dialect: str,
+    statement_type: str = "UNKNOWN",
+    policy_text: Optional[str] = None,
 ) -> ExecutionStatement:
     """Classify transaction metadata for high-confidence dialect-specific cases."""
     from dblift.db.provider_registry import ProviderRegistry
@@ -67,12 +80,18 @@ def classify_execution_statement(
     # A batch is not transactional when any of its statements is not: SQL Server refuses that
     # statement inside the transaction the whole batch would run in.
     parser = _script_parser(dialect.lower())
-    for statement in _statements_of(sql, dialect.lower()):
+    for statement in (
+        [policy_text] if policy_text is not None else _statements_of(sql, dialect.lower())
+    ):
         # Comments between keywords are whitespace too, e.g. FORCE /* flush */ CHECKPOINT.
         blanks = (
             parser.spec.text_blanks if parser is not None and parser.spec.non_ascii_names else None
         )
-        commentless = _without_comments(quirks, statement, blanks=blanks)
+        commentless = (
+            statement.strip(blanks)
+            if policy_text is not None
+            else _without_comments(quirks, statement, blanks=blanks)
+        )
         if parser is not None and parser.spec.non_ascii_names:
             # Keep non-ASCII name characters and code that Python calls whitespace
             # from becoming regex separators or word boundaries after masking comments.
@@ -109,6 +128,7 @@ def neutralise_transaction_statements(
     script_name: str = "the script",
     content: str = "",
     records: Optional[List[Statement]] = None,
+    record_policy_texts: Optional[List[Optional[str]]] = None,
 ) -> List[str]:
     """*statements* with a script's ``BEGIN ... COMMIT`` envelope dropped, or a refusal.
 
@@ -126,6 +146,24 @@ def neutralise_transaction_statements(
     from dblift.db.provider_registry import ProviderRegistry
 
     quirks = ProviderRegistry.get_quirks(dialect.lower())
+    if records is not None and execution_strings(records) != statements:
+        records = None
+    policy_texts: List[Optional[str]] = [None] * len(statements)
+    if (
+        records is not None
+        and record_policy_texts is not None
+        and len(record_policy_texts) == len(records)
+    ):
+        policy_texts = [
+            policy_text
+            for record, policy_text in zip(records, record_policy_texts)
+            if record.kind in ("sql", "copy_stdin")
+            or (record.kind == "directive" and record.execution_text is not None)
+            for _ in range(record.repeat)
+        ]
+        if len(policy_texts) != len(statements):
+            policy_texts = [None] * len(statements)
+    prepared = PreparedStatements(statements, policy_texts) if records is not None else statements
     patterns = quirks.transaction_control_sql_patterns
     if not patterns:
         parser = _script_parser(dialect.lower())
@@ -150,15 +188,24 @@ def neutralise_transaction_statements(
                         "inside one execution unit, so none of its statements were executed. "
                         "Remove it from the combined unit."
                     )
-        return statements
+        return prepared
     # (index, normalised text, kind) of every executable statement.
     executable = []
     for index, statement in enumerate(statements):
-        text = re.sub(r"\s+", " ", _without_comments(quirks, statement)).upper()
+        policy_text = policy_texts[index]
+        text = re.sub(
+            r"\s+",
+            " ",
+            (
+                policy_text.strip()
+                if policy_text is not None
+                else _without_comments(quirks, statement)
+            ),
+        ).upper()
         executable.append((index, text, next((k for p, k in patterns if re.match(p, text)), None)))
     marked = [entry for entry in executable if entry[2]]
     if not marked:
-        return statements
+        return prepared
 
     def refuse(entry: Any, what: str) -> TransactionStatementError:
         where = _position(statements, entry[0], dialect, content)
@@ -172,7 +219,7 @@ def neutralise_transaction_statements(
         if not offenders:
             for entry in executable[1:-1]:
                 reason = classify_execution_statement(
-                    statements[entry[0]], dialect=dialect
+                    statements[entry[0]], dialect=dialect, policy_text=policy_texts[entry[0]]
                 ).transaction_reason
                 if reason:
                     raise refuse(
@@ -185,7 +232,10 @@ def neutralise_transaction_statements(
                 f"Dropped {first[1].rstrip(';').rstrip()} and {last[1].rstrip(';').rstrip()} "
                 f"from {script_name}: dblift runs the script in one transaction of its own"
             )
-            return [s for i, s in enumerate(statements) if i not in (first[0], last[0])]
+            kept = [i for i in range(len(statements)) if i not in (first[0], last[0])]
+            return PreparedStatements(
+                [statements[i] for i in kept], [policy_texts[i] for i in kept]
+            )
     else:
         offenders = [entry for entry in marked if entry is not first or entry[2] != "begin"]
     offender = (offenders or marked)[0]

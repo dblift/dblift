@@ -37,6 +37,7 @@ from dblift.core.migration.placeholders.placeholder_service import PlaceholderSe
 from dblift.core.migration.presentation import presentation_for
 from dblift.core.migration.sql.execution_statement import (
     ExecutionStatement,
+    PreparedStatements,
     classify_execution_statement,
     neutralise_transaction_statements,
 )
@@ -220,13 +221,19 @@ class ExecutionEngine:
         """Attach transaction metadata to executable SQL statements."""
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         execution_statements: List[ExecutionStatement] = []
-        for statement in statements:
+        policy_texts = (
+            statements.policy_texts
+            if isinstance(statements, PreparedStatements)
+            else [None] * len(statements)
+        )
+        for statement, policy_text in zip(statements, policy_texts):
             statement_type = self.sql_analyzer.get_statement_type(statement)
             execution_statements.append(
                 classify_execution_statement(
                     statement,
                     dialect=dialect,
                     statement_type=statement_type,
+                    policy_text=policy_text,
                 )
             )
         return execution_statements
@@ -249,7 +256,12 @@ class ExecutionEngine:
         is_oracle_sqlplus = self._current_sqlplus_ctx is not None
         executable: List[str] = []
         execution_statements: List[ExecutionStatement] = []
-        for statement in statements:
+        policy_texts = (
+            statements.policy_texts
+            if isinstance(statements, PreparedStatements)
+            else [None] * len(statements)
+        )
+        for statement, policy_text in zip(statements, policy_texts):
             if is_oracle_sqlplus and quirks.parse_error_policy_directive(statement) is not None:
                 continue
             statement_type = self.sql_analyzer.get_statement_type(statement)
@@ -258,6 +270,7 @@ class ExecutionEngine:
                     statement,
                     dialect=dialect,
                     statement_type=statement_type,
+                    policy_text=policy_text,
                 )
             )
             executable.append(statement)
@@ -391,6 +404,7 @@ class ExecutionEngine:
             script_name=migration.script_name,
             content=content,
             records=analyzer.statement_splitter.last_split(content),
+            record_policy_texts=analyzer.statement_splitter.last_policy_texts(content),
         )
 
     def _reset_provider_schema_cache(self) -> None:
