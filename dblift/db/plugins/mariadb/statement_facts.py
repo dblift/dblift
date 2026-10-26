@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from sqlglot.dialects import Dialect
-from sqlglot.errors import TokenError
-from sqlglot.tokens import TokenType
-
 from dblift.core.sql_parser.statement_facts import SqlglotStatementFactsReader, StatementFacts
 
 
 def _alter_sequence_options_are_proven(sql: str, facts: StatementFacts) -> bool:
     """Read the documented MariaDB ALTER SEQUENCE grammar from MySQL-family tokens."""
+    from sqlglot.dialects import Dialect
+    from sqlglot.errors import TokenError
+    from sqlglot.tokens import TokenType
+
     try:
         tokens = Dialect.get_or_raise("mysql").tokenize(sql)
     except TokenError:
