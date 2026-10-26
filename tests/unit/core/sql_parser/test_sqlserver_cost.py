@@ -336,6 +336,16 @@ def test_sqlserver_source_guard_rejects_explicit_whole_source_bounds_outside_a_l
     assert loop_findings(ast.parse(source), plain_source=True) != []
 
 
+def test_sqlserver_source_guard_rejects_native_regex_whole_source_scan():
+    source = "def helper(source):\n    re.search('never-present', source)\n"
+    assert loop_findings(ast.parse(source), plain_source=True) != []
+
+
+def test_sqlserver_source_guard_keeps_bounded_native_regex_search():
+    source = "def helper(source, start, end):\n    pattern.search(source, start, end)\n"
+    assert loop_findings(ast.parse(source), plain_source=True) == []
+
+
 @pytest.mark.parametrize(
     "slice_text", ("source[:]", "source[:offset]", "source[offset:]", "source[0:len(source)]")
 )

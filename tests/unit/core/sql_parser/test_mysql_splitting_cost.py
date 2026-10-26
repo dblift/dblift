@@ -10,7 +10,10 @@ classifier's anchored word probe and conservatively charges the rest of recogniz
 the line and word regex shapes are certified, but native VM steps are not counted.
 """
 
+import ast
+import inspect
 import re
+import textwrap
 from dataclasses import replace
 from typing import Callable, Dict, List, Tuple
 from unittest import mock
@@ -27,7 +30,7 @@ from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_RULES, MYSQL_SPEC
 from tests.support.splitting_cost import CountingParserTokens, CountingPattern, CountingPlainText
 from tests.support.splitting_cost import CountingText as GuardedText
-from tests.support.splitting_cost import CountingTokens, Meter
+from tests.support.splitting_cost import CountingTokens, Meter, loop_findings
 
 MAX_RATIO = 5.0
 COUNT = [0]
@@ -178,6 +181,29 @@ def test_mysql_public_split_counts_a_classifier_rescan(scan: str) -> None:
     small, _ = public_work(make(100), classifier=rescanning)
     large, _ = public_work(make(400), classifier=rescanning)
     assert large > MAX_RATIO * small, (small, large)
+
+
+def test_mysql_public_split_counts_a_classifier_lowercase_copy() -> None:
+    def rescanning(rules, source, start, end, delimiter):  # type: ignore[no-untyped-def]
+        source.lower()
+        return delimiter_commands.classify_line(rules, source, start, end, delimiter)
+
+    make, _ = SHAPES["crlf-statements"]
+    small, _ = public_work(make(100), classifier=rescanning)
+    large, _ = public_work(make(400), classifier=rescanning)
+    assert large > MAX_RATIO * small, (small, large)
+
+
+def test_mysql_classifier_guard_rejects_a_native_regex_whole_source_scan() -> None:
+    source = textwrap.dedent(inspect.getsource(delimiter_commands.classify_line))
+    mutant = source.replace(
+        "    blanks = rules.blanks",
+        "    re.search('never-present', source)\n    blanks = rules.blanks",
+        1,
+    )
+
+    assert mutant != source
+    assert loop_findings(ast.parse(mutant), plain_source=True, source_parameter=1)
 
 
 def test_mysql_public_split_counts_repeated_record_prefixes(monkeypatch) -> None:
