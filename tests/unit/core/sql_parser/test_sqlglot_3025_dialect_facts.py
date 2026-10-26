@@ -20,6 +20,37 @@ def test_redshift_rejects_postgres_only_create_table_clauses_as_facts(sql):
     assert facts.operation == "CREATE"
     assert facts.objects == ()
     assert facts.opaque
+    assert "UNLOGGED or TABLESPACE" in facts.diagnostic
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE VIEW v TABLESPACE ts AS SELECT * FROM t",
+        "CREATE INDEX ix ON t (id) TABLESPACE ts",
+    ],
+)
+def test_redshift_rejects_tablespace_on_other_create_kinds(sql):
+    facts = read_statement_facts(sql, dialect="redshift")
+
+    assert facts.operation == "CREATE"
+    assert facts.objects == ()
+    assert facts.opaque
+    assert "UNLOGGED or TABLESPACE" in facts.diagnostic
+
+
+@pytest.mark.parametrize(
+    "table",
+    ["tablespace", "s.tablespace"],
+)
+def test_redshift_index_on_table_named_tablespace_keeps_objects(table):
+    facts = read_statement_facts(f"CREATE INDEX ix ON {table} (id)", dialect="redshift")
+
+    assert not facts.opaque
+    assert [(obj.name, obj.type, obj.role) for obj in facts.objects] == [
+        ("ix", SqlObjectType.INDEX, "created"),
+        ("tablespace", SqlObjectType.TABLE, "referenced"),
+    ]
 
 
 @pytest.mark.parametrize(

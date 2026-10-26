@@ -2611,6 +2611,11 @@ def read_statement_facts(
         return _head_facts(sql, reason, dialect=dialect)
     if dialect == "redshift":  # lint: allow-dialect-string: PostgreSQL-only table clauses
         properties = ast.args.get("properties") if isinstance(ast, exp.Create) else None
+        index_params = (
+            ast.this.args.get("params")
+            if isinstance(ast, exp.Create) and isinstance(ast.this, exp.Index)
+            else None
+        )
         unlogged = (
             isinstance(ast, exp.Create)
             and ast.args.get("kind") == "TABLE"
@@ -2618,12 +2623,19 @@ def read_statement_facts(
             and any(isinstance(prop, exp.UnloggedProperty) for prop in properties.expressions)
         )
         tablespace = (
-            isinstance(properties, exp.Properties)
-            and any(isinstance(prop, exp.TableSpaceProperty) for prop in properties.expressions)
-        ) or (isinstance(ast, exp.Command) and _postgres_tablespace_clause(sql))
+            (
+                isinstance(properties, exp.Properties)
+                and any(isinstance(prop, exp.TableSpaceProperty) for prop in properties.expressions)
+            )
+            or (
+                isinstance(index_params, exp.IndexParameters)
+                and index_params.args.get("tablespace") is not None
+            )
+            or (isinstance(ast, exp.Command) and _postgres_tablespace_clause(sql))
+        )
         if unlogged or tablespace:
             head = _head_facts(
-                sql, "redshift CREATE TABLE clause is not supported", dialect=dialect
+                sql, "redshift UNLOGGED or TABLESPACE clause is not supported", dialect=dialect
             )
             return StatementFacts(head.operation, head.kind, diagnostic=head.diagnostic)
     if (
