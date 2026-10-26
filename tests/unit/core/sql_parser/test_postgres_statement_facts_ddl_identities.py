@@ -36,7 +36,7 @@ def _pg(sql):
     ],
 )
 def test_comment_on_names_the_object_it_changes(sql, expected):
-    assert _pg(sql) == StatementFacts("COMMENT", "DDL", (expected,))
+    assert _pg(sql) == StatementFacts("COMMENT", "DDL", (expected,), events=frozenset())
 
 
 @pytest.mark.parametrize(

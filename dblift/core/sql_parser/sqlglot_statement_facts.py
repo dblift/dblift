@@ -1461,7 +1461,7 @@ def _copy_facts(node: exp.Copy, sql: str, *, dialect: str = "duckdb") -> Stateme
         (identity,) if identity else (),
         target if importing else None,
         affected_columns=tuple(column.name for column in columns) if importing else (),
-        events=frozenset({"INSERT"}) if importing else None,
+        events=frozenset({"INSERT"}) if importing else frozenset(),
         target_sql=table.sql(dialect=dialect) if importing else None,
         action="copy-from-file" if importing else None,
     )
@@ -1593,7 +1593,7 @@ def _postgres_copy_facts(node: exp.Copy, sql: str) -> StatementFacts:
         (identity,) if identity else (),
         target if importing else None,
         affected_columns=tuple(column.name for column in columns) if importing else (),
-        events=frozenset({"INSERT"}) if importing else None,
+        events=frozenset({"INSERT"}) if importing else (None if program else frozenset()),
         target_sql=table.sql(dialect=grammar) if importing else None,
         # The server runs the command or writes the file, whichever the table's direction.
         action=(
@@ -2362,7 +2362,7 @@ def _redshift_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[Statement
     if isinstance(ast, exp.Comment):
         identity = _postgres_comment_identity(ast)
         if identity is not None and identity.type in {SqlObjectType.TABLE, SqlObjectType.VIEW}:
-            return StatementFacts("COMMENT", "DDL", (identity,))
+            return StatementFacts("COMMENT", "DDL", (identity,), events=frozenset())
         return StatementFacts(
             "COMMENT", "DDL", diagnostic="redshift COMMENT target is not modelled"
         )
@@ -2468,7 +2468,7 @@ def _grant_facts(ast: exp.Grant | exp.Revoke, sql: str, dialect: str) -> Stateme
 def _metadata_facts(ast: exp.Show | exp.Describe, read: exp.Expr) -> StatementFacts:
     """SHOW and DESCRIBE read the tables of ``read``; they change nothing."""
     operation = "SHOW" if isinstance(ast, exp.Show) else "DESCRIBE"
-    return StatementFacts(operation, "QUERY", _referenced(read))
+    return StatementFacts(operation, "QUERY", _referenced(read), events=frozenset())
 
 
 def _mysql_metadata_table(ast: exp.Show | exp.Describe, sql: str) -> Optional[exp.Table]:
@@ -2829,7 +2829,7 @@ def read_statement_facts(
     ):
         identity = _postgres_comment_identity(ast)
         if identity is not None:
-            return StatementFacts("COMMENT", "DDL", (identity,))
+            return StatementFacts("COMMENT", "DDL", (identity,), events=frozenset())
 
     if (
         dialect == "oracle"  # lint: allow-dialect-string: Oracle COMMENT ON TABLE, COLUMN, MV
@@ -2841,7 +2841,7 @@ def read_statement_facts(
     ):
         identity = _postgres_comment_identity(ast)
         if identity is not None:
-            return StatementFacts("COMMENT", "DDL", (identity,))
+            return StatementFacts("COMMENT", "DDL", (identity,), events=frozenset())
 
     if (
         dialect == "oracle"  # lint: allow-dialect-string: Oracle TRUNCATE TABLE takes one table
@@ -2869,7 +2869,9 @@ def read_statement_facts(
                 return StatementFacts(
                     "COMMENT", "DDL", diagnostic="duckdb COMMENT ON TABLE value is not read"
                 )
-            return StatementFacts("COMMENT", "DDL", (identity,), table_comment=value.this)
+            return StatementFacts(
+                "COMMENT", "DDL", (identity,), events=frozenset(), table_comment=value.this
+            )
         if isinstance(ast, (exp.Show, exp.Describe)):
             return _metadata_facts(ast, ast)
 
@@ -3103,8 +3105,10 @@ def read_statement_facts(
             indexed_columns=indexed_columns,
             events=(
                 frozenset()
-                if object_type == SqlObjectType.TABLE
-                and schema_node is not None
+                if (
+                    (object_type == SqlObjectType.TABLE and schema_node is not None)
+                    or (object_type == SqlObjectType.INDEX and indexed_columns is not None)
+                )
                 and not ast.args.get("replace")
                 and not ast.args.get("expression")
                 and not ast.args.get("clone")

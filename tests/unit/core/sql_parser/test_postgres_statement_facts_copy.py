@@ -98,6 +98,7 @@ def test_postgres_copy_file_export_is_read_only(sql, name, schema):
         "COPY",
         "QUERY",
         (NamedObject(name, SqlObjectType.TABLE, "referenced", schema),),
+        events=None if action == "copy-to-program" else frozenset(),
         action=action,
     )
     assert facts.affected_objects == ()
