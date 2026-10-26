@@ -47,8 +47,10 @@ def plain(value: Any, depth: int = 0) -> Any:
         return type(value).__name__
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         # ``cte_writes`` was added after the recording and is empty on every recorded input.
-        # Quoted identity is verified separately; it was not part of this recording.
-        unrecorded = {"name_quoted", "schema_quoted"} if isinstance(value, NamedObject) else ()
+        # Identifier provenance is verified separately; it was not part of this recording.
+        unrecorded = (
+            {"name_quoted", "schema_quoted", "catalog"} if isinstance(value, NamedObject) else ()
+        )
         return {
             f.name: plain(getattr(value, f.name), depth + 1)
             for f in dataclasses.fields(value)
