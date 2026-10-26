@@ -52,7 +52,8 @@ def plain(value: Any, depth: int = 0) -> Any:
         return {
             f.name: plain(getattr(value, f.name), depth + 1)
             for f in dataclasses.fields(value)
-            if f.name not in unrecorded and (f.name != "cte_writes" or getattr(value, f.name))
+            if f.name not in unrecorded
+            and (f.name not in {"cte_writes", "renamed_to"} or getattr(value, f.name))
         }
     if isinstance(value, enum.Enum):
         return value.name
