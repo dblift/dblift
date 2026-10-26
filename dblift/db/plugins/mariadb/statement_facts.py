@@ -120,6 +120,8 @@ def _alter_sequence_options_are_proven(sql: str, facts: StatementFacts) -> bool:
             option = "MAXVALUE"
         elif word("NOCYCLE") or word("CYCLE"):
             option = "CYCLE"
+        elif word("NOCACHE"):
+            option = "CACHE"
         elif word("AS"):
             option = "AS"
             if not any(
@@ -170,7 +172,8 @@ def _alter_sequence_options_are_proven(sql: str, facts: StatementFacts) -> bool:
                 return False
         else:
             return False
-        if option in seen:
+        # MariaDB rejects AS combined with other options (ER_NOT_SUPPORTED_YET).
+        if option in seen or "AS" in seen or (option == "AS" and (seen or at < len(tokens))):
             return False
         seen.add(option)
     return bool(seen)
