@@ -39,11 +39,11 @@ from dblift.db.plugins.db2.parser.lexical_spec import DB2_RULES, DB2_SPEC
 from tests.support.splitting_cost import (
     OUTSIDE_EXEMPT,
     PACKAGE,
-    CountingParserTokens,
     CountingPattern,
     CountingText,
     CountingTokens,
     Meter,
+    TokenProxy,
     forbidden,
     import_closure,
 )
@@ -106,7 +106,9 @@ def counted(script: str) -> int:
     tokens = tokenizer.tokenize()
     ts.text = CountingText(ts.text, meter)
     ts.assemble(
-        CountingTokens(tokens, meter), CountingMarks(tokenizer.marks, meter), tokenizer.open_lexeme
+        (TokenProxy(token, meter) for token in tokens),
+        CountingMarks(tokenizer.marks, meter),
+        tokenizer.open_lexeme,
     )
     return meter.count
 
@@ -124,8 +126,10 @@ def public_counted(script: str) -> Tuple[int, list]:
         ts.lines = lines
         wrapped.sql = CountingText(wrapped.sql, meter)
         wrapped._word_re = CountingPattern(wrapped._word_re, meter)
-        original_tokenize = wrapped.tokenize
-        wrapped.tokenize = lambda: CountingParserTokens(original_tokenize(), meter)
+        original_iter = wrapped._iter_terminator_tokens
+        wrapped._iter_terminator_tokens = lambda: (
+            TokenProxy(token, meter) for token in original_iter()
+        )
         original_assemble = ts.assemble
 
         def assemble(tokens, marks, open_lexeme):
@@ -314,7 +318,7 @@ ENGINE_MODULES = ("terminator_script", "terminator_lines", "routine_body")
 TOKENIZER_PASS = (
     (
         "lexical_tokenizer",
-        {"_tokenize_terminator_script", "_handle_standard_string", "_handle_quoted_identifier"},
+        {"_iter_terminator_tokens", "_handle_standard_string", "_handle_quoted_identifier"},
     ),
     ("base_tokenizer", {"_read_block_comment"}),
 )

@@ -210,6 +210,15 @@ class LexicalTokenizer(BaseTokenizer):
             self.delimiter_script.finish()
         return tokens
 
+    def _iter_sql_tokens(self) -> Iterator[Token]:
+        """Read ordinary SQL tokens without retaining the script-wide stream."""
+        if self.spec.refused_character:
+            self._refuse_character()
+        while self.pos < len(self.sql):
+            token = self._next_token()
+            if token is not None and token.type != TokenType.EOF:
+                yield token
+
     def _refuse_character(self) -> None:
         """Refuse the script when it holds the specification's ``refused_character``.
 
@@ -227,13 +236,16 @@ class LexicalTokenizer(BaseTokenizer):
             )
 
     def _tokenize_terminator_script(self) -> List[Token]:
+        """Keep the public list-valued tokenization contract for terminator scripts."""
+        return list(self._iter_terminator_tokens())
+
+    def _iter_terminator_tokens(self) -> Iterator[Token]:
         """Lexemes of a terminator script, read from the text with its terminators blanked.
 
         An unterminated string, identifier or comment runs to the end of the script: the assembly
         decides what that means. The depth at each consumed terminator that falls inside a comment is marked.
         """
         sql = self.sql
-        tokens: List[Token] = []
         assert self.terminator_script is not None
         stops = [line.body_end for line in self.terminator_script.lines if line.body_end >= 0]
         index, size = 0, len(sql)
@@ -278,8 +290,7 @@ class LexicalTokenizer(BaseTokenizer):
                     self.read(word.end() - pos)
                 else:
                     self.read()
-            tokens.append(Token(kind, sql[pos : self.pos], pos, line, col, self.parens_depth))
-        return tokens
+            yield Token(kind, sql[pos : self.pos], pos, line, col, self.parens_depth)
 
     def _init_segment_script(self, rules: SegmentScriptRules) -> None:
         """Compile the patterns a segment script reads at the cursor."""

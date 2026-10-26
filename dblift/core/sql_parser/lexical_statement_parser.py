@@ -1,6 +1,6 @@
 """Shared token-stream statement splitting driven by lexical specifications."""
 
-from typing import List, Optional, Sequence, Tuple
+from typing import Iterable, Iterator, List, Optional, Sequence, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
@@ -14,12 +14,22 @@ from dblift.core.sql_parser.statement import Statement, execution_strings
 from dblift.core.sql_parser.tokens import Token, TokenType
 
 
+def _with_following(tokens: Iterable[Token]) -> Iterator[Tuple[Token, Optional[Token]]]:
+    """Keep one token of lookahead while consuming the source once."""
+    stream = iter(tokens)
+    current = next(stream, None)
+    while current is not None:
+        following = next(stream, None)
+        yield current, following
+        current = following
+
+
 class LexicalStatementParser(BaseStatementParser):
     """Apply a plugin's boundary, block, directive and raw-data policies."""
 
     def __init__(
         self,
-        tokens: List[Token],
+        tokens: Iterable[Token],
         context: Optional[ParserContext] = None,
         source: Optional[str] = None,
         *,
@@ -39,6 +49,7 @@ class LexicalStatementParser(BaseStatementParser):
         self._head_limit = max(map(len, spec.routine_heads), default=0)
         self._raw_segment_start = 0
         self._previous: Optional[Token] = None
+        self._following: Optional[Token] = None
         self._sqlite_state = 1
         self._sqlite_code = False
         self._sqlite_last_line_comment = 0
@@ -143,14 +154,12 @@ class LexicalStatementParser(BaseStatementParser):
         if self.spec.sqlite_shell:
             return token.type == TokenType.DELIMITER and self._sqlite_state == 1
         if self._script is not None:
-            following_idx = self.current_idx + 1
-            following = self.tokens[following_idx] if following_idx < len(self.tokens) else None
-            return self._script.is_statement_end(token, following, self.context.tokens)
+            return self._script.is_statement_end(token, self._following, self.context.tokens)
         if token.type == TokenType.COPY_DATA:
             return True
         if not super()._is_statement_end(token):
             return False
-        next_token = self._peek_next_token(skip_comments=False)
+        next_token = self._following
         return next_token is None or next_token.type != TokenType.COPY_DATA
 
     def split(self) -> List[Statement]:
@@ -178,6 +187,7 @@ class LexicalStatementParser(BaseStatementParser):
         if self._segment_records is not None:
             return list(self._segment_records)
         if self._batches is not None:
+            assert isinstance(self.tokens, list)
             return self._batches.split(self.tokens)
         records: List[Statement] = []
         current: List[Token] = []
@@ -221,8 +231,9 @@ class LexicalStatementParser(BaseStatementParser):
             if self._script is not None:
                 self._script.reset_statement()
 
-        for idx, token in enumerate(self.tokens):
+        for idx, (token, following) in enumerate(_with_following(self.tokens)):
             self.current_idx = idx
+            self._following = following
 
             if token.type == TokenType.EOF:
                 continue

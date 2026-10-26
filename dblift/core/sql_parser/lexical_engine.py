@@ -1,7 +1,7 @@
 """One lexical entry point for splitting and comment masking."""
 
 import logging
-from typing import List
+from typing import Iterable, List
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.lexical_spec import BOM, LexicalSpec
@@ -23,8 +23,9 @@ class LexicalEngine:
 
     def _parser(self, script: str) -> LexicalStatementParser:
         tokenizer = LexicalTokenizer(script, spec=self.spec)
-        tokens: List[Token]
+        tokens: Iterable[Token]
         segment_records = None
+        terminator_records = None
         if tokenizer.delimiter_script is not None:
             if tokenizer.spec.refused_character:
                 tokenizer._refuse_character()
@@ -54,6 +55,18 @@ class LexicalEngine:
                     ) from None
                 raise
             tokens = []
+        elif self.spec.terminator_script is not None:
+            if tokenizer.spec.refused_character:
+                tokenizer._refuse_character()
+            assert tokenizer.terminator_script is not None
+            terminator_records = tokenizer.terminator_script.assemble(
+                tokenizer._iter_terminator_tokens(),
+                tokenizer.marks,
+                lambda: tokenizer.open_lexeme,
+            )
+            tokens = []
+        elif self.spec.copy_from_stdin:
+            tokens = tokenizer._iter_sql_tokens()
         else:
             tokens = tokenizer.tokenize()
         if tokenizer.open_comment is not None:  # the engine rejects the whole script
@@ -61,14 +74,13 @@ class LexicalEngine:
             raise UnsafeStatementSplitError(
                 f"unterminated block comment opened at line {line}, column {col}"
             )
-        records = tokenizer.assemble(tokens) if self.spec.terminator_script is not None else None
         return LexicalStatementParser(
             tokens,
             source=script,
             spec=self.spec,
             comments=tokenizer.comments,
             delimiter_script=tokenizer.delimiter_script,
-            terminator_records=records,
+            terminator_records=terminator_records,
             segment_records=segment_records,
         )
 

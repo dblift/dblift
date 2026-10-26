@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Db2 and PostgreSQL statement splitting consume tokens as they are scanned, reducing peak memory
+  for migration scripts with many short statements while preserving statement boundaries.
+
 ### Fixed
 
 - Statement facts leave object names written as bind placeholders unread and report a diagnostic,
