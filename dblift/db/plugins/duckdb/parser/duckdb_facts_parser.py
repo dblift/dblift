@@ -23,7 +23,7 @@ _CREATE_MACRO_HEAD = re.compile(
 _QUALIFIER_PART = re.compile(_IDENTIFIER)
 _SCHEMA_NAME = r"[A-Za-z_][A-Za-z0-9_$]*"
 _DOTTED_SCHEMA_NAME = rf"{_SCHEMA_NAME}(?:\.{_SCHEMA_NAME})?"
-_QUOTED_SCHEMA_NAME = rf'"{_SCHEMA_NAME}"'
+_QUOTED_SCHEMA_NAME = rf'"{_DOTTED_SCHEMA_NAME}"'
 _SET_SCHEMA = re.compile(
     rf"\s*SET\s+(?:schema|search_path)\s*=\s*"
     rf"(?:'(?P<quoted>{_DOTTED_SCHEMA_NAME})'|(?P<bare>{_DOTTED_SCHEMA_NAME})"

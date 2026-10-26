@@ -47,6 +47,7 @@ def test_plugin_comment_only_facts_have_no_diagnostic():
         ("SET schema=a.s", "SELECT_NAMESPACE", "a.s"),
         ("SET schema=s", "SELECT_NAMESPACE", "s"),
         ('SET schema="s"', "SELECT_NAMESPACE", '"s"'),
+        ('SET schema="a.s"', "SELECT_NAMESPACE", '"a.s"'),
         ("USE s", "SELECT_NAMESPACE", "s"),
         ('USE "s"', "SELECT_NAMESPACE", '"s"'),
         ("USE memory.s", "SELECT_NAMESPACE", "memory.s"),
@@ -57,6 +58,7 @@ def test_plugin_comment_only_facts_have_no_diagnostic():
         ("SET search_path='s'", "SELECT_NAMESPACE", "s"),
         ("SET search_path='a.s'", "SELECT_NAMESPACE", "a.s"),
         ('SET search_path="s"', "SELECT_NAMESPACE", '"s"'),
+        ('SET search_path="a.s"', "SELECT_NAMESPACE", '"a.s"'),
         ("RESET schema", "RESET_NAMESPACE", None),
         ("RESET search_path", "RESET_NAMESPACE", None),
     ],
@@ -288,10 +290,17 @@ def test_namespace_selector_can_name_an_attached_catalog():
 
 
 @pytest.mark.parametrize(
-    "sql",
-    ["SET schema='a.s'", "SET schema 'a.s'", "SET schema=a.s", "SET search_path='a.s'"],
+    "sql, target",
+    [
+        ("SET schema='a.s'", "a.s"),
+        ("SET schema 'a.s'", "a.s"),
+        ("SET schema=a.s", "a.s"),
+        ("SET search_path='a.s'", "a.s"),
+        ('SET schema="a.s"', '"a.s"'),
+        ('SET search_path="a.s"', '"a.s"'),
+    ],
 )
-def test_dotted_namespace_selector_can_name_an_attached_schema(sql):
+def test_dotted_namespace_selector_can_name_an_attached_schema(sql, target):
     duckdb = pytest.importorskip("duckdb")
     connection = duckdb.connect(":memory:")
     try:
@@ -303,7 +312,7 @@ def test_dotted_namespace_selector_can_name_an_attached_schema(sql):
         connection.close()
 
     facts = DuckDBQuirks().statement_facts(sql)
-    assert (facts.action, facts.target) == ("SELECT_NAMESPACE", "a.s")
+    assert (facts.action, facts.target) == ("SELECT_NAMESPACE", target)
     assert current == ("a", "s")
 
 
