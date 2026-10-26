@@ -1,6 +1,6 @@
 """Preflight must use the execution scanner's supplied record expansion."""
 
-from unittest.mock import patch
+from dataclasses import replace
 
 import pytest
 
@@ -47,19 +47,16 @@ def test_repeat_and_skip_records_align_without_a_second_split() -> None:
 
 
 def test_refusal_uses_supplied_record_line_without_rescanning() -> None:
-    script = "SELECT 1;\n\nCOMMIT;"
+    script = "SELECT 1;\nCOMMIT;"
     splitter = StatementSplitter("sqlite")
     records = splitter.split(script)
-    with patch(
-        "dblift.core.migration.sql.execution_statement._script_parser",
-        side_effect=AssertionError("the script was split twice"),
-    ):
-        with pytest.raises(TransactionStatementError, match=r"line 3: COMMIT manages"):
-            neutralise_transaction_statements(
-                execution_strings(records),
-                dialect="sqlite",
-                log=NullLog(),
-                content=script,
-                records=records,
-                record_policy_texts=splitter.last_policy_texts(script),
-            )
+    records[-1] = replace(records[-1], line=73)
+    with pytest.raises(TransactionStatementError, match=r"line 73: COMMIT manages"):
+        neutralise_transaction_statements(
+            execution_strings(records),
+            dialect="sqlite",
+            log=NullLog(),
+            content=script,
+            records=records,
+            record_policy_texts=splitter.last_policy_texts(script),
+        )
