@@ -139,15 +139,16 @@ def neutralise_transaction_statements(
     an envelope around a statement that cannot run in a transaction.
     A dialect with no patterns gets *statements* back untouched.
 
-    *statements* is the splitter's list for *content* (or for *records*, when the caller has them
-    already); it is no longer cross-checked against *content*, deliberately: the list is trusted
-    as the splitter returned it.
+    Supplied scanner records must expand to exactly the strings execution will send.
     """
     from dblift.db.provider_registry import ProviderRegistry
 
     quirks = ProviderRegistry.get_quirks(dialect.lower())
     if records is not None and execution_strings(records) != statements:
-        records = None
+        raise TransactionStatementError(
+            f"{script_name}: execution strings do not match the supplied scanner records; "
+            "none of its statements were executed"
+        )
     policy_texts: List[Optional[str]] = [None] * len(statements)
     if (
         records is not None
@@ -182,7 +183,7 @@ def neutralise_transaction_statements(
             for part in parts:
                 text = re.sub(r"\s+", " ", _without_comments(quirks, part)).upper()
                 if re.match(r"^(?:BEGIN|START TRANSACTION|COMMIT|ROLLBACK)\b", text):
-                    where = _position(statements, index, dialect, content)
+                    where = _position(statements, index, dialect, content, records)
                     raise TransactionStatementError(
                         f"{script_name}, {where}: {text.rstrip(';')} manages the transaction "
                         "inside one execution unit, so none of its statements were executed. "
@@ -208,7 +209,7 @@ def neutralise_transaction_statements(
         return prepared
 
     def refuse(entry: Any, what: str) -> TransactionStatementError:
-        where = _position(statements, entry[0], dialect, content)
+        where = _position(statements, entry[0], dialect, content, records)
         return TransactionStatementError(
             f"{script_name}, {where}: {entry[1].rstrip(';').rstrip()} {what}"
         )
@@ -266,12 +267,19 @@ def _without_comments(quirks: Any, statement: str, *, blanks: Optional[str] = No
     return strip_leading_comments(statement).strip(blanks)
 
 
-def _position(statements: List[str], index: int, dialect: str, content: str) -> str:
+def _position(
+    statements: List[str],
+    index: int,
+    dialect: str,
+    content: str,
+    records: Optional[List[Statement]] = None,
+) -> str:
     """``line N`` of ``statements[index]``, from the splitter's own records; else ``statement N``."""
-    try:
-        records = _script_parser(dialect.lower()).split(content)
-    except Exception:  # noqa: BLE001 - the line is a courtesy; the refusal stands without it
-        records = []
+    if records is None:
+        try:
+            records = _script_parser(dialect.lower()).split(content)
+        except Exception:  # noqa: BLE001 - the line is a courtesy; the refusal stands without it
+            records = []
     # One entry per string execution sends, so a statement's index is its record's.
     owners = [(record, text) for record in records for text in execution_strings([record])]
     if [text for _, text in owners] == statements:
