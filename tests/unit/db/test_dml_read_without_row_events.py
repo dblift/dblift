@@ -152,3 +152,27 @@ def test_unread_or_data_changing_db2_query_has_unknown_row_events(statement):
     assert quirks.statement_facts(statement).events is None
     assert analyze_dml(statement, quirks=quirks).events is None
     assert updates_restore_key(statement, ["id"], quirks=quirks) is True
+
+
+@pytest.mark.parametrize(
+    "statement",
+    (
+        "VALUES *",
+        "VALUES (*)",
+        "SELECT *",
+        "SELECT id",
+        "SELECT 1 2",
+        "SELECT id FROM t extra",
+        "SELECT id FROM t WHERE",
+        "SELECT 1; UPDATE t SET id = 2",
+        "WITH c AS (UPDATE t SET id = 2) SELECT id FROM c",
+        "WITH c AS (SELECT id FROM t) SELECT id FROM FINAL /* x */ TABLE (UPDATE t SET id = 2)",
+        "WITH c AS (SELECT id FROM t) SELECT id FROM c WHERE",
+        "WITH c AS (SELECT id FROM t SELECT id FROM u) SELECT id FROM c",
+    ),
+)
+def test_db2_query_requires_complete_read_only_grammar(statement):
+    quirks = ProviderRegistry.get_quirks("db2")
+
+    assert quirks.statement_facts(statement).events is None
+    assert analyze_dml(statement, quirks=quirks).events is None

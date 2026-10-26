@@ -632,9 +632,7 @@ def _query_atom(words: List[Token], at: int) -> int:
     token = words[at]
     if token.type is TokenType.STRING and _QUERY_STRING.fullmatch(token.text):
         return at + 1
-    if token.type is TokenType.SYMBOL and (
-        token.text == "*" or _QUERY_INTEGER.fullmatch(token.text)
-    ):
+    if token.type is TokenType.SYMBOL and _QUERY_INTEGER.fullmatch(token.text):
         return at + 1
     return _query_name(words, at)
 
@@ -671,15 +669,22 @@ def _complete_query(words: List[Token], depth: int = 0) -> bool:
         closing = True
     else:
         closing = False
-    while True:
-        end = _query_atom(words, at)
-        if end == at:
-            return False
-        at = end
-        if at < len(words) and _is_symbol(words[at], ","):
-            at += 1
-            continue
-        break
+    star = first == "SELECT" and at < len(words) and _is_symbol(words[at], "*")
+    needs_source = False
+    if star:
+        at += 1
+    else:
+        while True:
+            if at < len(words) and words[at].type in (TokenType.KEYWORD, TokenType.IDENTIFIER):
+                needs_source = True
+            end = _query_atom(words, at)
+            if end == at:
+                return False
+            at = end
+            if at < len(words) and _is_symbol(words[at], ","):
+                at += 1
+                continue
+            break
     if closing:
         if at >= len(words) or not _is_symbol(words[at], ")"):
             return False
@@ -689,6 +694,10 @@ def _complete_query(words: List[Token], depth: int = 0) -> bool:
         at = _query_name(words, source)
         if at == source:
             return False
+    elif star:
+        return False
+    elif needs_source:
+        return False
     return at == len(words)
 
 
