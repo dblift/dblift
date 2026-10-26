@@ -260,13 +260,13 @@ def test_postgresql_derivatives_record_exactly_what_postgresql_does(
 def test_mariadb_records_the_facts_of_mysql_for_every_row(
     corpus: Dict[str, List[Dict[str, Any]]],
 ) -> None:
-    """The extraction of MySQL is frozen, so MariaDB is compared on the facts alone."""
+    """MariaDB shares MySQL facts except for its supported ALTER SEQUENCE grammar."""
     differing = [
         row["sql"]
         for row in corpus["mysql"]
         if record_statement("mariadb", row["sql"]) != _comparable(_on_this_arm(row), "mariadb")
     ]
-    assert differing == []
+    assert differing == ["ALTER SEQUENCE users_seq RESTART WITH 100"]
 
 
 def test_the_extraction_is_compared_only_for_a_family_that_is_not_frozen(

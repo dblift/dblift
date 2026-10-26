@@ -33,7 +33,7 @@ def test_the_plugin_reads_facts_through_the_shared_reader(dialect):
     quirks = _quirks(dialect)
 
     assert quirks.supports_statement_facts
-    assert quirks.statement_facts_class is SqlglotStatementFactsReader
+    assert issubclass(quirks.statement_facts_class, SqlglotStatementFactsReader)
     facts = quirks.statement_facts(UPDATE)
     assert (facts.operation, facts.target, facts.events) == ("UPDATE", "t", frozenset({"UPDATE"}))
 
