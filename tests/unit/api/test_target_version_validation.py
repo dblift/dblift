@@ -59,6 +59,14 @@ def test_error_is_a_value_error(client):
         client.migrate(target_version="abc")
 
 
+def test_error_distinguishes_unscanned_from_scanned_empty_versions():
+    unscanned = InvalidTargetVersionError("", None)
+    scanned_empty = InvalidTargetVersionError("99", [])
+    assert unscanned.available_versions == []
+    assert "Available versions:" not in str(unscanned)
+    assert "Available versions: (no versioned migration scripts found)" in str(scanned_empty)
+
+
 @pytest.mark.parametrize("good,expected", [("1", ["1"]), ("2", ["1", "2"]), ("2.0.0", ["1", "2"])])
 def test_valid_target_version_applies_up_to_it(client, good, expected):
     assert client.migrate(target_version=good).success

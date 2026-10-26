@@ -321,7 +321,7 @@ def _refuse_empty_target_version(data: Mapping[str, object]) -> None:
         else [data]
     )
     if any(block.get("target_version") == "" for block in blocks):
-        raise InvalidTargetVersionError("", [])
+        raise InvalidTargetVersionError("", None)
 
 
 def _extract_paid_raw_config(data: Dict[str, Any]) -> Dict[str, Any]:
