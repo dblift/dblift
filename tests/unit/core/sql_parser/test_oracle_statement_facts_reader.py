@@ -69,7 +69,7 @@ def test_a_data_change_target_is_folded_in_its_objects_and_target():
     ],
 )
 def test_comment_on_names_the_object_it_changes(sql, expected):
-    assert _ora(sql) == StatementFacts("COMMENT", "DDL", (expected,))
+    assert _ora(sql) == StatementFacts("COMMENT", "DDL", (expected,), events=frozenset())
 
 
 @pytest.mark.parametrize(
