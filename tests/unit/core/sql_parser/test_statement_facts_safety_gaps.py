@@ -4,6 +4,7 @@ import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.statement_facts import NamedObject, SqlglotStatementFactsReader
+from dblift.db.plugins.postgresql.statement_facts import PostgresqlStatementFactsReader
 from dblift.db.provider_registry import ProviderRegistry
 
 
@@ -19,10 +20,12 @@ def test_yugabyte_has_its_own_sqlglot_facts_reader():
     assert type(reader) is not SqlglotStatementFactsReader
     assert vars(type(quirks)).get("statement_facts_class") is type(reader)
     assert reader.dialect == "postgres"
-    for plugin in ("postgresql", "cockroachdb"):
-        assert type(ProviderRegistry.get_quirks(plugin).statement_facts_reader()) is (
-            SqlglotStatementFactsReader
-        )
+    assert type(ProviderRegistry.get_quirks("postgresql").statement_facts_reader()) is (
+        PostgresqlStatementFactsReader
+    )
+    assert type(ProviderRegistry.get_quirks("cockroachdb").statement_facts_reader()) is (
+        SqlglotStatementFactsReader
+    )
 
 
 @pytest.mark.parametrize(
@@ -117,13 +120,20 @@ def test_postgres_family_keeps_nonconcurrently_as_an_ordinary_index_name(plugin,
     assert (facts.indexed_table, facts.indexed_columns, facts.opaque) == ("t", ("id",), False)
 
 
+@pytest.mark.parametrize("plugin", ["mariadb", "mysql"])
+def test_alter_sequence_names_its_sequence_through_each_mysql_plugin(plugin):
+    # MariaDB 11.8.8 runs it (4091 when the sequence is missing); MySQL rejects it (1064). The
+    # reader is shared, so both plugins name the sequence from the head.
+    facts = _read(plugin, "ALTER SEQUENCE users_seq RESTART WITH 100")
+
+    assert (facts.operation, facts.kind) == ("ALTER", "DDL")
+    assert facts.objects == (NamedObject("users_seq", SqlObjectType.SEQUENCE, "altered"),)
+
+
 @pytest.mark.parametrize(
     ("plugin", "sql", "operation"),
     [
-        ("mariadb", "ALTER SEQUENCE users_seq RESTART WITH 100", "ALTER"),
-        ("postgresql", "CREATE FOREIGN TABLE ft (id integer) SERVER s", "CREATE"),
-        ("postgresql", "ALTER FOREIGN TABLE ft ADD COLUMN c integer", "ALTER"),
-        ("postgresql", "DROP FOREIGN TABLE ft", "DROP"),
+        ("postgresql", "DROP FOREIGN TABLE ft*", "DROP"),
     ],
 )
 def test_unsupported_ddl_keeps_names_opaque_until_the_grammar_supports_it(plugin, sql, operation):

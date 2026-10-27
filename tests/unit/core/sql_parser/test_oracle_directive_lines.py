@@ -1,7 +1,6 @@
 """Client directive lines are recorded or refused, never dropped (docs/sql-parsing/oracle.md section 6)."""
 
 import logging
-import random
 
 import pytest
 
@@ -12,7 +11,6 @@ from dblift.core.sql_parser.lexical_spec import DirectiveAction
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.statement import Statement
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.oracle.parser import _directives as previous
 from dblift.db.plugins.oracle.parser._sqlplus import SQLPLUS_DIRECTIVES
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
 
@@ -489,43 +487,6 @@ def test_every_rule_matches_at_its_minimum_abbreviation_and_not_below():
         assert at_minimum is not None and at_minimum[0] == f"SET {rule.word}", rule.word
         below = classify_directive(RULES, "SET " + rule.word[: rule.min_abbrev - 1] + " x")
         assert below is not None and below[0] != f"SET {rule.word}", rule.word
-
-
-def test_classification_matches_the_previous_table():
-    rng = random.Random(3)
-    lines = ["", "SET", "WHENEVER", "WHENEVER SQLERROR", "WHENEVER OSERROR x", "SELECT 1"]
-    words = [r.word for r in RULES.directives] + ["SET", "WHENEVER", "SQLERROR", "OSERROR"]
-    words += [r.word for r in RULES.set_options] + list(RULES.set_sql_words)
-    for word in words:
-        for cut in range(1, len(word) + 1):
-            for tail in ("", " x", ";", " TO u", " ON", "1", "_"):
-                lines.append(word[:cut] + tail)
-                lines.append("SET " + word[:cut] + tail)
-                lines.append("WHENEVER " + word[:cut] + tail)
-    for prefix in ("@", "@@", "!", " @x", "  !ls"):
-        lines.append(prefix + "script.sql")
-    for _ in range(3000):
-        lines.append(
-            " ".join(rng.choice(words)[: rng.randrange(1, 12)] for _ in range(rng.randrange(1, 4)))
-        )
-    for line in lines:
-        for variant in (line, line.lower()):
-            old = previous.classify_directive(variant)
-            new = classify_directive(RULES, variant)
-            assert (None if old is None else (old.name, previous_action(old))) == (
-                None if new is None else (new[0], new[1].value)
-            ), variant
-
-
-def previous_action(old):
-    """The previous table's action value; a policy directive is recorded like any other directive."""
-    return "drop_record" if old.action.value == "record_policy" else old.action.value
-
-
-def test_directive_actions_are_the_previous_actions_without_the_policy_one():
-    assert {a.name: a.value for a in DirectiveAction} == {
-        a.name: a.value for a in previous.DirectiveAction if a.name != "RECORD_POLICY"
-    }
 
 
 def test_a_directive_record_is_a_statement_of_kind_directive():

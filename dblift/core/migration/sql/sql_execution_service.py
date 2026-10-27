@@ -10,6 +10,7 @@ from dblift.core.constants import (
     truncate_sql_for_logging,
 )
 from dblift.core.logger import NullLog
+from dblift.core.migration.journals.migration_journal import MigrationJournal
 from dblift.core.sql_model.base import SqlStatementType
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.base_quirks import BaseQuirks
@@ -202,122 +203,11 @@ class SqlExecutionService:
                         statement, stmt_index, execution_time, {"rows_affected": rows_affected}
                     )
 
-                    # Extract and record object changes for DDL and DML statements
-                    # DDL: CREATE, ALTER, DROP, COMMENT, etc.
-                    # DML: INSERT, UPDATE, DELETE (affect TABLE objects)
-                    if (
-                        statement_type
-                        in (
-                            SqlStatementType.DDL.value,
-                            SqlStatementType.DML.value,
-                        )
-                        and getattr(self.journal, "capture_objects", True)
-                        and hasattr(self.journal, "record_object_changes")
-                    ):
-                        try:
-                            objects_affected: List[Any] = []
-
-                            if self.quirks.supports_statement_facts:
-                                facts = self.quirks.statement_facts(statement)
-                                objects_affected = [
-                                    obj.as_sql_object(self.schema, self.quirks.dialect_name)
-                                    for obj in facts.affected_objects
-                                ]
-                                if facts.error:
-                                    self.log.warning(facts.error)
-                                elif facts.diagnostic:
-                                    self.log.debug(facts.diagnostic)
-
-                            # For DML statements (INSERT, UPDATE, DELETE), extract table name
-                            elif statement_type == SqlStatementType.DML.value:
-                                stmt_upper = statement.strip().upper()
-                                if stmt_upper.startswith(("INSERT", "UPDATE", "DELETE")):
-                                    # The dialect's DML analysis names the one table
-                                    # written, resolving target aliases (``DELETE a
-                                    # FROM t a``, T-SQL ``UPDATE a ... FROM t AS a``);
-                                    # the object parsers report the alias and every
-                                    # table read as separate objects.
-                                    table_ref = self.quirks.analyze_dml(statement).table
-                                    table_name = (
-                                        self._extract_simple_table_name(table_ref)
-                                        if table_ref
-                                        else ""
-                                    )
-                                    qualifier = table_ref.rpartition(".")[0] if table_ref else ""
-                                    if table_name:
-                                        from dblift.core.sql_model.base import (
-                                            SqlObject,
-                                            SqlObjectType,
-                                        )
-
-                                        objects_affected = [
-                                            SqlObject(
-                                                name=table_name,
-                                                object_type=SqlObjectType.TABLE,
-                                                schema=self._extract_simple_table_name(qualifier)
-                                                or self.schema
-                                                or "",
-                                            )
-                                        ]
-
-                            if objects_affected:
-                                # Convert SqlObject instances to dictionaries for JSON serialization
-                                # Deduplicate objects by (object_name, object_type, schema) to avoid counting the same object multiple times
-                                seen_objects = set()
-                                objects_dict = []
-                                for obj in objects_affected:
-                                    if hasattr(obj, "__dict__"):
-                                        # SqlObject instance - convert to dict
-                                        obj_name = getattr(obj, "name", "unknown")
-                                        obj_type = getattr(obj, "object_type", "UNKNOWN")
-                                        obj_schema = getattr(obj, "schema", "")
-
-                                        # Handle object_type enum (schema object, not MigrationType)
-                                        if hasattr(obj_type, "value"):
-                                            obj_type_str = obj_type.value
-                                        else:
-                                            obj_type_str = str(obj_type)  # lint: allow-enum-str
-
-                                        # Create deduplication key
-                                        dedup_key = (
-                                            obj_name.lower(),
-                                            obj_type_str.upper(),
-                                            (obj_schema or "").lower(),
-                                        )
-
-                                        # Skip if we've already seen this object
-                                        if dedup_key in seen_objects:
-                                            continue
-
-                                        seen_objects.add(dedup_key)
-
-                                        obj_dict = {
-                                            "object_name": obj_name,
-                                            "object_type": obj_type_str,
-                                            "schema": obj_schema,
-                                            "dialect": getattr(obj, "dialect", ""),
-                                        }
-                                        objects_dict.append(obj_dict)
-                                    else:
-                                        # Already a dict - deduplicate
-                                        obj_name = obj.get("object_name", "unknown")
-                                        obj_type = str(obj.get("object_type", "UNKNOWN")).upper()
-                                        obj_schema = (obj.get("schema") or "").lower()
-
-                                        dedup_key = (obj_name.lower(), obj_type, obj_schema)
-                                        if dedup_key in seen_objects:
-                                            continue
-
-                                        seen_objects.add(dedup_key)
-                                        objects_dict.append(obj)
-
-                                # Only record if we have unique objects
-                                if objects_dict:
-                                    self.journal.record_object_changes(
-                                        statement, stmt_index, objects_dict
-                                    )
-                        except Exception as e:
-                            self.log.debug(f"Could not extract objects from statement: {e}")
+                    # Record the objects DDL and DML statements act on
+                    if hasattr(self.journal, "record_object_changes"):
+                        objects_dict = self.affected_objects(statement, statement_type)
+                        if objects_dict:
+                            self.journal.record_object_changes(statement, stmt_index, objects_dict)
 
                 # Return affected row count
                 return False, rows_affected
@@ -368,6 +258,129 @@ class SqlExecutionService:
 
             # Re-raise the exception
             raise
+
+    def affected_objects(self, statement: str, statement_type: str) -> List[Dict[str, object]]:
+        """The objects *statement* acts on, deduplicated, as the journal records them.
+
+        Only DDL and DML statements name objects, and none do when the journal does not
+        capture them (``analysis_mode="execution"``). A statement whose objects cannot
+        be read names none.
+        """
+        if statement_type not in (
+            SqlStatementType.DDL.value,
+            SqlStatementType.DML.value,
+        ) or not getattr(self.journal, "capture_objects", True):
+            return []
+        try:
+            return self._read_affected_objects(statement, statement_type)
+        except Exception as e:
+            self.log.debug(f"Could not extract objects from statement: {e}")
+            return []
+
+    def _read_affected_objects(
+        self, statement: str, statement_type: str
+    ) -> List[Dict[str, object]]:
+        objects_dict: List[Dict[str, object]] = []
+        objects_affected: List[Any] = []
+
+        if self.quirks.supports_statement_facts:
+            facts = self.quirks.statement_facts(statement)
+            objects_affected = [
+                obj.as_sql_object(self.schema, self.quirks.dialect_name)
+                for obj in facts.affected_objects
+            ]
+            if facts.error:
+                self.log.warning(facts.error)
+            elif facts.diagnostic:
+                self.log.debug(facts.diagnostic)
+
+        # For DML statements (INSERT, UPDATE, DELETE), extract table name
+        elif statement_type == SqlStatementType.DML.value:
+            stmt_upper = statement.strip().upper()
+            if stmt_upper.startswith(("INSERT", "UPDATE", "DELETE")):
+                # The dialect's DML analysis names the one table
+                # written, resolving target aliases (``DELETE a
+                # FROM t a``, T-SQL ``UPDATE a ... FROM t AS a``);
+                # the object parsers report the alias and every
+                # table read as separate objects.
+                table_ref = self.quirks.analyze_dml(statement).table
+                table_name = self._extract_simple_table_name(table_ref) if table_ref else ""
+                qualifier = table_ref.rpartition(".")[0] if table_ref else ""
+                if table_name:
+                    from dblift.core.sql_model.base import (
+                        SqlObject,
+                        SqlObjectType,
+                    )
+
+                    objects_affected = [
+                        SqlObject(
+                            name=table_name,
+                            object_type=SqlObjectType.TABLE,
+                            schema=self._extract_simple_table_name(qualifier) or self.schema or "",
+                        )
+                    ]
+
+        if objects_affected:
+            # Convert SqlObject instances to dictionaries for JSON serialization
+            # Deduplicate objects by (object_name, object_type, schema) to avoid counting the same object multiple times
+            seen_objects = set()
+            for obj in objects_affected:
+                if hasattr(obj, "__dict__"):
+                    # SqlObject instance - convert to dict
+                    obj_name = getattr(obj, "name", "unknown")
+                    obj_type = getattr(obj, "object_type", "UNKNOWN")
+                    obj_schema = getattr(obj, "schema", "")
+
+                    # Handle object_type enum (schema object, not MigrationType)
+                    if hasattr(obj_type, "value"):
+                        obj_type_str = obj_type.value
+                    else:
+                        obj_type_str = str(obj_type)  # lint: allow-enum-str
+
+                    # Create deduplication key
+                    dedup_key = (
+                        obj_name.lower(),
+                        obj_type_str.upper(),
+                        (obj_schema or "").lower(),
+                    )
+
+                    # Skip if we've already seen this object
+                    if dedup_key in seen_objects:
+                        continue
+
+                    seen_objects.add(dedup_key)
+
+                    obj_dict = {
+                        "object_name": obj_name,
+                        "object_type": obj_type_str,
+                        "schema": obj_schema,
+                        "dialect": getattr(obj, "dialect", ""),
+                    }
+                    objects_dict.append(obj_dict)
+                else:
+                    # Already a dict - deduplicate
+                    obj_name = obj.get("object_name", "unknown")
+                    obj_type = str(obj.get("object_type", "UNKNOWN")).upper()
+                    obj_schema = (obj.get("schema") or "").lower()
+
+                    dedup_key = (obj_name.lower(), obj_type, obj_schema)
+                    if dedup_key in seen_objects:
+                        continue
+
+                    seen_objects.add(dedup_key)
+                    objects_dict.append(obj)
+
+        return objects_dict
+
+    def annotate_statement(self, statement: str) -> Tuple[str, str, str]:
+        """(operation, object_type, object_name) a report shows for *statement* once applied.
+
+        Reads the statement as ``execute_statement`` does, without running it, so a
+        dry run's ``--show-sql`` rows name the objects an applied run's rows name.
+        """
+        self.prepare_analysis()
+        objects = self.affected_objects(statement, self.sql_analyzer.get_statement_type(statement))
+        return MigrationJournal.annotation_for(statement, objects[0] if objects else None)
 
     def _provider_execute(
         self, statement: str, params: Optional[List[Any]], autocommit: bool

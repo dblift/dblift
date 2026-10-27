@@ -12,7 +12,7 @@ import logging
 import re
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, Iterator, List, Optional, Tuple
+from typing import Any, Dict, FrozenSet, Iterator, List, Optional, Tuple
 
 from dblift.core.exceptions import (
     ParserError,
@@ -21,6 +21,7 @@ from dblift.core.exceptions import (
 )
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.common.comment_stripping import strip_comments_preserving_quotes
+from dblift.core.sql_parser.redaction import bare_words, mask_string_literals
 from dblift.core.sql_parser.statement_facts import DmlEffect, StatementFacts
 from dblift.core.sql_parser.statement_facts_parser import StatementFactsParser
 from dblift.db.dml_analysis import strip_leading_sql_comments
@@ -47,6 +48,19 @@ _ROW_FREE_DROP = re.compile(
     re.IGNORECASE,
 )
 _DROP_DEPENDENTS = re.compile(r"\b(?:CASCADE|FORCE)\b", re.IGNORECASE)
+# Named kinds whose CASCADE reaches no column, so a statement that names only these is not reported
+# for it (measured on PostgreSQL 16.14, see the lint-rule tests): CASCADE on a sequence drops the
+# DEFAULT that reads it, on an index the index alone (a constraint that needs it refuses the
+# drop), on a trigger or a procedure only itself. A type or a function can have a column depend on
+# it (a column of that type, a generated column).
+_COLUMN_FREE_DEPENDENTS = frozenset(
+    {
+        SqlObjectType.INDEX.value,
+        SqlObjectType.SEQUENCE.value,
+        SqlObjectType.PROCEDURE.value,
+        SqlObjectType.TRIGGER.value,
+    }
+)
 # Objects whose DROP discards rows; dropping an index, a sequence or a routine does not.
 _DATA_HOLDERS = frozenset(
     {
@@ -256,7 +270,7 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             facts.kind,
             objects,
             full_table,
-            _snippet(body),
+            _snippet(body, dialect),
             sql=body,
             names_unread=facts.opaque and not facts.affected_objects,
             unread=_unread_reason(facts, body, hash_comment),
@@ -270,10 +284,13 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
                 objects=analysed.objects[:1] if facts.cte_writes and facts.target else objects,
             ),
             body,
+            quirks.drop_discards_rows_types,
             _opaque_dialect(dialect) if facts.opaque else None,
             # a plugin without a sqlglot dialect has no second reader to name an unread target
             name_target=not (analysed.names_unread and quirks.sqlglot_dialect is None),
         )
+        if caution is None and operation == "DROP":
+            caution = _dependents_caution(analysed, dialect)
         if caution is None and facts.opaque and facts.kind == "DML" and facts.target is None:
             # A data-changing CTE leaves no readable target; its outer table still changes.
             altered = tuple(
@@ -348,6 +365,7 @@ _SERVER_SIDE_COPY = {
     "copy-to-program": "COPY TO PROGRAM runs a shell command on the database server",
     "copy-from-program": "COPY FROM PROGRAM runs a shell command on the database server",
     "copy-to-file": "COPY TO a file writes a file on the database server",
+    "copy-from-file": "COPY FROM a file loads rows into a table",
 }
 
 
@@ -385,9 +403,9 @@ def _opaque_dialect(dialect: str) -> str:
     return ""
 
 
-def _snippet(body: str) -> str:
+def _snippet(body: str, dialect: str) -> str:
     # Some splitters keep the statement's ``;`` and some drop it; the snippet never shows it.
-    flat = " ".join(body.rstrip().rstrip(";").split())
+    flat = " ".join(mask_string_literals(body, dialect).rstrip().rstrip(";").split())
     return flat if len(flat) <= SNIPPET else flat[: SNIPPET - 1] + "…"
 
 
@@ -421,9 +439,25 @@ def _unnamed_drop_caution(stmt: AnalysedStatement, body: str) -> Optional[Cautio
     )
 
 
+def _dependents_caution(stmt: AnalysedStatement, dialect: str) -> Optional[Caution]:
+    """The caution of a named DROP of row-free objects whose CASCADE or FORCE may drop columns."""
+    named = tuple(o for o in stmt.objects if o.type not in _COLUMN_FREE_DEPENDENTS)
+    word = next((w for w in bare_words(stmt.sql, dialect) if _DROP_DEPENDENTS.fullmatch(w)), None)
+    if not named or word is None:
+        return None
+    return Caution(
+        DESTROYS,
+        stmt.index,
+        f"DROP … {word} also drops the objects that depend on {_names(named)}, "
+        "which can include columns and their data",
+        "drop-cascade",
+    )
+
+
 def _caution_for(
     stmt: AnalysedStatement,
     body: str,
+    discards_rows: FrozenSet[str],
     opaque_dialect: Optional[str] = None,
     name_target: bool = True,
 ) -> Optional[Caution]:
@@ -431,12 +465,12 @@ def _caution_for(
     if op == "TRUNCATE":
         return Caution(DESTROYS, stmt.index, f"TRUNCATE empties {_names(stmt.objects)}", "truncate")
     if op == "DROP":
-        held = tuple(o for o in stmt.objects if o.type in _DATA_HOLDERS)
+        held = tuple(o for o in stmt.objects if o.type in _DATA_HOLDERS or o.type in discards_rows)
         if not held:
             return _unnamed_drop_caution(stmt, body) if opaque_dialect else None
         if any(o.type in _SCHEMA_HOLDERS for o in held):
             code: Optional[str] = "drop-schema"
-        elif any(o.type in _ROW_HOLDERS for o in held):
+        elif any(o.type in _ROW_HOLDERS or o.type in discards_rows for o in held):
             code = "drop-table"
         else:
             code = None

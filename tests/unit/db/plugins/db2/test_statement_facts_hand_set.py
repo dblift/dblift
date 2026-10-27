@@ -9,7 +9,6 @@ Expectations that differ from the hand set as first drawn up, and why:
 
 * RENAME COLUMN app.t.a TO b: not in the head table (only RENAME TABLE and RENAME INDEX
   are), so the reader states it unclassified: opaque.
-* DROP TABLESPACE ts1: a tablespace is not a head the table knows: opaque.
 * CONNECT TO sample and RUNSTATS ON TABLE app.orders: CLP commands, not SQL: opaque.
 * LABEL ON TABLE / LABEL ON COLUMN: not Db2 LUW syntax: opaque.
 * LOCK TABLE and CALL: the object is named as referenced and the kind is UNKNOWN.
@@ -198,7 +197,7 @@ HAND_SET = [
     ("drop", "DROP PROCEDURE app.p1", "DROP", "APP", "P1"),
     ("drop", "DROP FUNCTION app.f1", "DROP", "APP", "F1"),
     ("drop", "DROP TRIGGER app.trg1", "DROP", "APP", "TRG1"),
-    ("drop", "DROP TABLESPACE ts1", None, None, None),
+    ("drop", "DROP TABLESPACE ts1", "DROP", None, "TS1"),
     ("drop", "DROP SCHEMA app RESTRICT", "DROP", None, "APP"),
     ("schema", "CREATE SCHEMA app AUTHORIZATION dbadm", "CREATE", None, "APP"),
     (

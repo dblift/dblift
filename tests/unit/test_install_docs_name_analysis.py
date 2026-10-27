@@ -1,9 +1,8 @@
-"""Documented installs that go on to run ``dblift`` must include ``analysis``.
+"""Documented installs that go on to run ``dblift`` must include analysis.
 
-The command line defaults to full SQL analysis, which needs SQLGlot. An install
-line like ``pip install "dblift[cli,postgresql]"`` followed by ``dblift migrate``
-therefore dies with ``No module named 'sqlglot'``. Extras that already carry
-``analysis`` (``all``, ``mcp`` and the framework integrations) are exempt.
+The command line defaults to full SQL analysis, which needs SQLGlot.
+The ``cli`` extra carries ``analysis``; ``all``, ``mcp`` and the framework
+integrations also reach it.
 """
 
 from __future__ import annotations
@@ -20,7 +19,7 @@ pytestmark = [pytest.mark.unit]
 ROOT = Path(__file__).resolve().parents[2]
 _FENCE = re.compile(r"^\s*```")
 _INSTALL = re.compile(r'pip install\s+"?dblift\[([^\]]+)\]')
-_CARRIES_ANALYSIS = {"analysis", "all", "mcp", "django", "flask", "fastapi", "dev"}
+_CARRIES_ANALYSIS = {"cli", "analysis", "all", "mcp", "django", "flask", "fastapi", "dev"}
 
 
 def _install_lines_in_code_blocks():

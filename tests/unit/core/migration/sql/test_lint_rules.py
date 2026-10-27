@@ -8,7 +8,12 @@ import pytest
 
 from dblift.core.migration.sql.lint import lint_script
 from dblift.core.migration.sql.lint_rules import ERROR, INFO, SEVERITY, WARNING, find_issues
-from dblift.core.migration.sql.script_analysis import analyse_script
+from dblift.core.migration.sql.script_analysis import (
+    AnalysedObject,
+    AnalysedStatement,
+    _caution_for,
+    analyse_script,
+)
 from dblift.db.provider_registry import ProviderRegistry
 
 pytestmark = pytest.mark.unit
@@ -510,8 +515,6 @@ def test_a_drop_of_a_kind_that_holds_no_rows_stays_safe_when_unread(dialect, sql
         ("oracle", "DROP SYNONYM s FORCE;"),
         ("sqlserver", "DROP CERTIFICATE c;"),
         ("duckdb", "DROP SECRET s;"),
-        ("db2", "DROP BUFFERPOOL b;"),
-        ("db2", "DROP MODULE m;"),
         ("snowflake", "DROP STAGE st;"),
         ("postgresql", "DROP;"),
         ("snowflake", "DROP EVENT TABLE e;"),
@@ -524,6 +527,135 @@ def test_a_drop_that_may_lose_data_or_cannot_be_classified_asks_for_a_review(dia
 
     assert result.verdict == "REVIEW"
     assert [f.code for f in result.findings] == ["drop-unread-object"]
+
+
+# Db2 DROP TABLESPACE drops the tables that live in it with their rows (measured on Db2 12.1.5.0,
+# 2026-10-24: the table was gone and SELECT from it was SQL0204N), so the table space the reader
+# names is judged as the tables it takes with it. DROP BUFFERPOOL and DROP STOGROUP fail while a
+# table space uses them (SQL0478N), and DROP MODULE removes definitions, not rows.
+def test_a_named_db2_table_space_drop_is_judged_as_a_table_drop():
+    result = lint_script("DROP TABLESPACE ts;", "db2")
+
+    assert [f.code for f in result.findings] == ["drop-table"]
+    assert result.verdict == lint_script("DROP TABLE t;", "db2").verdict
+
+
+def _named_tablespace_drop():
+    return AnalysedStatement(
+        0,
+        "DROP",
+        "DDL",
+        (AnalysedObject("TABLESPACE", "TS", None),),
+        False,
+        "DROP TABLESPACE ts",
+    )
+
+
+# PostgreSQL and MySQL refuse to drop a table space that still holds tables, so a dialect whose
+# quirks do not list TABLESPACE among the types that discard rows does not report the drop as one.
+def test_a_named_table_space_drop_discards_rows_only_where_the_dialect_says_so():
+    stmt = _named_tablespace_drop()
+
+    assert _caution_for(stmt, "DROP TABLESPACE ts", frozenset()) is None
+    caution = _caution_for(stmt, "DROP TABLESPACE ts", frozenset({"TABLESPACE"}))
+    assert caution is not None and caution.code == "drop-table"
+
+
+@pytest.mark.parametrize(
+    "sql", ["DROP BUFFERPOOL b;", "DROP STOGROUP sg;", "DROP MODULE m;", "DROP TYPE t;"]
+)
+def test_a_named_db2_drop_that_holds_no_rows_is_safe(sql):
+    assert lint_script(sql, "db2").verdict == "SAFE"
+
+
+# Measured 2026-10-24 on PostgreSQL 16.14. Each DROP below was refused without CASCADE ("cannot
+# drop ... because other objects depend on it") and, with it, dropped a column of a table that
+# held a row (the row stayed, its value in that column was gone):
+#   DROP TYPE ty CASCADE                a column of type ty (an enum or a composite attribute too)
+#   DROP FUNCTION f(int) CASCADE        a stored generated column that calls f
+#   DROP DOMAIN / TEXT SEARCH CONFIGURATION / COLLATION ... CASCADE: a column of that domain,
+#     a generated tsvector column, a column with that collation (these three are not named by the
+#     reader, so the unread-drop rule already reports them)
+# DROP FUNCTION ... CASCADE also dropped a column DEFAULT, a CHECK, a trigger, an index and a view
+# that used f; DROP SERVER srv CASCADE dropped a foreign table (the data stays on the remote side).
+def test_a_named_drop_with_cascade_that_can_drop_a_column_asks_for_a_review():
+    result = lint_script("DROP TYPE ty CASCADE;", "postgresql")
+
+    assert [f.code for f in result.findings] == ["drop-cascade"]
+    assert result.verdict == "REVIEW"
+    assert analyse_script("DROP TYPE ty CASCADE", "postgresql").cautions[0].code == "drop-cascade"
+
+
+@pytest.mark.parametrize(
+    "dialect, sql",
+    [
+        ("postgresql", "DROP TYPE ty CASCADE;"),
+        ("postgresql", "DROP TYPE IF EXISTS s.ty cascade;"),
+        ("postgresql", "DROP FUNCTION f(int) CASCADE;"),
+        ("postgresql", "DROP TYPE ty /* why */ CASCADE -- done"),
+        ("postgresql", 'DROP TYPE "ty" CASCADE;'),
+        ("snowflake", "DROP FUNCTION f(int) CASCADE;"),
+    ],
+)
+def test_the_cascade_of_a_named_drop_is_reported_as_one_finding(dialect, sql):
+    result = lint_script(sql, dialect)
+
+    assert [f.code for f in result.findings] == ["drop-cascade"]
+    assert "CASCADE" in result.findings[0].message
+    assert SEVERITY["drop-cascade"] == WARNING
+
+
+# The same drops without CASCADE are refused by the engine while a column depends on the object.
+# CASCADE written inside a comment or a quoted name is not the keyword.
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DROP TYPE ty;",
+        "DROP FUNCTION f(int);",
+        "DROP TYPE ty -- CASCADE",
+        "DROP TYPE ty /* CASCADE */;",
+        'DROP TYPE "cascade";',
+        'DROP TYPE "force".ty;',
+    ],
+)
+def test_a_named_drop_without_the_cascade_keyword_stays_safe(sql):
+    assert lint_script(sql, "postgresql").verdict == "SAFE"
+
+
+# Measured 2026-10-24 on PostgreSQL 16.14: CASCADE on these reaches no column. DROP SEQUENCE sq
+# CASCADE dropped the DEFAULT nextval('sq') of the column using it (serial included) and kept
+# the column and its rows; DROP INDEX i CASCADE was refused while a constraint needed the index and
+# otherwise dropped the index alone; DROP TRIGGER and DROP PROCEDURE ... CASCADE dropped only
+# themselves. MySQL 8.4.11 refuses CASCADE on all of them (error 1064).
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DROP SEQUENCE sq CASCADE;",
+        "DROP INDEX i CASCADE;",
+        "DROP TRIGGER trg ON t CASCADE;",
+        "DROP PROCEDURE p(int) CASCADE;",
+    ],
+)
+def test_the_cascade_of_a_kind_no_column_depends_on_stays_safe(sql):
+    assert lint_script(sql, "postgresql").verdict == "SAFE"
+
+
+# CASCADE / FORCE do not change the verdict of a drop that already discards rows or that holds
+# none: the table and schema rules speak first, and a view drop (MySQL 8.4.11 accepts
+# DROP VIEW v CASCADE and ignores it) is judged as before.
+@pytest.mark.parametrize(
+    "dialect, sql, codes",
+    [
+        ("mysql", "DROP TABLE t CASCADE;", ["drop-table"]),
+        ("postgresql", "DROP SCHEMA s CASCADE;", ["drop-schema"]),
+        ("postgresql", "DROP DATABASE d FORCE;", ["drop-schema"]),
+        ("mysql", "DROP VIEW v CASCADE;", []),
+        ("postgresql", "DROP EXTENSION e CASCADE;", ["drop-unread-object"]),
+        ("postgresql", "DROP DOMAIN dm CASCADE;", ["drop-unread-object"]),
+    ],
+)
+def test_the_cascade_keyword_leaves_the_other_drop_rules_alone(dialect, sql, codes):
+    assert [f.code for f in lint_script(sql, dialect).findings] == codes
 
 
 # A database link and a materialized view log are definitions: Oracle's DROP DATABASE LINK removes

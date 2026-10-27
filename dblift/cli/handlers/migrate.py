@@ -72,7 +72,7 @@ def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
                 exclude_tags=exclude_tags,
                 versions=versions,
                 exclude_versions=exclude_versions,
-                mark_as_executed=getattr(ctx.args, "mark_as_executed", False),
+                mark_as_executed=bool(getattr(ctx.args, "mark_as_executed", False)),
                 show_sql=getattr(ctx.args, "show_sql", False),
                 show_query_results=getattr(ctx.args, "show_query_results", False),
                 placeholders=ctx.placeholders,

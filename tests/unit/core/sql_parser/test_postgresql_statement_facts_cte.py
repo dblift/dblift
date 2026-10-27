@@ -107,7 +107,7 @@ def test_proven_read_only_sources_remain_precise(query):
     )
 
     assert read_statement_facts(query, dialect="postgres") == StatementFacts(
-        "SELECT", "QUERY", (source,)
+        "SELECT", "QUERY", (source,), events=frozenset()
     )
 
 

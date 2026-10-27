@@ -312,8 +312,9 @@ class MigrationJournal:
 
         self._write_entry(entry)
 
+    @staticmethod
     def _determine_operation_from_statement(
-        self, statement: str, object_type: Optional[str] = None
+        statement: str, object_type: Optional[str] = None
     ) -> str:
         """Determine the operation type from a SQL statement.
 
@@ -427,13 +428,22 @@ class MigrationJournal:
         obj = by_index.get(entry.statement_index)
         if obj is None:
             obj = by_text.get(entry.statement)
+        return self.annotation_for(entry.statement, obj)
+
+    @staticmethod
+    def annotation_for(statement: str, obj: Optional[object] = None) -> Tuple[str, str, str]:
+        """Return (operation, object_type, object_name) a report shows for *statement*.
+
+        *obj* is the first object the statement acts on (a dict or ``SqlObject``), or
+        ``None`` when none was read.
+        """
         if obj is not None:
-            object_type, object_name, _schema = self._parse_affected_object(obj)
-            operation = self._determine_operation_from_statement(entry.statement, object_type)
+            object_type, object_name, _schema = MigrationJournal._parse_affected_object(obj)
+            operation = MigrationJournal._determine_operation_from_statement(statement, object_type)
             return operation, object_type, object_name
-        operation = self._determine_operation_from_statement(entry.statement)
+        operation = MigrationJournal._determine_operation_from_statement(statement)
         if operation == "SELECT":
-            return "SELECT", "QUERY", self._primary_relation_from_select(entry.statement)
+            return "SELECT", "QUERY", MigrationJournal._primary_relation_from_select(statement)
         return operation, "", ""
 
     def get_performance_stats_by_object_type(self, migration_id: str) -> Dict[str, Any]:

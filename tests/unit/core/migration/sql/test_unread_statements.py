@@ -190,11 +190,17 @@ COMMENT_BYPASS = [
 ]
 
 EXECUTABLE_COMMENTS = [
+    ("mysql", "/*!50700 DELETE FROM t */;"),
+    ("mariadb", "/*!50700 DELETE FROM t */;"),
+    ("mariadb", "/*M!100000 DELETE FROM t */;"),
+    ("mysql", "SET /*!50000 GLOBAL */ x = 1;"),
+]
+# Executable comments that run on every supported server are read as the server reads them.
+READ_EXECUTABLE_COMMENTS = [
     ("mysql", "/*! DELETE FROM t */;"),
     ("mysql", "/*!50000 DELETE FROM t */;"),
     ("mariadb", "/*! DELETE FROM t */;"),
     ("mariadb", "/*!50000 DELETE FROM t */;"),
-    ("mysql", "SET /*!50000 GLOBAL */ x = 1;"),
 ]
 
 SET_ESCALATIONS = [
@@ -224,6 +230,16 @@ def test_a_mysql_executable_comment_is_not_comment_only(dialect, sql):
 
     assert result.verdict == "REVIEW", result
     assert [f.code for f in result.findings] == ["statement-not-analysed"]
+
+
+@pytest.mark.parametrize("dialect, sql", READ_EXECUTABLE_COMMENTS)
+def test_a_mysql_executable_comment_that_runs_everywhere_is_judged_as_the_statement_it_holds(
+    dialect, sql
+):
+    result = lint_script(sql, dialect)
+
+    assert result.verdict == "REVIEW", result
+    assert [f.code for f in result.findings] == ["dml-no-where"]
 
 
 @pytest.mark.parametrize("sql", SET_ESCALATIONS)

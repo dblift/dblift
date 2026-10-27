@@ -189,7 +189,7 @@ def test_mysql_drop_index_if_exists_keeps_the_on_table_relation():
 @pytest.mark.parametrize("quirks_class", [MysqlQuirks, MariadbQuirks])
 def test_mysql_family_drop_index_preparation_runs_with_facts_active(quirks_class):
     assert quirks_class().supports_statement_facts
-    assert quirks_class().statement_facts_class is SqlglotStatementFactsReader
+    assert issubclass(quirks_class().statement_facts_class, SqlglotStatementFactsReader)
 
 
 def test_mysql_create_index_relation_is_unchanged():

@@ -340,11 +340,11 @@
   "reason": "CREATE TABLE: the reader names `TEST` but states column facts (columns, constraints, indexed columns) unavailable rather than guess (the body uses PostgreSQL's SERIAL); it agrees with the extraction on the name",
   "sql": "CREATE TABLE test (\n    id SERIAL PRIMARY KEY  -- inline comment\n)"
  },
- "0eda0ed3096df4f6": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
-  "path": "both",
-  "reason": "DROP STOGROUP is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_SG` / `default_schema.my_sg` (the hybrid path typed a tablespace as a table)",
+ "0eda0ed3096df4f6/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `my_sg` with a placeholder schema `default_schema` and keeps its spelling; the reader names `MY_SG` as a STORAGE_GROUP with no schema, folded to upper case as Db2 stores it",
   "sql": "DROP STOGROUP my_sg"
  },
  "0ef3fd1508d76335/hybrid": {
@@ -376,10 +376,10 @@
   "sql": "CREATE TABLE a (id INT PRIMARY KEY)"
  },
  "100d168fc3181176": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
+  "class": "disagree",
+  "issue": "",
   "path": "both",
-  "reason": "CREATE TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `TEST_TS` / `default_schema.test_ts` (the hybrid path typed a tablespace as a table)",
+  "reason": "the old extraction names the table space `TEST_TS` as a table (the hybrid path) or qualifies it with a placeholder schema `default_schema` and types it UNKNOWN (the analyzer path); the reader names a TABLESPACE with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE TABLESPACE test_ts MANAGED BY SYSTEM"
  },
  "1056ec069a4157b9": {
@@ -444,11 +444,11 @@
   "reason": "not a Db2 statement: EXEC SQL is precompiler host-language syntax the server never receives; the old extraction guessed `TEST` from the text inside it",
   "sql": "EXEC SQL CREATE TABLE test (id INTEGER) END-EXEC"
  },
- "11eb9fbf56d96d6e": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
-  "path": "both",
-  "reason": "CREATE TYPE is outside the head table, so the reader states it not classified; the old extraction named `REAL_TYPE` / `default_schema.real_type` (this FROM form is SQL Server's)",
+ "11eb9fbf56d96d6e/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `real_type` with a placeholder schema `default_schema` and keeps its spelling (CREATE TYPE ... FROM is SQL Server's, not Db2's; the head still names the type); the reader names `REAL_TYPE` as a TYPE with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE TYPE real_type FROM int"
  },
  "1215d3c3ba37dbf4/analyzer": {
@@ -745,18 +745,25 @@
   "reason": "not a Db2 statement: brackets are SQL Server's delimiters, which Db2 does not read as delimiters, so the reader leaves the name unread; the old extraction named `]abc`",
   "sql": "CREATE INDEX []]abc] ON [dbo].[t]([c])"
  },
- "1cc707a61359c460": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
-  "path": "both",
-  "reason": "CREATE STOGROUP is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `SG1` / `default_schema.sg1` (the hybrid path typed a tablespace as a table)",
+ "1cc707a61359c460/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `sg1` with a placeholder schema `default_schema` and keeps its spelling; the reader names `SG1` as a STORAGE_GROUP with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE STOGROUP sg1 VOLUMES ('vol1')"
  },
  "1cc781c9df6120d5/analyzer": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
+  "class": "disagree",
+  "issue": "",
   "path": "analyzer",
-  "reason": "ALTER MODULE is a Db2 statement outside the head table: the reader states it not classified; the old extraction named `default_schema.m`",
+  "reason": "the analyzer path qualifies the unqualified `m` with a placeholder schema `default_schema` and keeps its spelling and types it UNKNOWN; the reader names `M` as a MODULE with no schema, folded to upper case as Db2 stores it",
+  "sql": "ALTER MODULE m ADD PROCEDURE p() BEGIN SELECT 1; END"
+ },
+ "1cc781c9df6120d5/hybrid": {
+  "class": "facts-adds-acted",
+  "issue": "",
+  "path": "hybrid",
+  "reason": "the old hybrid path names no object for a ALTER MODULE statement; the reader names `M` as altered, and is right: the statement does that",
   "sql": "ALTER MODULE m ADD PROCEDURE p() BEGIN SELECT 1; END"
  },
  "1d21a18c88f5a607/hybrid": {
@@ -1023,11 +1030,11 @@
   "reason": "the old hybrid path names no object for INSERT statements; the reader names `PENDING` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "INSERT INTO pending VALUES (1)"
  },
- "299bff6e3da82932": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
-  "path": "both",
-  "reason": "CREATE SYNONYM is outside the head table (it names ALIAS), so the reader states it not classified; the old extraction named `REAL_SYN` / `default_schema.real_syn` and the hybrid path typed it UNKNOWN",
+ "299bff6e3da82932/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `real_syn` with a placeholder schema `default_schema` and keeps its spelling; the reader names `REAL_SYN` as a SYNONYM with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE SYNONYM real_syn FOR dbo.real_one"
  },
  "2a155d04bed09687/hybrid": {
@@ -1255,9 +1262,9 @@
  },
  "31d54561b6af3b00/hybrid": {
   "class": "opaque-reader-gap",
-  "issue": "#661",
+  "issue": "by design: docs/sql-parsing/db2.md section 13",
   "path": "hybrid",
-  "reason": "EXECUTE IMMEDIATE is outside the head table, so the reader states it not classified and names nothing; the old extraction took the DROP inside the string literal for a statement of its own (`TEMP`)",
+  "reason": "EXECUTE IMMEDIATE is opaque on purpose: the statement it runs is inside a string or a variable, so the reader states it not classified and names nothing; the old extraction took the DROP inside the string literal for a statement of its own (`TEMP`)",
   "sql": "EXECUTE IMMEDIATE 'DROP TABLE temp'"
  },
  "3276092f9b02008a/hybrid": {
@@ -1359,10 +1366,10 @@
   "sql": "CREATE TABLE child (id INTEGER PRIMARY KEY, pid INTEGER REFERENCES parent(id))"
  },
  "350dbf9c8990d3b8": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
+  "class": "disagree",
+  "issue": "",
   "path": "both",
-  "reason": "DROP TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `TS` / `default_schema.ts` (the hybrid path typed a tablespace as a table)",
+  "reason": "the old extraction names the table space `TS` as a table (the hybrid path) or qualifies it with a placeholder schema `default_schema` and types it UNKNOWN (the analyzer path); the reader names a TABLESPACE with no schema, folded to upper case as Db2 stores it",
   "sql": "DROP TABLESPACE ts"
  },
  "3515c417379cf8d8/analyzer": {
@@ -1374,9 +1381,9 @@
  },
  "352cb192f9746748/analyzer": {
   "class": "opaque-reader-gap",
-  "issue": "#661",
+  "issue": "by design: docs/sql-parsing/db2.md section 13",
   "path": "analyzer",
-  "reason": "CREATE SYNONYM is outside the head table (it names ALIAS), so the reader states it not classified; the old extraction named `default_schema.s` and the hybrid path typed it UNKNOWN",
+  "reason": "CREATE PUBLIC SYNONYM creates the alias in the SYSPUBLIC schema (measured on Db2 12.1.5.0), so a name with no schema would be another object: the reader states the statement not classified; the old extraction named `default_schema.s` and the hybrid path typed it UNKNOWN",
   "sql": "CREATE PUBLIC SYNONYM s FOR app.orders"
  },
  "352f3d7cbfea2c35/analyzer": {
@@ -1386,11 +1393,11 @@
   "reason": "not a Db2 statement: backticks are MySQL's delimiters, which Db2 does not read as delimiters, so the reader leaves the name unread; the old extraction named `default_schema.my_func`",
   "sql": "CREATE FUNCTION `my_func`() RETURNS INT BEGIN RETURN 1; END"
  },
- "35840177d7ec32d7": {
-  "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
-  "path": "both",
-  "reason": "not a Db2 statement: CREATE TYPE ... AS ENUM is PostgreSQL's; the old extraction named `MOOD` / `default_schema.mood`",
+ "35840177d7ec32d7/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `mood` with a placeholder schema `default_schema` and keeps its spelling (CREATE TYPE ... AS ENUM is PostgreSQL's, not Db2's; the head still names the type); the reader names `MOOD` as a TYPE with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE TYPE mood AS ENUM ('sad', 'happy')"
  },
  "35fa88b10f497bf0/analyzer": {
@@ -1652,9 +1659,9 @@
  },
  "3d175a34b02a4f64/analyzer": {
   "class": "opaque-reader-gap",
-  "issue": "#661",
+  "issue": "by design: docs/sql-parsing/db2.md section 13",
   "path": "analyzer",
-  "reason": "CREATE SYNONYM is outside the head table (it names ALIAS), so the reader states it not classified; the old extraction named `default_schema.emp` and the hybrid path typed it UNKNOWN",
+  "reason": "CREATE PUBLIC SYNONYM creates the alias in the SYSPUBLIC schema (measured on Db2 12.1.5.0), so a name with no schema would be another object: the reader states the statement not classified; the old extraction named `default_schema.emp` and the hybrid path typed it UNKNOWN",
   "sql": "CREATE OR REPLACE PUBLIC SYNONYM emp FOR employees"
  },
  "3d1b7808b4589354/analyzer": {
@@ -1734,11 +1741,11 @@
   "reason": "CREATE INDEX: the reader names `IX`, `T` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
   "sql": "CREATE INDEX ix ON t(c)"
  },
- "3f95346c24ab5e73": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
-  "path": "both",
-  "reason": "CREATE TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `my_ts` / `default_schema.my_ts` (the hybrid path typed a tablespace as a table)",
+ "3f95346c24ab5e73/hybrid": {
+  "class": "disagree",
+  "issue": "",
+  "path": "hybrid",
+  "reason": "the hybrid path types the table space `my_ts` as a table; the reader names a TABLESPACE, spelled as the quoted name is",
   "sql": "CREATE TABLESPACE \"my_ts\" MANAGED BY SYSTEM"
  },
  "4000e59a360f56d5/hybrid": {
@@ -1981,9 +1988,11 @@
  },
  "4f2806a8ee627b36": {
   "class": "opaque-reader-gap",
-  "issue": "#661",
   "path": "both",
-  "reason": "DROP DATABASE is a Db2 CLP command, not an SQL statement; the reader states it not classified and names nothing, the old extraction named `MY_DB` / `default_schema.my_db`",
+  "reason": "DROP DATABASE is a CLP command, not an SQL statement: sent as SQL through the driver, Db2 12.1.5.0 rejects it with SQL0104N. The reader states it not classified and names nothing; the old extraction named `MY_DB` / `default_schema.my_db`",
+  "rejected_by": {
+   "db2 12.1.5.0": "SQL0104N"
+  },
   "sql": "DROP DATABASE my_db"
  },
  "4f396193162c9a78/analyzer": {
@@ -2251,11 +2260,11 @@
   "reason": "not a Db2 statement: DELIMITER is a MySQL client command; the old extraction guessed `GET_USERS` from the procedure behind it",
   "sql": "DELIMITER //\n        CREATE PROCEDURE get_users()\n        BEGIN\n            SELECT * FROM users"
  },
- "587428fbead336a4": {
-  "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
-  "path": "both",
-  "reason": "not a Db2 statement: CREATE TYPE ... AS ENUM is PostgreSQL's; the old extraction named `MOOD` / `default_schema.mood`",
+ "587428fbead336a4/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `mood` with a placeholder schema `default_schema` and keeps its spelling (CREATE TYPE ... AS ENUM is PostgreSQL's, not Db2's; the head still names the type); the reader names `MOOD` as a TYPE with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE TYPE mood AS ENUM ('ok')"
  },
  "58a0003eb29af905/analyzer": {
@@ -2287,10 +2296,10 @@
   "sql": "/* has a ; inside */ CREATE TABLE t (id int)"
  },
  "5a55d5c483c0bdbf": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
+  "class": "disagree",
+  "issue": "",
   "path": "both",
-  "reason": "CREATE TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `TS1` / `default_schema.ts1` (the hybrid path typed a tablespace as a table)",
+  "reason": "the old extraction names the table space `TS1` as a table (the hybrid path) or qualifies it with a placeholder schema `default_schema` and types it UNKNOWN (the analyzer path); the reader names a TABLESPACE with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE TABLESPACE ts1 IN STOGROUP sg1"
  },
  "5a93aafbfa136243": {
@@ -2650,11 +2659,11 @@
   "reason": "CREATE TABLE: the reader names `TEST1` but states column facts (columns, constraints, indexed columns) unavailable rather than guess (the body uses PostgreSQL's SERIAL); it agrees with the extraction on the name",
   "sql": "CREATE TABLE test1 (id SERIAL PRIMARY KEY)"
  },
- "6a82a117cbce309d": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
-  "path": "both",
-  "reason": "ALTER STOGROUP is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_SG` / `default_schema.my_sg` (the hybrid path typed a tablespace as a table)",
+ "6a82a117cbce309d/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `my_sg` with a placeholder schema `default_schema` and keeps its spelling; the reader names `MY_SG` as a STORAGE_GROUP with no schema, folded to upper case as Db2 stores it",
   "sql": "ALTER STOGROUP my_sg ADD VOLUMES ('vol2')"
  },
  "6ad57b7fe1898292/analyzer": {
@@ -2666,9 +2675,11 @@
  },
  "6b10c74a6de18c65": {
   "class": "opaque-reader-gap",
-  "issue": "#661",
   "path": "both",
-  "reason": "CREATE LOB TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_LOB_TS` / `default_schema.TABLESPACE` (the hybrid path typed a tablespace as a table)",
+  "reason": "CREATE LOB TABLESPACE is not Db2 LUW syntax: Db2 12.1.5.0 rejects it with SQL0104N. The reader states it not classified; the old extraction named `MY_LOB_TS` / `default_schema.TABLESPACE` (the hybrid path typed a tablespace as a table)",
+  "rejected_by": {
+   "db2 12.1.5.0": "SQL0104N"
+  },
   "sql": "CREATE LOB TABLESPACE my_lob_ts MANAGED BY SYSTEM"
  },
  "6b277f0753c545ff/hybrid": {
@@ -2693,10 +2704,17 @@
   "sql": "CREATE TABLE mydb.dbo.mytable (id int)"
  },
  "6bebf2f1649906e4/analyzer": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
+  "class": "disagree",
+  "issue": "",
   "path": "analyzer",
-  "reason": "CREATE MODULE is a Db2 statement outside the head table: the reader states it not classified; the old extraction named `default_schema.m`",
+  "reason": "the analyzer path qualifies the unqualified `m` with a placeholder schema `default_schema` and keeps its spelling and types it UNKNOWN; the reader names `M` as a MODULE with no schema, folded to upper case as Db2 stores it",
+  "sql": "CREATE MODULE m\n PUBLISH FUNCTION f() RETURNS INT"
+ },
+ "6bebf2f1649906e4/hybrid": {
+  "class": "facts-adds-acted",
+  "issue": "",
+  "path": "hybrid",
+  "reason": "the old hybrid path names no object for a CREATE MODULE statement; the reader names `M` as created, and is right: the statement does that",
   "sql": "CREATE MODULE m\n PUBLISH FUNCTION f() RETURNS INT"
  },
  "6c187830f100b436/analyzer": {
@@ -3055,10 +3073,10 @@
   "sql": "CREATE INDEX idx_name ON employees(name) TABLESPACE users"
  },
  "7950a208d273b4a4": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
+  "class": "disagree",
+  "issue": "",
   "path": "both",
-  "reason": "CREATE TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `TS1` / `default_schema.ts1` (the hybrid path typed a tablespace as a table)",
+  "reason": "the old extraction names the table space `TS1` as a table (the hybrid path) or qualifies it with a placeholder schema `default_schema` and types it UNKNOWN (the analyzer path); the reader names a TABLESPACE with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE TABLESPACE ts1 MANAGED BY SYSTEM USING ('path')"
  },
  "79657b036e0b0868": {
@@ -3646,11 +3664,11 @@
   "reason": "the old hybrid path names no object for INSERT statements; the reader names `T` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "INSERT INTO t (id, name) VALUES (1, 'x')"
  },
- "925e4a95674e8e49": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
-  "path": "both",
-  "reason": "DROP TYPE is a Db2 statement outside the head table: the reader states it not classified; the old extraction named `MY_TYPE` / `default_schema.my_type`",
+ "925e4a95674e8e49/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `my_type` with a placeholder schema `default_schema` and keeps its spelling; the reader names `MY_TYPE` as a TYPE with no schema, folded to upper case as Db2 stores it",
   "sql": "DROP TYPE my_type"
  },
  "925ea0229c5e08c6": {
@@ -3898,10 +3916,10 @@
   "sql": "CREATE TRIGGER update_timestamp\n        AFTER UPDATE ON users\n        BEGIN\n            UPDATE users SET updated_at = da"
  },
  "9be5302963c469ce": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
+  "class": "disagree",
+  "issue": "",
   "path": "both",
-  "reason": "CREATE TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MYTS` / `default_schema.myts` (the hybrid path typed a tablespace as a table)",
+  "reason": "the old extraction names the table space `MYTS` as a table (the hybrid path) or qualifies it with a placeholder schema `default_schema` and types it UNKNOWN (the analyzer path); the reader names a TABLESPACE with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE TABLESPACE myts IN STOGROUP mysg"
  },
  "9be911a8083a027d": {
@@ -4108,10 +4126,10 @@
   "sql": "CREATE INDEX ix ON t{c}(a)"
  },
  "a6cbb05f14de55ca": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
+  "class": "disagree",
+  "issue": "",
   "path": "both",
-  "reason": "CREATE TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_TS` / `default_schema.my_ts` (the hybrid path typed a tablespace as a table)",
+  "reason": "the old extraction names the table space `MY_TS` as a table (the hybrid path) or qualifies it with a placeholder schema `default_schema` and types it UNKNOWN (the analyzer path); the reader names a TABLESPACE with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE TABLESPACE my_ts MANAGED BY SYSTEM"
  },
  "a7347a03cdda1f47/analyzer": {
@@ -4162,11 +4180,11 @@
   "reason": "not a Db2 statement: DROP ROW is Snowflake's; the old extraction named `default_schema.ACCESS`, a word of the object type",
   "sql": "DROP ROW ACCESS POLICY IF EXISTS \"S\".\"REGION_ONLY\""
  },
- "a8edea352ce75337": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
-  "path": "both",
-  "reason": "CREATE SYNONYM is outside the head table (it names ALIAS), so the reader states it not classified; the old extraction named `SYN1` / `default_schema.syn1` and the hybrid path typed it UNKNOWN",
+ "a8edea352ce75337/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `syn1` with a placeholder schema `default_schema` and keeps its spelling; the reader names `SYN1` as a SYNONYM with no schema, folded to upper case as Db2 stores it",
   "sql": "/* c */ CREATE SYNONYM syn1 FOR real_one"
  },
  "a8f8a2e3c17f3404/analyzer": {
@@ -4524,11 +4542,11 @@
   "reason": "the old hybrid path names no object for UPDATE statements; the reader names `T` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "UPDATE t SET pw = E'?'"
  },
- "b36df5fa20ff108d": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
-  "path": "both",
-  "reason": "CREATE STOGROUP is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MYSG` / `default_schema.mysg` (the hybrid path typed a tablespace as a table)",
+ "b36df5fa20ff108d/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `mysg` with a placeholder schema `default_schema` and keeps its spelling; the reader names `MYSG` as a STORAGE_GROUP with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE STOGROUP mysg VOLUMES ('vol1', 'vol2')"
  },
  "b37e4545ea10db60": {
@@ -4651,10 +4669,10 @@
   "sql": "CREATE TABLE sales.real_one (id int)"
  },
  "b9714f9c7de896b8": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
+  "class": "disagree",
+  "issue": "",
   "path": "both",
-  "reason": "CREATE TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `TS1` / `default_schema.ts1` (the hybrid path typed a tablespace as a table)",
+  "reason": "the old extraction names the table space `TS1` as a table (the hybrid path) or qualifies it with a placeholder schema `default_schema` and types it UNKNOWN (the analyzer path); the reader names a TABLESPACE with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE TABLESPACE ts1 MANAGED BY SYSTEM"
  },
  "b9d28fd3f2d55d4f/analyzer": {
@@ -4685,11 +4703,11 @@
   "reason": "not a Db2 statement: CREATE OR ALTER is SQL Server's; the old extraction named `T`, `T2` / `default_schema.t`",
   "sql": "CREATE OR ALTER TABLE t (id INT)\nCREATE TABLE t2 (id INT)"
  },
- "ba3e43d7c9aa61e9": {
-  "class": "opaque-reader-gap",
-  "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
-  "path": "both",
-  "reason": "not a Db2 statement: CREATE TYPE ... AS ENUM is PostgreSQL's; the old extraction named `MOOD` / `default_schema.mood`",
+ "ba3e43d7c9aa61e9/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `mood` with a placeholder schema `default_schema` and keeps its spelling (CREATE TYPE ... AS ENUM is PostgreSQL's, not Db2's; the head still names the type); the reader names `MOOD` as a TYPE with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE TYPE mood AS ENUM ('sad', 'ok')"
  },
  "ba72d8b70599dd85/analyzer": {
@@ -4910,10 +4928,10 @@
   "sql": "CREATE INDEX idx_name ON users(name)"
  },
  "c53c47271effe67e": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
+  "class": "disagree",
+  "issue": "",
   "path": "both",
-  "reason": "DROP TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_TS` / `default_schema.my_ts` (the hybrid path typed a tablespace as a table)",
+  "reason": "the old extraction names the table space `MY_TS` as a table (the hybrid path) or qualifies it with a placeholder schema `default_schema` and types it UNKNOWN (the analyzer path); the reader names a TABLESPACE with no schema, folded to upper case as Db2 stores it",
   "sql": "DROP TABLESPACE my_ts"
  },
  "c5579c4d265ad8a0/analyzer": {
@@ -5132,13 +5150,6 @@
   "reason": "CREATE TABLE: the reader names `SALES` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
   "sql": "CREATE TABLE sales (\n            sale_id NUMBER,\n            sale_date DATE,\n            amount NUMBER\n        )\n       "
  },
- "cacc1b18818225a3": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
-  "path": "both",
-  "reason": "CREATE STOGROUP is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `my_sg` / `default_schema.my_sg` (the hybrid path typed a tablespace as a table)",
-  "sql": "CREATE STOGROUP \"my_sg\" VOLUMES ('vol1')"
- },
  "cb698304f0d253b5/hybrid": {
   "class": "facts-adds-acted",
   "issue": "",
@@ -5230,11 +5241,11 @@
   "reason": "the old hybrid path names no object for UPDATE statements; the reader names `T` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "UPDATE t SET v = ? WHERE id = ?"
  },
- "cedb7d775b37e0d7": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
-  "path": "both",
-  "reason": "DROP TYPE is a Db2 statement outside the head table: the reader states it not classified; the old extraction named `MOOD` / `default_schema.mood`",
+ "cedb7d775b37e0d7/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `mood` with a placeholder schema `default_schema` and keeps its spelling; the reader names `MOOD` as a TYPE with no schema, folded to upper case as Db2 stores it",
   "sql": "DROP TYPE mood"
  },
  "cf7eaa7fa2e81bc4/analyzer": {
@@ -5350,10 +5361,10 @@
   "sql": "CREATE TABLE c(q INT CHECK (q > 0))"
  },
  "d37d4b0f0ffa9b1f": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
+  "class": "disagree",
+  "issue": "",
   "path": "both",
-  "reason": "ALTER TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_TS` / `default_schema.my_ts` (the hybrid path typed a tablespace as a table)",
+  "reason": "the old extraction names the table space `MY_TS` as a table (the hybrid path) or qualifies it with a placeholder schema `default_schema` and types it UNKNOWN (the analyzer path); the reader names a TABLESPACE with no schema, folded to upper case as Db2 stores it",
   "sql": "ALTER TABLESPACE my_ts ADD FILE 1000"
  },
  "d38c644d287615e7": {
@@ -5390,11 +5401,11 @@
   "reason": "the old hybrid path names no object for INSERT statements; the reader names `EMPLOYEES` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "INSERT INTO employees (name, hire_date) VALUES ('Alice', '2024-01-01')"
  },
- "d50eb5a997e44a82": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
-  "path": "both",
-  "reason": "CREATE STOGROUP is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `TEST_SG` / `default_schema.test_sg` (the hybrid path typed a tablespace as a table)",
+ "d50eb5a997e44a82/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `test_sg` with a placeholder schema `default_schema` and keeps its spelling; the reader names `TEST_SG` as a STORAGE_GROUP with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE STOGROUP test_sg VOLUMES ('vol1')"
  },
  "d5589847e3c65fcd/hybrid": {
@@ -5501,9 +5512,11 @@
  },
  "d830f197d0ad9af7": {
   "class": "opaque-reader-gap",
-  "issue": "#661",
   "path": "both",
-  "reason": "CREATE LOB TABLESPACE is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `TEST_LOB_TS` / `default_schema.TABLESPACE` (the hybrid path typed a tablespace as a table)",
+  "reason": "CREATE LOB TABLESPACE is not Db2 LUW syntax: Db2 12.1.5.0 rejects it with SQL0104N. The reader states it not classified; the old extraction named `TEST_LOB_TS` / `default_schema.TABLESPACE` (the hybrid path typed a tablespace as a table)",
+  "rejected_by": {
+   "db2 12.1.5.0": "SQL0104N"
+  },
   "sql": "CREATE LOB TABLESPACE test_lob_ts MANAGED BY SYSTEM"
  },
  "d851bccf97f30a0d": {
@@ -5666,11 +5679,11 @@
   "reason": "the old hybrid path names no object for UPDATE statements; the reader names `T` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "UPDATE t SET x=1"
  },
- "dec1cb69096a2501": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
-  "path": "both",
-  "reason": "CREATE STOGROUP is a Db2 statement outside the head table: the reader states it not classified rather than name it; the old extraction named `MY_SG` / `default_schema.my_sg` (the hybrid path typed a tablespace as a table)",
+ "dec1cb69096a2501/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `my_sg` with a placeholder schema `default_schema` and keeps its spelling; the reader names `MY_SG` as a STORAGE_GROUP with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE STOGROUP my_sg VOLUMES ('vol1')"
  },
  "dedf1ab58410f264/analyzer": {
@@ -5917,11 +5930,11 @@
   "reason": "not a Db2 name: three parts (database.schema.object) is SQL Server's; the reader leaves it unread rather than drop a part, the old extraction named `DBO` / `dbo.mytable`",
   "sql": "DROP TABLE mydb.dbo.mytable"
  },
- "ea2bdfa416ad69ca": {
-  "class": "opaque-reader-gap",
-  "issue": "#661",
-  "path": "both",
-  "reason": "CREATE SYNONYM is outside the head table (it names ALIAS), so the reader states it not classified; the old extraction named `S` / `default_schema.s` and the hybrid path typed it UNKNOWN",
+ "ea2bdfa416ad69ca/analyzer": {
+  "class": "disagree",
+  "issue": "",
+  "path": "analyzer",
+  "reason": "the analyzer path qualifies the unqualified `s` with a placeholder schema `default_schema` and keeps its spelling; the reader names `S` as a SYNONYM with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE SYNONYM s FOR orders"
  },
  "ea4914ca36693ed1/analyzer": {

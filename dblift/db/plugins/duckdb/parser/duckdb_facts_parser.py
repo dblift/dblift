@@ -21,6 +21,27 @@ _CREATE_MACRO_HEAD = re.compile(
     re.IGNORECASE,
 )
 _QUALIFIER_PART = re.compile(_IDENTIFIER)
+_SCHEMA_NAME = r"[A-Za-z_][A-Za-z0-9_$]*"
+_DOTTED_SCHEMA_NAME = rf"{_SCHEMA_NAME}(?:\.{_SCHEMA_NAME})?"
+_QUOTED_SCHEMA_NAME = rf'"{_DOTTED_SCHEMA_NAME}"'
+_SET_SCHEMA = re.compile(
+    rf"\s*SET\s+(?:schema|search_path)\s*=\s*"
+    rf"(?:'(?P<quoted>{_DOTTED_SCHEMA_NAME})'|(?P<bare>{_DOTTED_SCHEMA_NAME})"
+    rf"|(?P<identifier>{_QUOTED_SCHEMA_NAME}))\s*;?\s*\Z",
+    re.IGNORECASE,
+)
+_SET_SCHEMA_LITERAL = re.compile(
+    rf"\s*SET\s+schema\s+'(?P<name>{_DOTTED_SCHEMA_NAME})'\s*;?\s*\Z", re.IGNORECASE
+)
+_USE_SCHEMA = re.compile(
+    rf"\s*USE\s+({_IDENTIFIER}(?:\s*\.\s*{_IDENTIFIER})?)\s*;?\s*\Z", re.IGNORECASE
+)
+_RESET_SCHEMA = re.compile(r"\s*RESET\s+(?:schema|search_path)\s*;?\s*\Z", re.IGNORECASE)
+_NULL_TABLE_COMMENT = re.compile(
+    rf"\s*COMMENT\s+ON\s+TABLE\s+({_IDENTIFIER}(?:\s*\.\s*{_IDENTIFIER}){{0,2}})"
+    r"\s+IS\s+NULL\s*;?\s*\Z",
+    re.IGNORECASE,
+)
 # What the shared reader reports for a macro it parses as a function but does not name. A macro it
 # cannot parse at all (``b := 2`` in the parameter list) carries some other diagnostic.
 _MACRO_OPAQUE = "duckdb macro identity and body are opaque to statement facts"
@@ -39,7 +60,64 @@ def _created_macro(text: str, diagnostic: Optional[str]) -> Optional[NamedObject
         return None
     parts = [_unquoted(part) for part in _QUALIFIER_PART.findall(head.group(2))]
     schema = parts[-2] if len(parts) > 1 else None
-    return NamedObject(parts[-1], SqlObjectType.FUNCTION, "created", schema)
+    return NamedObject(
+        parts[-1],
+        SqlObjectType.FUNCTION,
+        "created",
+        schema,
+        catalog=parts[0] if len(parts) == 3 else None,
+    )
+
+
+def _schema_selection(text: str) -> Optional[StatementFacts]:
+    """Expose a raw namespace selector, never a resolved table schema or catalog."""
+    selected = _SET_SCHEMA.fullmatch(text)
+    if selected is not None:
+        return StatementFacts(
+            "SET",
+            "SESSION",
+            target=selected.group("quoted")
+            or selected.group("bare")
+            or selected.group("identifier"),
+            action="SELECT_NAMESPACE",
+        )
+    selected = _SET_SCHEMA_LITERAL.fullmatch(text)
+    if selected is not None:
+        return StatementFacts(
+            "SET", "SESSION", target=selected.group("name"), action="SELECT_NAMESPACE"
+        )
+    selected = _USE_SCHEMA.fullmatch(text)
+    if selected is not None:
+        return StatementFacts("USE", "SESSION", target=selected.group(1), action="SELECT_NAMESPACE")
+    if _RESET_SCHEMA.fullmatch(text):
+        return StatementFacts("RESET", "SESSION", action="RESET_NAMESPACE")
+    return None
+
+
+def _null_table_comment(text: str) -> Optional[StatementFacts]:
+    """DuckDB removes a table comment with IS NULL, which SQLGlot does not parse strictly."""
+    match = _NULL_TABLE_COMMENT.fullmatch(text)
+    if match is None:
+        return None
+    parts = _QUALIFIER_PART.findall(match.group(1))
+    name = _unquoted(parts[-1])
+    schema = ".".join(_unquoted(part) for part in parts[:-1]) or None
+    return StatementFacts(
+        "COMMENT",
+        "DDL",
+        (
+            NamedObject(
+                name,
+                SqlObjectType.TABLE,
+                "altered",
+                schema,
+                name_quoted=parts[-1].startswith('"'),
+                schema_quoted=parts[0].startswith('"') if len(parts) == 2 else None,
+                catalog=_unquoted(parts[0]) if len(parts) == 3 else None,
+            ),
+        ),
+        target_sql=match.group(1),
+    )
 
 
 class DuckDBStatementFactsReader(SqlglotStatementFactsReader):
@@ -51,6 +129,18 @@ class DuckDBStatementFactsReader(SqlglotStatementFactsReader):
         if not text.strip():
             return StatementFacts("UNKNOWN", "UNKNOWN")
         facts = super().read(text)
+        if facts.opaque:
+            if facts.operation in {"SET", "USE", "RESET"}:
+                selected = _schema_selection(text)
+                if selected is not None:
+                    return selected
+            if (
+                facts.operation == "COMMENT"
+                and facts.diagnostic == "duckdb grammar is not modelled for this statement"
+            ):
+                removed = _null_table_comment(text)
+                if removed is not None:
+                    return removed
         if facts.operation == "CREATE" and facts.diagnostic is not None:
             macro = _created_macro(text, facts.diagnostic)
             if macro is not None:

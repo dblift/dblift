@@ -17,7 +17,8 @@ from tests.support.facts_parser import facts_parser
 DIALECTS = ("mysql", "mariadb")
 MODES = ("regex", "hybrid", "sqlglot")
 UPDATE = "UPDATE t SET a = 1"
-EXECUTABLE = "/*!50001 CREATE TABLE t (id INT) */"
+EXECUTABLE = "/*!50700 CREATE TABLE t (id INT) */"
+EXECUTABLE_EVERYWHERE = "/*!50001 CREATE TABLE t (id INT) */"
 MARIA_EXECUTABLE = "/*M!100000 CREATE TABLE t (id INT) */"
 DELIMITER_SCRIPT = (
     "DELIMITER //\nCREATE PROCEDURE p() BEGIN UPDATE t SET a = 1; END //\nDELIMITER ;\n"
@@ -32,7 +33,7 @@ def test_the_plugin_reads_facts_through_the_shared_reader(dialect):
     quirks = _quirks(dialect)
 
     assert quirks.supports_statement_facts
-    assert quirks.statement_facts_class is SqlglotStatementFactsReader
+    assert issubclass(quirks.statement_facts_class, SqlglotStatementFactsReader)
     facts = quirks.statement_facts(UPDATE)
     assert (facts.operation, facts.target, facts.events) == ("UPDATE", "t", frozenset({"UPDATE"}))
 
@@ -88,6 +89,17 @@ def test_an_executable_comment_is_an_unread_statement_not_a_guess(dialect):
     (statement,) = analysis.statements
     assert (statement.operation, statement.kind, statement.objects) == ("UNKNOWN", "UNKNOWN", ())
     assert statement.names_unread
+
+
+@pytest.mark.parametrize("dialect", DIALECTS)
+def test_an_executable_comment_that_runs_on_every_server_is_read_as_the_server_reads_it(dialect):
+    analysis = analyse_script(EXECUTABLE_EVERYWHERE, dialect)
+
+    assert analysis.errors == ()
+    (statement,) = analysis.statements
+    assert (statement.operation, statement.kind) == ("CREATE", "DDL")
+    assert [(o.type, o.name) for o in statement.objects] == [("TABLE", "t")]
+    assert not statement.names_unread
 
 
 def test_the_mariadb_executable_comment_is_read_by_the_mariadb_plugin_only():

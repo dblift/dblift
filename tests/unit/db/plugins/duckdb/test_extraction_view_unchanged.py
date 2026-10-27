@@ -10,6 +10,7 @@ text.
 One recording moved on purpose: ``script_20`` ends in a zero-width space, which the engine reads as a
 blank, so the statement no longer carries it and its object is named. ``script_12`` and
 ``script_13`` lost the statement that was only a comment: a script cut into statements has none.
+The three ``COPY ... FROM 'file'`` facts recordings now carry ``copy-from-file`` action.
 """
 
 import dataclasses
@@ -26,6 +27,7 @@ from dblift.core.sql_parser.redaction import (
     describe_statement,
     mask_string_literals,
 )
+from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
 from dblift.db.plugins.duckdb.parser.duckdb_facts_parser import DuckDBStatementFactsReader
 from dblift.db.plugins.duckdb.provider import DuckDBProvider
 from dblift.db.provider_registry import ProviderRegistry
@@ -45,10 +47,16 @@ def plain(value: Any, depth: int = 0) -> Any:
         return type(value).__name__
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
         # ``cte_writes`` was added after the recording and is empty on every recorded input.
+        # Identifier provenance is verified separately; it was not part of this recording.
+        unrecorded = (
+            {"name_quoted", "schema_quoted", "catalog"} if isinstance(value, NamedObject) else ()
+        )
         return {
             f.name: plain(getattr(value, f.name), depth + 1)
             for f in dataclasses.fields(value)
-            if f.name != "cte_writes" or getattr(value, f.name)
+            if f.name not in unrecorded
+            and (f.name not in {"cte_writes", "renamed_to"} or getattr(value, f.name))
+            and (f.name != "table_comment" or getattr(value, f.name) is not None)
         }
     if isinstance(value, enum.Enum):
         return value.name
@@ -145,6 +153,12 @@ def test_describe_unchanged(name, case):
 @pytest.mark.parametrize("name,case", _cases("facts"))
 def test_facts_unchanged(name, case):
     assert observe_facts(case["input"]) == case["output"]
+
+
+def test_plain_omits_only_unavailable_table_comment():
+    assert "table_comment" not in plain(StatementFacts("CREATE", "DDL"))
+    assert plain(StatementFacts("COMMENT", "DDL", table_comment="note"))["table_comment"] == "note"
+    assert plain(StatementFacts("COMMENT", "DDL", table_comment=""))["table_comment"] == ""
 
 
 @pytest.mark.parametrize("name,case", _cases("returning"))

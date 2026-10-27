@@ -200,6 +200,7 @@ def _make_strict_parent() -> argparse.ArgumentParser:
         "--strict",
         dest="strict_mode",
         action="store_true",
+        default=None,
         help="Enable strict mode - fail if any previously applied migration is missing "
         "and require migrations to be applied in strict version order",
     )
@@ -309,6 +310,7 @@ def _add_diff_and_target_options(
     migrate_parser.add_argument(
         "--mark-as-executed",
         action="store_true",
+        default=None,
         help="Mark migrations as executed without running them (for migration applied outside dblift)",
     )
     migrate_parser.add_argument(
@@ -536,7 +538,7 @@ def create_parser(
             "Equivalent to migrations.recursive=false in YAML."
         ),
     )
-    parser.add_argument("--dry-run", action="store_true", help="Dry run mode")
+    parser.add_argument("--dry-run", action="store_true", default=None, help="Dry run mode")
     parser.add_argument(
         "--installed-by",
         dest="installed_by",

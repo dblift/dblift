@@ -2615,7 +2615,7 @@
      "updated_columns": []
     },
     "facts": {
-     "action": null,
+     "action": "copy-from-file",
      "affected_columns": [],
      "declared_column_comments": null,
      "declared_columns": [],
@@ -2655,7 +2655,7 @@
      "updated_columns": []
     },
     "facts": {
-     "action": null,
+     "action": "copy-from-file",
      "affected_columns": [
       "id",
       "Item Value"
@@ -2698,7 +2698,7 @@
      "updated_columns": []
     },
     "facts": {
-     "action": null,
+     "action": "copy-from-file",
      "affected_columns": [
       "id"
      ],
@@ -2733,7 +2733,7 @@
    "output": {
     "blank": "COPY items TO '/tmp/items.csv' (FORMAT CSV, HEADER);",
     "dml": {
-     "events": null,
+     "events": [],
      "table": "",
      "updated_columns": []
     },
@@ -2745,7 +2745,7 @@
      "declared_constraints": [],
      "diagnostic": null,
      "error": null,
-     "events": null,
+     "events": [],
      "indexed_columns": null,
      "indexed_table": null,
      "kind": "QUERY",
@@ -2769,7 +2769,7 @@
    "output": {
     "blank": "COPY \"Sales\".\"Order Items\" (id, \"Item Value\") TO '/tmp/items;out.parquet' (FORMAT PARQUET);",
     "dml": {
-     "events": null,
+     "events": [],
      "table": "",
      "updated_columns": []
     },
@@ -2781,7 +2781,7 @@
      "declared_constraints": [],
      "diagnostic": null,
      "error": null,
-     "events": null,
+     "events": [],
      "indexed_columns": null,
      "indexed_table": null,
      "kind": "QUERY",
@@ -3284,7 +3284,7 @@
    "output": {
     "blank": "CREATE TABLE \"a;b\" (x INT)  ",
     "dml": {
-     "events": null,
+     "events": [],
      "table": "",
      "updated_columns": []
     },
@@ -3298,7 +3298,7 @@
      "declared_constraints": [],
      "diagnostic": null,
      "error": null,
-     "events": null,
+     "events": [],
      "indexed_columns": null,
      "indexed_table": null,
      "kind": "DDL",
@@ -3448,7 +3448,7 @@
    "output": {
     "blank": "COPY t TO 'f;x' (DELIMITER ';')",
     "dml": {
-     "events": null,
+     "events": [],
      "table": "",
      "updated_columns": []
     },
@@ -3460,7 +3460,7 @@
      "declared_constraints": [],
      "diagnostic": null,
      "error": null,
-     "events": null,
+     "events": [],
      "indexed_columns": null,
      "indexed_table": null,
      "kind": "QUERY",
@@ -3772,7 +3772,7 @@
    "output": {
     "blank": "CREATE INDEX i ON t (a, b)",
     "dml": {
-     "events": null,
+     "events": [],
      "table": "",
      "updated_columns": []
     },
@@ -3784,7 +3784,7 @@
      "declared_constraints": [],
      "diagnostic": null,
      "error": null,
-     "events": null,
+     "events": [],
      "indexed_columns": [
       "a",
       "b"
@@ -3980,7 +3980,7 @@
    "output": {
     "blank": "CREATE TABLE \"caf\u00e9\" (a INT)",
     "dml": {
-     "events": null,
+     "events": [],
      "table": "",
      "updated_columns": []
     },
@@ -3994,7 +3994,7 @@
      "declared_constraints": [],
      "diagnostic": null,
      "error": null,
-     "events": null,
+     "events": [],
      "indexed_columns": null,
      "indexed_table": null,
      "kind": "DDL",

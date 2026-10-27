@@ -396,16 +396,14 @@ class TestUnmodelledObjectKeywords(unittest.TestCase):
     def setUp(self):
         self.analyzer = StatementReader(dialect="postgresql")
 
-    @unittest.expectedFailure  # statement facts name no object for this PostgreSQL statement
     def test_drop_tablespace_still_names_the_object(self):
         obj = _only(self.analyzer, "DROP TABLESPACE ts")
-        self.assertEqual(obj["object_type"], "UNKNOWN")
+        self.assertEqual(obj["object_type"], "TABLESPACE")
         self.assertIn("ts", obj["object_name"])
 
-    @unittest.expectedFailure  # statement facts name no object for this PostgreSQL statement
     def test_drop_publication_still_names_the_object(self):
         obj = _only(self.analyzer, "DROP PUBLICATION pub")
-        self.assertEqual(obj["object_type"], "UNKNOWN")
+        self.assertEqual(obj["object_type"], "PUBLICATION")
         self.assertIn("pub", obj["object_name"])
 
 
@@ -424,14 +422,12 @@ class TestMultiWordAndUnmodelledTypesNameTheRightObject(unittest.TestCase):
     def setUp(self):
         self.analyzer = StatementReader(dialect="postgresql")
 
-    @unittest.expectedFailure  # statement facts name no object for this PostgreSQL statement
-    def test_multi_word_unmodelled_type_does_not_name_a_keyword(self):
+    def test_multi_word_type_does_not_name_a_keyword(self):
         obj = _only(self.analyzer, "CREATE TEXT SEARCH DICTIONARY d (TEMPLATE = simple)")
-        self.assertEqual(obj["object_type"], "UNKNOWN")
+        self.assertEqual(obj["object_type"], "TEXT_SEARCH_DICTIONARY")
         self.assertIn("d", obj["object_name"].rsplit(".", 1)[-1])
         self.assertNotIn("SEARCH", obj["object_name"].upper())
 
-    @unittest.expectedFailure  # statement facts name no object for this PostgreSQL statement
     def test_event_trigger_is_not_reported_as_an_event_named_trigger(self):
         # EVENT is a modelled type (MySQL scheduled events); PostgreSQL's
         # EVENT TRIGGER is a different, unmodelled two-word type.
@@ -441,7 +437,6 @@ class TestMultiWordAndUnmodelledTypesNameTheRightObject(unittest.TestCase):
         self.assertNotIn("TRIGGER", obj["object_name"].upper())
         self.assertIn("et", obj["object_name"].rsplit(".", 1)[-1])
 
-    @unittest.expectedFailure  # statement facts name no object for this PostgreSQL statement
     def test_alter_publication_reports_the_publication_not_the_table(self):
         # The statement alters `pub`. A modelled keyword appearing later in the
         # statement (`TABLE t`) must not displace the real subject.
@@ -449,7 +444,6 @@ class TestMultiWordAndUnmodelledTypesNameTheRightObject(unittest.TestCase):
         self.assertIn("pub", obj["object_name"].rsplit(".", 1)[-1])
         self.assertNotEqual(obj["object_name"].rsplit(".", 1)[-1], "t")
 
-    @unittest.expectedFailure  # statement facts name no object for this PostgreSQL statement
     def test_create_server_reports_the_server_not_its_wrapper(self):
         # CREATE SERVER always carries a FOREIGN DATA WRAPPER clause, so this
         # is the standard form, not an edge case.
@@ -457,7 +451,6 @@ class TestMultiWordAndUnmodelledTypesNameTheRightObject(unittest.TestCase):
         self.assertIn("srv", obj["object_name"].rsplit(".", 1)[-1])
         self.assertNotIn("fdw", obj["object_name"])
 
-    @unittest.expectedFailure  # statement facts name no object for this PostgreSQL statement
     def test_create_foreign_data_wrapper_is_typed(self):
         obj = _only(self.analyzer, "CREATE FOREIGN DATA WRAPPER fdw HANDLER h")
         self.assertEqual(obj["object_type"], "FOREIGN_DATA_WRAPPER")

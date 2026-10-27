@@ -27,6 +27,8 @@ printf 'CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);\n' > migrations/
 
 "$PYTHON" -m venv old
 old/bin/pip install --quiet "$OLD_REQUIREMENT"
+# 5.0.0 and later analyse SQL by default and stop without sqlglot, which a bare install lacks.
+old/bin/pip install --quiet "sqlglot>=30.23.0,<31"
 ARGS=(--db-url sqlite:///upgrade.db --scripts migrations)
 
 echo "== old ($OLD_REQUIREMENT): migrate V1"

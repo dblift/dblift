@@ -185,14 +185,22 @@ class LeaseLock:
                         )
                 first_attempt = False
                 acquired = self._store.try_acquire(self.token)
+                if acquired:
+                    self._on_acquired()
+                    return True
             except LeaseBusy:
                 last_busy = time.monotonic()
-            except Exception:
-                self._store.close()
+            except BaseException as exc:
+                try:
+                    if isinstance(exc, Exception) and not acquired:
+                        self._store.close()
+                    else:
+                        # An interrupt may follow the committed insert before _held is set.
+                        self._held = True
+                        self.release()
+                except Exception as cleanup_error:
+                    self.log.warning(f"Could not clean up the migration lock: {cleanup_error}")
                 raise
-            if acquired:
-                self._on_acquired()
-                return True
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 self._store.close()
@@ -251,7 +259,11 @@ class LeaseLock:
     def _stop_heartbeat(self) -> None:
         if self._stop is not None:
             self._stop.set()
-        if self._thread is not None and self._thread is not threading.current_thread():
+        if (
+            self._thread is not None
+            and self._thread is not threading.current_thread()
+            and self._thread.is_alive()
+        ):
             self._thread.join(timeout=5)
         self._stop = None
         self._thread = None

@@ -111,7 +111,9 @@ def test_a_comment_filter_planted_in_a_consumer_turns_a_comment_record_cell_red(
     real_parse = migration_sql_parser.parse_migration_sql
 
     def with_comment(self, script, *args, **kwargs):
-        return [*real_split(self, script, *args, **kwargs), Statement("-- planted", 1, None)]
+        records = [*real_split(self, script, *args, **kwargs), Statement("-- planted", 1, None)]
+        self.last_policy_texts.append(None)
+        return records
 
     def drop_comments(analyzer, content, log, **kwargs):
         return [s for s in real_parse(analyzer, content, log, **kwargs) if not s.startswith("--")]
@@ -146,7 +148,12 @@ def test_a_record_of_an_unknown_kind_is_no_statement_to_any_consumer(view, diale
         Statement("SELECT 1", 1, ";"),
         Statement("SELECT 99", 2, ";", kind="comment"),  # type: ignore[arg-type]
     ]
-    with patch.object(LexicalEngine, "split", lambda self, script, *a, **k: list(stub)):
+
+    def split_stub(self, script, *args, **kwargs):
+        self.last_policy_texts = [None] * len(stub)
+        return list(stub)
+
+    with patch.object(LexicalEngine, "split", split_stub):
         got = Outcome.of(lambda: view.run(dialect, "SELECT 1; SELECT 99;"))
     assert got.statements == ("SELECT 1",), got
 

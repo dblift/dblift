@@ -2,7 +2,7 @@
 
 import re
 from dataclasses import replace
-from typing import List, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Iterable, Iterator, List, Mapping, Optional, Tuple, Union
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
 from dblift.core.sql_parser.lexical_spec import TerminatorScriptRules
@@ -35,13 +35,16 @@ class TerminatorScript:
         self.lines, self.masked, self.malformed = read_lines(rules, text)
 
     def assemble(
-        self, tokens: Sequence[Token], marks: Mapping[int, Tuple[int, bool]], open_lexeme: int
+        self,
+        tokens: Iterable[Token],
+        marks: Mapping[int, Tuple[int, bool]],
+        open_lexeme: Union[int, Callable[[], int]],
     ) -> List[Statement]:
         """The records, or the refusal, for ``tokens`` read from ``masked``.
 
         ``marks`` gives the comment depth at each line end inside a comment; ``open_lexeme`` is
-        where a lexeme left open at the end of the script begins (-1: none). Nothing is kept
-        between calls.
+        where a lexeme left open at the end of the script begins (-1: none). A scanner may supply
+        a callable because it discovers that position while tokens are consumed.
         """
         return _Walk(self, tokens, marks, open_lexeme).run()
 
@@ -52,21 +55,22 @@ class _Walk:
     def __init__(
         self,
         script: TerminatorScript,
-        tokens: Sequence[Token],
+        tokens: Iterable[Token],
         marks: Mapping[int, Tuple[int, bool]],
-        open_lexeme: int,
+        open_lexeme: Union[int, Callable[[], int]],
     ) -> None:
         self.script = script
         self.rules = script.rules
         self.text_blanks = script.text_blanks
         self.client = script.client_name
         self.text = script.text
-        self.tokens = tokens
+        self.tokens: Iterator[Token] = iter(tokens)
+        self.next_token = next(self.tokens, None)
+        self.last_token: Optional[Token] = None
         self.marks = marks
         self.open_lexeme = open_lexeme
         self.leading = re.compile(self.rules.leading_word)
         self.epilogue = re.compile(self.rules.epilogue)
-        self.k = 0
         self.records: List[Statement] = []
         self.epilogues: List[bool] = []
         self.segs: List[Tuple[int, int]] = []
@@ -196,18 +200,18 @@ class _Walk:
     # --- lexeme state from the token cursor --------------------------------------------
 
     def _skip_to(self, position: int) -> None:
-        tokens, k, size = self.tokens, self.k, len(self.tokens)
-        while k < size and tokens[k].pos < position:
-            k += 1
-        self.k = k
+        while self.next_token is not None and self.next_token.pos < position:
+            self.last_token = self.next_token
+            self.next_token = next(self.tokens, None)
 
     def _state(self, position: int) -> Tuple[bool, bool]:
-        """(string or identifier open, block comment open) at ``position``, after token k - 1."""
-        if self.k == 0:
+        """(string or identifier open, block comment open) at ``position``."""
+        token = self.last_token
+        if token is None:
             return False, False
-        token = self.tokens[self.k - 1]
         end = token.pos + len(token.text)
-        if end <= position and not (token.pos == self.open_lexeme and position >= end):
+        open_lexeme = self.open_lexeme() if callable(self.open_lexeme) else self.open_lexeme
+        if end <= position and not (token.pos == open_lexeme and position >= end):
             return False, False
         if token.type in (TokenType.STRING, TokenType.IDENTIFIER):
             return True, False
@@ -219,13 +223,13 @@ class _Walk:
         """Feed the tokens that start in ``text[first:end]`` to the statement being read."""
         self._skip_to(first)
         string_before, comment_before = self._state(first)
-        body, tokens, initial = self.body, self.tokens, self.rules.initial
+        body, initial = self.body, self.rules.initial
         stray_before, count_before = body.stray, body.tokens
         body.semi_at = -1
-        k, size = self.k, len(tokens)
-        while k < size and tokens[k].pos < end:
-            token = tokens[k]
-            k += 1
+        while self.next_token is not None and self.next_token.pos < end:
+            token = self.next_token
+            self.last_token = token
+            self.next_token = next(self.tokens, None)
             if token.type == TokenType.SYMBOL:
                 if token.text == initial:
                     body.semicolon(token.pos - first)
@@ -235,7 +239,6 @@ class _Walk:
                 body.word(token.text.upper())
             elif token.type != TokenType.COMMENT:
                 body.literal()
-        self.k = k
         self.in_string, self.in_comment = self._state(end)
         read = body.tokens > count_before
         if read or string_before or self.in_string or (comment_before and self.block_code):
@@ -248,7 +251,7 @@ class _Walk:
 
     def _overlaps_a_comment_delimiter(self, end: int, terminator: str) -> bool:
         """Whether the terminator, read with the character before it, opens or closes a comment."""
-        last = self.tokens[self.k - 1] if self.k else None
+        last = self.last_token
         depth, before = 0, ""
         if last is not None and last.pos + len(last.text) > end:
             if not self.text.startswith(_COMMENT_OPENER, last.pos):

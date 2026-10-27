@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 
+from dblift.core.sql_model.base import SqlObjectType
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
 from dblift.db.plugins.db2.parser.statement_facts import Db2StatementFactsReader
@@ -73,6 +74,9 @@ class Db2Quirks(BaseQuirks):
     # import-flyway reads Flyway's quoted lowercase source table directly, as on
     # Oracle; get_applied_migrations would uppercase the name and miss it.
     flyway_source_table_case_sensitive = True
+    # DROP TABLESPACE drops the tables that live in the table space with their rows (measured on
+    # Db2 12.1.5.0, 2026-10-24: the table was gone, SELECT from it was SQL0204N).
+    drop_discards_rows_types = frozenset({SqlObjectType.TABLESPACE.value})
 
     def is_schema_history_race_error(self, error_message: str) -> bool:
         """DB2 has no ``CREATE TABLE IF NOT EXISTS``; a concurrent migration

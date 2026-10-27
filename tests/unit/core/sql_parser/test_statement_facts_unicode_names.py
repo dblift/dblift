@@ -280,9 +280,21 @@ def test_the_reader_set_is_the_full_range_set():
 
 
 def test_a_mysql_executable_comment_keeps_its_own_reading():
-    facts = read_statement_facts("/*! SET @a = 1" + chr(0x2028) + "*/ SELECT 1", dialect="mysql")
+    facts = read_statement_facts(
+        "/*!50700 SET @a = 1" + chr(0x2028) + "*/ SELECT 1", dialect="mysql"
+    )
 
     assert facts.diagnostic == "mysql executable comment is opaque to statement facts"
+
+
+def test_a_mysql_executable_comment_that_runs_is_checked_for_unread_names_like_any_text():
+    facts = read_statement_facts(
+        "/*!50001 CREATE TABLE t" + chr(0xA0) + "(id INT) */", dialect="mysql"
+    )
+
+    assert facts.operation == "CREATE"
+    assert facts.objects == ()
+    assert "U+00A0" in (facts.diagnostic or "")
 
 
 NESTED_THEN_BLANK = "DELETE FROM t /* a /* b */{c}WHERE a = 1 */"

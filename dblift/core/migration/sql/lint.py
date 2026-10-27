@@ -1,7 +1,7 @@
 """``validate-sql``: a verdict for each migration script, from its findings.
 
-Scripts are linted alone, or as a delta: scripts applied together, in order, where a table
-an earlier script created is new for every later one (see ``lint_rules``).
+Scripts are linted alone, or in apply order as a delta. A table created earlier in the
+same script is new for subsequent statements (see ``lint_rules``).
 """
 
 from __future__ import annotations
@@ -65,8 +65,8 @@ class ScriptLint:
     findings: Tuple[Finding, ...]
     errors: Tuple[str, ...]
     # Tables the script creates, ``schema.name`` or ``name`` when it gives no schema,
-    # an unquoted part lower-cased, a quoted one as written between double quotes: carried to
-    # the next script of a delta; not part of the JSON payload.
+    # an unquoted part lower-cased, a quoted one as written between double quotes;
+    # not part of the JSON payload.
     created_tables: FrozenSet[str] = field(default=frozenset(), compare=False)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -206,21 +206,17 @@ def lint_files(
 ) -> List[ScriptLint]:
     """Lint each file after substituting the configured placeholders.
 
-    By default each file is linted alone, in the order given. With ``as_delta`` the files
-    are one delta, linted and returned in apply order: versioned scripts by version, then
-    repeatable scripts by name, then any other file in the order given. *existing_tables*
-    as for ``lint_analysis``.
+    By default each file is linted alone, in the order given. With ``as_delta`` files are
+    linted and returned in apply order: versioned scripts by version, then repeatable
+    scripts by name, then any other file in the order given. A table created in another
+    file may have rows by the time this file runs, so only a CREATE in the same file
+    exempts later statements. *existing_tables* as for ``lint_analysis``.
     """
     substitution = PlaceholderService(placeholders, log)
-    created: Set[str] = set()
     results = []
     for path in _apply_order(paths) if as_delta else paths:
         text = substitution.replace_placeholders(path.read_text(encoding="utf-8"))
-        result = lint_script(
-            text, dialect, path.name, created_before=created, existing_tables=existing_tables
-        )
-        if as_delta:
-            created |= result.created_tables
+        result = lint_script(text, dialect, path.name, existing_tables=existing_tables)
         results.append(result)
     return results
 
@@ -237,13 +233,12 @@ def lint_pending_scripts(
     """``{script_name: analysis}`` for the SQL and repeatable scripts of *migrations*
     that have text, each analysis carrying the script's ``verdict`` and ``findings``.
 
-    With ``as_delta`` (the default) *migrations*, in the order given, are one delta;
-    otherwise each script is linted alone. *existing_tables* as for ``lint_analysis``.
+    Scripts are linted independently in the order given, including with ``as_delta``
+    (the default). *existing_tables* as for ``lint_analysis``.
     With ``enabled=False`` (execution-only analysis mode) each script gets
     ``DISABLED_ANALYSIS`` and nothing is read.
     """
     analysed: Dict[str, Dict[str, Any]] = {}
-    created: Set[str] = set()
     for migration in migrations:
         if getattr(migration, "type", None) not in _ANALYSED_TYPES:
             continue
@@ -269,11 +264,8 @@ def lint_pending_scripts(
                 content,
                 dialect,
                 name,
-                created_before=created,
                 existing_tables=existing_tables,
             )
-            if as_delta:
-                created |= verdict.created_tables
             analysed[name] = {
                 **analysis.to_dict(),
                 "verdict": verdict.verdict,

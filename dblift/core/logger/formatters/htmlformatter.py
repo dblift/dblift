@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from dblift.core.logger._formatters import _safe_name, resolve_dblift_package_version
 from dblift.core.logger.console import require_presentation_extras
-from dblift.core.logger.results import OperationResult
+from dblift.core.logger.results import MigrationSqlInfo, OperationResult
 
 
 class HtmlFormatter:
@@ -438,17 +438,24 @@ class HtmlFormatter:
         return enriched
 
     @staticmethod
-    def _sql_statement_dict(statement: str) -> Dict[str, Any]:
-        return {
-            "statement": statement,
-            "execution_time": 0,
-            "success": True,
-            "error": "",
-            "operation": "",
-            "object_type": "",
-            "object_name": "",
-            "result_set": None,
-        }
+    def _sql_statement_dicts(sql_info: MigrationSqlInfo) -> List[Dict[str, Any]]:
+        """One statement row per previewed statement, with the object it acts on."""
+        statements = sql_info.statements
+        annotations = sql_info.annotations
+        return [
+            {
+                "statement": statement,
+                "execution_time": 0,
+                "success": True,
+                "error": "",
+                "operation": "",
+                "object_type": "",
+                "object_name": "",
+                **(annotations[index] if index < len(annotations) else {}),
+                "result_set": None,
+            }
+            for index, statement in enumerate(statements)
+        ]
 
     def _merge_sql_visibility(self, journal_map: Dict[str, Any], result: OperationResult) -> None:
         """Surface result.sql under the per-migration accordion when journal is empty."""
@@ -464,18 +471,14 @@ class HtmlFormatter:
                     "version": getattr(sql_info, "version", None),
                     "description": getattr(sql_info, "description", "") or "",
                     "total_execution_time": 0,
-                    "statements": [
-                        self._sql_statement_dict(stmt) for stmt in (sql_info.statements or [])
-                    ],
+                    "statements": self._sql_statement_dicts(sql_info),
                 }
                 continue
             if not isinstance(summary, dict):
                 continue
             if summary.get("statements"):
                 continue
-            summary["statements"] = [
-                self._sql_statement_dict(stmt) for stmt in (sql_info.statements or [])
-            ]
+            summary["statements"] = self._sql_statement_dicts(sql_info)
             if not summary.get("version"):
                 summary["version"] = getattr(sql_info, "version", None)
             if not summary.get("description"):

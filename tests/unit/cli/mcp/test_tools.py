@@ -468,3 +468,25 @@ def test_migrate_dry_run_analysis_marks_an_unreadable_statement_for_review(proje
     analysis = result.structured_content["migrations"][0]["analysis"]
     assert analysis["verdict"] == "REVIEW"
     assert [f["code"] for f in analysis["findings"]] == ["statement-not-analysed"]
+
+
+@pytest.mark.unit
+def test_pending_mcp_tool_snippets_hide_sql_literals(project):
+    (project / "migrations" / "V1__init.sql").write_text(
+        "CREATE TABLE t (value TEXT); INSERT INTO t VALUES ('private-token');"
+    )
+
+    async def scenario(client):
+        return [
+            await client.call_tool("info", {}),
+            await client.call_tool("migrate_dry_run", {}),
+        ]
+
+    for result in anyio.run(_session, scenario):
+        assert result.is_error is False
+        snippets = [
+            statement["snippet"]
+            for statement in result.structured_content["migrations"][0]["analysis"]["statements"]
+        ]
+        assert any("INSERT INTO t VALUES" in snippet for snippet in snippets)
+        assert all("private-token" not in snippet for snippet in snippets)

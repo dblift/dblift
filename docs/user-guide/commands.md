@@ -125,6 +125,7 @@ but nothing connects.
 | `truncate` | `TRUNCATE` | error | all |
 | `mixed-transaction-modes` | A statement that needs autocommit (for example `CREATE INDEX CONCURRENTLY`) in a script whose other statements run in a transaction: `migrate` refuses such a script | error | all |
 | `drop-unread-object` | A `DROP` whose object kind or name the SQL parser could not read, so it cannot be told whether rows are lost | warning | all |
+| `drop-cascade` | A `DROP` with `CASCADE` or `FORCE` of an object that holds no rows (a type, a function, …): the objects that depend on it go too, a table column among them. Not reported for an index, a sequence, a trigger or a procedure, which no column depends on | warning | all |
 | `dml-no-where` | `UPDATE` or `DELETE` without `WHERE` | warning | all |
 | `copy-server-side` | `COPY … TO PROGRAM`, `COPY … FROM PROGRAM` or `COPY … TO 'file'`: the database server runs the command or writes the file (a `COPY` from a query is not read) | warning | PostgreSQL family |
 | `add-not-null-no-default` | `ADD COLUMN … NOT NULL` without a `DEFAULT` | warning | all |

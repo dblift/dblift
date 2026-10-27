@@ -347,6 +347,328 @@ def test_the_diagnostic_names_the_first_offending_code_point():
     assert "U+1F600" in facts.diagnostic
 
 
+# --- GRANT / REVOKE ------------------------------------------------------------------------
+
+REFERENCED_T = [("t", SqlObjectType.TABLE, "referenced", None)]
+
+
+@pytest.mark.parametrize("operation,tail", [("GRANT", "TO u"), ("REVOKE", "FROM u")])
+@pytest.mark.parametrize(
+    ("privileges_on", "expected"),
+    [
+        ("SELECT ON t", REFERENCED_T),
+        ("SELECT ON TABLE t", REFERENCED_T),
+        ("SELECT, INSERT ON t", REFERENCED_T),
+        ("SELECT (a, b) ON t", REFERENCED_T),
+        ("ALL ON t", REFERENCED_T),
+        ("SELECT ON `t`", REFERENCED_T),
+        ("SELECT ON db.t", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+        ("SELECT ON TABLE db.t", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+        ("EXECUTE ON FUNCTION f", [("f", SqlObjectType.FUNCTION, "referenced", None)]),
+        ("EXECUTE ON PROCEDURE p", [("p", SqlObjectType.PROCEDURE, "referenced", None)]),
+        ("EXECUTE ON FUNCTION db.f", [("f", SqlObjectType.FUNCTION, "referenced", "db")]),
+    ],
+)
+def test_grant_and_revoke_are_ddl_that_reference_the_object_they_name(
+    privileges_on, expected, operation, tail
+):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: every form runs on an
+    existing object and fails after parsing on a missing one (1146 table, 1305 routine); none is
+    a syntax error (1064). MySQL 8.4 answers 1147 to a REVOKE of a privilege that was never
+    granted, which is also an answer given after parsing.
+    """
+    facts = mysql(f"{operation} {privileges_on} {tail}")
+
+    assert (facts.operation, facts.kind) == (operation, "DDL")
+    assert objects(facts) == expected
+    assert facts.diagnostic is None
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "GRANT SELECT ON t TO u1, u2",
+        "GRANT SELECT ON t TO u WITH GRANT OPTION",
+        "REVOKE SELECT ON t FROM u1, u2",
+        "REVOKE GRANT OPTION ON t FROM u",
+    ],
+)
+def test_grant_principals_and_options_do_not_change_the_securable(sql):
+    # Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: all run.
+    assert objects(mysql(sql)) == REFERENCED_T
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # sqlglot reads these as an unmodelled command: no table is proven.
+        "GRANT ALL ON *.* TO u",
+        "GRANT ALL ON db.* TO u",
+        "GRANT r TO u",
+        "GRANT SELECT ON t TO 'u'@'h'",
+        "REVOKE ALL PRIVILEGES, GRANT OPTION FROM u",
+    ],
+)
+def test_grant_forms_without_a_single_table_stay_opaque(sql):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: all parse (MariaDB
+    answers 1959 to the role grant when ``r`` is no role).
+    """
+    facts = mysql(sql)
+
+    assert facts.objects == ()
+    assert facts.opaque
+    assert facts.operation in {"GRANT", "REVOKE"}
+
+
+@pytest.mark.parametrize("operation,tail", [("GRANT", "TO u"), ("REVOKE", "FROM u")])
+@pytest.mark.parametrize(
+    "privileges_on",
+    [
+        # ``ON v`` names a user, not a table, whatever sqlglot calls it.
+        "PROXY ON v",
+        # Under ANSI_QUOTES this is a table; otherwise a string and a syntax error (1064).
+        'SELECT ON "t"',
+        # Not MySQL grammar (1064): the securable kinds MySQL has are table and routines.
+        "SELECT ON SCHEMA s",
+        "USAGE ON SEQUENCE s",
+    ],
+)
+def test_grant_targets_that_are_not_proven_tables_stay_opaque(privileges_on, operation, tail):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: ``PROXY ON v`` runs (v is
+    an account); the other three are syntax errors (1064).
+    """
+    facts = mysql(f"{operation} {privileges_on} {tail}")
+
+    assert (facts.operation, facts.kind) == (operation, "DDL")
+    assert facts.objects == ()
+    assert facts.opaque
+
+
+# --- DESCRIBE / SHOW -----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        ("DESCRIBE t", REFERENCED_T),
+        ("DESC t", REFERENCED_T),
+        ("EXPLAIN t", REFERENCED_T),
+        ("DESCRIBE `t`", REFERENCED_T),
+        ("DESCRIBE db.t", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+    ],
+)
+def test_describe_names_its_table_as_referenced(sql, expected):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: all run; on a missing
+    table they fail after parsing (1146, or 1049 for an unknown database).
+    """
+    facts = mysql(sql)
+
+    assert (facts.operation, facts.kind) == ("DESCRIBE", "QUERY")
+    assert objects(facts) == expected
+    assert facts.diagnostic is None
+
+
+@pytest.mark.parametrize(
+    ("sql", "expected"),
+    [
+        ("SHOW CREATE TABLE t", REFERENCED_T),
+        ("SHOW CREATE TABLE `t`", REFERENCED_T),
+        ("SHOW CREATE TABLE db.t", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+        ("SHOW COLUMNS FROM t", REFERENCED_T),
+        ("SHOW FULL COLUMNS FROM t", REFERENCED_T),
+        ("SHOW COLUMNS FROM t FROM db", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+        ("SHOW COLUMNS FROM db.t", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+        ("SHOW INDEX FROM t", REFERENCED_T),
+        ("SHOW INDEX FROM t FROM db", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+        ("SHOW INDEX FROM db.t", [("t", SqlObjectType.TABLE, "referenced", "db")]),
+    ],
+)
+def test_show_names_the_table_it_describes_as_referenced(sql, expected):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: all run; on a missing
+    table they fail after parsing (1146, or 1049 for an unknown database on MySQL).
+    """
+    facts = mysql(sql)
+
+    assert (facts.operation, facts.kind) == ("SHOW", "QUERY")
+    assert objects(facts) == expected
+    assert facts.diagnostic is None
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # A string literal where MySQL, without ANSI_QUOTES, reads no identifier (1064).
+        'DESCRIBE "t"',
+        'SHOW CREATE TABLE "t"',
+        # A reserved word read where a name belongs (1064); quoted, it would be a name.
+        "DESCRIBE select",
+        "SHOW CREATE TABLE select",
+        # Not a table: a statement, a column, other objects, other SHOW forms.
+        "EXPLAIN SELECT 1",
+        "DESCRIBE t c",
+        "SHOW TABLES",
+        "SHOW CREATE VIEW v",
+        "SHOW CREATE DATABASE db",
+        # Clauses and spellings the grammar holds as a command or with arguments not read.
+        "SHOW COLUMNS FROM t LIKE 'a'",
+        "SHOW KEYS FROM t",
+        "EXPLAIN FORMAT=JSON t",
+        "EXPLAIN ANALYZE t",
+    ],
+)
+def test_describe_and_show_forms_that_prove_no_table_stay_opaque(sql):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: ``"t"``, ``select``,
+    ``EXPLAIN FORMAT=JSON t`` and ``EXPLAIN ANALYZE t`` are syntax errors (1064); the rest run.
+    """
+    facts = mysql(sql)
+
+    assert facts.objects == ()
+
+
+# --- TABLESPACE and SEQUENCE heads (issue #664) ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("sql", "operation", "name", "role"),
+    [
+        ("DROP TABLESPACE ts", "DROP", "ts", "dropped"),
+        ("DROP TABLESPACE ts ENGINE = InnoDB", "DROP", "ts", "dropped"),
+        ("DROP TABLESPACE `we``ird ts`", "DROP", "we`ird ts", "dropped"),
+        ("CREATE TABLESPACE ts ADD DATAFILE 'x.ibd'", "CREATE", "ts", "created"),
+        ("CREATE TABLESPACE ts", "CREATE", "ts", "created"),
+        ("ALTER TABLESPACE ts ADD DATAFILE 'y.ibd'", "ALTER", "ts", "altered"),
+        ("ALTER TABLESPACE ts RENAME TO ts2", "ALTER", "ts", "altered"),
+    ],
+)
+def test_a_tablespace_statement_names_the_tablespace(sql, operation, name, role):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8, root, database ``db``.
+
+    MySQL 8.0 and 8.4 run ``CREATE TABLESPACE f664ts ADD DATAFILE 'f664ts.ibd'``, ``CREATE
+    TABLESPACE f664ts``, ``ALTER TABLESPACE f664ts RENAME TO f664ts2`` and ``DROP TABLESPACE
+    f664ts2`` (they succeed), and answer ``DROP TABLESPACE f664ts ENGINE=InnoDB``, ``ALTER
+    TABLESPACE f664ts ADD DATAFILE 'f664b.ibd'`` and ``DROP TABLESPACE `f664 ts` `` with error 3510
+    (the tablespace is missing, a failure after parsing). MariaDB 11.8.8 rejects every one of
+    them with error 1064. A tablespace is not schema-qualified. The rename also creates a second
+    name, which the reader leaves unread, so that statement stays opaque.
+    """
+    facts = mysql(sql)
+
+    assert (facts.operation, facts.kind) == (operation, "DDL")
+    assert objects(facts) == [(name, SqlObjectType.TABLESPACE, role, None)]
+    assert facts.affected_objects == facts.objects
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "DROP TABLESPACE a.b",
+        "CREATE TABLESPACE a.b ADD DATAFILE 'x.ibd'",
+        "DROP UNDO TABLESPACE u",
+        "CREATE UNDO TABLESPACE u ADD DATAFILE 'u.ibu'",
+        "ALTER UNDO TABLESPACE u SET INACTIVE",
+        f"DROP TABLESPACE ts{EMOJI}",
+        "DROP TABLESPACE ts x",
+    ],
+)
+def test_a_tablespace_head_the_reader_cannot_bound_names_nothing(sql):
+    """Measured 2026-10-24: ``DROP TABLESPACE a.b`` and ``CREATE TABLESPACE a.b ADD DATAFILE
+    'x.ibd'`` get error 1064 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8, so a tablespace name has
+    no schema part. ``DROP UNDO TABLESPACE u`` is accepted by MySQL (error 3510 for a missing
+    one) and rejected by MariaDB; the head does not model the UNDO form, and the unread-name
+    characters apply to these heads as to every other."""
+    facts = mysql(sql)
+
+    assert facts.opaque
+    assert facts.objects == ()
+
+
+@pytest.mark.parametrize(
+    ("sql", "operation", "name", "schema", "role"),
+    [
+        ("CREATE SEQUENCE s", "CREATE", "s", None, "created"),
+        ("CREATE SEQUENCE db.s START WITH 1", "CREATE", "s", "db", "created"),
+        ("DROP SEQUENCE s", "DROP", "s", None, "dropped"),
+        ("DROP SEQUENCE IF EXISTS db.s", "DROP", "s", "db", "dropped"),
+        ("ALTER SEQUENCE s RESTART WITH 100", "ALTER", "s", None, "altered"),
+        ("ALTER SEQUENCE db.s RESTART WITH 100", "ALTER", "s", "db", "altered"),
+        ("ALTER SEQUENCE `my s` RESTART WITH 100", "ALTER", "my s", None, "altered"),
+        ("ALTER SEQUENCE IF EXISTS s RESTART", "ALTER", "s", None, "altered"),
+    ],
+)
+def test_a_sequence_statement_names_the_sequence_the_same_way_for_each_verb(
+    sql, operation, name, schema, role
+):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8, root, database ``db``.
+
+    MariaDB runs ``CREATE SEQUENCE f664s``, ``CREATE SEQUENCE db.f664s``, ``ALTER SEQUENCE f664s
+    RESTART WITH 100``, ``ALTER SEQUENCE db.f664s RESTART WITH 100``, ``ALTER SEQUENCE IF EXISTS
+    f664s RESTART``, ``DROP SEQUENCE f664s`` and ``DROP SEQUENCE IF EXISTS db.f664s`` (they
+    succeed), and answers ``ALTER SEQUENCE f664missing RESTART WITH 100``, ``ALTER SEQUENCE
+    `f664 s` RESTART WITH 100`` and ``DROP SEQUENCE f664missing`` with error 4091 (the sequence
+    is missing, a failure after parsing). MySQL 8.0 and 8.4 reject every one of them with error
+    1064. A sequence is a table of its schema (``db``), so it can be qualified.
+    """
+    facts = mysql(sql)
+
+    assert (facts.operation, facts.kind) == (operation, "DDL")
+    assert objects(facts) == [(name, SqlObjectType.SEQUENCE, role, schema)]
+
+
+def test_a_three_part_sequence_name_names_nothing():
+    # MariaDB rejects ``ALTER SEQUENCE a.b.c RESTART`` with error 1064 (measured 2026-10-24 on
+    # MariaDB 11.8.8, and on MySQL 8.0.46 and 8.4.11, which reject every SEQUENCE statement).
+    facts = mysql("ALTER SEQUENCE a.b.c RESTART WITH 100")
+
+    assert facts.opaque
+    assert facts.objects == ()
+
+
+# --- Forms left unread by design (issue #664) -----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("sql", "operation", "kind"),
+    [
+        ("WHILE x < 3 DO SET x = x + 1; END WHILE", "WHILE", "UNKNOWN"),
+        ("IF 1 = 1 THEN DROP TABLE t; END IF", "IF", "UNKNOWN"),
+        ("EXECUTE IMMEDIATE 'DROP TABLE temp'", "EXECUTE", "UNKNOWN"),
+        ("EXECUTE IMMEDIATE CONCAT('DROP TABLE ', 'temp')", "EXECUTE", "UNKNOWN"),
+    ],
+)
+def test_a_compound_statement_or_dynamic_sql_names_no_object(sql, operation, kind):
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8 (``DELIMITER $$`` so that
+    the client sends the whole text).
+
+    ``WHILE 1 = 0 DO SELECT 1; END WHILE`` and ``IF 1 = 0 THEN SELECT 1; END IF`` run on MariaDB
+    outside a stored program and are rejected by MySQL 8.0 and 8.4 with error 1064; ``EXECUTE
+    IMMEDIATE 'DROP TABLE IF EXISTS f664temp'`` runs on MariaDB and is rejected by MySQL with
+    error 1064. By design no object is named: the statements inside a compound statement are not
+    split, and the object of dynamic SQL is the content of a string, known only when the server
+    evaluates it (see docs/sql-parsing/mysql.md section 12).
+    """
+    facts = mysql(sql)
+
+    assert (facts.operation, facts.kind) == (operation, kind)
+    assert facts.opaque
+    assert facts.objects == ()
+
+
+def test_a_statement_inside_a_trigger_body_is_not_an_object_of_its_own():
+    """Measured 2026-10-24 on MySQL 8.0.46, 8.4.11 and MariaDB 11.8.8: ``CREATE TRIGGER f664tg
+    BEFORE INSERT ON f664u FOR EACH ROW BEGIN CREATE INDEX f664i ON f664u (c); END`` is parsed
+    by all three and refused with error 1422 (a commit inside a trigger). Only the trigger and
+    its table are named; the body is not read, so ``i`` is not an object."""
+    facts = mysql(
+        "CREATE TRIGGER tg BEFORE INSERT ON t FOR EACH ROW BEGIN CREATE INDEX i ON u (c); END"
+    )
+
+    assert objects(facts) == [
+        ("tg", SqlObjectType.TRIGGER, "created", None),
+        ("t", SqlObjectType.TABLE, "referenced", None),
+    ]
+    assert facts.opaque
+
+
 # --- Other dialects are unchanged -----------------------------------------------------------
 
 
@@ -368,6 +690,12 @@ def _plain(facts):
 
 
 TSQL_CHANGES = {
+    "CREATE FULLTEXT INDEX ON t (c)": {
+        "diagnostic": "tsql CREATE FULLTEXT INDEX grammar is not modelled"
+    },
+    "CREATE FULLTEXT INDEX fx ON ft (txt)": {
+        "diagnostic": "tsql CREATE FULLTEXT INDEX grammar is not modelled"
+    },
     "CREATE SCHEMA IF NOT EXISTS s": {"objects": [["s", "SCHEMA", "created", None]]},
     "CREATE SCHEMA s": {"objects": [["s", "SCHEMA", "created", None]]},
     "DELETE IGNORE FROM t": {"objects": [["t", "TABLE", "altered", None]]},

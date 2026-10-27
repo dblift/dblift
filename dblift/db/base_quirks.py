@@ -15,6 +15,7 @@ from typing import (
     Any,
     ClassVar,
     Dict,
+    FrozenSet,
     Optional,
     Tuple,
     Type,
@@ -197,6 +198,9 @@ class BaseQuirks:
     #: ``DROP TABLE / VIEW / INDEX / ... IF EXISTS`` is supported.
     #: Oracle has no native ``IF EXISTS``; everyone else does.
     drop_supports_if_exists: bool = False
+    #: Object types (``SqlObjectType`` values) besides tables, views and schemas whose DROP
+    #: discards the rows they hold.
+    drop_discards_rows_types: FrozenSet[str] = frozenset()
     #: ``TINYINT(1)`` is an alias for BOOLEAN (MySQL convention).
     tinyint1_is_boolean: bool = False
     #: SQL literal for ``False`` in DML predicates. Oracle (NUMBER(1)),

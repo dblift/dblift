@@ -2,19 +2,29 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Tuple
 
 from dblift.core.migration.migration import Migration, MigrationType
-from dblift.core.migration.rules.migration_rules import MigrationRules, expand_undo_set_to_groups
+from dblift.core.migration.rules.migration_rules import (
+    MigrationRules,
+    expand_undo_set_to_groups,
+    group_tag_of,
+)
+from dblift.core.migration.scripting.filename_parser import parse_migration_filename
 from dblift.core.migration.state.migration_selector import normalize_filter
 from dblift.core.migration.state.migration_state import (
     MigrationEligibility,
     MigrationReadSnapshot,
     MigrationState,
 )
-from dblift.core.migration.state.rank_wins import installed_rank, latest_successful_ranks
+from dblift.core.migration.state.rank_wins import (
+    VersionRankState,
+    installed_rank,
+    latest_successful_ranks,
+)
 from dblift.core.migration.version_utils import compare_versions, is_migration_success
 
 if TYPE_CHECKING:
@@ -50,6 +60,247 @@ class UndoPlan:
     target_boundary_in_group: bool = False
     selected: Tuple[Migration, ...] = ()
     missing_undo_script: Optional[Migration] = None
+
+
+_PART_HEADER = re.compile(
+    r"^-- Part (\d+) of (\d+); (?:transactional|autocommit-only \(.+\)|"
+    r"no statements; keeps every sync part paired with an undo part)\.$"
+)
+_PART_NAME = re.compile(r"^V(.+)_(\d+)__(.+)\.sql$")
+_PART_SIGNATURE = (
+    "-- Split because dblift migrate refuses a file that mixes autocommit-only "
+    "and transactional statements; "
+)
+_PART_ORDERS = (
+    _PART_SIGNATURE + "apply them in order.",
+    _PART_SIGNATURE + "dblift undo applies them from the highest part down.",
+)
+_PAIRED_PART_HEADER = (
+    "-- Each undo part reverses only its matching sync part; `dblift undo` "
+    "applies the highest applied part first."
+)
+
+
+def _generated_part_groups(
+    state: MigrationState,
+) -> Dict[str, Tuple[int, Dict[int, Migration], bool]]:
+    """Read generated part identity from resolved files, including older untagged files.
+
+    The old writer records part/count in a two-line header. Its filename is
+    checked against that header before being used as a group key; an ordinary
+    migration with an ``_n`` version is never treated as a generated part.
+    """
+    groups: Dict[str, Tuple[int, Dict[int, Migration], bool]] = {}
+    for migration in state.resolved_objects or ():
+        content = migration.content
+        name = migration.script_name
+        if not isinstance(content, str) or not isinstance(name, str):
+            continue
+        lines = content.splitlines()
+        if len(lines) < 2 or lines[1] not in _PART_ORDERS:
+            continue
+        header = _PART_HEADER.match(lines[0])
+        filename = _PART_NAME.match(name)
+        if header is None or filename is None:
+            continue
+        number, count = int(header[1]), int(header[2])
+        if number != int(filename[2]) or not 1 <= number <= count:
+            continue
+        tag = group_tag_of(migration)
+        parent = str(Path(migration.path or name).parent)
+        key = tag or f"legacy:{parent}:{filename[1]}:{filename[3]}"
+        expected, parts, invalid = groups.setdefault(key, (count, {}, False))
+        invalid = invalid or count != expected or number in parts
+        if number not in parts:
+            parts[number] = migration
+        groups[key] = (expected, parts, invalid)
+    return groups
+
+
+def _expected_part_names(parts: Dict[int, Migration], count: int) -> Dict[str, str]:
+    """Expected history names, derived only from a validated generated header."""
+    seed = next(iter(parts.values()))
+    filename = _PART_NAME.match(seed.script_name)
+    if filename is None:
+        return {}
+    names: Dict[str, str] = {}
+    for number in range(1, count + 1):
+        name = f"V{filename[1]}_{number}__{filename[3]}.sql"
+        version = parse_migration_filename(name).version
+        if version is not None:
+            names[version] = name
+    return names
+
+
+def _has_matching_paired_undo(
+    state: MigrationState, version: str, forward_name: str, count: int
+) -> bool:
+    matches = [
+        record.migration
+        for record in state.catalog
+        if record.eligibility == MigrationEligibility.UNDO_AVAILABLE
+        and str(record.migration.version) == version
+    ]
+    if (
+        len(matches) != 1
+        or matches[0].script_name != "U" + forward_name[1:]
+        or not isinstance(matches[0].content, str)
+    ):
+        return False
+    lines = matches[0].content.splitlines()
+    header = _PART_HEADER.match(lines[0]) if lines else None
+    filename = _PART_NAME.match(forward_name)
+    if filename is None:
+        return False
+    number = int(filename[2])
+    return (
+        header is not None
+        and int(header[1]) == number
+        and int(header[2]) == count
+        and len(lines) > 2
+        and lines[1] == _PART_ORDERS[1]
+        and lines[2] == _PAIRED_PART_HEADER
+    )
+
+
+def _include_generated_part_groups(
+    state: MigrationState,
+    selected: List[Migration],
+    applied: List[Migration],
+    migration_rules: MigrationRules,
+    version_ranks: Dict[str, VersionRankState],
+) -> Tuple[List[Migration], Optional[str]]:
+    """Refuse incomplete generated sets and widen complete ones before SQL runs."""
+    groups = _generated_part_groups(state)
+    if not groups or not selected:
+        return selected, None
+    versions_seen: Dict[Tuple[str, str], int] = {}
+    for _, parts, _ in groups.values():
+        for part in parts.values():
+            identity = (str(part.version), part.script_name)
+            versions_seen[identity] = versions_seen.get(identity, 0) + 1
+    if any(versions_seen.get((str(m.version), m.script_name), 0) > 1 for m in selected):
+        return (
+            selected,
+            "Cannot undo an ambiguous generated part set: a version exists in multiple groups.",
+        )
+    current = {
+        str(m.version): m
+        for m in applied
+        if m.version
+        and is_migration_success(m.success)
+        and installed_rank(m) == version_ranks[str(m.version)].versioned
+        and not migration_rules._is_currently_undone(
+            str(m.version), applied, version_ranks=version_ranks
+        )
+    }
+    expanded = list(selected)
+    for count, parts, invalid in groups.values():
+        expected = _expected_part_names(parts, count)
+        if not any(expected.get(str(m.version)) == m.script_name for m in expanded):
+            continue
+        missing = [
+            name
+            for version, name in expected.items()
+            if version not in current
+            or current[version].script_name != name
+            or not any(part.script_name == name for part in parts.values())
+        ]
+        if invalid or len(parts) != count:
+            detail = (
+                "a generated part file is missing"
+                if len(parts) != count
+                else "ambiguous part headers"
+            )
+            return selected, (
+                f"Cannot undo a partially applied generated part set: {detail}. "
+                "Check migration history and recover this set manually."
+            )
+        paired_markers = [
+            len(part.content.splitlines()) > 2
+            and part.content.splitlines()[2] == _PAIRED_PART_HEADER
+            for part in parts.values()
+        ]
+        paired = all(paired_markers) and all(
+            _has_matching_paired_undo(state, version, name, count)
+            for version, name in expected.items()
+        )
+        if any(paired_markers) and not paired:
+            return selected, (
+                "Cannot undo a generated part set without matching per-part undo scripts. "
+                "Check the generated files and recover this set manually."
+            )
+        if missing and paired:
+            ranks = [
+                installed_rank(current[version])
+                for version in expected
+                if version in current and current[version].script_name == expected[version]
+            ]
+            paired = (
+                paired and bool(ranks) and ranks == list(range(ranks[0], ranks[0] + len(ranks)))
+            )
+            paired = paired and len(ranks) == len(expected) - len(missing)
+            paired = paired and all(
+                version in current and current[version].script_name == name
+                for version, name in list(expected.items())[: len(ranks)]
+            )
+        if missing and not paired:
+            detail = "a generated part is absent from applied history"
+            if missing:
+                detail += f": {', '.join(missing)}"
+            return selected, (
+                "Cannot undo a partially applied generated part set: "
+                f"{detail}. Check migration history and recover this set manually."
+            )
+        members = [
+            current[version]
+            for version in expected
+            if version in current and current[version].script_name == expected[version]
+        ]
+        if [installed_rank(member) for member in members] != sorted(
+            installed_rank(member) for member in members
+        ):
+            return selected, (
+                "Cannot undo a generated part set applied out of part order. "
+                "Check migration history and recover this set manually."
+            )
+        selected_versions = {str(m.version) for m in expanded}
+        for member in reversed(members):
+            if str(member.version) in selected_versions:
+                continue
+            rank = installed_rank(member)
+            if any(installed_rank(existing) == rank for existing in expanded):
+                return (
+                    selected,
+                    "Cannot undo a generated part set with ambiguous application order.",
+                )
+            first = max(
+                (
+                    index + 1
+                    for index, existing in enumerate(expanded)
+                    if installed_rank(existing) > rank
+                ),
+                default=0,
+            )
+            last = min(
+                (
+                    index
+                    for index, existing in enumerate(expanded)
+                    if installed_rank(existing) < rank
+                ),
+                default=len(expanded),
+            )
+            if first > last:
+                return (
+                    selected,
+                    "Cannot undo a generated part set without changing existing undo order.",
+                )
+            expanded.insert(first, member)
+            selected_versions.add(str(member.version))
+        positions = [expanded.index(member) for member in reversed(members)]
+        if positions != sorted(positions):
+            return selected, "Cannot undo a generated part set out of part order."
+    return expanded, None
 
 
 def plan_undo(
@@ -189,6 +440,18 @@ def plan_undo(
                 version_ranks=version_ranks,
             )
             target_boundary_in_group = bool(added)
+
+    migrations_to_undo, part_refusal = _include_generated_part_groups(
+        state, migrations_to_undo, applied_migrations, migration_rules, version_ranks
+    )
+    if part_refusal:
+        return UndoPlan(
+            state=state,
+            current_version=current_version,
+            steps=(),
+            refusal=part_refusal,
+            selected=tuple(migrations_to_undo),
+        )
 
     # Resolve every undo script before any write so a missing script
     # anywhere in the plan refuses the real run exactly like the dry run,

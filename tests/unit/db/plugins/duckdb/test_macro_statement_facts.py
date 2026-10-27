@@ -42,6 +42,14 @@ def test_the_script_analysis_reads_the_macro_as_an_object():
     assert [(o.type, o.name) for o in analysis.statements[0].objects] == [("FUNCTION", "add1")]
 
 
+def test_catalog_qualified_macros_keep_distinct_catalogs():
+    left = DuckDBQuirks().statement_facts('CREATE MACRO memory."b.c".f() AS 1').objects[0]
+    right = DuckDBQuirks().statement_facts('CREATE MACRO other."b.c".f() AS 1').objects[0]
+
+    assert (left.name, left.schema, left.catalog) == ("f", "b.c", "memory")
+    assert (right.name, right.schema, right.catalog) == ("f", "b.c", "other")
+
+
 @pytest.mark.parametrize("sql", ["DROP MACRO add1", "CREATE MACRO"])
 def test_statements_without_a_readable_macro_head_stay_as_they_were(sql):
     facts, objects = _created(sql)

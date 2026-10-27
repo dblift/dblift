@@ -2,7 +2,7 @@
 Migrate command implementation.
 """
 
-from contextlib import ExitStack
+from contextlib import ExitStack, nullcontext
 from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
@@ -21,6 +21,7 @@ from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.migration_helpers import MigrationHelpers
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration, MigrationType
+from dblift.core.migration.presentation import presentation_for
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.lint import SAFE, lint_pending_scripts
@@ -29,7 +30,7 @@ from dblift.core.migration.state.migrate_plan import StrictModeError
 from dblift.core.migration.state.migration_state import MigrationReadSnapshot, MigrationState
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.ui.migration_ui import MigrationUI
-from dblift.core.migration.ui.progress import migration_progress
+from dblift.core.migration.ui.progress import NullProgress
 from dblift.core.migration.version_utils import compare_versions
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
@@ -90,18 +91,27 @@ class MigrateCommand(BaseCommand):
             config=config,
         )
 
-    def _collect_visible_sql(self, migrations: List[Migration], result: MigrateResult) -> None:
-        """Populate SQL visibility data for migration scripts."""
+    def _collect_visible_sql(
+        self, migrations: List[Migration], result: MigrateResult, record: bool = True
+    ) -> None:
+        """Populate SQL visibility data for migration scripts.
+
+        With ``record=False`` the statements are only prepared, so a script the real run
+        refuses sets the error without its SQL being added to the result.
+        """
         for migration in migrations:
             statements = self.execution_engine.get_executable_sql_statements(migration, result)
             if result.error_message:
                 return
+            if not record:
+                continue
             result.add_sql_migration(
                 MigrationSqlInfo(
                     script=migration.script_name,
                     version=migration.version,
                     description=migration.description,
                     statements=statements,
+                    annotations=self.execution_engine.annotate_sql_statements(statements),
                 )
             )
 
@@ -113,10 +123,10 @@ class MigrateCommand(BaseCommand):
     ) -> None:
         """Handle dry run mode - log migrations without executing them."""
         result.show_sql = show_sql
-        if show_sql:
-            self._collect_visible_sql(pending_migrations, result)
-            if result.error_message:
-                return
+        # Prepared even without --show-sql: the real run refuses a script at this step.
+        self._collect_visible_sql(pending_migrations, result, record=show_sql)
+        if result.error_message:
+            return
 
         dialect = dialect_of(self.config)
         analysed = (
@@ -256,7 +266,13 @@ class MigrateCommand(BaseCommand):
             f"Starting execution loop for {len(pending_migrations)} pending migration(s)"
         )
         runner = ScriptRunner(self, MIGRATE_POLICY)
-        with migration_progress(self.log, len(pending_migrations)) as progress:
+        presenter = presentation_for(self.execution_engine, self.log)
+        progress = (
+            presenter.migration_loop(self.log, len(pending_migrations))
+            if presenter is not None
+            else nullcontext(NullProgress())
+        )
+        with progress as sink:
             for migration in pending_migrations:
                 if self._migration_lock_lost():
                     # Another migrate may already be running; the migration in
@@ -268,7 +284,7 @@ class MigrateCommand(BaseCommand):
                     self.log.error(message)
                     result.set_error(message)
                     break
-                progress.describe(f"{migration.script_name}")
+                sink.describe(migration.script_name)
                 self.log.debug(
                     f"About to execute migration: {migration.script_name} (version: {migration.version})"
                 )
@@ -292,7 +308,7 @@ class MigrateCommand(BaseCommand):
                     # the bar would read "3/5 done" while only 2 actually
                     # completed. Stop without advancing.
                     break
-                progress.advance()
+                sink.advance()
 
     def _update_final_state(self, result: MigrateResult) -> None:
         """Update final schema version after migrations are applied."""

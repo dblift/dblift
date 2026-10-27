@@ -39,10 +39,16 @@ import warnings
 
 from dblift.core.exceptions import UnsupportedMetaCommandError
 from dblift.core.sql_parser.base_tokenizer import TokenizerWarning
+from dblift.core.sql_parser.client_directives import classify_directive as _classify_directive
+from dblift.core.sql_parser.lexical_spec import DirectiveAction
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.tokens import TokenType
-from dblift.db.plugins.oracle.parser._directives import DirectiveAction, classify_directive
 from dblift.db.plugins.oracle.parser._sqlplus import SQLPLUS_DIRECTIVES, is_sqlplus_command
-from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
+from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
+
+
+def classify_directive(line):
+    return _classify_directive(ORACLE_SPEC.client_script, line)
 
 
 class TestSqlplusDirectiveRegistry(unittest.TestCase):
@@ -100,7 +106,7 @@ class TestSqlplusDirectiveTerminationCorpus(unittest.TestCase):
         for d in SQLPLUS_DIRECTIVES:
             for example in d.examples:
                 with self.subTest(name=d.name, example=example):
-                    action = classify_directive(example).action
+                    action = classify_directive(example)[1]
                     raw = f"{example}\nCREATE TABLE t_{d.name.lower()} (id NUMBER);\n"
                     if action is DirectiveAction.REJECT:
                         with self.assertRaises(UnsupportedMetaCommandError):
@@ -127,7 +133,7 @@ class TestSqlplusDirectiveTerminationCorpus(unittest.TestCase):
 
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always", TokenizerWarning)
-            tokens = OracleTokenizer(raw).tokenize()
+            tokens = LexicalTokenizer(raw, spec=ORACLE_SPEC).tokenize()
 
         assert not [w for w in caught if issubclass(w.category, TokenizerWarning)]
         assert [t.type for t in tokens[:2]] == [TokenType.DIRECTIVE, TokenType.DIRECTIVE]

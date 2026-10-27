@@ -165,6 +165,77 @@ def candidate_wheel(tmp_path_factory):
     return next(directory.glob("*.whl"))
 
 
+@pytest.mark.parametrize("extra", ["", "cli"])
+def test_installed_cli_includes_analysis_while_base_stays_light(candidate_wheel, tmp_path, extra):
+    environment = tmp_path / "venv"
+    subprocess.run([sys.executable, "-m", "venv", str(environment)], check=True)
+    python = environment / "bin" / "python"
+    requirement = f"dblift{'[cli]' if extra else ''} @ {candidate_wheel.resolve().as_uri()}"
+    subprocess.run(
+        [str(python), "-m", "pip", "install", requirement],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run([str(python), "-m", "pip", "check"], cwd=tmp_path, check=True)
+    probe = """
+import importlib.util
+import sys
+from pathlib import Path
+import dblift
+
+assert Path(dblift.__file__).resolve().is_relative_to(sys.prefix)
+expected = sys.argv[1] == "cli"
+for name in ("rich", "jinja2", "sqlglot"):
+    assert (importlib.util.find_spec(name) is not None) == expected, name
+if not expected:
+    from sqlalchemy import create_engine, text
+    from dblift.api import DBLiftClient
+
+    migrations = Path.cwd() / "migrations"
+    migrations.mkdir()
+    (migrations / "V1__create_items.sql").write_text(
+        "CREATE TABLE items (id INTEGER PRIMARY KEY);\\n", encoding="utf-8"
+    )
+    engine = create_engine(f"sqlite:///{Path.cwd() / 'base.sqlite'}")
+    with DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations) as client:
+        result = client.migrate()
+        assert result.success, result.error_message
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT COUNT(*) FROM items")).scalar_one() == 0
+    engine.dispose()
+"""
+    run = subprocess.run(
+        [str(python), "-I", "-c", probe, extra],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert run.returncode == 0, run.stderr
+    if extra:
+        script = tmp_path / "unsafe.sql"
+        script.write_text("DROP TABLE customers;\n", encoding="utf-8")
+        lint = subprocess.run(
+            [
+                str(environment / "bin" / "dblift"),
+                "validate-sql",
+                "--files",
+                str(script),
+                "--dialect",
+                "sqlite",
+                "--format",
+                "json",
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+        )
+        assert lint.returncode == 1, lint.stdout + lint.stderr
+        assert "UNSAFE" in lint.stdout, lint.stdout + lint.stderr
+        json.loads(lint.stdout)
+
+
 def test_wheel_contains_only_active_html_report_template(candidate_wheel):
     with zipfile.ZipFile(candidate_wheel) as archive:
         templates = {
