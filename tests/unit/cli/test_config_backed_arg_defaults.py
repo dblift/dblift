@@ -42,7 +42,7 @@ def test_an_explicit_clean_enabled_is_not_re_disabled():
 
 def test_an_unset_flag_takes_the_config_value():
     """The env layer already fills the config; the handler must see it."""
-    args = Namespace(dry_run=False, command="migrate")
+    args = Namespace(dry_run=None, command="migrate")
     _apply_config_backed_defaults(args, _Config(dry_run=True))
 
     assert args.dry_run is True
@@ -58,10 +58,10 @@ def test_an_explicit_flag_beats_the_config():
 
 def test_a_config_default_does_not_invent_a_value():
     """A config that says nothing must leave the namespace alone."""
-    args = Namespace(dry_run=False, target_version=None, command="migrate")
+    args = Namespace(dry_run=None, target_version=None, command="migrate")
     _apply_config_backed_defaults(args, _Config(dry_run=False, target_version=None))
 
-    assert args.dry_run is False
+    assert args.dry_run is None
     assert args.target_version is None
 
 
@@ -81,10 +81,10 @@ def test_arguments_the_namespace_does_not_carry_are_left_alone():
 
 def test_a_missing_config_is_not_an_error():
     """``db`` subcommands run without a config at all."""
-    args = Namespace(dry_run=False, command="db")
+    args = Namespace(dry_run=None, command="db")
     _apply_config_backed_defaults(args, None)
 
-    assert args.dry_run is False
+    assert args.dry_run is None
 
 
 def test_database_fields_are_left_to_their_own_machinery():

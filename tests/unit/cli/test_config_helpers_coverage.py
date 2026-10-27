@@ -124,7 +124,7 @@ class TestBuildArgsNamespace:
             )
         assert args.command == "migrate"
         assert args.config is None
-        assert args.dry_run is False
+        assert args.dry_run is None
         assert args.log_format is None
         assert unknown == ["--some-arg"]
 

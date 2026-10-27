@@ -62,7 +62,7 @@ from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
 from dblift.cli.extensions import load_terminal_commands
 from dblift.cli.handlers._shared import reported_exception_name
 from dblift.cli.premium_manifest import render_upsell
-from dblift.config.property_registry import PROPERTY_REGISTRY, is_unset_cli_value
+from dblift.config.property_registry import PROPERTY_REGISTRY
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.feature_loading import load_feature_extensions
 from dblift.core.seams.license_info import get_license_info
@@ -397,11 +397,11 @@ def _apply_config_backed_defaults(args: Any, config: Optional[Any]) -> None:
             continue
         if not hasattr(args, spec.name):
             continue
-        # Testing for falsiness would be wrong for a flag whose default is True:
-        # ``clean_disabled`` defaults True and ``--clean-enabled`` sets it False,
-        # so a falsy test would read that explicit opt-in as absence and put the
-        # guard back on a destructive command the user had just unlocked.
-        if not is_unset_cli_value(spec, getattr(args, spec.name)):
+        # "Unset" means None: every flag backed by a property defaults to None.
+        # Neither falsiness nor "equals the default" will do: ``--clean-enabled``
+        # sets ``clean_disabled`` False and ``--clean-disabled`` sets it True, the
+        # default, and both are explicit choices about a destructive command.
+        if getattr(args, spec.name) is not None:
             continue
         value = getattr(config, spec.name, None)
         if value in (None, "", (), []) or value == spec.default:

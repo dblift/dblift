@@ -17,7 +17,7 @@ def _handle_baseline(ctx: CliCommandContext) -> Tuple[bool, Any]:
         ctx.client.baseline(
             ctx.args.baseline_version,
             baseline_description,
-            dry_run=getattr(ctx.args, "dry_run", False),
+            dry_run=bool(getattr(ctx.args, "dry_run", False)),
         )
     )
     _set_command_completed(ctx.log, result, "BASELINE")

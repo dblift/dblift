@@ -194,7 +194,7 @@ def _build_args_namespace(
             args.command = commands[0] if commands else None
             args.config = None
             args.scripts_list = None
-            args.dry_run = False
+            args.dry_run = None
             args.log_dir = None
             args.log_format = None
             args.log_level = None
@@ -224,7 +224,7 @@ def _build_args_namespace(
         if not hasattr(args, "scripts_list"):
             args.scripts_list = None
         if not hasattr(args, "dry_run"):
-            args.dry_run = False
+            args.dry_run = None
 
         extract_db_arg("database_url", "--db-url")
         extract_db_arg("database_username", "--db-username")

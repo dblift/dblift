@@ -20,7 +20,7 @@ def _handle_undo(ctx: CliCommandContext) -> Tuple[bool, Any]:
     result = _reraise_preflight_failure(
         ctx.client.undo(
             target_version=target_version,
-            dry_run=ctx.args.dry_run,
+            dry_run=bool(ctx.args.dry_run),
             tags=tags,
             exclude_tags=exclude_tags,
             versions=versions,

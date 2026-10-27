@@ -30,8 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `clean --clean-disabled` now refuses when the configuration file or `DBLIFT_CLEAN_DISABLED`
   enables clean. The flag was read as "not given" because its value, True, is also the default,
-  so the configured value won and `clean` dropped the schema's objects. Any flag whose value
-  equals a non-False registry default is now honoured over the environment and the file.
+  so the configured value won and `clean` dropped the schema's objects. A flag is now "not
+  given" only when argparse leaves it None: `--dry-run`, `--strict` and `--mark-as-executed`
+  default to None like every other flag backed by a configuration property, and any value the
+  user gives wins over the environment and the file.
 - An empty YAML `target_version` is still rejected, without incorrectly claiming that no versioned
   migration scripts were found before the scripts have been scanned.
 - Statement facts leave incomplete object names such as `db..t`, leading `.t` outside MariaDB,
