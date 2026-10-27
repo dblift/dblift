@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [5.1.0] - 2026-10-26
+
+### Added
+
 - `SqlObjectType.TABLESPACE` names a tablespace, as the statement facts of the `mysql` grammar, of
   PostgreSQL and of Db2 now report one.
 - `SqlObjectType` gains `STORAGE_GROUP`, `BUFFERPOOL` and `MODULE`, the object types of the Db2
@@ -16,6 +26,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `SqlObjectType` gains `PUBLICATION`, `EVENT_TRIGGER`, `OPERATOR_CLASS`,
   `TEXT_SEARCH_DICTIONARY`, `TEXT_SEARCH_CONFIGURATION`, `TEXT_SEARCH_PARSER` and
   `TEXT_SEARCH_TEMPLATE`, the PostgreSQL object kinds the statement facts reader names.
+- `StatementFacts.renamed_to` carries the destination identity of a bounded PostgreSQL
+  `ALTER TABLE ... RENAME TO`, and a bounded `ALTER TABLE ... ADD CONSTRAINT ... PRIMARY KEY` is
+  reported in `declared_constraints`. Incomplete or unsupported tails stay opaque.
+- DuckDB statement facts record `COMMENT ON TABLE` values and targeted `IS NULL` removals, and
+  expose `SET schema`, `SET search_path`, `USE` and their resets, including a dotted
+  `catalog.schema` selector, as a raw `SELECT_NAMESPACE` fact. No namespace resolution is guessed.
+- The PostgreSQL statement facts reader reads common `CREATE`, `ALTER` and `DROP FOREIGN TABLE`
+  forms, including `PARTITION OF` creation, as `TABLE` facts. Malformed or unsupported forms stay
+  opaque.
+- `NamedObject` carries quote metadata and the catalog component of a written name, so a quoted
+  `"Child"` and an unquoted `child`, or `"memory.foo".t` and `memory.foo.t`, stay distinct facts.
+  The flattened `schema` field is unchanged for existing callers.
 
 ### Changed
 
@@ -25,6 +47,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for migration scripts with many short statements while preserving statement boundaries.
 - SQL migration transaction checks reuse comment-masked statement views from the script scan,
   avoiding a fresh lexical scan for each executable statement.
+- Statement facts tell a bounded read with no row events (`events=frozenset()`) from SQL whose
+  row effects are unknown (`events=None`). Bounded Db2 `SELECT`, `VALUES`, read-only CTE and
+  `SET CURRENT SCHEMA`, privilege and metadata statements, simple `CREATE INDEX` and `COPY TO`
+  file or stream are proven event-free; table creation that can populate or replace data stays
+  unknown.
+- A migration client that supplies its own `Log` receives operational messages without activating
+  the migration renderer. Presentation is selected per executor; CLI output and explicitly
+  requested built-in sinks are unchanged.
+- Oracle SQL*Plus comment masking and SQL Server batch splitting use the shared lexical tokenizer,
+  which now scans common words, numbers, whitespace and standard strings as spans. DuckDB
+  statement splitting streams its tokens; token positions, split records and refusal messages are
+  unchanged.
 
 ### Fixed
 
@@ -116,6 +150,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (MariaDB 11 runs `/*!50699 … */`, not `/*!50700 … */`). A statement with any other executable
   comment (`/*!50700` and above, `/*M!`) is still reported unread, because whether it runs
   depends on the server version.
+- A `SIGTERM` that interrupts migration lease acquisition after the lock row is committed now
+  releases the lease instead of leaving a lock row behind, and no longer joins a heartbeat thread
+  that has not started.
+- `undo` refuses a transaction-split generated migration part set that is incomplete, malformed,
+  duplicated, ambiguous, partially applied or out of order, before any effect. A contiguous
+  applied prefix of paired generated sync parts can be undone; failed history rows are ignored
+  when identifying the applied prefix.
+- A supplied scanner record list must expand to the exact SQL strings sent for execution, and
+  supplied policy views must align with those records; a mismatch is refused, and refusal
+  locations come from the supplied records.
+- `Index.dialect_options` survives a model `to_dict` / `from_dict` round trip, as it already does
+  for tables and views.
+- Oracle statement facts keep object names that precede a slash-line terminator, including a
+  PL/SQL routine ending in an ideographic blank before `;`.
 
 ### Removed
 
