@@ -10,6 +10,7 @@ from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.provider_interfaces import TransactionalProvider
 
 
@@ -77,11 +78,8 @@ class _HealthOwningProvider(TransactionalProvider):
 @pytest.mark.unit
 def test_provider_health_hook_precedes_each_statement() -> None:
     provider = _HealthOwningProvider()
-    analyzer = MagicMock()
-    analyzer.dialect = "sqlite"
+    analyzer = StatementReader("sqlite", analysis_mode="execution")
     statements = ["CREATE TABLE t(id INT)", "INSERT INTO t VALUES (1)"]
-    analyzer.split_statements.return_value = statements
-    analyzer.get_statement_type.side_effect = ["DDL", "DML"]
     engine = ExecutionEngine(provider, analyzer, NullLog())
     migration = Migration(
         script_name="V1__health.sql",
@@ -121,10 +119,7 @@ def test_typed_health_failure_rolls_back_before_failure_history() -> None:
     cause = RuntimeError("current transaction is aborted")
     provider.health_error = TransactionAbortedError("transaction is aborted")
     provider.health_error.__cause__ = cause
-    analyzer = MagicMock()
-    analyzer.dialect = "sqlite"
-    analyzer.split_statements.return_value = ["INSERT INTO t VALUES (1)"]
-    analyzer.get_statement_type.return_value = "DML"
+    analyzer = StatementReader("sqlite", analysis_mode="execution")
     history = MagicMock()
     history.record_migration.side_effect = lambda *args, **kwargs: provider.events.append("history")
     engine = ExecutionEngine(provider, analyzer, NullLog(), history_manager=history)
@@ -151,10 +146,7 @@ def test_typed_health_failure_rolls_back_before_failure_history() -> None:
 @pytest.mark.unit
 def test_health_hook_precedes_query_send() -> None:
     provider = _HealthOwningProvider()
-    analyzer = MagicMock()
-    analyzer.dialect = "sqlite"
-    analyzer.split_statements.return_value = ["SELECT 1"]
-    analyzer.get_statement_type.return_value = "QUERY"
+    analyzer = StatementReader("sqlite", analysis_mode="execution")
     engine = ExecutionEngine(
         provider,
         analyzer,

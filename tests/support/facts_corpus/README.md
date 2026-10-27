@@ -61,13 +61,16 @@ Run from the repository root, in an environment whose `dblift` is this checkout.
 python -m tests.support.facts_corpus seed            # harvest inputs, rewrite SOURCES.md
 python -m tests.support.facts_corpus record floor    # with sqlglot == VERSIONS.json["floor"]
 python -m tests.support.facts_corpus record newest   # with sqlglot == VERSIONS.json["newest"]
+python -m tests.support.facts_corpus record floor duckdb  # record one unfrozen family
+python -m tests.support.facts_corpus record newest duckdb # then its newest arm
 python -m tests.support.facts_corpus measure         # sizes, counts, not_idempotent.json
 ```
 
 `record floor` recreates every row; `record newest` must follow it and only adds the
 `*_newest` fields where the arms differ. When the floor catches up with newest,
 the arms have the same version and there are no `*_newest` fields. The recorder
-refuses any other sqlglot version.
+refuses any other sqlglot version. Pass a family after the arm to record only that
+family; a frozen family requires `--frozen` whether selected or recorded in a group.
 
 ## Comparing the extraction with the facts
 

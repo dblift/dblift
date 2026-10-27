@@ -52,12 +52,10 @@ class MigrationStateService:
 
         # Get context data
         undone_versions = context.get("undone_versions", set())
-        context.get("baseline_version")
         out_of_order_migrations = context.get("out_of_order_migrations", set())
         repeatable_checksums = context.get("repeatable_checksums", {})
         reapplied_versions = context.get("reapplied_versions", set())
         current_version = context.get("current_version")
-        context.get("target_version")
 
         # Get migration properties
         version = getattr(migration, "version", None)
@@ -156,7 +154,6 @@ class MigrationStateService:
         # Get context data
         baseline_version = context.get("baseline_version")
         target_version = context.get("target_version")
-        context.get("current_version")
 
         # Get migration properties
         version = getattr(migration, "version", None)

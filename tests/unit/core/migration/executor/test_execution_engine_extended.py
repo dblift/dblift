@@ -16,6 +16,7 @@ from dblift.core.exceptions import CallbackExecutionError
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.migration import Migration
+from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.db.provider_interfaces import TransactionalProvider
 
 
@@ -33,9 +34,8 @@ def _make_engine(dialect="postgresql", with_history=False, with_config=True):
 
     sql_analyzer = MagicMock()
     sql_analyzer.dialect = dialect
-    sql_analyzer.split_statements.side_effect = lambda content: [
-        statement.strip() for statement in content.split(";") if statement.strip()
-    ]
+    sql_analyzer.statement_splitter = StatementSplitter(dialect)
+    sql_analyzer.split_statements.side_effect = sql_analyzer.statement_splitter.split_statements
 
     log = MagicMock()
 
@@ -96,7 +96,7 @@ class TestExecutableSqlStatements(unittest.TestCase):
         statements = engine.get_executable_sql_statements(migration, MagicMock())
 
         self.assertEqual(
-            statements, ["CREATE TABLE users (id INT)", "INSERT INTO users VALUES (1)"]
+            statements, ["CREATE TABLE users (id INT);", "INSERT INTO users VALUES (1)"]
         )
 
 

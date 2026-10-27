@@ -66,11 +66,20 @@ def _without_blanks_before_terminator(span: str, record: Statement) -> str:
     no terminator. A character the scanner kept in the text stays in the span.
     """
     terminator = record.terminator or ""
+    if terminator == "/":
+        span = span[: span.rfind("/") + 1]  # slash records include the rest of their physical line
     if not span.endswith(terminator):
         return span
     body = span[: len(span) - len(terminator)]
     if len(body) > len(record.text) and body.startswith(record.text):
-        return record.text + terminator
+        text = (
+            record.analysis_statements[0]
+            if terminator == "/"
+            and record.analysis_statements
+            and len(record.analysis_statements) == 1
+            else record.text
+        )
+        return text + terminator
     return span
 
 

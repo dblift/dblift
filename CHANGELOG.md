@@ -15,6 +15,158 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [5.1.0] - 2026-10-26
+
+### Added
+
+- `SqlObjectType.TABLESPACE` names a tablespace, as the statement facts of the `mysql` grammar, of
+  PostgreSQL and of Db2 now report one.
+- `SqlObjectType` gains `STORAGE_GROUP`, `BUFFERPOOL` and `MODULE`, the object types of the Db2
+  statements below.
+- `SqlObjectType` gains `PUBLICATION`, `EVENT_TRIGGER`, `OPERATOR_CLASS`,
+  `TEXT_SEARCH_DICTIONARY`, `TEXT_SEARCH_CONFIGURATION`, `TEXT_SEARCH_PARSER` and
+  `TEXT_SEARCH_TEMPLATE`, the PostgreSQL object kinds the statement facts reader names.
+- `StatementFacts.renamed_to` carries the destination identity of a bounded PostgreSQL
+  `ALTER TABLE ... RENAME TO`, and a bounded `ALTER TABLE ... ADD CONSTRAINT ... PRIMARY KEY` is
+  reported in `declared_constraints`. Incomplete or unsupported tails stay opaque.
+- DuckDB statement facts record `COMMENT ON TABLE` values and targeted `IS NULL` removals, and
+  expose `SET schema`, `SET search_path`, `USE` and their resets, including a dotted
+  `catalog.schema` selector, as a raw `SELECT_NAMESPACE` fact. No namespace resolution is guessed.
+- The PostgreSQL statement facts reader reads common `CREATE`, `ALTER` and `DROP FOREIGN TABLE`
+  forms, including `PARTITION OF` creation, as `TABLE` facts. Malformed or unsupported forms stay
+  opaque.
+- `NamedObject` carries quote metadata and the catalog component of a written name, so a quoted
+  `"Child"` and an unquoted `child`, or `"memory.foo".t` and `memory.foo.t`, stay distinct facts.
+  The flattened `schema` field is unchanged for existing callers.
+
+### Changed
+
+- `dblift[cli]` now installs SQLGlot through the `analysis` extra, so command-line installs
+  include the SQL analysis dependency by default. The base install remains lightweight.
+- Db2 and PostgreSQL statement splitting consume tokens as they are scanned, reducing peak memory
+  for migration scripts with many short statements while preserving statement boundaries.
+- SQL migration transaction checks reuse comment-masked statement views from the script scan,
+  avoiding a fresh lexical scan for each executable statement.
+- Statement facts tell a bounded read with no row events (`events=frozenset()`) from SQL whose
+  row effects are unknown (`events=None`). Bounded Db2 `SELECT`, `VALUES`, read-only CTE and
+  `SET CURRENT SCHEMA`, privilege and metadata statements, simple `CREATE INDEX` and `COPY TO`
+  file or stream are proven event-free; table creation that can populate or replace data stays
+  unknown.
+- A migration client that supplies its own `Log` receives operational messages without activating
+  the migration renderer. Presentation is selected per executor; CLI output and explicitly
+  requested built-in sinks are unchanged.
+- Oracle SQL*Plus comment masking and SQL Server batch splitting use the shared lexical tokenizer,
+  which now scans common words, numbers, whitespace and standard strings as spans. DuckDB
+  statement splitting streams its tokens; token positions, split records and refusal messages are
+  unchanged.
+
+### Fixed
+
+- `clean --clean-disabled` now refuses when the configuration file or `DBLIFT_CLEAN_DISABLED`
+  enables clean. The flag was read as "not given" because its value, True, is also the default,
+  so the configured value won and `clean` dropped the schema's objects. A flag is now "not
+  given" only when argparse leaves it None: `--dry-run`, `--strict` and `--mark-as-executed`
+  default to None like every other flag backed by a configuration property, and any value the
+  user gives wins over the environment and the file.
+- `migrate --dry-run` and `undo --dry-run` refuse a script the real run refuses, with or without
+  `--show-sql`. A `COMMIT` in the middle of a script was reported `[SAFE]` by the dry run and
+  refused by the run, because only `--show-sql` prepared the statements. The dry run now prepares
+  them, without adding SQL to the result unless `--show-sql` is given.
+- An empty YAML `target_version` is still rejected, without incorrectly claiming that no versioned
+  migration scripts were found before the scripts have been scanned.
+- Statement facts leave incomplete object names such as `db..t`, leading `.t` outside MariaDB,
+  and `t*` unnamed with a diagnostic, instead of reporting a table or mutation target from the
+  readable fragment. MariaDB's valid leading `.t` remains readable.
+- Statement facts distinguish readable queries, plain `CREATE TABLE` definitions, and supported
+  session settings with no row events from statements whose effects cannot be read. Restore-key
+  checks no longer treat those readable statements as possible key updates.
+- Statement facts leave object names written as bind placeholders unread and report a diagnostic,
+  while placeholders in values and quoted object names keep their existing behavior.
+- PostgreSQL-family transaction checks no longer treat non-blank characters such as U+00A0 as
+  separators around `CONCURRENTLY` or `VACUUM`, avoiding a false autocommit classification.
+- SQL Server `CREATE FULLTEXT INDEX` statement facts now identify the unsupported grammar in
+  their diagnostic while leaving the index identity unread.
+- Unread `CREATE TABLE` definitions and mixed `ALTER TABLE` column and constraint actions now
+  produce opaque statement facts with a diagnostic instead of raising an exception or naming a
+  spurious column.
+- Snowflake `INSERT OVERWRITE` statement facts now flag the replacement of existing target rows
+  and leave DML events unknown, instead of reporting an ordinary `INSERT`.
+- Pending SQL snippets in `info` and `migrate --dry-run` mask string literals, and DEBUG logs no
+  longer print resolved placeholder values.
+- `validate-sql --files` and pending-migration analysis now report operations on a table created
+  in an earlier file; only a `CREATE TABLE` earlier in the same script exempts them as operations
+  on a new table.
+- SQL lint asks for review of DuckDB and Redshift `COPY ... FROM 'file'` loads. SQL Server
+  `UPDATE STATISTICS` no longer triggers a full-table `UPDATE` warning for recognized forms;
+  unread options still require review.
+- The Db2 statement facts reader names the object of `CREATE`, `ALTER` and `DROP` for
+  `TABLESPACE`, `STOGROUP`, `BUFFERPOOL`, `TYPE` and `MODULE`, and of `CREATE` and `DROP` for
+  `SYNONYM` (typed `SYNONYM`, as `ALIAS` is: Db2 LUW creates an alias). They were reported as
+  `db2 <WORD> statement: not classified`. `EXECUTE IMMEDIATE` stays opaque because the statement it
+  runs is inside a string, and `DROP DATABASE`, which Db2 rejects as SQL, stays unclassified. The
+  forms the server rejects (`DROP … IF EXISTS` for these types, a qualified table space name) are
+  not read. See `docs/sql-parsing/db2.md` section 13. Because Db2 drops the tables of a table
+  space with it, the lint reports a Db2 `DROP TABLESPACE` as `drop-table` (it was
+  `drop-unread-object` while the statement was unread); the types whose drop discards rows are
+  now a quirk of each dialect, `drop_discards_rows_types`.
+- The lint reports a `DROP` with `CASCADE` or `FORCE` of a named object that holds no rows, as the
+  new `drop-cascade` warning. `DROP TYPE ty CASCADE` and `DROP FUNCTION f(int) CASCADE` passed
+  with no finding, yet PostgreSQL drops every column of that type, or generated column calling
+  that function, with the object (measured on PostgreSQL 16.14: the column is gone, the row stays).
+  A statement that names only indexes, sequences, triggers or procedures is not reported, since
+  `CASCADE` reaches no column through them. `DROP TABLE`, `DROP SCHEMA` and the `DROP`
+  statements that could not be read are judged as before.
+- The PostgreSQL statement facts reader names the object of `CREATE`, `ALTER` and `DROP` for event
+  triggers, foreign data wrappers, servers, publications, operator classes, text search
+  dictionaries, configurations, parsers and templates, and tablespaces. They came back with no
+  object, so `info --format json` and execution-time object tracking did not list them. Event
+  triggers, foreign data wrappers, servers, publications and tablespaces are not schema-qualified
+  in PostgreSQL; a dotted name there, which the engine rejects, is left unnamed.
+- Statement analysis names the object of `GRANT` and `REVOKE` on the PostgreSQL and MySQL
+  grammars (MariaDB included): `GRANT SELECT ON t TO u` is a DDL statement that references
+  table `t` (also `ON TABLE`, `ON db.t`, and on PostgreSQL `ON SEQUENCE`, `SCHEMA`, `DATABASE`,
+  `TYPE`, `FUNCTION` and `PROCEDURE`; on MySQL `ON FUNCTION` and `ON PROCEDURE`). On MySQL and
+  MariaDB `DESCRIBE t`, `DESC t`, `EXPLAIN t`, `SHOW CREATE TABLE t`, `SHOW COLUMNS FROM t` and
+  `SHOW INDEX FROM t` reference their table; they returned no object. Wildcard grants, role
+  grants, grants to `'u'@'h'` and routines written with a signature stay unnamed.
+- The statement facts of the `mysql` grammar (MySQL and MariaDB) name the object of two forms that
+  came back unread: `CREATE`, `ALTER` and `DROP TABLESPACE ts` (MySQL) name the tablespace, and
+  `ALTER SEQUENCE [db.]s RESTART WITH 100` (MariaDB) names the sequence, as `CREATE SEQUENCE` and
+  `DROP SEQUENCE` already did. A qualified tablespace name and the `UNDO` forms stay unread. A
+  compound statement outside a program (`WHILE`, `IF`), `EXECUTE IMMEDIATE '…'` and the statements
+  inside a trigger or program body stay unread by design; `docs/sql-parsing/mysql.md` gives the
+  reason for each.
+- The HTML report of `migrate --dry-run --show-sql` and `undo --dry-run --show-sql` names the
+  object type and name of each statement, as the report of an applied run does; those columns
+  were empty. Each `MigrationSqlInfo` in `result.sql` carries the same per-statement
+  `annotations` (`operation`, `object_type`, `object_name`). Without object analysis
+  (`analysis_mode="execution"`) the columns stay empty, as they do for an applied run.
+- MySQL and MariaDB statement facts read the executable comments that run on every supported
+  server, such as the ones `mysqldump` writes (`CREATE TABLE /*!32312 IF NOT EXISTS*/ t (…)`,
+  `/*!50001 CREATE TABLE t (…) */`, a dumped view, `/*!40101 SET NAMES utf8mb4 */`): a `/*!`
+  comment with no version number or a five-digit version below 50700 is read as the server
+  reads it, its content kept, so the statement names its objects instead of being reported
+  unread. 50700 is the lowest version at which a supported server stops running the comment
+  (MariaDB 11 runs `/*!50699 … */`, not `/*!50700 … */`). A statement with any other executable
+  comment (`/*!50700` and above, `/*M!`) is still reported unread, because whether it runs
+  depends on the server version.
+- A `SIGTERM` that interrupts migration lease acquisition after the lock row is committed now
+  releases the lease instead of leaving a lock row behind, and no longer joins a heartbeat thread
+  that has not started.
+- `undo` refuses a transaction-split generated migration part set that is incomplete, malformed,
+  duplicated, ambiguous, partially applied or out of order, before any effect. A contiguous
+  applied prefix of paired generated sync parts can be undone; failed history rows are ignored
+  when identifying the applied prefix.
+- A supplied scanner record list must expand to the exact SQL strings sent for execution, and
+  supplied policy views must align with those records; a mismatch is refused, and refusal
+  locations come from the supplied records.
+- `Index.dialect_options` survives a model `to_dict` / `from_dict` round trip, as it already does
+  for tables and views.
+- Oracle statement facts keep object names that precede a slash-line terminator, including a
+  PL/SQL routine ending in an ideographic blank before `;`.
+
+### Removed
+
 ## [5.0.0] - 2026-10-24
 
 ### Breaking

@@ -397,12 +397,11 @@ def _apply_config_backed_defaults(args: Any, config: Optional[Any]) -> None:
             continue
         if not hasattr(args, spec.name):
             continue
-        # "Unset" means the namespace still holds the declared default. Testing
-        # for falsiness instead would be wrong for a flag whose default is True:
-        # ``clean_disabled`` defaults True and ``--clean-enabled`` sets it False,
-        # so a falsy test would read that explicit opt-in as absence and put the
-        # guard back on a destructive command the user had just unlocked.
-        if getattr(args, spec.name) != spec.default:
+        # "Unset" means None: every flag backed by a property defaults to None.
+        # Neither falsiness nor "equals the default" will do: ``--clean-enabled``
+        # sets ``clean_disabled`` False and ``--clean-disabled`` sets it True, the
+        # default, and both are explicit choices about a destructive command.
+        if getattr(args, spec.name) is not None:
             continue
         value = getattr(config, spec.name, None)
         if value in (None, "", (), []) or value == spec.default:
@@ -783,7 +782,7 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
 
     placeholders = _collect_placeholders(ctx.args, ctx.config)
     if placeholders:
-        ctx.log.debug(f"Using placeholders: {placeholders}")
+        ctx.log.debug(f"Using placeholders: {len(placeholders)} configured")
 
     if getattr(ctx.config, "strict_mode", False) or getattr(ctx.args, "strict_mode", False):
         ctx.config.strict_mode = True

@@ -113,7 +113,7 @@ class Index(SqlObject):
         Returns:
             Index object
         """
-        return cls(
+        index = cls(
             name=data["name"],
             table_name=data["table_name"],
             columns=data["columns"],
@@ -135,6 +135,10 @@ class Index(SqlObject):
             comment=data.get("comment"),
             definition=data.get("definition"),
         )
+        for plugin, opts in (data.get("dialect_options") or {}).items():
+            for key, value in opts.items():
+                index.set_dialect_option(plugin, key, value)
+        return index
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert index to dictionary representation.
@@ -142,7 +146,7 @@ class Index(SqlObject):
         Returns:
             Dictionary with index attributes
         """
-        return {
+        result: Dict[str, object] = {
             "name": self.name,
             "schema": self.schema,
             "object_type": self.object_type.value,
@@ -165,3 +169,6 @@ class Index(SqlObject):
             "comment": self.comment,
             "definition": self.definition,
         }
+        if self.dialect_options:
+            result["dialect_options"] = self.dialect_options
+        return result

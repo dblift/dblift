@@ -303,12 +303,11 @@ Code in `dblift/core/sql_parser/` and `dblift/db/plugins/sqlserver/parser/`:
 
 ### Current implementation gaps
 
-Behaviours kept from the previous scanner on purpose and recorded here (each has
-a test; none is changed by the move to the engine):
+Legacy quirks and their current status (each has a test):
 
-- A batch holding only a form feed, a vertical tab or a no-break space is a batch
-  with code: the splitter returns an empty-text record where sqlcmd runs nothing
-  (row 31, listed in `KNOWN_GAPS` of the conformance test).
+- The previous scanner returned an empty-text record for a batch holding only
+  a form feed, vertical tab or no-break space. The shared engine drops these
+  batches, as sqlcmd does (row 31; `KNOWN_GAPS` is empty).
   A batch holding only U+001C is a record with that character as its text (not an
   empty one); the executor skips it. How sqlcmd reads a batch holding only U+001C is
   unmeasured.
@@ -349,6 +348,8 @@ scope modifier, materialized-view modifiers, and four-part references whose
 AST does not retain every part in its table identity. An index without a resolved owning
 table, or a qualified index name SQLGlot misreads as its owner, is also
 opaque. `MERGE` remains DML with unknown effects; `EXEC` has unknown effects.
+`CREATE FULLTEXT INDEX` is also opaque, with a diagnostic naming its unsupported
+grammar; it has no separate index name in the SQL text.
 These are reader limits, not assertions
 that SQL Server rejects the statements. An unread statement still keeps a
 leading operation and kind where the text establishes them.

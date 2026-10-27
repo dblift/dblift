@@ -65,6 +65,7 @@ def test_entry_points_reach_the_engine(monkeypatch, entry):
     seen = []
     tokenize = LexicalTokenizer.tokenize
     scan_comments = LexicalTokenizer._scan_segment_comments
+    iter_segment_tokens = LexicalTokenizer._iter_segment_tokens
 
     def counting(self):
         seen.append(self.spec)
@@ -74,17 +75,24 @@ def test_entry_points_reach_the_engine(monkeypatch, entry):
         seen.append(self.spec)
         return scan_comments(self)
 
+    def counting_segment_tokens(self, rules):
+        seen.append(self.spec)
+        return iter_segment_tokens(self, rules)
+
     monkeypatch.setattr(LexicalTokenizer, "tokenize", counting)
     monkeypatch.setattr(LexicalTokenizer, "_scan_segment_comments", counting_comments)
+    monkeypatch.setattr(LexicalTokenizer, "_iter_segment_tokens", counting_segment_tokens)
     ENTRY_POINTS[entry]()
     assert seen and all(spec is DUCKDB_SPEC for spec in seen)
 
 
 def test_the_provider_rewrite_reads_the_engine(monkeypatch):
     seen = []
-    tokenize = LexicalTokenizer.tokenize
+    iter_segment_tokens = LexicalTokenizer._iter_segment_tokens
     monkeypatch.setattr(
-        LexicalTokenizer, "tokenize", lambda self: (seen.append(self.spec), tokenize(self))[1]
+        LexicalTokenizer,
+        "_iter_segment_tokens",
+        lambda self, rules: (seen.append(self.spec), iter_segment_tokens(self, rules))[1],
     )
 
     class Result:

@@ -240,6 +240,25 @@ def test_oracle_span_ends_at_the_name_before_blanks_and_a_terminator(blank):
     assert "t" in names
 
 
+@pytest.mark.parametrize(
+    "script,name",
+    [
+        ("DROP TABLE t\u3000\n/", "t"),
+        ("CREATE TABLE t(id NUMBER)\u3000\n/", "t"),
+        ("CREATE PROCEDURE p AS BEGIN NULL; END p\u3000;\n/", "p"),
+    ],
+)
+@pytest.mark.parametrize("ending", ("", "\n"))
+def test_oracle_slash_line_span_omits_blanks_before_terminator(script, name, ending):
+    script += ending
+    scanner = facts_parser("oracle")
+    [text] = scanner.split_for_analysis(script)
+    assert statement_sources(scanner, script, [text]) == [text + "/"]
+    assert name in {obj.name.lower() for obj in scanner.extract_objects(script)}
+    if name == "p":
+        assert scanner.split(script)[0].text.endswith("END p\u3000;")
+
+
 def test_a_character_the_engine_keeps_stays_in_the_span_before_a_terminator():
     scanner = facts_parser("postgresql")
     script = "DROP TABLE t 　;"

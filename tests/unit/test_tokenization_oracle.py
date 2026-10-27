@@ -3,10 +3,14 @@
 import pytest
 
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
+from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.oracle.parser.lexical_spec import ORACLE_SPEC
-from dblift.db.plugins.oracle.parser.oracle_tokenizer import OracleTokenizer
+
+
+def oracle_tokenizer(sql):
+    return LexicalTokenizer(sql, spec=ORACLE_SPEC)
 
 
 class TestOracleTokenizer:
@@ -15,7 +19,7 @@ class TestOracleTokenizer:
     def test_q_quote_braces(self):
         """Test Q-quote with braces."""
         sql = "SELECT q'{Hello 'World'}' FROM dual;"
-        tokenizer = OracleTokenizer(sql)
+        tokenizer = oracle_tokenizer(sql)
         tokens = tokenizer.tokenize()
 
         string_tokens = [t for t in tokens if t.type == TokenType.STRING]
@@ -24,7 +28,7 @@ class TestOracleTokenizer:
     def test_q_quote_brackets(self):
         """Test Q-quote with brackets."""
         sql = "SELECT q'[Hello [World]]' FROM dual;"
-        tokenizer = OracleTokenizer(sql)
+        tokenizer = oracle_tokenizer(sql)
         tokens = tokenizer.tokenize()
 
         string_tokens = [t for t in tokens if t.type == TokenType.STRING]
@@ -33,7 +37,7 @@ class TestOracleTokenizer:
     def test_q_quote_custom_delimiter(self):
         """Test Q-quote with custom delimiter."""
         sql = "SELECT q'!Hello; World!' FROM dual;"
-        tokenizer = OracleTokenizer(sql)
+        tokenizer = oracle_tokenizer(sql)
         tokens = tokenizer.tokenize()
 
         string_tokens = [t for t in tokens if t.type == TokenType.STRING]
@@ -42,7 +46,7 @@ class TestOracleTokenizer:
     def test_double_quoted_identifier(self):
         """Test double-quoted identifiers."""
         sql = 'SELECT "MyColumn" FROM "MyTable";'
-        tokenizer = OracleTokenizer(sql)
+        tokenizer = oracle_tokenizer(sql)
         tokens = tokenizer.tokenize()
 
         identifier_tokens = [t for t in tokens if t.type == TokenType.IDENTIFIER]
@@ -55,7 +59,7 @@ BEGIN
   NULL;
 END;
 /"""
-        tokenizer = OracleTokenizer(sql)
+        tokenizer = oracle_tokenizer(sql)
         tokens = tokenizer.tokenize()
 
         delimiter_tokens = [t for t in tokens if t.type == TokenType.DELIMITER]
@@ -65,7 +69,7 @@ END;
     def test_slash_not_delimiter_in_expression(self):
         """Test that slash in expression is not a delimiter."""
         sql = "SELECT 10 / 2 FROM dual;"
-        tokenizer = OracleTokenizer(sql)
+        tokenizer = oracle_tokenizer(sql)
         tokens = tokenizer.tokenize()
 
         # The / should be a symbol, not delimiter

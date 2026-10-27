@@ -43,6 +43,7 @@ SEVERITY: Dict[str, str] = {
     "drop-column": ERROR,
     "truncate": ERROR,
     "drop-unread-object": WARNING,
+    "drop-cascade": WARNING,
     "dml-no-where": WARNING,
     "copy-server-side": WARNING,
     "add-not-null-no-default": WARNING,

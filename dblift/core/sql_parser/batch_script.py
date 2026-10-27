@@ -2,7 +2,7 @@
 
 import dataclasses
 from bisect import bisect_left
-from typing import List, Optional, Sequence, Tuple
+from typing import Iterable, List, Optional, Sequence, Tuple
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.batch_commands import read_command
@@ -46,25 +46,27 @@ class BatchScript:
             else None
         )
 
-    def split(self, tokens: Sequence[Token]) -> List[Statement]:
+    def split(self, tokens: Iterable[Token]) -> List[Statement]:
         """The record of every batch that holds code; execution sends its text."""
         source = self.source
-        extents = list(self.comments)
         lexeme_starts: List[int] = []
+        lexeme_extents: List[Tuple[int, int]] = []
+        directives: List[Token] = []
         for token in tokens:
+            if token.type == TokenType.DIRECTIVE:
+                directives.append(token)
             if token.type == TokenType.STRING or (
                 token.type == TokenType.IDENTIFIER and token.text[:1] in ('"', "[")
             ):
-                extents.append((token.pos, token.pos + len(token.text)))
+                lexeme_extents.append((token.pos, token.pos + len(token.text)))
                 lexeme_starts.append(token.pos)
+        extents = list(self.comments) + lexeme_extents
         extents.sort()
         spans = code_spans(source, self.origin, len(source), extents)
         positions = code_positions(self.rules, source, spans, lexeme_starts)
         records: List[Statement] = []
         start, line = self.origin, 1
-        for token in tokens:
-            if token.type != TokenType.DIRECTIVE:
-                continue
+        for token in directives:
             cut = (
                 token.pos
             )  # only blanks precede a separator on its line; strip(text_blanks) drops them

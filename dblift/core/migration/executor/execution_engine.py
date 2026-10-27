@@ -5,7 +5,6 @@ This module contains the low-level execution logic for individual migrations,
 callbacks, and SQL statements.
 """
 
-import sys
 import time
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
@@ -35,8 +34,10 @@ from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.migration import Migration
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
+from dblift.core.migration.presentation import presentation_for
 from dblift.core.migration.sql.execution_statement import (
     ExecutionStatement,
+    PreparedStatements,
     classify_execution_statement,
     neutralise_transaction_statements,
 )
@@ -220,13 +221,19 @@ class ExecutionEngine:
         """Attach transaction metadata to executable SQL statements."""
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         execution_statements: List[ExecutionStatement] = []
-        for statement in statements:
+        policy_texts = (
+            statements.policy_texts
+            if isinstance(statements, PreparedStatements)
+            else [None] * len(statements)
+        )
+        for statement, policy_text in zip(statements, policy_texts):
             statement_type = self.sql_analyzer.get_statement_type(statement)
             execution_statements.append(
                 classify_execution_statement(
                     statement,
                     dialect=dialect,
                     statement_type=statement_type,
+                    policy_text=policy_text,
                 )
             )
         return execution_statements
@@ -249,7 +256,12 @@ class ExecutionEngine:
         is_oracle_sqlplus = self._current_sqlplus_ctx is not None
         executable: List[str] = []
         execution_statements: List[ExecutionStatement] = []
-        for statement in statements:
+        policy_texts = (
+            statements.policy_texts
+            if isinstance(statements, PreparedStatements)
+            else [None] * len(statements)
+        )
+        for statement, policy_text in zip(statements, policy_texts):
             if is_oracle_sqlplus and quirks.parse_error_policy_directive(statement) is not None:
                 continue
             statement_type = self.sql_analyzer.get_statement_type(statement)
@@ -258,6 +270,7 @@ class ExecutionEngine:
                     statement,
                     dialect=dialect,
                     statement_type=statement_type,
+                    policy_text=policy_text,
                 )
             )
             executable.append(statement)
@@ -268,6 +281,17 @@ class ExecutionEngine:
             )
             return []
         return executable
+
+    def annotate_sql_statements(self, statements: List[str]) -> List[Dict[str, str]]:
+        """The operation and first object of each statement, as an applied run reports them.
+
+        For ``--show-sql`` previews, which run nothing and so leave the journal empty.
+        """
+        keys = ("operation", "object_type", "object_name")
+        service = self.sql_execution_service
+        if service is None:
+            raise RuntimeError("annotating statements needs the SQL execution service")
+        return [dict(zip(keys, service.annotate_statement(s))) for s in statements]
 
     def _parse_sql_statements(
         self,
@@ -380,6 +404,7 @@ class ExecutionEngine:
             script_name=migration.script_name,
             content=content,
             records=analyzer.statement_splitter.last_split(content),
+            record_policy_texts=analyzer.statement_splitter.last_policy_texts(content),
         )
 
     def _reset_provider_schema_cache(self) -> None:
@@ -632,17 +657,9 @@ class ExecutionEngine:
                                 columns,
                                 table_rows,
                             )
-                            if not isinstance(self.log, NullLog):
-                                render_table = getattr(
-                                    sys.modules[__name__], "render_records_table"
-                                )
-                                self.log.info(
-                                    render_table(
-                                        [(c, "left") for c in columns],
-                                        table_rows,
-                                        title=f"Query result ({len(table_rows)} rows)",
-                                    )
-                                )
+                            presenter = presentation_for(self, self.log)
+                            if presenter is not None:
+                                presenter.present_query_result(self, columns, table_rows)
                     else:
                         if not isinstance(result_data, int):
                             raise TypeError(
@@ -1170,17 +1187,10 @@ class ExecutionEngine:
                                     columns,
                                     table_rows,
                                 )
-                                if table_rows and not isinstance(self.log, NullLog):
-                                    render_table = getattr(
-                                        sys.modules[__name__], "render_records_table"
-                                    )
-                                    self.log.info(
-                                        render_table(
-                                            [(c, "left") for c in columns],
-                                            table_rows,
-                                            title=f"Query result ({len(table_rows)} rows)",
-                                        )
-                                    )
+                                if table_rows:
+                                    presenter = presentation_for(self, self.log)
+                                    if presenter is not None:
+                                        presenter.present_query_result(self, columns, table_rows)
                         else:
                             rows_affected = result_data if isinstance(result_data, int) else -1
                             if _is_ddl_statement_for_success_log(statement):
@@ -1220,17 +1230,10 @@ class ExecutionEngine:
                                     columns,
                                     table_rows,
                                 )
-                                if table_rows and not isinstance(self.log, NullLog):
-                                    render_table = getattr(
-                                        sys.modules[__name__], "render_records_table"
-                                    )
-                                    self.log.info(
-                                        render_table(
-                                            [(c, "left") for c in columns],
-                                            table_rows,
-                                            title=f"Query result ({len(table_rows)} rows)",
-                                        )
-                                    )
+                                if table_rows:
+                                    presenter = presentation_for(self, self.log)
+                                    if presenter is not None:
+                                        presenter.present_query_result(self, columns, table_rows)
                     else:
                         # This is DDL or DML - execute as regular SQL
                         if policy.autocommit_required and isinstance(

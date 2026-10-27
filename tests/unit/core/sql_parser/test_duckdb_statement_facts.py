@@ -23,6 +23,8 @@ def test_duckdb_facts_keep_targets_references_and_effects(case):
     assert len(statements) == 1
     facts = read_statement_facts(statements[0].text, dialect="duckdb")
 
+    expected = case["facts"].copy()
+    action = expected.pop("action", None)
     assert {
         "operation": facts.operation,
         "kind": facts.kind,
@@ -36,8 +38,8 @@ def test_duckdb_facts_keep_targets_references_and_effects(case):
         "events": sorted(facts.events) if facts.events else None,
         "diagnostic": facts.diagnostic,
         "error": facts.error,
-    } == case["facts"]
-    assert facts.action is None
+    } == expected
+    assert facts.action == action
     assert [obj.name for obj in facts.affected_objects] == [
         obj["name"] for obj in case["facts"]["objects"] if obj["role"] != "referenced"
     ]

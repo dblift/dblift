@@ -4,7 +4,7 @@ This module provides token-based statement parsing that splits SQL
 into individual statements based on delimiters and block depth.
 """
 
-from typing import List, Optional
+from typing import Iterable, List, Optional, Sequence, cast
 
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.tokens import Token, TokenType
@@ -31,7 +31,7 @@ class BaseStatementParser:
 
     def __init__(
         self,
-        tokens: List[Token],
+        tokens: Iterable[Token],
         context: Optional[ParserContext] = None,
         source: Optional[str] = None,
     ):
@@ -394,8 +394,10 @@ class BaseStatementParser:
             Next token or None if no more tokens
         """
         idx = self.current_idx + 1
-        while idx < len(self.tokens):
-            token = self.tokens[idx]
+        assert isinstance(self.tokens, Sequence)
+        tokens = cast(Sequence[Token], self.tokens)
+        while idx < len(tokens):
+            token = tokens[idx]
             if not skip_comments or token.type != TokenType.COMMENT:
                 return token
             idx += 1

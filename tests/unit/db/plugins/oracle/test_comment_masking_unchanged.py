@@ -1,7 +1,7 @@
-"""The SQL*Plus comment masking output is pinned (the masking view keeps its own scanner).
+"""The SQL*Plus comment masking output is pinned across scanner implementations.
 
-A characterisation test: the expected values were recorded from the scanner as it is, so it passes unchanged
-while that scanner is untouched and fails when its output moves.
+A characterisation test: the expected values were recorded from the original scanner and
+must remain unchanged as the shared lexical engine serves the masking view.
 """
 
 import json

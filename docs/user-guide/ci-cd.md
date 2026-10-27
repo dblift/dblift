@@ -45,7 +45,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      - run: pip install "dblift[cli,analysis,postgresql]"
+      - run: pip install "dblift[cli,postgresql]"
       - run: dblift migrate   # apply to the ephemeral CI database
       - run: dblift validate  # checksums / order / applied-state integrity
       - run: dblift info      # report pending migrations
@@ -70,7 +70,7 @@ validate-migrations:
   rules:
     - changes: [migrations/**/*]
   script:
-    - pip install "dblift[cli,analysis,postgresql]"
+    - pip install "dblift[cli,postgresql]"
     - dblift migrate
     - dblift validate
     - dblift info

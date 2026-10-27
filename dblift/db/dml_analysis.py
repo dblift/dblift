@@ -74,13 +74,14 @@ def analyze_dml(
     A plugin's own statement facts reader, when ``quirks`` has one, answers.
     Without one the ``sqlglot`` AST does; a statement it cannot parse, or does
     not recognise as DML, comes back unread (empty table, ``events=None``), never
-    guessed from the text.
+    guessed from the text. Reader-proven statements without row events retain an
+    empty set, distinct from unread statements.
     """
     if quirks is not None and quirks.supports_statement_facts:
         facts = quirks.statement_facts(statement)
         return DmlMutation(
             facts.target or "",
-            set(facts.events) if facts.events else None,
+            set(facts.events) if facts.events is not None else None,
             list(facts.affected_columns) if facts.events and "UPDATE" in facts.events else [],
             tuple(
                 DmlMutation(w.target, set(w.events), list(w.affected_columns))

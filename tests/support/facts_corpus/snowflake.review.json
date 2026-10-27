@@ -8688,6 +8688,37 @@
   "reason": "The reader reports the statement as opaque (snowflake Command is opaque to statement facts) rather than guess: the former analyzer path named UNKNOWN default_schema.XML. This is a documented boundary, not a claim that Snowflake rejects the text.",
   "sql": "CREATE PRIMARY XML INDEX idx_xml ON docs(xml_col)"
  },
+ "6e46fc27b60686e4": {
+  "class": "no-old",
+  "facts": {
+   "diagnostic": "snowflake INSERT OVERWRITE replaces the target's existing rows",
+   "kind": "DML",
+   "objects": [
+    [
+     "TARGET",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "SOURCE",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "operation": "INSERT",
+   "target": "TARGET",
+   "target_sql": "target"
+  },
+  "old": {
+   "analyzer": null,
+   "hybrid": null
+  },
+  "path": "both",
+  "reason": "This regression input was added after the former extraction paths were removed, so there is no frozen old result. SQLGlot reads OVERWRITE, but the existing-row replacement is not represented by an INSERT-only event; the reader marks its events unknown and gives an explicit diagnostic.",
+  "sql": "INSERT OVERWRITE INTO target SELECT * FROM source"
+ },
  "6e7090024d9a1500": {
   "class": "disagree",
   "facts": {

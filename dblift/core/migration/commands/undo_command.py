@@ -40,6 +40,7 @@ class UndoCommand(BaseCommand):
                 version=undo_migration.version,
                 description=undo_migration.description,
                 statements=statements,
+                annotations=self.execution_engine.annotate_sql_statements(statements),
             )
         )
 
@@ -212,13 +213,18 @@ class UndoCommand(BaseCommand):
 
                 if dry_run:
                     for migration, undo_migration in undo_plan:
-                        if show_sql:
-                            if undo_migration.format == MigrationFormat.PYTHON:
-                                self._add_empty_visible_sql(undo_migration, result)
-                            else:
-                                self._add_visible_sql(undo_migration, result)
-                            if result.error_message:
-                                return
+                        # Prepared even without --show-sql: the real undo refuses a script
+                        # at this step.
+                        if show_sql and undo_migration.format == MigrationFormat.PYTHON:
+                            self._add_empty_visible_sql(undo_migration, result)
+                        elif show_sql:
+                            self._add_visible_sql(undo_migration, result)
+                        else:
+                            self.execution_engine.get_executable_sql_statements(
+                                undo_migration, result
+                            )
+                        if result.error_message:
+                            return
 
                     self.log.info("DRY RUN: Would undo the following migrations:")
                     for migration, _ in undo_plan:

@@ -97,6 +97,24 @@ def test_unread_xml_index_stays_opaque():
     assert facts.error is None
 
 
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "CREATE FULLTEXT INDEX ON t (c) KEY INDEX pk",
+        "CREATE FULLTEXT INDEX ON dbo.t (c) KEY INDEX pk",
+        "CREATE FULLTEXT INDEX ON [dbo].[t] ([c]) KEY INDEX [pk]",
+    ],
+)
+def test_fulltext_index_reports_precise_unread_grammar(sql):
+    facts = read_statement_facts(sql, dialect="tsql")
+
+    assert (facts.operation, facts.kind) == ("CREATE", "DDL")
+    assert facts.objects == ()
+    assert facts.indexed_table is None
+    assert facts.diagnostic == "tsql CREATE FULLTEXT INDEX grammar is not modelled"
+    assert facts.error is None
+
+
 def test_unread_update_top_does_not_invent_a_target():
     facts = read_statement_facts(
         "UPDATE TOP (1) dbo.t SET x=2 OUTPUT inserted.x WHERE id=1", dialect="tsql"

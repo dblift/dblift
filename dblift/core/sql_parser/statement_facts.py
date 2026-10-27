@@ -2,21 +2,32 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Optional, Protocol, Tuple
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Optional, Protocol, Tuple
 
 from dblift.core.sql_model.base import SqlObject, SqlObjectType
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 
+if TYPE_CHECKING:
+    from sqlglot.dialects import Dialect
+
 
 @dataclass(frozen=True)
 class NamedObject:
-    """An object named by a statement and the role it plays there."""
+    """An object named by a statement and the role it plays there.
+
+    Quote flags and ``catalog`` preserve AST identifier provenance for consumers
+    that resolve dialect-specific identity. ``schema`` retains its flattened
+    projection for existing callers. ``None`` means the reader did not establish it.
+    """
 
     name: str
     type: SqlObjectType
     role: str
     schema: Optional[str] = None
+    name_quoted: Optional[bool] = field(default=None, compare=False)
+    schema_quoted: Optional[bool] = field(default=None, compare=False)
+    catalog: Optional[str] = field(default=None, compare=False)
 
     def as_sql_object(self, default_schema: Optional[str] = None, dialect: str = "") -> SqlObject:
         """Project identity into the established public object shape."""
@@ -74,6 +85,8 @@ class StatementFacts:
     error: Optional[str] = None
     target_sql: Optional[str] = None
     cte_writes: Tuple[DmlEffect, ...] = ()
+    renamed_to: Optional[NamedObject] = None
+    table_comment: Optional[str] = None
 
     @property
     def opaque(self) -> bool:
@@ -108,6 +121,10 @@ class SqlglotStatementFactsReader:
         self.dialect = dialect
         self.spec = spec
 
+    def read_dialect(self) -> Optional[type["Dialect"]]:
+        """Return a plugin-owned SQLGlot dialect when its grammar extends the base dialect."""
+        return None
+
     def read(self, sql: str) -> StatementFacts:
         """Read one already-split statement."""
         try:
@@ -121,4 +138,9 @@ class SqlglotStatementFactsReader:
                 name="sqlglot",
             ) from exc
 
-        return read_statement_facts(sql, dialect=self.dialect)
+        return read_statement_facts(
+            sql,
+            dialect=self.dialect,
+            allow_leading_dot=self.spec is not None and self.spec.allow_leading_dot_relation,
+            read_dialect=self.read_dialect(),
+        )

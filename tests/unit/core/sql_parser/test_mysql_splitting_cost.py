@@ -10,7 +10,10 @@ classifier's anchored word probe and conservatively charges the rest of recogniz
 the line and word regex shapes are certified, but native VM steps are not counted.
 """
 
+import ast
+import inspect
 import re
+import textwrap
 from dataclasses import replace
 from typing import Callable, Dict, List, Tuple
 from unittest import mock
@@ -25,9 +28,9 @@ from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.db.plugins.mysql.parser.lexical_spec import MYSQL_RULES, MYSQL_SPEC
-from tests.support.splitting_cost import CountingParserTokens, CountingPattern
+from tests.support.splitting_cost import CountingParserTokens, CountingPattern, CountingPlainText
 from tests.support.splitting_cost import CountingText as GuardedText
-from tests.support.splitting_cost import CountingTokens, Meter
+from tests.support.splitting_cost import CountingTokens, Meter, loop_findings
 
 MAX_RATIO = 5.0
 COUNT = [0]
@@ -95,10 +98,10 @@ def work(script: str, spec: LexicalSpec) -> int:
     return COUNT[0]
 
 
-def public_work(script: str) -> Tuple[int, list]:
+def public_work(script: str, *, classifier=None) -> Tuple[int, list]:
     meter = Meter()
     original_tokenizer = LexicalTokenizer
-    original_classify = delimiter_module.classify_line
+    original_classify = classifier or delimiter_module.classify_line
     original_parser = engine_module.LexicalStatementParser.__init__
     line_word = CountingPattern(re.compile(MYSQL_RULES.line_word), meter)
 
@@ -119,7 +122,9 @@ def public_work(script: str) -> Tuple[int, list]:
         found = line_word.match(source, pos, end)
         if found is not None and found.group().upper() in delimiter_commands._known_words(rules):
             meter.add(end - found.end())  # recognized commands may inspect the rest of the line
-        return original_classify(rules, source._value, start, end, delimiter)
+        return original_classify(
+            rules, CountingPlainText(source._value, meter), start, end, delimiter
+        )
 
     with (
         mock.patch.object(engine_module, "LexicalTokenizer", tokenizer),
@@ -159,6 +164,51 @@ def test_mysql_public_split_cost_grows_linearly(shape: str) -> None:
     small, _ = public_work(make(size))
     large, _ = public_work(make(4 * size))
     assert small > 0 and large <= MAX_RATIO * small, (shape, small, large)
+
+
+@pytest.mark.parametrize("scan", ("count", "find", "splitlines"))
+def test_mysql_public_split_counts_a_classifier_rescan(scan: str) -> None:
+    def rescanning(rules, source, start, end, delimiter):  # type: ignore[no-untyped-def]
+        if scan == "count":
+            source.count("\n")
+        elif scan == "find":
+            source.find("never-present")
+        else:
+            source.splitlines()
+        return delimiter_commands.classify_line(rules, source, start, end, delimiter)
+
+    make, _ = SHAPES["crlf-statements"]
+    small, _ = public_work(make(100), classifier=rescanning)
+    large, _ = public_work(make(400), classifier=rescanning)
+    assert large > MAX_RATIO * small, (small, large)
+
+
+def test_mysql_public_split_counts_a_classifier_lowercase_copy() -> None:
+    def rescanning(rules, source, start, end, delimiter):  # type: ignore[no-untyped-def]
+        source.lower()
+        return delimiter_commands.classify_line(rules, source, start, end, delimiter)
+
+    make, _ = SHAPES["crlf-statements"]
+    small, _ = public_work(make(100), classifier=rescanning)
+    large, _ = public_work(make(400), classifier=rescanning)
+    assert large > MAX_RATIO * small, (small, large)
+
+
+def test_mysql_classifier_guard_rejects_a_native_regex_whole_source_scan() -> None:
+    source = textwrap.dedent(inspect.getsource(delimiter_commands.classify_line))
+    mutant = source.replace(
+        "    blanks = rules.blanks",
+        "    re.search('never-present', source)\n    blanks = rules.blanks",
+        1,
+    )
+
+    assert mutant != source
+    assert loop_findings(ast.parse(mutant), plain_source=True, source_parameter=1)
+
+
+def test_mysql_classifier_plain_source_is_guarded() -> None:
+    source = textwrap.dedent(inspect.getsource(delimiter_commands.classify_line))
+    assert loop_findings(ast.parse(source), plain_source=True, source_parameter=1) == []
 
 
 def test_mysql_public_split_counts_repeated_record_prefixes(monkeypatch) -> None:

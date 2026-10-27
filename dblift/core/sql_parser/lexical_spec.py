@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import FrozenSet, Optional, Tuple
+from typing import FrozenSet, Optional, Pattern, Tuple
 
 #: A byte order mark at the start of a script.
 BOM = "\ufeff"
@@ -41,6 +41,15 @@ class HeadStep:
 
 
 HeadPattern = Tuple[HeadStep, ...]
+
+
+@dataclass(frozen=True)
+class MaskingRules:
+    """A client's older comment-mask view of directives and statement boundaries."""
+
+    directives: Tuple[Pattern[str], ...]
+    unit_start: Pattern[str]
+    anonymous_start: Pattern[str]
 
 
 @dataclass(frozen=True)
@@ -319,6 +328,7 @@ class LexicalSpec:
     parameter_prefix: str = "$"
     placeholder_open: Optional[str] = "${"
     client_script: Optional[ClientScriptRules] = None
+    masking: Optional[MaskingRules] = None
     bracket_identifier: Tuple[str, ...] = ()
     leading_bom_is_blank: bool = False
     silent_unclaimed: bool = False
@@ -340,6 +350,8 @@ class LexicalSpec:
     refused_character: str = ""
     refused_character_name: str = ""
     refused_reason: str = ""
+    #: Whether a table name may begin with a dot and use the default database.
+    allow_leading_dot_relation: bool = False
 
     @property
     def trailing_edge_blanks(self) -> str:
