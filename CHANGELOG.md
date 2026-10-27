@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   given" only when argparse leaves it None: `--dry-run`, `--strict` and `--mark-as-executed`
   default to None like every other flag backed by a configuration property, and any value the
   user gives wins over the environment and the file.
+- `migrate --dry-run` and `undo --dry-run` refuse a script the real run refuses, with or without
+  `--show-sql`. A `COMMIT` in the middle of a script was reported `[SAFE]` by the dry run and
+  refused by the run, because only `--show-sql` prepared the statements. The dry run now prepares
+  them, without adding SQL to the result unless `--show-sql` is given.
 - An empty YAML `target_version` is still rejected, without incorrectly claiming that no versioned
   migration scripts were found before the scripts have been scanned.
 - Statement facts leave incomplete object names such as `db..t`, leading `.t` outside MariaDB,

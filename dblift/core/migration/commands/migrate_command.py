@@ -91,12 +91,20 @@ class MigrateCommand(BaseCommand):
             config=config,
         )
 
-    def _collect_visible_sql(self, migrations: List[Migration], result: MigrateResult) -> None:
-        """Populate SQL visibility data for migration scripts."""
+    def _collect_visible_sql(
+        self, migrations: List[Migration], result: MigrateResult, record: bool = True
+    ) -> None:
+        """Populate SQL visibility data for migration scripts.
+
+        With ``record=False`` the statements are only prepared, so a script the real run
+        refuses sets the error without its SQL being added to the result.
+        """
         for migration in migrations:
             statements = self.execution_engine.get_executable_sql_statements(migration, result)
             if result.error_message:
                 return
+            if not record:
+                continue
             result.add_sql_migration(
                 MigrationSqlInfo(
                     script=migration.script_name,
@@ -115,10 +123,10 @@ class MigrateCommand(BaseCommand):
     ) -> None:
         """Handle dry run mode - log migrations without executing them."""
         result.show_sql = show_sql
-        if show_sql:
-            self._collect_visible_sql(pending_migrations, result)
-            if result.error_message:
-                return
+        # Prepared even without --show-sql: the real run refuses a script at this step.
+        self._collect_visible_sql(pending_migrations, result, record=show_sql)
+        if result.error_message:
+            return
 
         dialect = dialect_of(self.config)
         analysed = (
