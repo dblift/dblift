@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [5.1.0] - 2026-10-26
+
+### Added
+
 - `SqlObjectType.TABLESPACE` names a tablespace, as the statement facts of the `mysql` grammar, of
   PostgreSQL and of Db2 now report one.
 - `SqlObjectType` gains `STORAGE_GROUP`, `BUFFERPOOL` and `MODULE`, the object types of the Db2
