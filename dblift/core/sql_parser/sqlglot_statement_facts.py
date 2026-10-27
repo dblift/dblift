@@ -2544,6 +2544,18 @@ def read_statement_facts(
         return _head_facts(sql, "tsql OR DML modifier is not modelled", dialect=dialect)
     if dialect == "mysql":  # lint: allow-dialect-string: MySQL DML modifiers
         sql = _without_mysql_dml_modifiers(sql)
+        blanked_head = _blanked(sql, dialect)
+        trigger = _MYSQL_HEAD.match(blanked_head)
+        if (
+            trigger is not None
+            and trigger.group(1).upper() == "DROP"
+            and trigger.group(2).upper() == "TRIGGER"
+            and re.match(r"\s+ON\b", blanked_head[trigger.end() :], re.I)
+        ):
+            facts = _head_facts(
+                sql, "mysql DROP TRIGGER ON clause is not supported", dialect=dialect
+            )
+            return StatementFacts(facts.operation, facts.kind, diagnostic=facts.diagnostic)
     if dialect == "redshift":  # lint: allow-dialect-string: Redshift bracketed names
         bracketed = _redshift_bracketed_name(sql, dialect)
         if bracketed is not None:
@@ -2597,6 +2609,35 @@ def read_statement_facts(
         ):
             return program
         return _head_facts(sql, reason, dialect=dialect)
+    if dialect == "redshift":  # lint: allow-dialect-string: PostgreSQL-only table clauses
+        properties = ast.args.get("properties") if isinstance(ast, exp.Create) else None
+        index_params = (
+            ast.this.args.get("params")
+            if isinstance(ast, exp.Create) and isinstance(ast.this, exp.Index)
+            else None
+        )
+        unlogged = (
+            isinstance(ast, exp.Create)
+            and ast.args.get("kind") == "TABLE"
+            and isinstance(properties, exp.Properties)
+            and any(isinstance(prop, exp.UnloggedProperty) for prop in properties.expressions)
+        )
+        tablespace = (
+            (
+                isinstance(properties, exp.Properties)
+                and any(isinstance(prop, exp.TableSpaceProperty) for prop in properties.expressions)
+            )
+            or (
+                isinstance(index_params, exp.IndexParameters)
+                and index_params.args.get("tablespace") is not None
+            )
+            or (isinstance(ast, exp.Command) and _postgres_tablespace_clause(sql))
+        )
+        if unlogged or tablespace:
+            head = _head_facts(
+                sql, "redshift UNLOGGED or TABLESPACE clause is not supported", dialect=dialect
+            )
+            return StatementFacts(head.operation, head.kind, diagnostic=head.diagnostic)
     if (
         dialect == "mysql"  # lint: allow-dialect-string: sqlglot reads these MySQL forms as Command
         and isinstance(ast, exp.Command)

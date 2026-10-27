@@ -1,8 +1,8 @@
 """The base install is lightweight: presentation and analysis are opt-in extras.
 
 ``pip install dblift`` carries the execution path (PyYAML, SQLAlchemy). The
-command line needs Rich and Jinja2 (``cli``); full SQL analysis needs SQLGlot
-(``analysis``). ``dblift[all]`` keeps meaning "everything", so it reaches both.
+command line needs Rich, Jinja2 and SQLGlot (``cli``); API consumers can add
+SQLGlot alone (``analysis``). ``dblift[all]`` still reaches both.
 """
 
 from __future__ import annotations
@@ -41,8 +41,9 @@ def test_base_install_is_execution_only():
     assert _names(_PROJECT["dependencies"]) == {"pyyaml", "sqlalchemy"}
 
 
-def test_cli_extra_carries_the_presentation_libraries():
-    assert _names(_EXTRAS["cli"]) == {"rich", "jinja2"}
+def test_cli_extra_carries_presentation_and_analysis():
+    assert _names(_EXTRAS["cli"]) == {"rich", "jinja2", "dblift"}
+    assert "analysis" in _reachable("cli")
 
 
 def test_analysis_extra_carries_sqlglot_with_its_bounds():
