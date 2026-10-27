@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `clean --clean-disabled` now refuses when the configuration file or `DBLIFT_CLEAN_DISABLED`
+  enables clean. The flag was read as "not given" because its value, True, is also the default,
+  so the configured value won and `clean` dropped the schema's objects. A flag is now "not
+  given" only when argparse leaves it None: `--dry-run`, `--strict` and `--mark-as-executed`
+  default to None like every other flag backed by a configuration property, and any value the
+  user gives wins over the environment and the file.
 - `migrate --dry-run` and `undo --dry-run` refuse a script the real run refuses, with or without
   `--show-sql`. A `COMMIT` in the middle of a script was reported `[SAFE]` by the dry run and
   refused by the run, because only `--show-sql` prepared the statements. The dry run now prepares

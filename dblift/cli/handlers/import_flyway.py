@@ -14,7 +14,7 @@ from dblift.cli.handlers._shared import (
 def _handle_import_flyway(ctx: CliCommandContext) -> Tuple[bool, Any]:
     result = _reraise_preflight_failure(
         ctx.client.import_flyway(
-            dry_run=ctx.args.dry_run,
+            dry_run=bool(ctx.args.dry_run),
             recursive=ctx.recursive,
             flyway_table=getattr(ctx.args, "flyway_table", "flyway_schema_history"),
         )

@@ -579,3 +579,23 @@ class TestPlaceholderTokensMultiFlag:
     def test_empty_returns_empty(self):
         assert self._tokens(None) == []
         assert self._tokens([]) == []
+
+
+def test_every_flag_backed_by_a_property_is_none_when_not_given():
+    """An unset flag must stay None so the environment and the file can supply the value.
+
+    A ``store_true`` flag left at argparse's False default cannot be told apart from
+    a value the user gave, so it would override ``DBLIFT_DRY_RUN=true`` or a file's
+    ``strict_mode: true``.
+    """
+    from dblift.config.property_registry import PROPERTY_REGISTRY
+
+    property_names = {spec.name for spec in PROPERTY_REGISTRY}
+    offenders = [
+        f"{path or '<root>'}: {'/'.join(action.option_strings)} defaults to {action.default!r}"
+        for path, parser, _ in _walk(create_parser(), {}, "")
+        for action in _iter_real_actions(parser)
+        if action.dest in property_names and action.default is not None
+    ]
+
+    assert offenders == []

@@ -1101,16 +1101,12 @@ class DbliftConfig:
         registry_keys = [
             spec.name for spec in PROPERTY_REGISTRY if not spec.cli_only and "." not in spec.name
         ]
-        # A value still equal to its declared default was never supplied: argparse
-        # fills every flag it declares, so writing those back would let an unset
-        # ``--dry-run`` (False) overwrite a DBLIFT_DRY_RUN=true read from the
-        # environment, which is precedence inverted. Flags the user did change
-        # still win, including the ones whose default is True.
-        _registry_defaults = {spec.name: spec.default for spec in PROPERTY_REGISTRY}
+        # Every flag backed by a property defaults to None, so None means "not
+        # given" and the environment and the file keep their value. Any other
+        # value was typed by the user and wins, even when it equals the property
+        # default: ``--clean-disabled`` is True, which is also the default.
         for key in (*registry_keys, *_arg_only_keys):
             if key not in args or args[key] in (None, ""):
-                continue
-            if key in _registry_defaults and args[key] == _registry_defaults[key]:
                 continue
             config[key] = args[key]
 
