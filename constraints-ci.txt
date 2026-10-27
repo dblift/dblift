@@ -6,9 +6,9 @@
 #
 # sqlglot is pinned at the declared minimum (the "floor" in
 # tests/support/facts_corpus/VERSIONS.json), so the main unit-test job runs
-# the statement-facts corpus on that release. The `sqlglot-floor` job does not
-# read this file: it installs the extras, then one explicit sqlglot release per
-# leg (the declared minimum, and the newest release the corpus was recorded on).
+# the statement-facts corpus on that release. The `sqlglot-newest` job does not
+# read this file: it installs the extras, then the newest sqlglot release the
+# corpus was recorded on.
 #
 # Regenerate after a deliberate bump:
 #   python -m venv /tmp/ci && /tmp/ci/bin/pip install -e ".[dev,postgresql,mysql,mariadb,oracle,sqlserver,db2,duckdb,cosmosdb,mongodb,django,mcp]"
