@@ -123,6 +123,33 @@
   },
   "sql": "CREATE BITMAP INDEX idx_b ON t (id)"
  },
+ "040e5eb4d9f28887": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "index: redshift UNLOGGED or TABLESPACE clause is not supported",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "https://github.com/dblift/dblift/issues/775",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "Ix"
+    ]
+   ],
+   "hybrid": [
+    [
+     "INDEX",
+     "Ix",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "Amazon Redshift omits PostgreSQL secondary indexes and does not support tablespaces (https://docs.aws.amazon.com/redshift/latest/dg/c_redshift-and-postgres-sql.html; https://docs.aws.amazon.com/redshift/latest/dg/c_redshift-sql-implementated-differently.html). The frozen text extraction named an index from the unsupported statement; the reader leaves its identity opaque. Tracked in issue #775.",
+  "sql": "CREATE INDEX \"Ix\" ON \"T\" (a) TABLESPACE ts"
+ },
  "041c72644271a79f/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -2870,6 +2897,33 @@
   "reason": "Redshift answers SQLSTATE 42P01 (relation \"users\" does not exist), not a syntax error; privilege targets are not modelled: the reader classifies the statement as DDL, names no object and says so, where the old extraction named TABLE users public; TABLE default_schema.users.",
   "sql": "GRANT SELECT ON users TO analyst"
  },
+ "4dfdc6c6dd7532c3": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "table: redshift UNLOGGED or TABLESPACE clause is not supported",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "https://github.com/dblift/dblift/issues/775",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.a\"b"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "a\"b",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "Amazon Redshift does not support tablespaces (https://docs.aws.amazon.com/redshift/latest/dg/c_redshift-sql-implementated-differently.html). The frozen text extraction named a table from the unsupported PostgreSQL clause; the reader leaves its identity opaque. Tracked in issue #775.",
+  "sql": "CREATE TABLE \"a\"\"b\" (a int) WITH (fillfactor=70) TABLESPACE ts"
+ },
  "4eae005317dc7cb3": {
   "class": "disagree",
   "facts": {
@@ -3454,6 +3508,26 @@
    "redshift 1.0.485645": "42601"
   },
   "sql": "DROP TASK IF EXISTS \"S\".\"NIGHTLY\""
+ },
+ "607c660c33102b24/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "table: redshift UNLOGGED or TABLESPACE clause is not supported",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "https://github.com/dblift/dblift/issues/775",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "MySchema.Case"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "Amazon Redshift does not support tablespaces (https://docs.aws.amazon.com/redshift/latest/dg/c_redshift-sql-implementated-differently.html). The frozen text extraction named a table from the unsupported PostgreSQL clause; the reader leaves its identity opaque. Tracked in issue #775.",
+  "sql": "CREATE TABLE MySchema.\"Case\" (a int) WITH (fillfactor=70) TABLESPACE ts"
  },
  "607c660c33102b24/hybrid": {
   "class": "opaque-reader-gap",
@@ -4512,6 +4586,33 @@
   "path": "both",
   "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"BEGIN\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader reads CREATE / DDL naming nothing and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
   "sql": "CREATE FUNCTION f() RETURNS int LANGUAGE SQL BEGIN ATOMIC SELECT 1"
+ },
+ "78fceffe915fca5c": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "index: redshift UNLOGGED or TABLESPACE clause is not supported",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "https://github.com/dblift/dblift/issues/775",
+  "old": {
+   "analyzer": [
+    [
+     "INDEX",
+     "idx_name"
+    ]
+   ],
+   "hybrid": [
+    [
+     "INDEX",
+     "idx_name",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "Amazon Redshift omits PostgreSQL secondary indexes and does not support tablespaces (https://docs.aws.amazon.com/redshift/latest/dg/c_redshift-and-postgres-sql.html; https://docs.aws.amazon.com/redshift/latest/dg/c_redshift-sql-implementated-differently.html). The frozen text extraction named an index from the unsupported statement; the reader leaves its identity opaque. Tracked in issue #775.",
+  "sql": "CREATE INDEX idx_name ON employees(name) TABLESPACE users"
  },
  "7950a208d273b4a4/analyzer": {
   "class": "opaque-reader-gap",
@@ -6255,6 +6356,26 @@
   },
   "sql": "CREATE TABLE test1 (id INTEGER)@\nCREATE TABLE test2 (id INTEGER)@\n--#SET TERMINATOR ;\nINSERT INTO test1 VALUES (1)"
  },
+ "ac3b4e6330ff34e5/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "table: redshift UNLOGGED or TABLESPACE clause is not supported",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "https://github.com/dblift/dblift/issues/775",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.MiXed"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "Amazon Redshift does not support tablespaces (https://docs.aws.amazon.com/redshift/latest/dg/c_redshift-sql-implementated-differently.html). The frozen text extraction named a table from the unsupported PostgreSQL clause; the reader leaves its identity opaque. Tracked in issue #775.",
+  "sql": "CREATE TABLE MiXed (a int) WITH (fillfactor=70) TABLESPACE ts"
+ },
  "ac3b4e6330ff34e5/hybrid": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -6925,6 +7046,33 @@
   },
   "sql": "CREATE FULLTEXT INDEX ix ON t ()"
  },
+ "b8a98133b12db722": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "table: redshift UNLOGGED or TABLESPACE clause is not supported",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "https://github.com/dblift/dblift/issues/775",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "default_schema.Case"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "Case",
+     "public"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "Amazon Redshift does not support tablespaces (https://docs.aws.amazon.com/redshift/latest/dg/c_redshift-sql-implementated-differently.html). The frozen text extraction named a table from the unsupported PostgreSQL clause; the reader leaves its identity opaque. Tracked in issue #775.",
+  "sql": "CREATE TABLE \"Case\" (a int) WITH (fillfactor=70) TABLESPACE ts"
+ },
  "b9714f9c7de896b8/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -7035,6 +7183,33 @@
   "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"ENUM\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader reads CREATE / DDL naming TYPE mood (created) and the old extraction named UNKNOWN mood public, TABLE mood public, a difference with no consequence because the engine never runs the text.",
   "sql": "CREATE TYPE mood AS ENUM ('sad', 'ok')"
  },
+ "ba915bbccb2bfe7c": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "table: redshift UNLOGGED or TABLESPACE clause is not supported",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "https://github.com/dblift/dblift/issues/775",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "S.Case"
+    ]
+   ],
+   "hybrid": [
+    [
+     "TABLE",
+     "Case",
+     "S"
+    ]
+   ]
+  },
+  "path": "both",
+  "reason": "Amazon Redshift does not support tablespaces (https://docs.aws.amazon.com/redshift/latest/dg/c_redshift-sql-implementated-differently.html). The frozen text extraction named a table from the unsupported PostgreSQL clause; the reader leaves its identity opaque. Tracked in issue #775.",
+  "sql": "CREATE TABLE \"S\".\"Case\" (a int) WITH (fillfactor=70) TABLESPACE ts"
+ },
  "bb7bc6f1a08c1a05": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -7115,6 +7290,26 @@
   "path": "hybrid",
   "reason": "Redshift 1.0.485645 rejects this text with SQLSTATE 42601 (syntax error at or near \"VIRTUAL\"); it is another dialect's statement or an incomplete fragment harvested into the corpus and never runs on this family; the reader names VIRTUAL TABLE s.t (created) from the head text with a diagnostic and the old extraction named nothing, a difference with no consequence because the engine never runs the text.",
   "sql": "CREATE VIRTUAL TABLE IF NOT EXISTS s.t USING rtree(id,a,b)"
+ },
+ "bc4a113a98d24f65/analyzer": {
+  "class": "opaque-reader-gap",
+  "facts": {
+   "diagnostic": "table: redshift UNLOGGED or TABLESPACE clause is not supported",
+   "kind": "DDL",
+   "operation": "CREATE"
+  },
+  "issue": "https://github.com/dblift/dblift/issues/775",
+  "old": {
+   "analyzer": [
+    [
+     "TABLE",
+     "S.MiXed"
+    ]
+   ]
+  },
+  "path": "analyzer",
+  "reason": "Amazon Redshift does not support tablespaces (https://docs.aws.amazon.com/redshift/latest/dg/c_redshift-sql-implementated-differently.html). The frozen text extraction named a table from the unsupported PostgreSQL clause; the reader leaves its identity opaque. Tracked in issue #775.",
+  "sql": "CREATE TABLE \"S\".MiXed (a int) WITH (fillfactor=70) TABLESPACE ts"
  },
  "bc4a113a98d24f65/hybrid": {
   "class": "opaque-reader-gap",
