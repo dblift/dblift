@@ -409,15 +409,13 @@ def test_failed_callback_keeps_one_sql_preview_and_error_cause(tmp_path: Path) -
 
 def test_callback_without_execution_service_keeps_sql_preview() -> None:
     from dblift.core.migration.executor.execution_engine import ExecutionEngine
+    from dblift.core.migration.sql.statement_reader import StatementReader
     from tests.unit._migration_factory import make_migration
 
     provider = MagicMock()
     provider.execute_query.side_effect = sqlite3.OperationalError("no such table: absent")
-    analyzer = MagicMock()
-    analyzer.dialect = "sqlite"
-    analyzer.split_statements.return_value = ["SELECT id FROM absent"]
-    analyzer.get_statement_type.return_value = "QUERY"
     log = MagicMock()
+    analyzer = StatementReader("sqlite", logger=log, analysis_mode="execution")
     engine = ExecutionEngine(provider, analyzer, log, sql_execution_service=None)
     callback = make_migration(
         script_name="beforeMigrate__fail.sql", content="SELECT id FROM absent", dialect="sqlite"

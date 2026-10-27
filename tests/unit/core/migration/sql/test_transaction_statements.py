@@ -13,7 +13,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.exceptions import TransactionStatementError, UnsupportedMetaCommandError
+from dblift.core.exceptions import (
+    TransactionStatementError,
+    UnsafeStatementSplitError,
+    UnsupportedMetaCommandError,
+)
 from dblift.core.migration.sql.execution_statement import neutralise_transaction_statements
 from dblift.core.migration.sql.statement_splitter import StatementSplitter
 from dblift.db.base_quirks import BaseQuirks
@@ -38,6 +42,20 @@ def _kinds(dialect, text):
 
 def test_base_quirks_default_is_empty():
     assert BaseQuirks.transaction_control_sql_patterns == ()
+
+
+def test_transaction_refusal_keeps_statement_location_when_content_scan_fails():
+    content = "COMMIT; /* unterminated"
+    with pytest.raises(UnsafeStatementSplitError):
+        StatementSplitter("sqlite").split(content)
+
+    with pytest.raises(
+        TransactionStatementError,
+        match=r"statement 1: COMMIT manages.*none of its statements were executed",
+    ):
+        neutralise_transaction_statements(
+            ["COMMIT"], dialect="sqlite", log=MagicMock(), content=content
+        )
 
 
 @pytest.mark.parametrize(

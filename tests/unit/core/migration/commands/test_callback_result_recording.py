@@ -11,6 +11,7 @@ from dblift.core.logger.results import CallbackExecution, MigrateResult
 from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.migration import Migration
+from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 
 
@@ -76,9 +77,7 @@ def _engine_with_query_result(rows):
     from dblift.core.migration.executor.execution_engine import ExecutionEngine
 
     provider = MagicMock()
-    sql_analyzer = MagicMock()
-    sql_analyzer.dialect = "postgresql"
-    sql_analyzer.split_statements.side_effect = lambda content: [content]
+    sql_analyzer = StatementReader("postgresql", analysis_mode="execution")
     mock_ses = MagicMock()
     mock_ses.execute_statement.return_value = (True, rows)
     return ExecutionEngine(
@@ -137,10 +136,7 @@ def test_execute_callback_records_result_set_without_sql_execution_service():
 
     provider = MagicMock()
     provider.execute_query.return_value = [{"status": "ok"}]
-    sql_analyzer = MagicMock()
-    sql_analyzer.dialect = "postgresql"
-    sql_analyzer.split_statements.side_effect = lambda content: [content]
-    sql_analyzer.get_statement_type.return_value = "QUERY"
+    sql_analyzer = StatementReader("postgresql", analysis_mode="execution")
     engine = ExecutionEngine(
         provider=provider,
         sql_analyzer=sql_analyzer,
