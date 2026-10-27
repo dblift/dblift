@@ -1093,7 +1093,7 @@ class DbliftConfig:
         if db_cfg:
             config["database"] = db_cfg
 
-        from dblift.config.property_registry import PROPERTY_REGISTRY
+        from dblift.config.property_registry import PROPERTY_REGISTRY, is_unset_cli_value, spec_for
 
         # Registry covers the persistent scalar properties; undo is arg-only
         # (subcommand-driven) and not modeled in the registry.
@@ -1101,16 +1101,12 @@ class DbliftConfig:
         registry_keys = [
             spec.name for spec in PROPERTY_REGISTRY if not spec.cli_only and "." not in spec.name
         ]
-        # A value still equal to its declared default was never supplied: argparse
-        # fills every flag it declares, so writing those back would let an unset
-        # ``--dry-run`` (False) overwrite a DBLIFT_DRY_RUN=true read from the
+        # argparse fills a ``store_true`` flag with False, so writing that back would
+        # let an unset ``--dry-run`` overwrite a DBLIFT_DRY_RUN=true read from the
         # environment, which is precedence inverted. Flags the user did change
         # still win, including the ones whose default is True.
-        _registry_defaults = {spec.name: spec.default for spec in PROPERTY_REGISTRY}
         for key in (*registry_keys, *_arg_only_keys):
-            if key not in args or args[key] in (None, ""):
-                continue
-            if key in _registry_defaults and args[key] == _registry_defaults[key]:
+            if key not in args or is_unset_cli_value(spec_for(key), args[key]):
                 continue
             config[key] = args[key]
 

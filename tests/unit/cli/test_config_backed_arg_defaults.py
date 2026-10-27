@@ -98,3 +98,11 @@ def test_database_fields_are_left_to_their_own_machinery():
     _apply_config_backed_defaults(args, _Config(database=_Config(url="postgresql://file/db")))
 
     assert args.db_url == "postgresql://cli/db"
+
+
+def test_an_explicit_clean_disabled_beats_a_config_that_enables_clean():
+    """``--clean-disabled`` is True, the registry default, but the user typed it."""
+    args = Namespace(clean_disabled=True, command="clean")
+    _apply_config_backed_defaults(args, _Config(clean_disabled=False))
+
+    assert args.clean_disabled is True

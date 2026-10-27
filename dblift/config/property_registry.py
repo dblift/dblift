@@ -50,6 +50,17 @@ class PropertySpec:
         return cli_flag(self.name)
 
 
+def is_unset_cli_value(spec: Optional[PropertySpec], value: object) -> bool:
+    """Whether a parsed CLI value means the flag was not given.
+
+    argparse leaves a flag declared with ``default=None`` as None and fills a plain
+    ``store_true`` flag with False. A value equal to any other registry default was
+    typed by the user: ``--clean-disabled`` yields True, the registry default, and
+    must not be read as absence.
+    """
+    return value in (None, "") or (value is False and spec is not None and spec.default is False)
+
+
 def _bool(v: str) -> bool:
     return v.lower() in ("1", "true", "yes")
 
