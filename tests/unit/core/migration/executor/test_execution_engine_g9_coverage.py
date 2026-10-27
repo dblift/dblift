@@ -22,6 +22,7 @@ from unittest.mock import MagicMock, patch
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.migration import Migration
+from dblift.core.migration.sql.statement_reader import StatementReader
 
 # ---------------------------------------------------------------------------
 # Helpers (mirroring test_execution_engine_extended.py for consistency)
@@ -184,7 +185,11 @@ class TestParseSqlStatementsMssqlAlias(unittest.TestCase):
         migration = _make_sql_migration(content="SELECT 1;")
         result = MagicMock()
 
-        assert engine._parse_sql_statements(migration, result) == ["SELECT 1;"]
+        with patch(
+            "dblift.core.migration.executor.execution_engine.StatementReader", wraps=StatementReader
+        ) as reader:
+            assert engine._parse_sql_statements(migration, result) == ["SELECT 1;"]
+        assert reader.call_args.kwargs["dialect"] == "sqlserver"
         assert migration.dialect == "sqlserver"
 
     def test_postgres_alias_passes_through_unchanged(self):
@@ -196,7 +201,11 @@ class TestParseSqlStatementsMssqlAlias(unittest.TestCase):
         migration = _make_sql_migration(content="SELECT 1;")
         result = MagicMock()
 
-        assert engine._parse_sql_statements(migration, result) == ["SELECT 1;"]
+        with patch(
+            "dblift.core.migration.executor.execution_engine.StatementReader", wraps=StatementReader
+        ) as reader:
+            assert engine._parse_sql_statements(migration, result) == ["SELECT 1;"]
+        assert reader.call_args.kwargs["dialect"] == "postgres"
         assert migration.dialect == "postgres"
 
 
