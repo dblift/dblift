@@ -167,11 +167,6 @@ def neutralise_transaction_statements(
             or (record.kind == "directive" and record.execution_text is not None)
             for _ in range(record.repeat)
         ]
-        if len(policy_texts) != len(statements):
-            raise TransactionStatementError(
-                f"{script_name}: scanner policy views do not match execution strings; "
-                "none of its statements were executed"
-            )
     prepared = PreparedStatements(statements, policy_texts) if records is not None else statements
     patterns = quirks.transaction_control_sql_patterns
     if not patterns:
