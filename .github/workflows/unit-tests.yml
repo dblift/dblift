@@ -19,8 +19,13 @@ permissions:
   contents: read
   checks: write
 
+# Pull requests into develop get the fast loop: one Python version and no
+# installed-artifact qualification. Release pull requests into main, pushes to
+# main, the weekly schedule and manual runs get every job on both versions.
+
 jobs:
   installed-artifacts:
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -141,18 +146,13 @@ jobs:
       - name: Run the dblift command from the base install
         run: '"$RUNNER_TEMP/base-venv/bin/dblift" --version'
 
-  sqlglot-floor:
+  sqlglot-newest:
     # The main job installs constraints-ci.txt, which pins sqlglot at the declared
     # minimum, so it runs the statement-facts corpus on that release. This job
-    # installs the extras without the constraints file and then one explicit
-    # sqlglot release per leg: the declared minimum, and the newest release the
-    # corpus was recorded on (tests/support/facts_corpus/VERSIONS.json).
-    name: sqlglot-floor${{ matrix.arm == 'newest' && ' (newest)' || '' }}
+    # installs the extras without the constraints file and then the newest
+    # sqlglot release the corpus was recorded on
+    # (tests/support/facts_corpus/VERSIONS.json).
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        arm: [floor, newest]
     steps:
       - uses: actions/checkout@v6
 
@@ -161,16 +161,7 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install the declared sqlglot floor
-        if: matrix.arm == 'floor'
-        run: |
-          python -m pip install -e ".[dev,postgresql,mysql,mariadb,oracle,sqlserver,db2,duckdb,cosmosdb,mongodb,django,mcp]"
-          FLOOR=$(python -c "import re,pathlib; print(re.search(r'\"sqlglot>=([0-9][^,\"]*),', pathlib.Path('pyproject.toml').read_text()).group(1))")
-          python -m pip install "sqlglot==$FLOOR"
-          python -c "import sqlglot; assert sqlglot.__version__ == '$FLOOR', sqlglot.__version__"
-
       - name: Install the newest recorded sqlglot
-        if: matrix.arm == 'newest'
         run: |
           python -m pip install -e ".[dev,postgresql,mysql,mariadb,oracle,sqlserver,db2,duckdb,cosmosdb,mongodb,django,mcp]"
           NEWEST=$(python -c "import json,pathlib; print(json.loads(pathlib.Path('tests/support/facts_corpus/VERSIONS.json').read_text())['newest'])")
@@ -180,6 +171,8 @@ jobs:
       - name: Run statement-facts tests
         run: |
           python -m pytest tests/unit/core/sql_parser tests/unit/db/plugins/duckdb tests/unit/db/plugins/sqlite \
+            -n auto \
+            --dist=loadscope \
             -p no:benchmark \
             --timeout=120
 
@@ -187,7 +180,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ${{ (github.event_name == 'pull_request' && github.base_ref != 'main') && fromJSON('["3.11"]') || fromJSON('["3.11", "3.12"]') }}
     env:
       # Pull requests install the exact versions in constraints-ci.txt; the
       # weekly schedule installs whatever pip resolves today.
@@ -228,7 +221,7 @@ jobs:
             --timeout=120
 
       - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.12' && github.event_name != 'schedule'
+        if: matrix.python-version == '3.11' && github.event_name != 'schedule'
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
