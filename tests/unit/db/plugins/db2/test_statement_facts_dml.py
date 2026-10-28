@@ -64,7 +64,7 @@ READ = Db2StatementFactsReader(None).read
             "UPDATE app.orders AS o SET name = 'b', qty = 2 WHERE o.id = 1 WITH RS",
             "UPDATE",
             "APP.ORDERS",
-            "app.orders AS o",
+            "app.orders",
             {"UPDATE"},
             "o.id = 1 WITH RS",
             ("name", "qty"),
@@ -73,7 +73,7 @@ READ = Db2StatementFactsReader(None).read
             "UPDATE app.orders o SET o.name = 'b' WHERE o.id = 1",
             "UPDATE",
             "APP.ORDERS",
-            "app.orders o",
+            "app.orders",
             {"UPDATE"},
             "o.id = 1",
             ("name",),
@@ -129,7 +129,7 @@ READ = Db2StatementFactsReader(None).read
             "DELETE FROM app.orders AS o WHERE o.id = 1",
             "DELETE",
             "APP.ORDERS",
-            "app.orders AS o",
+            "app.orders",
             {"DELETE"},
             "o.id = 1",
             (),
@@ -147,7 +147,7 @@ READ = Db2StatementFactsReader(None).read
             "MERGE INTO app.target t USING app.source s ON t.id = s.id WHEN MATCHED THEN UPDATE SET t.v = s.v WHEN NOT MATCHED THEN INSERT (id, v) VALUES (s.id, s.v)",
             "MERGE",
             "APP.TARGET",
-            "app.target t",
+            "app.target",
             {"UPDATE", "INSERT"},
             None,
             ("v",),
@@ -212,7 +212,7 @@ def test_a_case_expression_does_not_end_the_set_list(sql, columns):
 
 def test_a_leading_byte_order_mark_does_not_shift_the_source_text():
     facts = READ("\ufeffDELETE FROM t o WHERE o.x = 1")
-    assert (facts.target_sql, facts.predicate) == ("t o", "o.x = 1")
+    assert (facts.target_sql, facts.predicate) == ("t", "o.x = 1")
 
 
 @pytest.mark.parametrize(
