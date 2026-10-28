@@ -38,6 +38,7 @@ from dblift.core.migration.scripting.migration_script_manager import MigrationSc
 from dblift.core.migration.state.migration_state import CallbackReadSnapshot, MigrationReadSnapshot
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.ui.migration_ui import MigrationUI
+from dblift.core.seams.runtime_checks import registered_checks
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.core.utils.url_masking import mask_database_url
 from dblift.db.base_provider import BaseProvider
@@ -659,8 +660,8 @@ class BaseCommand:
             prepare()
 
     def _preflight_execution_sql(self, migrations: List[Any]) -> None:
-        """Reject ambiguous SQL in scripts selected for this command."""
-        if self._capture_objects:
+        """Classify selected SQL and run contextual extension checks before writes."""
+        if self._capture_objects and not registered_checks("migration.preflight_sql"):
             return
         for migration in migrations:
             if migration.format != MigrationFormat.SQL:
@@ -668,7 +669,9 @@ class BaseCommand:
             statements = self.execution_engine._prepare_sql_statements(
                 migration, placeholder_service=self.placeholder_service
             )
-            self.execution_engine._classify_execution_statements(statements)
+            if not self._capture_objects:
+                self.execution_engine._classify_execution_statements(statements)
+            self.execution_engine.check_sql_preflight(migration, statements)
 
     def _prepare_analysis_for_sql_callbacks(
         self,

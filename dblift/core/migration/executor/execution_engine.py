@@ -47,6 +47,7 @@ from dblift.core.migration.sql.migration_sql_parser import (
 )
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.migration.sql.statement_reader import StatementReader
+from dblift.core.seams import runtime_checks
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.base_provider import BaseProvider
 from dblift.db.error import (
@@ -121,6 +122,15 @@ class ExecutionEngine:
             placeholder_service=placeholder_service,
         )
 
+    def check_sql_preflight(self, migration: Migration, statements: List[str]) -> None:
+        """Let extensions refuse the complete prepared SQL before execution."""
+        runtime_checks.run_checks(
+            "migration.preflight_sql",
+            migration=migration,
+            statements=statements,
+            provider=self.provider,
+        )
+
     def execute_migration(self, migration: Migration, result: OperationResult) -> None:
         """Execute a single migration.
 
@@ -150,6 +160,8 @@ class ExecutionEngine:
         )
         if statements is None:
             return
+
+        self.check_sql_preflight(migration, statements)
 
         policy = self._plan_sql_execution(statements)
         if policy.unsupported_mixed_mode:
