@@ -537,6 +537,7 @@ def _read_dml(sql: str, words: List[Token], ups: List[str], first: str) -> State
         return unread
     parts, start, after = name
     n = len(words)
+    name_end = words[after - 1]
     if first != "INSERT":
         as_alias = ups[after : after + 1] == ["AS"]
         after += as_alias
@@ -556,7 +557,6 @@ def _read_dml(sql: str, words: List[Token], ups: List[str], first: str) -> State
     where = _depth0(words, after, "WHERE") if first in ("UPDATE", "DELETE") else None
     if not allowed[first] or (where is not None and where + 1 >= n):
         return unread
-    last = words[after - 1]
     return StatementFacts(
         first,
         "DML",
@@ -569,7 +569,7 @@ def _read_dml(sql: str, words: List[Token], ups: List[str], first: str) -> State
             else _merge_columns(words, after) if first == "MERGE" else ()
         ),
         events=_merge_events(words, after) if first == "MERGE" else frozenset({first}),
-        target_sql=sql[start : last.pos + len(last.text)],
+        target_sql=sql[start : name_end.pos + len(name_end.text)],
     )
 
 

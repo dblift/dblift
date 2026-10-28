@@ -728,7 +728,7 @@ _MODIFIER_NAMED_TARGET_CASES = [
     ("tsql", "UPDATE ignore#x SET a = 1", "ignore#x"),
     ("oracle", "UPDATE ignore#x SET a = 1", "ignore#x"),
     # Oracle keeps the alias so that ``FROM <table> WHERE <predicate>`` resolves ``alias.a``.
-    ("oracle", "DELETE t alias WHERE alias.a = 1", "t alias"),
+    ("oracle", "DELETE t alias WHERE alias.a = 1", "t"),
     ("mysql", "INSERT HIGH_PRIORITY INTO t (a) VALUES (1)", "t"),
     ("oracle", "UPDATE /*+ INDEX(t\n   i) */ t SET a = 1", "t"),
     ("oracle", "DELETE /*+ PARALLEL\n */ t WHERE a = 1", "t"),

@@ -52,9 +52,9 @@ def test_oracle_unproven_mutation_targets_have_no_mutation_payload(sql, operatio
     [
         ("DELETE FROM t WHERE x=1", "DELETE", "T", "t", "x = 1", ()),
         ("DELETE t WHERE x=1", "DELETE", "T", "t", "x = 1", ()),
-        ("DELETE FROM t a WHERE a.x=1", "DELETE", "T", "t a", "a.x = 1", ()),
-        ('DELETE FROM t "PARTITION" WHERE x=1', "DELETE", "T", 't "PARTITION"', "x = 1", ()),
-        ("UPDATE t a SET a.x=2 WHERE a.id=1", "UPDATE", "T", "t a", "a.id = 1", ("x",)),
+        ("DELETE FROM t a WHERE a.x=1", "DELETE", "T", "t", "a.x = 1", ()),
+        ('DELETE FROM t "PARTITION" WHERE x=1', "DELETE", "T", "t", "x = 1", ()),
+        ("UPDATE t a SET a.x=2 WHERE a.id=1", "UPDATE", "T", "t", "a.id = 1", ("x",)),
         ("INSERT INTO t (x) VALUES (1)", "INSERT", "T", "t", None, ()),
         (
             'UPDATE "Sales"."Order Items" SET "Value"=1 WHERE "Id"=2',

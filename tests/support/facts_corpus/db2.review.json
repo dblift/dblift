@@ -34,11 +34,11 @@
   "reason": "CREATE TABLE: the reader names `T` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
   "sql": "CREATE TABLE t (a TEXT DEFAULT 'x{c}y')"
  },
- "01958918fe7a8f3d": {
-  "class": "dml-differs",
+ "01958918fe7a8f3d/hybrid": {
+  "class": "facts-adds-acted",
   "issue": "",
-  "path": "both",
-  "reason": "the reader names `CHILD` (altered, folded or exact as Db2 reads it) and differs from the old helper on target: the reader keeps the clause as written (`child AS c`), the old helper returns `child`",
+  "path": "hybrid",
+  "reason": "the old hybrid path names no object for this aliased DELETE target; the reader names `CHILD` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "DELETE FROM child AS c WHERE c.id = 1"
  },
  "01a97d3690f0d340/analyzer": {
@@ -988,11 +988,11 @@
   "reason": "not a Db2 statement: CREATE MATERIALIZED VIEW is Oracle's and PostgreSQL's (Db2 declares an MQT with CREATE TABLE ... AS); the old extraction named `default_schema.mv`",
   "sql": "CREATE MATERIALIZED VIEW mv AS SELECT 1 FROM orders"
  },
- "28fb40fa4063f6c2": {
-  "class": "dml-differs",
+ "28fb40fa4063f6c2/hybrid": {
+  "class": "facts-adds-acted",
   "issue": "",
-  "path": "both",
-  "reason": "the reader names `CHILD` (altered, folded or exact as Db2 reads it) and differs from the old helper on target: the reader keeps the clause as written (`child AS c`), the old helper returns `child`",
+  "path": "hybrid",
+  "reason": "the old hybrid path names no object for this aliased MERGE target; the reader names `CHILD` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "MERGE INTO child AS c USING source AS s ON c.id = s.id WHEN MATCHED THEN DELETE"
  },
  "29014fab476be7cc/analyzer": {
@@ -2981,11 +2981,11 @@
   "reason": "not a Db2 statement: ONLY is PostgreSQL's, so the reader leaves the target unread rather than take `ONLY` for it; the old helper named table `child`",
   "sql": "DELETE FROM ONLY child WHERE id = 1"
  },
- "7484ca522ba201fa": {
-  "class": "dml-differs",
+ "7484ca522ba201fa/hybrid": {
+  "class": "facts-adds-acted",
   "issue": "",
-  "path": "both",
-  "reason": "the reader names `USERS` (altered, folded or exact as Db2 reads it) and differs from the old helper on target: the reader keeps the clause as written (`users u`), the old helper returns `users`",
+  "path": "hybrid",
+  "reason": "the old hybrid path names no object for this aliased MERGE target; the reader names `USERS` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "MERGE INTO users u USING staged s ON (u.id = s.id) WHEN MATCHED THEN UPDATE SET u.email = s.email"
  },
  "751b454491e4d1dd": {

@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [5.1.1] - 2026-10-27
+
+### Fixed
+
+- `statement_dml_table` returns the bare table for an aliased DML target on Oracle, Db2 and SQLite
+  (`orders`, not `orders o` or `orders AS o`), as it already did on PostgreSQL, MySQL, SQL Server,
+  DuckDB, Redshift and Snowflake. The statement facts kept the alias in `target_sql` for those
+  three dialects, so the result was not a table reference: a consumer that parses it as one
+  (`UPDATE orders o SET ...`) failed with `Failed to parse 'orders o' into sqlglot Table`.
+
 ## [5.1.0] - 2026-10-26
 
 ### Added

@@ -774,6 +774,16 @@ SNOWFLAKE_CHANGES = {
     "TRUNCATE t1, t2": {"diagnostic": "snowflake TRUNCATE target is not read"},
 }
 
+# Oracle and SQLite read the modifier word as the table and the table as its alias; the alias
+# is no longer part of ``target_sql``.
+ALIAS_FREE_CHANGES = {
+    "UPDATE -- c\n LOW_PRIORITY t SET a = 1": {"target_sql": "LOW_PRIORITY"},
+    "UPDATE IGNORE t SET b = 1": {"target_sql": "IGNORE"},
+    "UPDATE LOW_PRIORITY t SET a = 1": {"target_sql": "LOW_PRIORITY"},
+    "UPDATE delayed t SET a = 1": {"target_sql": "delayed"},
+    "UPDATE quick t SET a = 1": {"target_sql": "quick"},
+}
+
 
 @pytest.mark.parametrize(
     ("dialect", "sql"), [(d, s) for d in sorted(OTHER) for s in sorted(OTHER[d])]
@@ -784,6 +794,8 @@ def test_other_dialects_read_the_same_inputs_as_before(dialect, sql):
         expected = {**expected, **TSQL_CHANGES.get(sql, {})}
     if dialect == "snowflake":
         expected = {**expected, **SNOWFLAKE_CHANGES.get(sql, {})}
+    if dialect in {"oracle", "sqlite"}:
+        expected = {**expected, **ALIAS_FREE_CHANGES.get(sql, {})}
     if (
         dialect in {"duckdb", "postgres", "redshift", "snowflake"}
         and sql == "UPDATE `ignore` SET a = 1"

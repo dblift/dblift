@@ -60,7 +60,7 @@ def test_quirks_dml_helpers_read_the_facts():
     quirks = ProviderRegistry.get_quirks("db2")
     assert (
         quirks.statement_dml_table("UPDATE app.orders AS o SET a = 1 WHERE o.id = 1")
-        == "app.orders AS o"
+        == "app.orders"
     )
     assert quirks.dml_where_predicate("DELETE FROM app.orders WHERE id = 1") == "id = 1"
     assert quirks.is_full_table_dml("DELETE FROM app.orders") is True
