@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 from dblift.core.logger.results import MigrationInfo, MigrationSqlInfo, UndoResult
 from dblift.core.migration.formats.migration_format import MigrationFormat
 from dblift.core.migration.migration import Migration
+from dblift.core.seams.runtime_checks import SqlPreflightError, registered_checks
 
 from ._script_runner import ScriptRunner, ScriptRunPolicy
 from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand, PreflightConnectionError
@@ -87,9 +88,11 @@ class UndoCommand(BaseCommand):
 
         Pushed on the lock's ``ExitStack`` after the lock, so it runs before the
         lock is released: error callbacks can run SQL, which must not overlap a
-        migrate. A connection failure is not an undo failure and fires nothing.
+        migrate. Connection and SQL preflight refusals fire no error callbacks.
         """
-        if isinstance(exc, Exception) and not isinstance(exc, PreflightConnectionError):
+        if isinstance(exc, Exception) and not isinstance(
+            exc, (PreflightConnectionError, SqlPreflightError)
+        ):
             self._run_error_handler("undo", lambda: self._fire("afterUndoError"))
         return False
 
@@ -219,7 +222,9 @@ class UndoCommand(BaseCommand):
                         )
                         return
 
-                if not dry_run and not self._capture_objects:
+                if not dry_run and (
+                    not self._capture_objects or registered_checks("migration.preflight_sql")
+                ):
                     callbacks = self._callbacks_for(
                         ("beforeUndo", "afterUndo", "afterUndoError", "beforeEach", "afterEach")
                     )
@@ -249,6 +254,8 @@ class UndoCommand(BaseCommand):
                 # Execute beforeUndo callbacks
                 try:
                     self._fire("beforeUndo")
+                except SqlPreflightError:
+                    raise
                 except Exception as e:
                     self.log.error(f"beforeUndo callback failed: {e}")
                     result.set_error(f"beforeUndo callback failed: {e}")

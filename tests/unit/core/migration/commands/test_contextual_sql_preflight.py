@@ -417,3 +417,98 @@ def test_batch_preserves_non_sql_migrations_as_explicit_opaque_entries(client):
     ]
     assert seen[-1][0].format.value == "python"
     assert seen[-1][1] == []
+
+
+def _prepare_undo(instance, db):
+    scripts = db.parent / "sql"
+    for path in scripts.glob("*__callback.sql"):
+        path.unlink()
+    (scripts / "V2__mixed.sql").unlink()
+    assert instance.migrate().success
+    (scripts / "U1__first.sql").write_text(
+        "DROP TABLE earlier; CREATE TABLE undone_marker (id INTEGER);"
+    )
+    (scripts / "afterUndoError__callback.sql").write_text(
+        "CREATE TABLE undo_error_ran (id INTEGER);"
+    )
+    with sqlite3.connect(db) as observer:
+        return observer.execute("SELECT script, success FROM dblift_schema_history").fetchall()
+
+
+@pytest.mark.parametrize(
+    "target", ["U1__first.sql", "beforeUndo__check.sql", "afterUndo__check.sql"]
+)
+def test_undo_batch_refusal_preserves_schema_history_and_skips_error_callbacks(client, target):
+    instance, db = client
+    before_history = _prepare_undo(instance, db)
+    if target != "U1__first.sql":
+        (db.parent / "sql" / target).write_text("CREATE TABLE undo_callback_ran (id INTEGER);")
+
+    def check(**context):
+        if context["migration"].script_name == target:
+            raise runtime_checks.SqlPreflightError("undo batch refused")
+
+    runtime_checks.register_check("migration.preflight_sql", check)
+    result = instance.undo()
+    assert not result.success
+    assert "undo batch refused" in result.error_message
+    assert result.callbacks == []
+    with sqlite3.connect(db) as observer:
+        assert (
+            observer.execute("SELECT script, success FROM dblift_schema_history").fetchall()
+            == before_history
+        )
+        assert observer.execute("SELECT count(*) FROM earlier").fetchone() == (0,)
+        assert (
+            observer.execute(
+                "SELECT name FROM sqlite_master WHERE name IN "
+                "('undone_marker', 'undo_error_ran', 'undo_callback_ran')"
+            ).fetchall()
+            == []
+        )
+
+
+@pytest.mark.parametrize("event", ["beforeUndo", "afterUndo", "beforeEach"])
+def test_undo_callback_execution_refusal_does_not_run_error_callbacks(client, event):
+    instance, db = client
+    before_history = _prepare_undo(instance, db)
+    target = f"{event}__check.sql"
+    (db.parent / "sql" / target).write_text("CREATE TABLE undo_callback_ran (id INTEGER);")
+    started = False
+
+    def check(**context):
+        if context["migration"].script_name == target and started:
+            raise runtime_checks.SqlPreflightError("undo callback refused during execution")
+
+    def emit(name, data):
+        nonlocal started
+        if name == "callback.started" and data["name"] == target:
+            started = True
+
+    runtime_checks.register_check("migration.preflight_sql", check)
+    with patch(
+        "dblift.core.migration.commands.base_command._emit_script_event", side_effect=emit
+    ) as events:
+        result = instance.undo()
+    assert not result.success
+    assert "undo callback refused during execution" in result.error_message
+    assert [(record.phase, record.status) for record in result.callbacks] == [(event, "FAILED")]
+    assert [
+        call.args[0]
+        for call in events.call_args_list
+        if call.args[0] in ("callback.started", "callback.completed", "callback.failed")
+    ] == ["callback.started", "callback.failed"]
+    with sqlite3.connect(db) as observer:
+        assert (
+            observer.execute(
+                "SELECT name FROM sqlite_master WHERE name IN ('undo_error_ran', 'undo_callback_ran')"
+            ).fetchall()
+            == []
+        )
+        history = observer.execute("SELECT script, success FROM dblift_schema_history").fetchall()
+        if event == "afterUndo":
+            assert history == before_history + [("U1__first.sql", 1)]
+            assert observer.execute("SELECT count(*) FROM undone_marker").fetchone() == (0,)
+        else:
+            assert history == before_history
+            assert observer.execute("SELECT count(*) FROM earlier").fetchone() == (0,)
