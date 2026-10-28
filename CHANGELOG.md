@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Removed
+
+## [5.1.1] - 2026-10-27
+
+### Added
+
+### Changed
+
+### Fixed
+
 - `statement_dml_table` returns the bare table for an aliased DML target on Oracle, Db2 and SQLite
   (`orders`, not `orders o` or `orders AS o`), as it already did on PostgreSQL, MySQL, SQL Server,
   DuckDB, Redshift and Snowflake. The statement facts kept the alias in `target_sql` for those
