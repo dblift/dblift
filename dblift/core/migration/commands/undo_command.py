@@ -205,6 +205,20 @@ class UndoCommand(BaseCommand):
 
                 undo_plan = [(step.migration, step.undo_script) for step in plan.steps]
 
+                for _, undo_migration in undo_plan:
+                    if undo_migration.format != MigrationFormat.SQL:
+                        continue
+                    statements = self.execution_engine.get_executable_sql_statements(
+                        undo_migration, result
+                    )
+                    if result.error_message:
+                        return
+                    if not statements:
+                        result.set_error(
+                            f"Undo script {undo_migration.script_name} has no executable SQL"
+                        )
+                        return
+
                 if not dry_run and not self._capture_objects:
                     callbacks = self._callbacks_for(
                         ("beforeUndo", "afterUndo", "afterUndoError", "beforeEach", "afterEach")
