@@ -3635,19 +3635,11 @@ def read_statement_facts(
             else _referenced(ast, skipped_references)
         )
         target_table = table
-        if (
-            dialect
-            in {
-                "duckdb",
-                "mysql",  # lint: allow-dialect-string: bare targets
-                "postgres",  # lint: allow-dialect-string: bare targets
-                "redshift",
-                "snowflake",  # lint: allow-dialect-string: bare targets
-                "tsql",
-            }
-            and table is not None
-            and (table.args.get("alias") or table.args.get("joins") or table.args.get("only"))
+        if table is not None and (
+            table.args.get("alias") or table.args.get("joins") or table.args.get("only")
         ):
+            # ``target_sql`` is a table reference a consumer interpolates into raw SQL, so it
+            # never carries the alias, in any dialect.
             target_table = table.copy()
             target_table.set("alias", None)
             target_table.set("joins", None)
