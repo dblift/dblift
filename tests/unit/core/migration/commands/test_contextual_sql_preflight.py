@@ -36,7 +36,7 @@ def client(tmp_path, request):
 def _register_rejection(client, *, under_lock=False):
     seen = []
 
-    def check(*, migration, statements, provider):
+    def check(*, migration, statements, provider, prepared_migrations, migration_index):
         assert provider is client.provider
         assert provider.is_connected()
         seen.append((migration.script_name, statements))
@@ -111,11 +111,13 @@ def test_callback_sql_is_checked_before_any_script_or_history(client):
     instance, db = client
     seen = []
 
-    def check(*, migration, statements, provider):
+    def check(*, migration, statements, provider, prepared_migrations, migration_index):
         assert provider is instance.provider
         assert provider.is_connected()
         seen.append(migration.script_name)
         if migration.script_name == "beforeMigrate__callback.sql":
+            assert prepared_migrations == []
+            assert migration_index is None
             assert statements == ["CREATE TABLE callback_ran (id INTEGER)"]
             raise runtime_checks.SqlPreflightError("extension rejected callback")
 
@@ -143,7 +145,7 @@ def test_callback_state_change_is_rechecked_before_script_journal_or_sql(client)
         if not path.name.startswith("beforeEach__"):
             path.unlink()
 
-    def check(*, migration, statements, provider):
+    def check(*, migration, statements, provider, prepared_migrations, migration_index):
         if migration.script_name != "V1__first.sql":
             return
         with sqlite3.connect(db) as observer:
@@ -179,7 +181,7 @@ def test_recheck_after_started_event_closes_attempt_without_sql_or_history(clien
     started = False
     events = []
 
-    def check(*, migration, statements, provider):
+    def check(*, migration, statements, provider, prepared_migrations, migration_index):
         if started:
             raise runtime_checks.SqlPreflightError("catalog changed after started event")
 
@@ -214,7 +216,7 @@ def test_check_receives_configured_schema_without_switching_connection(client):
     instance.config.database.schema = "configured_target"
     seen = []
 
-    def check(*, migration, statements, provider):
+    def check(*, migration, statements, provider, prepared_migrations, migration_index):
         with sqlite3.connect(db) as observer:
             assert observer.execute("PRAGMA database_list").fetchone()[1] == "main"
         seen.append(provider.config.database.schema)
@@ -244,7 +246,7 @@ def test_callback_sql_is_rechecked_after_prior_callback_changes_state(client):
         "CREATE TABLE error_callback_ran (id INTEGER);"
     )
 
-    def check(*, migration, statements, provider):
+    def check(*, migration, statements, provider, prepared_migrations, migration_index):
         if migration.script_name != "beforeEach__callback.sql":
             return
         with sqlite3.connect(db) as observer:
@@ -285,3 +287,133 @@ def test_callback_sql_is_rechecked_after_prior_callback_changes_state(client):
             == []
         )
         assert observer.execute("SELECT count(*) FROM dblift_schema_history").fetchone() == (0,)
+
+
+def test_check_receives_ordered_selected_batch_without_callbacks(client):
+    instance, db = client
+    seen = []
+
+    def check(**context):
+        seen.append(context)
+        if context["migration"].script_name == "V2__mixed.sql":
+            raise runtime_checks.SqlPreflightError("ordered batch checked")
+
+    runtime_checks.register_check("migration.preflight_sql", check)
+    result = instance.migrate(placeholders={"table": "later"})
+    assert not result.success
+    assert "ordered batch checked" in result.error_message
+    assert len(seen) == 2
+    for index, context in enumerate(seen):
+        assert context.get("prepared_migrations") is not None, "ordered batch context missing"
+        batch = context["prepared_migrations"]
+        assert context["migration_index"] == index
+        assert [migration.script_name for migration, _ in batch] == [
+            "V1__first.sql",
+            "V2__mixed.sql",
+        ]
+        assert batch[index][0] is context["migration"]
+        assert batch[index][1] is context["statements"]
+        assert batch[1][1] == ["CREATE TABLE later (id INTEGER)", "INSERT INTO later VALUES (1)"]
+    with sqlite3.connect(db) as observer:
+        assert (
+            observer.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall() == []
+        )
+
+
+def test_error_callback_refusal_keeps_original_failure_and_warning_only(client):
+    instance, db = client
+    scripts = db.parent / "sql"
+    (scripts / "V1__first.sql").write_text("INSERT INTO missing_table VALUES (1);")
+    (scripts / "V2__mixed.sql").unlink()
+    for name in (
+        "beforeMigrate__callback.sql",
+        "beforeEach__callback.sql",
+        "afterEach__callback.sql",
+    ):
+        (scripts / name).unlink()
+    (scripts / "afterMigrateError__callback.sql").write_text(
+        "CREATE TABLE error_callback_ran (id INTEGER);"
+    )
+
+    def check(**context):
+        if context["migration"].script_name != "afterMigrateError__callback.sql":
+            return
+        with sqlite3.connect(db) as observer:
+            history = observer.execute(
+                "SELECT name FROM sqlite_master WHERE name='dblift_schema_history'"
+            ).fetchall()
+            failed = (
+                history
+                and observer.execute(
+                    "SELECT count(*) FROM dblift_schema_history WHERE success=0"
+                ).fetchone()[0]
+            )
+        if failed:
+            raise runtime_checks.SqlPreflightError("error callback refused")
+
+    runtime_checks.register_check("migration.preflight_sql", check)
+    with patch.object(instance.executor.log, "warning") as warning:
+        result = instance.migrate()
+    assert not result.success
+    assert "missing_table" in result.error_message
+    assert "error callback refused" not in result.error_message
+    assert any("error callback refused" in str(call) for call in warning.call_args_list)
+    assert [(record.phase, record.status) for record in result.callbacks] == [
+        ("afterMigrateError", "FAILED")
+    ]
+    with sqlite3.connect(db) as observer:
+        assert (
+            observer.execute(
+                "SELECT name FROM sqlite_master WHERE name='error_callback_ran'"
+            ).fetchall()
+            == []
+        )
+
+
+def test_batch_is_rechecked_under_lock_and_execution_uses_local_context(client):
+    instance, db = client
+    for path in (db.parent / "sql").glob("*__callback.sql"):
+        path.unlink()
+    seen = []
+
+    def check(**context):
+        batch = context["prepared_migrations"]
+        index = context["migration_index"]
+        assert batch[index] == (context["migration"], context["statements"])
+        seen.append(([migration.script_name for migration, _ in batch], index))
+
+    runtime_checks.register_check("migration.preflight_sql", check)
+    result = instance.migrate(placeholders={"table": "later"})
+    assert result.success, result.error_message
+    assert seen == [
+        (["V1__first.sql", "V2__mixed.sql"], 0),
+        (["V1__first.sql", "V2__mixed.sql"], 1),
+        (["V1__first.sql", "V2__mixed.sql"], 0),
+        (["V1__first.sql", "V2__mixed.sql"], 1),
+        (["V1__first.sql"], 0),
+        (["V1__first.sql"], 0),
+        (["V2__mixed.sql"], 0),
+        (["V2__mixed.sql"], 0),
+    ]
+
+
+def test_batch_preserves_non_sql_migrations_as_explicit_opaque_entries(client):
+    instance, db = client
+    (db.parent / "sql" / "V3__opaque.py").write_text('raise AssertionError("must not execute")')
+    seen = []
+
+    def check(**context):
+        seen.extend(context["prepared_migrations"])
+        raise runtime_checks.SqlPreflightError("inspect ordered formats")
+
+    runtime_checks.register_check("migration.preflight_sql", check)
+    result = instance.migrate(placeholders={"table": "later"})
+    assert not result.success
+    assert "inspect ordered formats" in result.error_message
+    assert [migration.script_name for migration, _ in seen] == [
+        "V1__first.sql",
+        "V2__mixed.sql",
+        "V3__opaque.py",
+    ]
+    assert seen[-1][0].format.value == "python"
+    assert seen[-1][1] == []

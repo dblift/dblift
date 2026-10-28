@@ -32,6 +32,7 @@ from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.migration_helpers import MigrationHelpers
 from dblift.core.migration.formats.migration_format import MigrationFormat
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.core.migration.migration_types import MigrationType
 from dblift.core.migration.presentation import presentation_for
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
@@ -435,7 +436,7 @@ class BaseCommand:
                     _emit_script_event(
                         "callback.failed", {"name": callback.script_name, "error": reason}
                     )
-                    if isinstance(e, SqlPreflightError):
+                    if isinstance(e, SqlPreflightError) and "Error" not in event_prefix:
                         raise
                     # Error callbacks (afterMigrateError, afterCleanError, afterUndoError) should only log warnings
                     # Regular callbacks should fail the entire operation
@@ -665,15 +666,30 @@ class BaseCommand:
         """Classify selected SQL and run contextual extension checks before writes."""
         if self._capture_objects and not registered_checks("migration.preflight_sql"):
             return
+        prepared = []
         for migration in migrations:
-            if migration.format != MigrationFormat.SQL:
-                continue
-            statements = self.execution_engine._prepare_sql_statements(
-                migration, placeholder_service=self.placeholder_service
-            )
-            if not self._capture_objects:
-                self.execution_engine._classify_execution_statements(statements)
-            self.execution_engine.check_sql_preflight(migration, statements)
+            statements = []
+            if migration.format == MigrationFormat.SQL:
+                statements = self.execution_engine._prepare_sql_statements(
+                    migration, placeholder_service=self.placeholder_service
+                )
+                if not self._capture_objects:
+                    self.execution_engine._classify_execution_statements(statements)
+            prepared.append((migration, statements))
+        prepared_migrations = [item for item in prepared if item[0].type != MigrationType.CALLBACK]
+        migration_index = 0
+        for migration, statements in prepared:
+            is_callback = migration.type == MigrationType.CALLBACK
+            index = None if is_callback else migration_index
+            if not is_callback:
+                migration_index += 1
+            if migration.format == MigrationFormat.SQL:
+                self.execution_engine.check_sql_preflight(
+                    migration,
+                    statements,
+                    prepared_migrations=[] if is_callback else prepared_migrations,
+                    migration_index=index,
+                )
 
     def _prepare_analysis_for_sql_callbacks(
         self,

@@ -7,7 +7,7 @@ callbacks, and SQL statements.
 
 import time
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from dblift.config.dblift_config import DbliftConfig
 from dblift.core.constants import (
@@ -33,6 +33,7 @@ from dblift.core.migration.executors import MigrationExecutorFactory
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.migration import Migration
+from dblift.core.migration.migration_types import MigrationType
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 from dblift.core.migration.presentation import presentation_for
 from dblift.core.migration.sql.execution_statement import (
@@ -122,13 +123,30 @@ class ExecutionEngine:
             placeholder_service=placeholder_service,
         )
 
-    def check_sql_preflight(self, migration: Migration, statements: List[str]) -> None:
-        """Let extensions refuse the complete prepared SQL before execution."""
+    def check_sql_preflight(
+        self,
+        migration: Migration,
+        statements: List[str],
+        *,
+        prepared_migrations: Optional[List[Tuple[Migration, List[str]]]] = None,
+        migration_index: Optional[int] = None,
+    ) -> None:
+        """Let extensions inspect prepared SQL and its ordered migration context."""
+        if not runtime_checks.registered_checks("migration.preflight_sql"):
+            return
+        if prepared_migrations is None:
+            if migration.type == MigrationType.CALLBACK:
+                prepared_migrations = []
+            else:
+                prepared_migrations = [(migration, statements)]
+                migration_index = 0
         runtime_checks.run_checks(
             "migration.preflight_sql",
             migration=migration,
             statements=statements,
             provider=self.provider,
+            prepared_migrations=prepared_migrations,
+            migration_index=migration_index,
         )
 
     def execute_migration(self, migration: Migration, result: OperationResult) -> None:

@@ -6,7 +6,12 @@ checks here at package import, via the ``dblift.features``
 entry-point loader. Check callables raise to abort the operation.
 
 ``migration.preflight_sql`` supplies keyword arguments ``migration``, the
-complete prepared ``statements`` list, and a connected ``provider``. Checks
+complete prepared ``statements`` list, a connected ``provider``, and the
+ordered ``prepared_migrations`` list of (migration, statements) pairs plus
+``migration_index``. The batch excludes callbacks and preserves non-SQL
+migrations with an empty statements list. Callback checks receive an empty
+batch and no index. Execution rechecks receive only the current migration;
+previous migrations are then reflected in the live catalog. Checks
 may run repeatedly (including after callbacks) and should only inspect state.
 Catalog reads should use ``provider.config.database.schema`` explicitly rather
 than assuming the connection already uses the configured target schema.
