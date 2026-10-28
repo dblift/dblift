@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `undo` refuses a batch before running any undo script or callback when one of its undo SQL
+  scripts has no executable statement.
+
 ### Removed
 
 ## [5.1.1] - 2026-10-27
