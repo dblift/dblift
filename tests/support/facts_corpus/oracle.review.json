@@ -102,45 +102,6 @@
   "reason": "[engine rejects] oracle 23.26.3 rejects the text (ORA-00925: missing INTO keyword); the statement never runs on Oracle. Differences: table: helper None, reader ''; updated_columns: helper None, reader []; full_table: helper None, reader False.",
   "sql": "INSERT"
  },
- "01958918fe7a8f3d": {
-  "class": "dml-differs",
-  "facts": {
-   "events": [
-    "DELETE"
-   ],
-   "kind": "DML",
-   "objects": [
-    [
-     "CHILD",
-     "TABLE",
-     "altered",
-     null
-    ]
-   ],
-   "operation": "DELETE",
-   "predicate": "c.id = 1",
-   "target": "CHILD",
-   "target_sql": "child c"
-  },
-  "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.child"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "child",
-     null
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "[engine rejects] oracle 23.26.3 rejects the text (ORA-03048: SQL reserved word 'AS' is not syntactically valid following 'DELETE FR); the statement never runs on Oracle. Differences: table: helper None, reader 'child c'; events: helper None, reader ['DELETE']; updated_columns: helper None, reader []; predicate: helper None, reader 'c.id = 1'; full_table: helper None, reader False. Unquoted names are held upper-cased, as Oracle stores them; the extraction kept the spelling written.",
-  "sql": "DELETE FROM child AS c WHERE c.id = 1"
- },
  "01a97d3690f0d340/analyzer": {
   "class": "opaque-reader-gap",
   "facts": {
@@ -7242,48 +7203,6 @@
   "reason": "[gap made explicit] oracle 23.26.3 accepts the statement (it parses; ORA-00998 is raised afterwards); the reader leaves it unread (view: oracle Command is opaque to statement facts) and names only view vw (created), where the extraction named unknown vw. Unquoted names are held upper-cased, as Oracle stores them; the extraction kept the spelling written.",
   "sql": "CREATE OR REPLACE EDITIONABLE VIEW vw AS SELECT 1 FROM DUAL"
  },
- "79abf45cdc15ade6": {
-  "class": "dml-differs",
-  "facts": {
-   "affected_columns": [
-    "id"
-   ],
-   "events": [
-    "UPDATE"
-   ],
-   "kind": "DML",
-   "objects": [
-    [
-     "CHILD",
-     "TABLE",
-     "altered",
-     null
-    ]
-   ],
-   "operation": "UPDATE",
-   "predicate": "c.id = 1",
-   "target": "CHILD",
-   "target_sql": "child c"
-  },
-  "old": {
-   "analyzer": [
-    [
-     "TABLE",
-     "default_schema.child"
-    ]
-   ],
-   "hybrid": [
-    [
-     "TABLE",
-     "child",
-     null
-    ]
-   ]
-  },
-  "path": "both",
-  "reason": "[engine rejects] oracle 23.26.3 rejects the text (ORA-00971: missing SET keyword); the statement never runs on Oracle. Differences: table: helper None, reader 'child c'; events: helper None, reader ['UPDATE']; updated_columns: helper None, reader ['id']; predicate: helper None, reader 'c.id = 1'; full_table: helper None, reader False. Unquoted names are held upper-cased, as Oracle stores them; the extraction kept the spelling written.",
-  "sql": "UPDATE child AS c SET id = 2 WHERE c.id = 1"
- },
  "7a5e2b59fd4ad115": {
   "class": "disagree",
   "facts": {
@@ -12934,7 +12853,7 @@
   "sql": "ALTER VIEW dbo.v AS SELECT 1"
  },
  "d6558f473d19e30f": {
-  "class": "dml-differs",
+  "class": "disagree",
   "facts": {
    "affected_columns": [
     "id"
@@ -12954,7 +12873,7 @@
    "operation": "UPDATE",
    "predicate": "c.id = 1",
    "target": "Warehouse.Sales.Order Items",
-   "target_sql": "\"Warehouse\".\"Sales\".\"Order Items\" c"
+   "target_sql": "\"Warehouse\".\"Sales\".\"Order Items\""
   },
   "old": {
    "analyzer": [
@@ -12972,7 +12891,7 @@
    ]
   },
   "path": "both",
-  "reason": "[engine rejects] oracle 23.26.3 rejects the text (ORA-00971: missing SET keyword); the statement never runs on Oracle. Differences: table: helper None, reader '\"Warehouse\".\"Sales\".\"Order Items\" c'; events: helper None, reader ['UPDATE']; updated_columns: helper None, reader ['id']; predicate: helper None, reader 'c.id = 1'; full_table: helper None, reader False.",
+  "reason": "[engine rejects] oracle 23.26.3 rejects the text (ORA-00971: missing SET keyword); the statement never runs on Oracle. The three-part name differs: the reader keeps `Warehouse.Sales` as the schema, the old extraction kept only `Sales`.",
   "sql": "UPDATE \"Warehouse\".\"Sales\".\"Order Items\" AS c SET id = 2 WHERE c.id = 1"
  },
  "d710e6312e18f419": {

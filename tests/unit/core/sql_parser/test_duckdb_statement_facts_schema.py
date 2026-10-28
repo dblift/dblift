@@ -90,9 +90,9 @@ def test_duckdb_metadata_mappings_preserve_postgres(dialect, sql, operation, kin
 @pytest.mark.parametrize(
     "dialect,expected",
     [
-        ("sqlite", "child AS c"),
+        ("sqlite", "child"),
         ("postgres", "child"),
-        ("oracle", "child c"),
+        ("oracle", "child"),
         ("mysql", "child"),
         ("tsql", "child"),
     ],
