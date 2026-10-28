@@ -231,3 +231,57 @@ def test_check_receives_configured_schema_without_switching_connection(client):
         assert (
             observer.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall() == []
         )
+
+
+def test_callback_sql_is_rechecked_after_prior_callback_changes_state(client):
+    instance, db = client
+    scripts = db.parent / "sql"
+    (scripts / "V2__mixed.sql").unlink()
+    (scripts / "beforeMigrate__callback.sql").write_text("CREATE TABLE state_changed (id INTEGER);")
+    (scripts / "beforeEach__callback.sql").write_text("CREATE TABLE unsafe_callback (id INTEGER);")
+    (scripts / "afterEach__callback.sql").write_text("CREATE TABLE after_each_ran (id INTEGER);")
+    (scripts / "afterMigrateError__callback.sql").write_text(
+        "CREATE TABLE error_callback_ran (id INTEGER);"
+    )
+
+    def check(*, migration, statements, provider):
+        if migration.script_name != "beforeEach__callback.sql":
+            return
+        with sqlite3.connect(db) as observer:
+            changed = observer.execute(
+                "SELECT name FROM sqlite_master WHERE name='state_changed'"
+            ).fetchall()
+        if changed:
+            raise runtime_checks.SqlPreflightError("callback refused after catalog change")
+
+    runtime_checks.register_check("migration.preflight_sql", check)
+    with patch("dblift.core.migration.commands.base_command._emit_script_event") as emit:
+        result = instance.migrate(placeholders={"table": "later"})
+    assert not result.success
+    assert "callback refused after catalog change" in result.error_message
+    callback_events = [
+        (call.args[0], call.args[1]["name"])
+        for call in emit.call_args_list
+        if call.args[0] in ("callback.started", "callback.completed", "callback.failed")
+    ]
+    assert callback_events == [
+        ("callback.started", "beforeMigrate__callback.sql"),
+        ("callback.completed", "beforeMigrate__callback.sql"),
+        ("callback.started", "beforeEach__callback.sql"),
+        ("callback.failed", "beforeEach__callback.sql"),
+    ]
+    assert [(record.phase, record.status) for record in result.callbacks] == [
+        ("beforeMigrate", "OK"),
+        ("beforeEach", "FAILED"),
+    ]
+    assert instance.executor.journal.entries == []
+    with sqlite3.connect(db) as observer:
+        assert observer.execute("SELECT count(*) FROM state_changed").fetchone() == (0,)
+        assert (
+            observer.execute(
+                "SELECT name FROM sqlite_master WHERE name IN "
+                "('earlier', 'unsafe_callback', 'after_each_ran', 'error_callback_ran')"
+            ).fetchall()
+            == []
+        )
+        assert observer.execute("SELECT count(*) FROM dblift_schema_history").fetchone() == (0,)

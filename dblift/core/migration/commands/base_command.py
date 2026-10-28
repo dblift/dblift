@@ -38,7 +38,7 @@ from dblift.core.migration.scripting.migration_script_manager import MigrationSc
 from dblift.core.migration.state.migration_state import CallbackReadSnapshot, MigrationReadSnapshot
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.ui.migration_ui import MigrationUI
-from dblift.core.seams.runtime_checks import registered_checks
+from dblift.core.seams.runtime_checks import SqlPreflightError, registered_checks
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.core.utils.url_masking import mask_database_url
 from dblift.db.base_provider import BaseProvider
@@ -435,6 +435,8 @@ class BaseCommand:
                     _emit_script_event(
                         "callback.failed", {"name": callback.script_name, "error": reason}
                     )
+                    if isinstance(e, SqlPreflightError):
+                        raise
                     # Error callbacks (afterMigrateError, afterCleanError, afterUndoError) should only log warnings
                     # Regular callbacks should fail the entire operation
                     if "Error" in event_prefix:

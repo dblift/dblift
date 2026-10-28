@@ -1114,6 +1114,8 @@ class ExecutionEngine:
             )
             raise
 
+        self.check_sql_preflight(callback, sql_statements)
+
         policy = self._plan_sql_execution(sql_statements)
         if policy.unsupported_mixed_mode:
             raise CallbackExecutionError(

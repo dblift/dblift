@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `undo` refuses a batch before running any undo script or callback when one of its undo SQL
   scripts has no executable statement.
+- Extensions can inspect complete prepared SQL before migrations and callbacks run,
+  with checks repeated after locking and before execution. A refusal stops the SQL
+  without writing failed migration history or running error callbacks.
 
 ### Removed
 
