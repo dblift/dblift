@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   DuckDB, Redshift and Snowflake. The statement facts kept the alias in `target_sql` for those
   three dialects, so the result was not a table reference: a consumer that parses it as one
   (`UPDATE orders o SET ...`) failed with `Failed to parse 'orders o' into sqlglot Table`.
+
 ### Removed
 
 ## [5.1.0] - 2026-10-26
