@@ -512,3 +512,41 @@ def test_undo_callback_execution_refusal_does_not_run_error_callbacks(client, ev
         else:
             assert history == before_history
             assert observer.execute("SELECT count(*) FROM earlier").fetchone() == (0,)
+
+
+def test_clean_callbacks_do_not_use_migration_sql_preflight(client):
+    instance, db = client
+    scripts = db.parent / "sql"
+    for path in scripts.glob("*__callback.sql"):
+        path.unlink()
+    (scripts / "V2__mixed.sql").unlink()
+    assert instance.migrate().success
+    (scripts / "beforeClean__check.sql").write_text("CREATE TABLE clean_callback_ran (id INTEGER);")
+    (scripts / "afterCleanError__check.sql").write_text(
+        "CREATE TABLE clean_error_ran (id INTEGER);"
+    )
+    seen = []
+
+    def check(**context):
+        seen.append(context["migration"].script_name)
+        if context["migration"].script_name == "beforeClean__check.sql":
+            raise runtime_checks.SqlPreflightError("migration check excludes clean")
+
+    runtime_checks.register_check("migration.preflight_sql", check)
+    with patch("dblift.core.migration.commands.base_command._emit_script_event") as events:
+        result = instance.clean(clean_enabled=True)
+    assert result.success, result.error_message
+    assert seen == []
+    assert [(record.phase, record.status) for record in result.callbacks] == [("beforeClean", "OK")]
+    assert [
+        call.args[0]
+        for call in events.call_args_list
+        if call.args[0] in ("callback.started", "callback.completed", "callback.failed")
+    ] == ["callback.started", "callback.completed"]
+    with sqlite3.connect(db) as observer:
+        assert (
+            observer.execute(
+                "SELECT name FROM sqlite_master WHERE name='clean_error_ran'"
+            ).fetchall()
+            == []
+        )

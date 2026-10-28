@@ -5,7 +5,8 @@ registered these are no-ops. Installed add-on packages register their
 checks here at package import, via the ``dblift.features``
 entry-point loader. Check callables raise to abort the operation.
 
-``migration.preflight_sql`` supplies keyword arguments ``migration``, the
+``migration.preflight_sql`` runs for migrate/undo SQL and their callbacks,
+including direct migration execution. It supplies keyword arguments ``migration``, the
 complete prepared ``statements`` list, a connected ``provider``, and the
 ordered ``prepared_migrations`` list of (migration, statements) pairs plus
 ``migration_index``. The batch excludes callbacks and preserves non-SQL

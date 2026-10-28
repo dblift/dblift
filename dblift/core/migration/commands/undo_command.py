@@ -30,6 +30,8 @@ UNDO_POLICY = ScriptRunPolicy(
 class UndoCommand(BaseCommand):
     """Handles the 'undo' command execution."""
 
+    _check_callback_sql_preflight = True
+
     def _add_visible_sql(self, undo_migration: Any, result: UndoResult) -> None:
         """Populate SQL visibility data for an undo migration script."""
         statements = self.execution_engine.get_executable_sql_statements(undo_migration, result)

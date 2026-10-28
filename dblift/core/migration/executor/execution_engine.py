@@ -1092,6 +1092,8 @@ class ExecutionEngine:
         callback: Migration,
         result: Optional[OperationResult] = None,
         record: Optional[CallbackExecution] = None,
+        *,
+        check_sql_preflight: bool = False,
     ) -> None:
         """Execute a callback migration.
 
@@ -1100,6 +1102,7 @@ class ExecutionEngine:
             result: Optional operation result to attach captured query results to
                 (when ``result.show_query_results`` is enabled)
             record: Optional callback record to fill with statements and result sets
+            check_sql_preflight: Run contextual SQL checks for migrate/undo callbacks.
         """
         self._reset_provider_schema_cache()
         self._apply_configured_schema()
@@ -1132,7 +1135,8 @@ class ExecutionEngine:
             )
             raise
 
-        self.check_sql_preflight(callback, sql_statements)
+        if check_sql_preflight:
+            self.check_sql_preflight(callback, sql_statements)
 
         policy = self._plan_sql_execution(sql_statements)
         if policy.unsupported_mixed_mode:

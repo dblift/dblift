@@ -50,6 +50,8 @@ MIGRATE_POLICY = ScriptRunPolicy(
 class MigrateCommand(BaseCommand):
     """Handles the 'migrate' command execution."""
 
+    _check_callback_sql_preflight = True
+
     def __init__(
         self,
         ctx_or_config: Optional[Union[BaseCommandContext, DbliftConfig]] = None,

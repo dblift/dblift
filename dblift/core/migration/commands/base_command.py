@@ -207,6 +207,7 @@ class BaseCommand:
     # to skip the generic console footer and avoid duplication.
     _has_own_console_footer: bool = False
 
+    _check_callback_sql_preflight: bool = False
     _callback_binding: Optional[_CallbackBinding] = None
 
     def __init__(
@@ -424,7 +425,12 @@ class BaseCommand:
                 try:
                     self.log.info(f"Executing callback: {callback.script_name}", dedupe=False)
                     _emit_script_event("callback.started", {"name": callback.script_name})
-                    self.execution_engine.execute_callback(callback, result, record=record)
+                    if self._check_callback_sql_preflight:
+                        self.execution_engine.execute_callback(
+                            callback, result, record=record, check_sql_preflight=True
+                        )
+                    else:
+                        self.execution_engine.execute_callback(callback, result, record=record)
                     _emit_script_event("callback.completed", {"name": callback.script_name})
                     self.log.info(
                         f"Callback {callback.script_name} executed successfully", dedupe=False
