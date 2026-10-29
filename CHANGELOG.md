@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [5.1.2] - 2026-10-28
+
+### Fixed
+
+- `undo` refuses a batch before running any undo script or callback when one of its undo SQL
+  scripts has no executable statement.
+- Extensions can inspect complete prepared SQL and ordered migration context for `migrate`,
+  `undo` and their callbacks, with checks repeated after locking and before execution. A refusal
+  stops SQL without writing failed migration history or running error callbacks.
+
 ## [5.1.1] - 2026-10-27
 
 ### Fixed
@@ -5566,5 +5576,6 @@ All additions are backward compatible (MINOR): two new modules, two new
 - Cross-platform distributions (Windows, Linux, macOS).
 - Modular provider architecture for easy database support extension.
 
-[Unreleased]: https://github.com/dblift/dblift/compare/v4.12.0...develop
+[Unreleased]: https://github.com/dblift/dblift/compare/v5.1.2...develop
+[5.1.2]: https://github.com/dblift/dblift/compare/v5.1.1...v5.1.2
 [4.12.0]: https://github.com/dblift/dblift/compare/v4.11.1...v4.12.0

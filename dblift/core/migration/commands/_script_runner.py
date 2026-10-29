@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Tuple
 from dblift.core.constants import SECONDS_TO_MILLISECONDS
 from dblift.core.logger.results import OperationResult
 from dblift.core.migration.migration import Migration
+from dblift.core.seams.runtime_checks import SqlPreflightError, registered_checks
 from dblift.db.error import redact_driver_error_text
 
 from ._script_events import emit_script_event
@@ -70,6 +71,9 @@ class ScriptRunner:
         try:
             for event in policy.before_events:
                 command._fire(event)
+
+            if registered_checks("migration.preflight_sql"):
+                command._preflight_execution_sql([script])
 
             if journal:
                 journal.start_migration(
@@ -128,6 +132,24 @@ class ScriptRunner:
                 command._fire(event)
             return True
 
+        except SqlPreflightError as e:
+            reason = redact_driver_error_text(str(e))
+            command.log.error(reason)
+            result.set_error(reason)
+            execution_time = int((time.time() - start_time) * SECONDS_TO_MILLISECONDS)
+            if journal and journal_started:
+                journal.end_migration(
+                    script.script_name,
+                    success=False,
+                    error_message=reason,
+                    execution_time=execution_time,
+                )
+            if started_emitted and not terminal_emitted:
+                emit_script_event(
+                    "migration.script.failed",
+                    {**event_data, "error": reason, "execution_time": execution_time},
+                )
+            return False
         except Exception as e:
             if error_event_fired:
                 # The failure was already reported in full; this is the error

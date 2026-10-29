@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 from dblift.core.logger.results import MigrationInfo, MigrationSqlInfo, UndoResult
 from dblift.core.migration.formats.migration_format import MigrationFormat
 from dblift.core.migration.migration import Migration
+from dblift.core.seams.runtime_checks import SqlPreflightError, registered_checks
 
 from ._script_runner import ScriptRunner, ScriptRunPolicy
 from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand, PreflightConnectionError
@@ -28,6 +29,8 @@ UNDO_POLICY = ScriptRunPolicy(
 
 class UndoCommand(BaseCommand):
     """Handles the 'undo' command execution."""
+
+    _check_callback_sql_preflight = True
 
     def _add_visible_sql(self, undo_migration: Any, result: UndoResult) -> None:
         """Populate SQL visibility data for an undo migration script."""
@@ -87,9 +90,11 @@ class UndoCommand(BaseCommand):
 
         Pushed on the lock's ``ExitStack`` after the lock, so it runs before the
         lock is released: error callbacks can run SQL, which must not overlap a
-        migrate. A connection failure is not an undo failure and fires nothing.
+        migrate. Connection and SQL preflight refusals fire no error callbacks.
         """
-        if isinstance(exc, Exception) and not isinstance(exc, PreflightConnectionError):
+        if isinstance(exc, Exception) and not isinstance(
+            exc, (PreflightConnectionError, SqlPreflightError)
+        ):
             self._run_error_handler("undo", lambda: self._fire("afterUndoError"))
         return False
 
@@ -205,7 +210,23 @@ class UndoCommand(BaseCommand):
 
                 undo_plan = [(step.migration, step.undo_script) for step in plan.steps]
 
-                if not dry_run and not self._capture_objects:
+                for _, undo_migration in undo_plan:
+                    if undo_migration.format != MigrationFormat.SQL:
+                        continue
+                    statements = self.execution_engine.get_executable_sql_statements(
+                        undo_migration, result
+                    )
+                    if result.error_message:
+                        return
+                    if not statements:
+                        result.set_error(
+                            f"Undo script {undo_migration.script_name} has no executable SQL"
+                        )
+                        return
+
+                if not dry_run and (
+                    not self._capture_objects or registered_checks("migration.preflight_sql")
+                ):
                     callbacks = self._callbacks_for(
                         ("beforeUndo", "afterUndo", "afterUndoError", "beforeEach", "afterEach")
                     )
@@ -235,6 +256,8 @@ class UndoCommand(BaseCommand):
                 # Execute beforeUndo callbacks
                 try:
                     self._fire("beforeUndo")
+                except SqlPreflightError:
+                    raise
                 except Exception as e:
                     self.log.error(f"beforeUndo callback failed: {e}")
                     result.set_error(f"beforeUndo callback failed: {e}")
