@@ -7,7 +7,7 @@ callbacks, and SQL statements.
 
 import time
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from dblift.config.dblift_config import DbliftConfig
 from dblift.core.constants import (
@@ -33,6 +33,7 @@ from dblift.core.migration.executors import MigrationExecutorFactory
 from dblift.core.migration.formats import MigrationFormat
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.migration import Migration
+from dblift.core.migration.migration_types import MigrationType
 from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 from dblift.core.migration.presentation import presentation_for
 from dblift.core.migration.sql.execution_statement import (
@@ -47,6 +48,7 @@ from dblift.core.migration.sql.migration_sql_parser import (
 )
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.migration.sql.statement_reader import StatementReader
+from dblift.core.seams import runtime_checks
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.base_provider import BaseProvider
 from dblift.db.error import (
@@ -121,6 +123,32 @@ class ExecutionEngine:
             placeholder_service=placeholder_service,
         )
 
+    def check_sql_preflight(
+        self,
+        migration: Migration,
+        statements: List[str],
+        *,
+        prepared_migrations: Optional[List[Tuple[Migration, List[str]]]] = None,
+        migration_index: Optional[int] = None,
+    ) -> None:
+        """Let extensions inspect prepared SQL and its ordered migration context."""
+        if not runtime_checks.registered_checks("migration.preflight_sql"):
+            return
+        if prepared_migrations is None:
+            if migration.type == MigrationType.CALLBACK:
+                prepared_migrations = []
+            else:
+                prepared_migrations = [(migration, statements)]
+                migration_index = 0
+        runtime_checks.run_checks(
+            "migration.preflight_sql",
+            migration=migration,
+            statements=statements,
+            provider=self.provider,
+            prepared_migrations=prepared_migrations,
+            migration_index=migration_index,
+        )
+
     def execute_migration(self, migration: Migration, result: OperationResult) -> None:
         """Execute a single migration.
 
@@ -150,6 +178,8 @@ class ExecutionEngine:
         )
         if statements is None:
             return
+
+        self.check_sql_preflight(migration, statements)
 
         policy = self._plan_sql_execution(statements)
         if policy.unsupported_mixed_mode:
@@ -1062,6 +1092,8 @@ class ExecutionEngine:
         callback: Migration,
         result: Optional[OperationResult] = None,
         record: Optional[CallbackExecution] = None,
+        *,
+        check_sql_preflight: bool = False,
     ) -> None:
         """Execute a callback migration.
 
@@ -1070,6 +1102,7 @@ class ExecutionEngine:
             result: Optional operation result to attach captured query results to
                 (when ``result.show_query_results`` is enabled)
             record: Optional callback record to fill with statements and result sets
+            check_sql_preflight: Run contextual SQL checks for migrate/undo callbacks.
         """
         self._reset_provider_schema_cache()
         self._apply_configured_schema()
@@ -1101,6 +1134,9 @@ class ExecutionEngine:
                 f"Error parsing SQL in callback {callback.script_name}: {to_python_string(e)}"
             )
             raise
+
+        if check_sql_preflight:
+            self.check_sql_preflight(callback, sql_statements)
 
         policy = self._plan_sql_execution(sql_statements)
         if policy.unsupported_mixed_mode:
