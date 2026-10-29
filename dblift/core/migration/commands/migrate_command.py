@@ -50,6 +50,8 @@ MIGRATE_POLICY = ScriptRunPolicy(
 class MigrateCommand(BaseCommand):
     """Handles the 'migrate' command execution."""
 
+    _check_callback_sql_preflight = True
+
     def __init__(
         self,
         ctx_or_config: Optional[Union[BaseCommandContext, DbliftConfig]] = None,
@@ -354,7 +356,11 @@ class MigrateCommand(BaseCommand):
         This will automatically create the schema history table if it doesn't exist,
         without requiring a separate baseline command.
         """
-        from dblift.core.seams.runtime_checks import run_checks
+        from dblift.core.seams.runtime_checks import (
+            SqlPreflightError,
+            registered_checks,
+            run_checks,
+        )
 
         if not dry_run and not mark_as_executed:
             self._prepare_required_analysis()
@@ -381,7 +387,9 @@ class MigrateCommand(BaseCommand):
 
         # Connect before reading state. Execution mode delays history creation
         # until selected SQL is classified; dry-run leaves the database untouched.
-        defer_history = not dry_run and not mark_as_executed and not self._capture_objects
+        contextual_sql_checks = bool(registered_checks("migration.preflight_sql"))
+        check_execution_sql = not self._capture_objects or contextual_sql_checks
+        defer_history = not dry_run and not mark_as_executed and check_execution_sql
         restore_busy_timeout = None
 
         def preflight() -> None:
@@ -463,7 +471,7 @@ class MigrateCommand(BaseCommand):
                     events.extend(("beforeRepeatable", "afterRepeatable"))
                 self._preflight_execution_sql(migrations + self._callbacks_for(events))
 
-            if not dry_run and not mark_as_executed and not self._capture_objects:
+            if not dry_run and not mark_as_executed and check_execution_sql:
                 if pending_migrations:
                     preflight_sql(pending_migrations)
                 self._run_preflight(result, ensure_history=True, ensure_schema=True)
@@ -557,8 +565,9 @@ class MigrateCommand(BaseCommand):
 
                 planned = {m.script_name for m in pending_migrations}
                 newly_pending = [m for m in locked_pending if m.script_name not in planned]
-                if newly_pending and not mark_as_executed and not self._capture_objects:
-                    preflight_sql(newly_pending)
+                to_check = locked_pending if contextual_sql_checks else newly_pending
+                if to_check and not mark_as_executed and check_execution_sql:
+                    preflight_sql(to_check)
 
                 still_pending = {m.script_name for m in locked_pending}
                 skipped = [m for m in pending_migrations if m.script_name not in still_pending]
@@ -617,6 +626,11 @@ class MigrateCommand(BaseCommand):
                         versioned_migrations, repeatable_migrations, result
                     )
 
+            except SqlPreflightError as e:
+                # No script or callback has started: this is a preflight refusal.
+                reason = redact_driver_error_text(str(e))
+                self.log.error(reason)
+                result.set_error(reason)
             except Exception as e:
                 # Handle any exception during lock acquisition or migration execution
                 # Only log if error_message is not already set (migration execution already logged it)

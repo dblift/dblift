@@ -35,3 +35,20 @@ def test_check_exception_propagates():
     runtime_checks.register_check("migration.pre_execution", boom)
     with pytest.raises(RuntimeError, match="license invalid"):
         runtime_checks.run_checks("migration.pre_execution")
+
+
+def test_context_is_forwarded_to_checks_in_registration_order():
+    calls = []
+    migration, statements, provider = object(), ["SELECT 1", "SELECT 2"], object()
+
+    def first(**context):
+        calls.append(("first", context))
+
+    def second(**context):
+        calls.append(("second", context))
+
+    runtime_checks.register_check("migration.preflight_sql", first)
+    runtime_checks.register_check("migration.preflight_sql", second)
+    context = {"migration": migration, "statements": statements, "provider": provider}
+    runtime_checks.run_checks("migration.preflight_sql", **context)
+    assert calls == [("first", context), ("second", context)]
