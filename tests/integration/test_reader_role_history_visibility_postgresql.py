@@ -56,17 +56,17 @@ def run_scenario(url: str, reader_url_for, tmp_path) -> None:
 
         reader_url = reader_url_for(role, password)
 
-        # Usage on the schema, but no SELECT on the history table.
-        reader = _reader_client(reader_url, schema, migrations)
-        try:
-            info = reader.info()
-            dry_run = reader.migrate(dry_run=True)
-        finally:
-            reader.close()
-        for result in (info, dry_run):
+        # Usage on the schema, but no SELECT on the history table. One client per
+        # call: a failed read leaves a caller-owned connection's transaction aborted.
+        for operation in ("info", "migrate"):
+            reader = _reader_client(reader_url, schema, migrations)
+            try:
+                result = reader.info() if operation == "info" else reader.migrate(dry_run=True)
+            finally:
+                reader.close()
             assert not result.success
-            assert "permission denied" in result.error_message
-        assert not getattr(dry_run, "migrations", None)
+            assert "permission denied" in str(result.error_message), result.error_message
+            assert not getattr(result, "migrations", None)
 
         # With SELECT, the same role reads the real history.
         with admin.connect() as conn:

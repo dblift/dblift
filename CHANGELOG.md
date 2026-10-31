@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- On PostgreSQL, `info`, `migrate` and the API and MCP equivalents fail with the engine's
+  `permission denied` error when the connected role cannot read the schema-history table. They
+  reported success with every migration Pending and no schema version, because the existence
+  check listed only tables the role could read.
+
 ### Removed
 
 ## [5.1.2] - 2026-10-28

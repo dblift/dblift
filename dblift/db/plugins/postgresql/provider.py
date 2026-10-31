@@ -210,14 +210,21 @@ class PostgreSqlProvider(SqlAlchemyProvider):
             # success rather than failing the caller.
 
     def table_exists(self, schema: str, table_name: str) -> bool:
-        """Return whether a table exists in the given schema."""
+        """Return whether a table exists in the given schema.
+
+        Reads the system catalog: ``information_schema.tables`` lists only
+        tables the role holds a privilege on, so a table it cannot read would
+        look absent instead of failing the read with the engine's message.
+        """
         rows = self.execute_query(
             """
             SELECT EXISTS (
                 SELECT 1
-                FROM information_schema.tables
-                WHERE table_schema = ?
-                  AND table_name = ?
+                FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = ?
+                  AND c.relname = ?
+                  AND c.relkind IN ('r', 'p', 'v', 'f')
             ) AS exists
             """,
             [schema, table_name],
