@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `permission denied` error when the connected role cannot read the schema-history table. They
   reported success with every migration Pending and no schema version, because the existence
   check listed only tables the role could read.
+- `info` and `migrate` (including `--dry-run`) fail with `Migration scripts directory not found`
+  when the configured migrations directory does not exist, as `validate` does. They exited 0
+  with "No pending migrations found" or an empty table.
 
 ### Removed
 
