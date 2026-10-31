@@ -80,3 +80,13 @@ def test_ending_transaction_with_nothing_open_keeps_applied_schema():
     provider._end_open_transaction(connection)
 
     assert provider._schema_applied_for == "app"
+
+
+def test_failed_create_race_rollback_forgets_applied_schema():
+    connection = _FakeConnection(open_transaction=True)
+    provider = _Provider(connection)
+
+    provider._rollback_failed_create_race("migration-lock-table")
+
+    assert connection.rollbacks == 1
+    assert provider._schema_applied_for is None
