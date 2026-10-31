@@ -535,6 +535,9 @@ class ExecutionEngine:
                     )
 
             self.provider.begin_transaction()
+            # No-op while the cache is intact; re-issues the schema inside the
+            # new transaction when the rollback above just undid it.
+            self._apply_configured_schema()
             return True
         except Exception as e:
             self.log.warning(f"Could not begin transaction for {migration.script_name}: {e}")

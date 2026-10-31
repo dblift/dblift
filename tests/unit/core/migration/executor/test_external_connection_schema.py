@@ -1,11 +1,6 @@
-"""``_prepare_transaction`` on a caller-owned connection must not leave a stale schema cache.
+"""``_prepare_transaction`` on a caller-owned connection re-applies the schema.
 
-``DBLiftClient.from_sqlalchemy(connection=...)`` binds the caller's connection
-to the provider and never commits on it. ``_apply_configured_schema()`` then
-issues ``SET search_path`` inside SQLAlchemy's implicit transaction, and the
-defensive rollback at the start of ``_prepare_transaction`` undoes it, with
-``provider._tx`` still ``None``. The migration's statements must re-apply the
-schema rather than run on the server default.
+Its rollback undoes the ``SET search_path`` (``provider._tx`` stays ``None``).
 """
 
 from unittest.mock import MagicMock, patch
@@ -38,17 +33,24 @@ class _Provider(PostgreSqlProvider):
         self._schema_applied_for = "app"  # _apply_configured_schema() already ran
 
 
-def test_prepare_transaction_on_external_connection_invalidates_schema_cache():
+def test_prepare_transaction_on_external_connection_reapplies_schema():
     provider = _Provider()
+    config = MagicMock()
+    config.database.schema = "app"
     engine = ExecutionEngine(
-        provider=provider, sql_analyzer=MagicMock(), log=MagicMock(), config=None
+        provider=provider, sql_analyzer=MagicMock(), log=MagicMock(), config=config
     )
     migration = MagicMock(spec=Migration)
     migration.format = MigrationFormat.SQL
     migration.script_name = "V1__init.sql"
+    issued: list = []
 
     with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
-        started = engine._prepare_transaction(migration)
+        with patch.object(
+            SqlAlchemyProvider, "execute_statement", lambda self, sql, *a, **k: issued.append(sql)
+        ):
+            started = engine._prepare_transaction(migration)
 
     assert started
-    assert provider._schema_applied_for is None
+    assert len([sql for sql in issued if sql.startswith("SET search_path")]) == 1
+    assert provider._schema_applied_for == "app"

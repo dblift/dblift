@@ -378,7 +378,12 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
 
         engine.execute_migration(migration, result)
 
-        self.assertEqual(call_order, [("set_current_schema", "app"), ("execute_factory",)])
+        # The mock provider has no schema cache, so the re-apply after begin_transaction
+        # (a no-op on a cache-guarded provider) shows up as a second call.
+        self.assertEqual(
+            call_order,
+            [("set_current_schema", "app"), ("set_current_schema", "app"), ("execute_factory",)],
+        )
 
     def test_schema_apply_reaches_configured_schema_even_with_stale_cache(self):
         """Regression guard: ``_reset_provider_schema_cache()`` must run before
@@ -645,11 +650,13 @@ class TestSqlServerSchemaCacheResetsAtMigrationBoundary(unittest.TestCase):
             {"db_user": "app_user", "default_schema": catalog_schema["value"]}
         ]
 
-        with patch.object(
-            SqlAlchemyProvider,
-            "execute_statement",
-            lambda self, sql, schema=None, params=None: provider.issued.append(sql) or 0,
-        ):
+        def execute_statement(self, sql, schema=None, params=None):
+            provider.issued.append(sql)
+            if "DEFAULT_SCHEMA" in sql:
+                catalog_schema["value"] = "app"  # the ALTER USER lands in the catalog
+            return 0
+
+        with patch.object(SqlAlchemyProvider, "execute_statement", execute_statement):
             with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
                 with patch.object(engine, "_parse_sql_statements", return_value=["SELECT 1"]):
                     with patch.object(engine, "_classify_execution_statements", return_value=[]):

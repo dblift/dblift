@@ -1,16 +1,7 @@
-"""A rolled-back transaction may undo an uncommitted ``SET search_path``.
+"""A rollback that had a transaction open undoes the ``SET search_path`` the provider cached.
 
-PostgreSQL documents a plain ``SET`` as transactional: when the statement ran
-inside a transaction that is later rolled back, the session is back on its
-previous ``search_path``. ``PostgreSqlProvider`` remembers the schema it last
-applied so it does not re-issue the statement on every migration statement;
-that memory is only valid while the ``SET`` is still in effect.
-
-On a caller-owned SQLAlchemy connection (``DBLiftClient.from_sqlalchemy(
-connection=...)``) nothing commits the ``SET``: the provider never commits
-on an external connection, and SQLAlchemy opens a transaction implicitly
-on the first statement. The provider's own rollbacks then undo the ``SET``
-while the cache still says it is applied.
+PostgreSQL rolls back a plain ``SET``; on a caller-owned connection nothing
+commits it, so the schema cache must be cleared by every such rollback.
 """
 
 from unittest.mock import MagicMock

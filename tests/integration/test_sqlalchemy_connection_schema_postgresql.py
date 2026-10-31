@@ -1,11 +1,7 @@
-"""``from_sqlalchemy(connection=...)`` must migrate the configured PostgreSQL schema.
+"""``from_sqlalchemy(connection=...)`` migrates the configured PostgreSQL schema.
 
-A ``SET search_path`` issued on a caller-owned connection is never committed
-by dblift, so the provider's defensive rollback before each migration undoes
-it. Objects then land on the server's default path (``public``) while the
-history table, which is schema-qualified, lands in the configured schema.
-Both the transactional path and the autocommit path (``CREATE INDEX
-CONCURRENTLY``) are pinned: each resolves names on its own connection state.
+dblift never commits on a caller-owned connection, so its own rollback undoes the
+``SET search_path``. Scenarios vary the first unit: DDL, CIC, Python, a query.
 """
 
 from __future__ import annotations
@@ -20,6 +16,8 @@ from dblift.core.logger import NullLog
 
 pytestmark = pytest.mark.integration
 
+SCENARIOS = ["ddl_then_cic", "cic_first", "python_first", "select_first"]
+
 
 def _url(config: dict) -> str:
     return (
@@ -28,22 +26,47 @@ def _url(config: dict) -> str:
     )
 
 
-def run_connection_schema_scenario(url: str, tmp_path) -> None:
-    """Shared body so the same scenario can run against any PostgreSQL."""
-    schema = f"q_conn_{uuid.uuid4().hex[:8]}"
-    migrations = tmp_path / "migrations"
+def _write_migrations(name: str, migrations, table: str, index: str) -> list:
+    """Write the scenario's files; return the versions expected in the history."""
+    if name == "ddl_then_cic":
+        (migrations / "V1__table.sql").write_text(f"CREATE TABLE {table} (id integer);")
+        (migrations / "V2__index.sql").write_text(
+            f"CREATE INDEX CONCURRENTLY {index} ON {table} (id);"
+        )
+        return ["1", "2"]
+    if name == "cic_first":
+        (migrations / "V1__index.sql").write_text(
+            f"CREATE INDEX CONCURRENTLY {index} ON {table} (id);"
+        )
+    elif name == "python_first":
+        (migrations / "V1__table.py").write_text(
+            f'def migrate(context):\n    context.execute("CREATE TABLE {table} (id integer)")\n'
+        )
+    else:
+        (migrations / "V1__select_then_table.sql").write_text(
+            f"SELECT count(*) FROM {table} WHERE id = 1;\nCREATE TABLE {table}_new (id integer);"
+        )
+    return ["1"]
+
+
+def run_scenario(name: str, url: str, tmp_path) -> None:
+    uid = uuid.uuid4().hex[:8]
+    schema, table, index = f"q_conn_{uid}", f"w_{uid}", f"ix_{uid}"
+    migrations = tmp_path / name
     migrations.mkdir()
-    (migrations / "V1__table.sql").write_text("CREATE TABLE widgets (id integer);")
-    (migrations / "V2__index.sql").write_text(
-        "CREATE INDEX CONCURRENTLY ix_widgets_id ON widgets (id);"
-    )
+    versions = _write_migrations(name, migrations, table, index)
 
     admin = create_engine(url, isolation_level="AUTOCOMMIT")
     with admin.connect() as conn:
         conn.execute(text(f'CREATE SCHEMA "{schema}"'))
-        # A decoy on the default path: an unqualified name that resolves
-        # there instead of in the configured schema is the defect.
-        conn.execute(text("CREATE TABLE IF NOT EXISTS public.widgets (id integer)"))
+        if name in ("cic_first", "select_first"):
+            conn.execute(text(f'CREATE TABLE "{schema}".{table} (id integer)'))
+        if name == "select_first":
+            conn.execute(text(f'INSERT INTO "{schema}".{table} VALUES (1)'))
+        if name != "cic_first":
+            # A same-named table on the default path makes a misresolved name
+            # loud: its columns differ from the configured schema's table.
+            conn.execute(text(f"CREATE TABLE public.{table} (other integer)"))
     try:
         engine = create_engine(url)
         with engine.connect() as conn:
@@ -55,33 +78,66 @@ def run_connection_schema_scenario(url: str, tmp_path) -> None:
         assert result.success, getattr(result, "error", None)
 
         with admin.connect() as conn:
-            table_schemas = (
-                conn.execute(text("SELECT schemaname FROM pg_tables WHERE tablename = 'widgets'"))
-                .scalars()
-                .all()
-            )
-            index_schemas = (
+            tables = (
                 conn.execute(
-                    text("SELECT schemaname FROM pg_indexes WHERE indexname = 'ix_widgets_id'")
+                    text("SELECT schemaname FROM pg_tables WHERE tablename LIKE :p ORDER BY 1"),
+                    {"p": f"{table}%"},
                 )
                 .scalars()
                 .all()
             )
-            history = conn.execute(
-                text(
-                    f'SELECT version, success FROM "{schema}".dblift_schema_history '
-                    "ORDER BY installed_rank"
+            indexes = (
+                conn.execute(
+                    text("SELECT schemaname FROM pg_indexes WHERE indexname = :i"), {"i": index}
                 )
-            ).all()
-        assert sorted(table_schemas) == sorted(["public", schema]), table_schemas
-        assert index_schemas == [schema], index_schemas
-        assert [(row[0], row[1]) for row in history] == [("1", True), ("2", True)], history
+                .scalars()
+                .all()
+            )
+            history = (
+                conn.execute(
+                    text(
+                        f'SELECT version FROM "{schema}".dblift_schema_history '
+                        "WHERE success ORDER BY installed_rank"
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert history == versions, history
+        expected_tables = {
+            "ddl_then_cic": [schema, "public"],
+            "cic_first": [schema],
+            "python_first": [schema, "public"],
+            "select_first": [schema, "public", schema],
+        }[name]
+        assert sorted(tables) == sorted(expected_tables), tables
+        if name in ("ddl_then_cic", "cic_first"):
+            assert indexes == [schema], indexes
+        if name == "select_first":
+            with admin.connect() as conn:
+                new_schema = (
+                    conn.execute(
+                        text("SELECT schemaname FROM pg_tables WHERE tablename = :t"),
+                        {"t": f"{table}_new"},
+                    )
+                    .scalars()
+                    .all()
+                )
+            assert new_schema == [schema], new_schema
     finally:
         with admin.connect() as conn:
             conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
-            conn.execute(text("DROP TABLE IF EXISTS public.widgets"))
+            conn.execute(text(f"DROP TABLE IF EXISTS public.{table}"))
         admin.dispose()
 
 
-def test_from_sqlalchemy_connection_migrates_configured_schema(postgresql_container, tmp_path):
-    run_connection_schema_scenario(_url(postgresql_container), tmp_path)
+def run_scenarios(url: str, tmp_path) -> None:
+    for name in SCENARIOS:
+        run_scenario(name, url, tmp_path)
+
+
+@pytest.mark.parametrize("name", SCENARIOS)
+def test_from_sqlalchemy_connection_migrates_configured_schema(
+    name, postgresql_container, tmp_path
+):
+    run_scenario(name, _url(postgresql_container), tmp_path)
