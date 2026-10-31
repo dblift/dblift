@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `info` and `migrate` (including `--dry-run`) fail with `Migration scripts directory not found`
   when the configured migrations directory does not exist, as `validate` does. They exited 0
   with "No pending migrations found" or an empty table.
+- Migrations run through `from_sqlalchemy(connection=...)` on PostgreSQL now create their objects
+  in the configured schema instead of `public`; the schema cache is invalidated when a rollback
+  undoes an uncommitted `SET search_path`, and the schema is re-applied when the migration's
+  transaction begins.
 
 ### Removed
 
