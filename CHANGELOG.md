@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Migrations run through `from_sqlalchemy(connection=...)` on PostgreSQL now create their objects
+  in the configured schema instead of `public`; the schema cache is invalidated when a rollback
+  undoes an uncommitted `SET search_path`, and the schema is re-applied when the migration's
+  transaction begins.
+
 ### Removed
 
 ## [5.1.2] - 2026-10-28
