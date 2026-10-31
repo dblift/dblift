@@ -106,6 +106,29 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         """
         self._schema_applied_for = None
 
+    def _has_open_transaction(self, conn: Optional[Connection]) -> bool:
+        return self._tx is not None or (
+            conn is not None and not conn.closed and conn.in_transaction()
+        )
+
+    def rollback_transaction(self) -> None:
+        """Roll back, and forget the cached schema if that undid its ``SET``.
+
+        PostgreSQL undoes a plain ``SET`` on ROLLBACK, so the cache cannot
+        outlive a rollback that had a transaction open.
+        """
+        undoes_set = self._has_open_transaction(self._connection)
+        super().rollback_transaction()
+        if undoes_set:
+            self._schema_applied_for = None
+
+    def _end_open_transaction(self, conn: Connection) -> None:
+        """Roll back an open transaction; the cached schema dies with its ``SET``."""
+        undoes_set = self._has_open_transaction(conn)
+        super()._end_open_transaction(conn)
+        if undoes_set:
+            self._schema_applied_for = None
+
     def drop_object(self, obj: DroppableObject) -> None:
         """Drop one object without letting a failure abort the whole clean.
 

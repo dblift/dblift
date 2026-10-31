@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `from_sqlalchemy(connection=...)` migrations on PostgreSQL now run in the configured schema: the schema cache is invalidated when a rollback undoes an uncommitted `SET search_path`.
+
 ### Removed
 
 ## [5.1.2] - 2026-10-28
