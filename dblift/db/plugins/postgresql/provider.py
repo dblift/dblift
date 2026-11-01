@@ -106,6 +106,30 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         """
         self._schema_applied_for = None
 
+    @staticmethod
+    def _has_open_transaction(conn: Optional[Connection]) -> bool:
+        return conn is not None and not conn.closed and conn.in_transaction()
+
+    def rollback_transaction(self) -> None:
+        """Roll back, and forget the cached schema if that undid its ``SET``.
+
+        PostgreSQL undoes a plain ``SET`` on ROLLBACK, so the cache cannot
+        outlive a rollback that had a transaction open.
+        """
+        with self._lock:
+            undoes_set = self._has_open_transaction(self._connection)
+            super().rollback_transaction()
+            if undoes_set:
+                self._schema_applied_for = None
+
+    def _end_open_transaction(self, conn: Connection) -> None:
+        """Roll back an open transaction; the cached schema dies with its ``SET``."""
+        with self._lock:
+            undoes_set = self._has_open_transaction(conn)
+            super()._end_open_transaction(conn)
+            if undoes_set:
+                self._schema_applied_for = None
+
     def drop_object(self, obj: DroppableObject) -> None:
         """Drop one object without letting a failure abort the whole clean.
 
@@ -210,14 +234,21 @@ class PostgreSqlProvider(SqlAlchemyProvider):
             # success rather than failing the caller.
 
     def table_exists(self, schema: str, table_name: str) -> bool:
-        """Return whether a table exists in the given schema."""
+        """Return whether a table exists in the given schema.
+
+        Reads the system catalog: ``information_schema.tables`` lists only
+        tables the role holds a privilege on, so a table it cannot read would
+        look absent instead of failing the read with the engine's message.
+        """
         rows = self.execute_query(
             """
             SELECT EXISTS (
                 SELECT 1
-                FROM information_schema.tables
-                WHERE table_schema = ?
-                  AND table_name = ?
+                FROM pg_catalog.pg_class c
+                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = ?
+                  AND c.relname = ?
+                  AND c.relkind IN ('r', 'p', 'v', 'f')
             ) AS exists
             """,
             [schema, table_name],
@@ -296,7 +327,7 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         connection = getattr(self, "_connection", None)
         if connection is not None and not getattr(connection, "closed", False):
             try:
-                connection.rollback()
+                self._end_open_transaction(connection)
             except Exception as exc:
                 message = f"Could not rollback failed {what} create"
                 raise RuntimeError(message) from exc

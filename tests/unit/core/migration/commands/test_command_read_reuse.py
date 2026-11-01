@@ -918,14 +918,15 @@ def test_migrate_preloaded_catalog_remains_authoritative_on_probe_failure(databa
         patch.object(
             client.executor.script_manager,
             "migration_directory_exists",
-            side_effect=PermissionError("directory unavailable"),
+            side_effect=[True, PermissionError("directory unavailable")],
         ) as directory,
     ):
         result = client.migrate()
     assert result.success, result.error_message
     assert [row.script for row in result.migrations] == ["V1__app.sql"]
     catalog.assert_not_called()
-    directory.assert_not_called()
+    # Only the up-front check probes the directory; validation reuses the catalog.
+    directory.assert_called_once()
     with sqlite3.connect(database) as connection:
         assert connection.execute("SELECT count(*) FROM app").fetchone() == (0,)
 
