@@ -71,8 +71,13 @@ def _tables(project):
 @pytest.mark.parametrize("layout", LAYOUTS)
 @pytest.mark.parametrize("operation", OPERATIONS)
 def test_api_fails_on_any_missing_configured_directory(project, layout, operation):
-    config = _write_config(project, _layouts(project)[layout])
     missing = project / "missing"
+    if operation == "undo":  # with no history there is nothing to undo, so nothing is read
+        with DBLiftClient.from_config_file(
+            str(_write_config(project, [str(project / "good")]))
+        ) as c:
+            assert c.migrate().success
+    config = _write_config(project, _layouts(project)[layout])
 
     with DBLiftClient.from_config_file(str(config)) as client:
         result = _call(client, operation)
@@ -80,7 +85,7 @@ def test_api_fails_on_any_missing_configured_directory(project, layout, operatio
     assert not result.success
     kind = "Migration" if layout.endswith("missing-first") else "Additional"
     assert f"{kind} scripts directory not found: {missing}" in result.error_message
-    assert "a_table" not in _tables(project)
+    assert ("a_table" in _tables(project)) == (operation == "undo")
 
 
 def test_api_explicit_additional_dirs_are_checked(project):

@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   folder, as the CLI and the MCP server now do. It resolved them against the working directory
   unless `relative_to_config=True` was passed. A relative `sqlite:` URL in a configuration file is
   now reported as an absolute `sqlite:` URL.
+- `migrate`, `info`, `validate`, `undo` and `repair`, and the API and MCP equivalents, fail with
+  `Additional scripts directory not found: <path>` when any entry of `migrations.directories`
+  after the first does not exist. They exited 0 and applied the other directories' scripts, so a
+  typo succeeded or failed depending on list order. `undo` and `repair` now also fail on a missing
+  first directory instead of reporting a missing undo script or no repair needed.
 
 ### Fixed
 
