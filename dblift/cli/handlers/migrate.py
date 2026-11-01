@@ -23,6 +23,7 @@ def _migrate_result_to_dict(result: Any, dry_run: bool) -> Dict[str, Any]:
         "dry_run": bool(dry_run),
         "target_schema": getattr(result, "target_schema", ""),
         "current_schema_version": getattr(result, "current_schema_version", None),
+        "history_table_exists": result.history_table_exists,
         "dry_run_count": getattr(result, "dry_run_count", 0),
         "migrations": [_migration_info_to_dict(m) for m in getattr(result, "migrations", [])],
         "migrations_applied": list(getattr(result, "migrations_applied", [])),

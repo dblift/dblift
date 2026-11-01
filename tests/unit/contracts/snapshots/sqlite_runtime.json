@@ -17,6 +17,7 @@
   "info_json :: database_url_masked",
   "info_json :: db_version",
   "info_json :: error",
+  "info_json :: history_table_exists",
   "info_json :: migrations",
   "info_json :: native_driver",
   "info_json :: success",

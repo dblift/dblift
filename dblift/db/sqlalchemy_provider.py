@@ -403,7 +403,7 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
         try:
             self.execute_query(f"SELECT 1 FROM {qualified} WHERE 1=0")
         except DBAPIError as exc:
-            args = getattr(exc.orig, "args", ())
+            args = exc.orig.args if exc.orig else ()
             code = args[0] if args else None
             if code in absent:
                 return False

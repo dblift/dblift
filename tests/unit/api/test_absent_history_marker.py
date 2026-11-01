@@ -20,7 +20,7 @@ class _Recorder(NullLog):
     def __init__(self):
         self.warnings = []
 
-    def warn(self, message, *, dedupe=True):
+    def warning(self, message, *, dedupe=True):
         self.warnings.append(message)
 
 

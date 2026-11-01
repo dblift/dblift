@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the engine's `SELECT command denied` or `SELECT permission was denied` error when the connected
   account cannot read the schema-history table. They reported success with every migration
   Pending, because the existence check listed only tables the account could read.
+- `info` and `migrate --dry-run` print a warning and report `history_table_exists: false` (JSON,
+  API and MCP results) when the schema-history table does not exist. A role that can read but not
+  create saw every migration Pending and no schema version, with nothing saying none was applied.
+  The exit code is unchanged. On Oracle a table the account may not read gives the same
+  `ORA-00942` as a missing one, so it is reported the same way.
 
 ### Removed
 

@@ -51,7 +51,9 @@ def test_an_unlisted_table_the_account_cannot_select_exists(provider_class):
     """``information_schema.TABLES`` lists only tables the account holds a privilege
     on, so a history table without one reads as absent and ``info`` reports every
     migration pending. The read says ``denied`` (1142), not ``missing`` (1146)."""
-    provider = provider_class([], _error(1142, "SELECT command denied to user 'r'@'h' for table 'h'"))
+    provider = provider_class(
+        [], _error(1142, "SELECT command denied to user 'r'@'h' for table 'h'")
+    )
 
     assert provider.table_exists("app", "h") is True
 

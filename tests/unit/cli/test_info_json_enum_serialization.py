@@ -52,6 +52,7 @@ class TestInfoResultJsonSerialization:
         result = SimpleNamespace(
             migrations=[_make_migration(_FakeMigrationType.SQL, _FakeStatus.APPLIED)],
             current_schema_version="1",
+            history_table_exists=True,
             target_schema="public",
             db_version=None,
             database_url_masked=None,
@@ -72,6 +73,7 @@ class TestInfoResultJsonSerialization:
         result = SimpleNamespace(
             migrations=[_make_migration("SQL", "APPLIED")],
             current_schema_version=None,
+            history_table_exists=True,
             target_schema="",
             db_version=None,
             database_url_masked=None,
@@ -89,6 +91,7 @@ class TestInfoResultJsonSerialization:
         result = SimpleNamespace(
             migrations=[_make_migration(None, None)],
             current_schema_version=None,
+            history_table_exists=True,
             target_schema="",
             db_version=None,
             database_url_masked=None,
@@ -110,6 +113,7 @@ class TestInfoResultJsonSerialization:
         result = SimpleNamespace(
             migrations=[repeatable, versioned],
             current_schema_version=None,
+            history_table_exists=True,
             target_schema="",
             db_version=None,
             database_url_masked=None,
@@ -130,6 +134,7 @@ class TestInfoResultJsonSerialization:
         result = SimpleNamespace(
             migrations=[_make_migration("SQL", "APPLIED")],
             current_schema_version="1",
+            history_table_exists=True,
             target_schema="public",
             db_version=None,
             database_url_masked=None,
@@ -145,6 +150,7 @@ class TestInfoResultJsonSerialization:
         result = SimpleNamespace(
             migrations=[],
             current_schema_version=None,
+            history_table_exists=True,
             target_schema="",
             db_version=None,
             database_url_masked=None,
@@ -161,6 +167,7 @@ class TestInfoResultJsonSerialization:
         result = SimpleNamespace(
             migrations=[],
             current_schema_version=None,
+            history_table_exists=True,
             target_schema="",
             db_version=None,
             database_url_masked=None,
