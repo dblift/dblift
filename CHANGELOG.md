@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- MCP: the `dblift://history` and `dblift://pending` resources report a command that failed
+  (for example `permission denied` on the history table, or a missing migrations directory) as an
+  error carrying its message. They returned an empty list, which reads as nothing applied and
+  nothing pending.
 - `from_sqlalchemy(connection=...)`: a `beforeMigrate` callback that ran on a connection that had
   already begun a transaction lost its writes, because the first migration's rollback discarded
   them.
