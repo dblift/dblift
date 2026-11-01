@@ -289,7 +289,8 @@ class MigrationValidator:
         if not snapshot.scripts_directory_exists:
             result.success = False
             result.error_message = (
-                f"Migration scripts directory not found: {snapshot.scripts_directory}"
+                snapshot.scripts_directory_error
+                or f"Migration scripts directory not found: {snapshot.scripts_directory}"
             )
             return result
         try:
