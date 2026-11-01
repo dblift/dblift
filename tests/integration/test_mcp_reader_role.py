@@ -189,15 +189,16 @@ def test_reader_role_on_schema_with_no_history_table_fails_closed(tmp_path):
 
         validate, info = anyio.run(_session, reader_yaml, scenario)
 
-        # `validate` now shares `info`'s preflight
-        # (`BaseCommand._run_preflight`'s history-table step) instead of
-        # catching the failure itself, so both raise the same denial and the
-        # two tools now share the same error channel.
+        # `validate` tries to create the history table and is refused. `info` only
+        # reads, so it succeeds and says the table does not exist instead of
+        # presenting every migration as pending with no explanation.
         assert validate.is_error is True
         assert "permission denied" in validate.content[0].text
 
-        assert info.is_error is True
-        assert "permission denied" in info.content[0].text
+        assert info.is_error is False
+        assert info.structured_content["success"] is True
+        assert info.structured_content["history_table_exists"] is False
+        assert {m["status"] for m in info.structured_content["migrations"]} == {"PENDING"}
 
         assert admin.table_exists(schema, "dblift_schema_history") is False
     finally:
