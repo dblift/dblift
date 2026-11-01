@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+import json
 from typing import List, Optional
 from unittest.mock import patch
 
@@ -325,6 +326,74 @@ def test_resource_failure_carries_the_cli_message():
         message = anyio.run(_with_client, server, scenario)
 
     assert "no config here" in message
+
+
+def _read_history_resource(payload):
+    """Read a ``command_resource`` whose command returns *payload*; return its text or error."""
+    server = _server()
+    server.command_resource(
+        uri="dblift://history",
+        name="history",
+        description="d",
+        command="info",
+        argv=[],
+        pick=lambda p: p.get("migrations", []),
+    )
+
+    async def scenario(client):
+        from mcp.shared.exceptions import MCPError
+
+        try:
+            return (await client.read_resource("dblift://history")).contents[0].text
+        except MCPError as exc:
+            return exc
+
+    with patch("dblift.cli.mcp.server.run_command", return_value=payload):
+        return anyio.run(_with_client, server, scenario)
+
+
+@pytest.mark.unit
+def test_resource_reports_a_failed_command_payload_like_a_connection_failure():
+    """A `success: false` payload is a failed read, never the `pick` default."""
+    from mcp.shared.exceptions import MCPError
+
+    failed = _read_history_resource(
+        {"success": False, "error": "permission denied for table dblift_schema_history"}
+    )
+
+    assert isinstance(failed, MCPError)
+    assert "permission denied for table dblift_schema_history" in str(failed)
+
+    with patch(
+        "dblift.cli.mcp.server.run_command", side_effect=CommandInvocationError("refused", 1)
+    ):
+        connection_failure = _read_history_resource({})
+    assert type(failed) is type(connection_failure)
+
+
+@pytest.mark.unit
+def test_resource_names_a_failed_payload_without_an_error_text():
+    from mcp.shared.exceptions import MCPError
+
+    failed = _read_history_resource({"success": False})
+
+    assert isinstance(failed, MCPError)
+    assert "info" in str(failed)
+
+
+@pytest.mark.unit
+def test_resource_on_a_successful_payload_returns_its_rows():
+    rows = [{"script": "V1"}]
+
+    assert json.loads(_read_history_resource({"success": True, "migrations": rows})) == rows
+
+
+@pytest.mark.unit
+def test_resource_on_a_fresh_database_is_an_empty_list_not_an_error():
+    """`history_table_exists: false` with no rows is a successful read of nothing."""
+    payload = {"success": True, "history_table_exists": False, "migrations": []}
+
+    assert json.loads(_read_history_resource(payload)) == []
 
 
 # --- v2: destructive=, the write boundary, the allowlist ---------------------
