@@ -1160,10 +1160,15 @@ class ExecutionEngine:
                 transaction_started = True
                 self.log.debug(f"Started transaction for callback {callback.script_name}")
             except Exception as e:
-                self.log.warning(
-                    f"Could not begin transaction for callback {callback.script_name}: {e}"
-                )
-                # Continue without explicit transaction management
+                if self.provider.is_caller_owned():
+                    # The caller's connection autobegan: reset the boundary as a
+                    # migration does, or the next migration's rollback loses this.
+                    transaction_started = self._prepare_transaction(callback)
+                else:
+                    self.log.warning(
+                        f"Could not begin transaction for callback {callback.script_name}: {e}"
+                    )
+                    # Continue without explicit transaction management
 
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)

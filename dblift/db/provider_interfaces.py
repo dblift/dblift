@@ -274,6 +274,10 @@ class TransactionalProvider(ABC):
         """
         return True
 
+    def is_caller_owned(self) -> bool:
+        """Return True if the caller supplied the connection and owns its transactions."""
+        return False
+
 
 class MigrationProvider(ABC):
     """Capacité de tracking des migrations."""

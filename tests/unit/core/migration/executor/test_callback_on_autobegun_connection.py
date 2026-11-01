@@ -26,9 +26,13 @@ class _AutobegunProvider(TransactionalProvider):
 
     connection = object()  # no ``getAutoCommit``, like a SQLAlchemy connection
 
-    def __init__(self) -> None:
+    def __init__(self, external: bool = True) -> None:
         self.calls: List[str] = []
         self.in_tx = True
+        self._external = external
+
+    def is_caller_owned(self) -> bool:
+        return self._external
 
     def check_transaction_state(self) -> None:
         pass
@@ -53,8 +57,7 @@ class _AutobegunProvider(TransactionalProvider):
         return 0
 
 
-def test_callback_resets_the_boundary_then_commits_its_own_unit():
-    provider = _AutobegunProvider()
+def _run_callback(provider: _AutobegunProvider) -> None:
     engine = ExecutionEngine(provider, StatementReader(dialect="postgresql"), MagicMock())
     engine._classify_execution_statements = MagicMock(return_value=[])
     engine.transaction_policy = MagicMock()
@@ -65,4 +68,18 @@ def test_callback_resets_the_boundary_then_commits_its_own_unit():
 
     engine.execute_callback(callback)
 
+
+def test_callback_on_a_caller_owned_connection_resets_the_boundary_and_commits_its_unit():
+    provider = _AutobegunProvider()
+
+    _run_callback(provider)
+
     assert provider.calls == ["begin-refused", "rollback", "begin", "execute", "commit"]
+
+
+def test_callback_on_an_owned_connection_still_continues_without_a_transaction():
+    provider = _AutobegunProvider(external=False)
+
+    _run_callback(provider)
+
+    assert provider.calls == ["begin-refused", "execute"]

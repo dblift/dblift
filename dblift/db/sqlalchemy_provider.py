@@ -10,6 +10,7 @@ are left abstract for per-DB subclasses (e.g. SqliteNativeProvider).
 
 import re
 import threading
+from contextlib import AbstractContextManager, nullcontext
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from sqlalchemy import text
@@ -378,15 +379,25 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
         """
         with self._lock:
             conn = self._ensure_connection()
-            if params is None:
-                result = self._exec_unbound(conn, sql)
-            else:
-                named_sql, bound_params = self._bind(sql, params)
-                result = conn.execute(text(named_sql), bound_params)
-            rows = [dict(row) for row in result.mappings()]
-            if self._tx is None and not getattr(self, "_external_connection", False):
+            external = self.is_caller_owned()
+            with self._read_scope(conn) if external and self._tx is None else nullcontext():
+                if params is None:
+                    result = self._exec_unbound(conn, sql)
+                else:
+                    named_sql, bound_params = self._bind(sql, params)
+                    result = conn.execute(text(named_sql), bound_params)
+                rows = [dict(row) for row in result.mappings()]
+            if self._tx is None and not external:
                 conn.commit()
             return rows
+
+    def is_caller_owned(self) -> bool:
+        """Return True when bound to a connection passed to ``from_sqlalchemy``."""
+        return bool(getattr(self, "_external_connection", False))
+
+    def _read_scope(self, conn: Connection) -> AbstractContextManager[object]:
+        """Unit a read runs in on a caller-owned connection; none by default."""
+        return nullcontext()
 
     # ------------------------------------------------------------------
     # TransactionalProvider

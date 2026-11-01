@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `from_sqlalchemy(connection=...)`: a `beforeMigrate` callback that ran on a
+  connection that had already begun a transaction lost its writes, because the first migration's
+  rollback discarded them. Callbacks now start their own unit as migrations do, and persist.
+- `from_sqlalchemy(connection=...)` on PostgreSQL: a failed read of the history table (for
+  example `permission denied`) no longer leaves the connection aborted. Later calls report the
+  real cause instead of `current transaction is aborted`, and the caller's own uncommitted work
+  survives.
+
 ### Removed
 
 ## [5.1.3] - 2026-11-01
