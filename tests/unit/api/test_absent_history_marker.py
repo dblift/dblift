@@ -71,7 +71,9 @@ def test_a_dialect_that_cannot_tell_missing_from_unreadable_says_so(client_facto
     """Oracle answers ORA-00942 for both, so the text must not claim the table is missing."""
     log = _Recorder()
     client = client_factory(log)
-    monkeypatch.setattr(client.provider.quirks, "unreadable_table_looks_missing", True, raising=False)
+    monkeypatch.setattr(
+        client.provider.quirks, "unreadable_table_looks_missing", True, raising=False
+    )
 
     client.info()
 

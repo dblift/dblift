@@ -833,9 +833,14 @@ class BaseCommand:
         if applied or self.history_manager.has_history_table:
             return
         result.history_table_exists = False
+        missing = (
+            "does not exist or cannot be read by this account"
+            if self.history_manager.provider.quirks.unreadable_table_looks_missing
+            else "does not exist yet"
+        )
         self.log.warning(
             f"Schema-history table {self.config.database.schema}."
-            f"{self.history_manager.normalized_history_table} does not exist: "
+            f"{self.history_manager.normalized_history_table} {missing}: "
             "no migration is recorded as applied, so every migration is listed as pending."
         )
 

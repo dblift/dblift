@@ -144,7 +144,8 @@ class MySqlProvider(SqlAlchemyProvider, CleanTargetProvider):
 
         ``information_schema.TABLES`` lists only tables the account holds a
         privilege on, so a table it is not listed in is read to tell a missing
-        table (1146) from one the account may not select (1142, 1044).
+        table (1146, or 1049 for a database not created yet) from one the account may
+        not select (1142, 1044).
         """
         rows = self.execute_query(
             """
@@ -155,7 +156,7 @@ class MySqlProvider(SqlAlchemyProvider, CleanTargetProvider):
             [schema, table_name],
         )
         return bool(rows) or self._unlisted_table_exists(
-            schema, table_name, absent=(1146,), denied=(1142, 1044)
+            schema, table_name, absent=(1146, 1049), denied=(1142, 1044)
         )
 
     def get_database_version(self) -> str:
