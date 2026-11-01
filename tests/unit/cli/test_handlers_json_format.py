@@ -220,6 +220,7 @@ def test_info_result_to_dict_payload_is_unchanged():
         "success",
         "error",
         "current_schema_version",
+        "history_table_exists",
         "target_schema",
         "db_version",
         "database_url_masked",
@@ -586,6 +587,7 @@ def test_migrate_result_to_dict_shape():
         "dry_run": True,
         "target_schema": "main",
         "current_schema_version": "1",
+        "history_table_exists": True,
         "dry_run_count": 2,
         "migrations": [_migration_info_to_dict(result.migrations[0])],
         "migrations_applied": ["1"],
@@ -735,3 +737,14 @@ def test_migration_info_to_dict_carries_analysis_or_null():
 
     assert _migration_info_to_dict(_migration(analysis=analysis))["analysis"] == analysis
     assert _migration_info_to_dict(_migration(analysis=None))["analysis"] is None
+
+
+@pytest.mark.unit
+def test_payloads_default_the_history_marker_for_a_result_without_it():
+    from dblift.cli.handlers.info import _info_result_to_dict
+    from dblift.cli.handlers.migrate import _migrate_result_to_dict
+
+    result = SimpleNamespace(success=True, migrations=[])
+
+    assert _info_result_to_dict(result)["history_table_exists"] is True
+    assert _migrate_result_to_dict(result, dry_run=True)["history_table_exists"] is True

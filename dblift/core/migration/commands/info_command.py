@@ -131,6 +131,7 @@ class InfoCommand(BaseCommand):
             all_applied_migrations = migration_state.all_applied_objects
 
             result.current_schema_version = migration_state.current_version
+            self._flag_missing_history(result, all_applied_migrations)
 
             # Use the migration UI to display the information properly
             # Pass the full state so UI can access undone_versions and other state info

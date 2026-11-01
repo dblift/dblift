@@ -10,13 +10,13 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Iterator, List, Optional, Union
 
 from dblift.config import DbliftConfig
 from dblift.config.database_config import BaseDatabaseConfig
 
 if TYPE_CHECKING:
-    from dblift.core.logger.results import OperationResult
+    from dblift.core.logger.results import InfoResult, MigrateResult, OperationResult
     from dblift.core.migration.journals.migration_journal import MigrationJournal
     from dblift.core.migration.migration import Migration
     from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
@@ -822,6 +822,27 @@ class BaseCommand:
                     result,
                 ) from exc
         self._populate_database_info(result)
+
+    def _flag_missing_history(
+        self, result: Union[InfoResult, MigrateResult], applied: List[Migration]
+    ) -> None:
+        """Say so when a read finds no applied migration because the history table is missing.
+
+        Only an empty history costs the extra existence check.
+        """
+        if applied or self.history_manager.has_history_table:
+            return
+        result.history_table_exists = False
+        missing = (
+            "does not exist or cannot be read by this account"
+            if self.history_manager.provider.quirks.unreadable_table_looks_missing
+            else "does not exist yet"
+        )
+        self.log.warning(
+            f"Schema-history table {self.config.database.schema}."
+            f"{self.history_manager.normalized_history_table} {missing}: "
+            "no migration is recorded as applied, so every migration is listed as pending."
+        )
 
     @contextmanager
     def _migration_lock(self) -> Iterator[bool]:

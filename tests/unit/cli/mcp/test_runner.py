@@ -404,3 +404,27 @@ def test_bad_target_version_is_refused_before_the_handler_and_the_connection(
     assert "Available versions: 1" in str(exc_info.value)
     assert not called
     assert not (tmp_path / "t.sqlite").exists()
+
+
+def test_relative_paths_in_the_config_file_resolve_against_the_file(tmp_path, monkeypatch):
+    project = tmp_path / "proj"
+    (project / "migrations").mkdir(parents=True)
+    (project / "migrations" / "V1__init.sql").write_text("CREATE TABLE widgets (id INTEGER);")
+    config = project / "dblift.yaml"
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "database": {"url": "sqlite:///rel.db"},
+                "migrations": {"directory": "migrations"},
+            }
+        )
+    )
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    payload = run_command(["--config", str(config)], "migrate", [])
+
+    assert payload["success"] is True
+    assert (project / "rel.db").exists()
+    assert not (elsewhere / "rel.db").exists()

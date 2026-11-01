@@ -15,7 +15,7 @@ from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine, Transaction
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from dblift.config import DbliftConfig
 from dblift.core.exceptions import TransactionAbortedError
@@ -430,6 +430,31 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
     def _is_dbapi_autocommit(conn: Connection) -> bool:
         """Whether the driver connection autocommits, so no transaction block can open."""
         return bool(getattr(conn.connection.dbapi_connection, "autocommit", False))
+
+    def _unlisted_table_exists(
+        self, schema: str, table_name: str, absent: Tuple[int, ...], denied: Tuple[int, ...]
+    ) -> bool:
+        """Whether a table its catalog does not list exists, told by reading it.
+
+        The catalog lists only tables the account holds a privilege on, so a
+        table it cannot read looks absent. The engine's error code says which:
+        ``absent`` means missing, ``denied`` means present but unreadable (the
+        caller's later read then fails with the engine's message). Any other
+        error is raised.
+        """
+        qualified = self.get_schema_qualified_name(schema, table_name)
+        try:
+            self.execute_query(f"SELECT 1 FROM {qualified} WHERE 1=0")
+        except DBAPIError as exc:
+            # The code is the first arg of the pymysql / pymssql error.
+            args = exc.orig.args if exc.orig else ()
+            code = args[0] if args else None
+            if code in absent:
+                return False
+            if code in denied:
+                return True
+            raise
+        return True
 
     # ------------------------------------------------------------------
     # TransactionalProvider

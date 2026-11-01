@@ -26,6 +26,7 @@ def _info_result_to_dict(result: Any) -> Dict[str, Any]:
         # while the key was already populated on the handler's exception payload.
         "error": getattr(result, "error_message", None),
         "current_schema_version": getattr(result, "current_schema_version", None),
+        "history_table_exists": getattr(result, "history_table_exists", True),
         "target_schema": getattr(result, "target_schema", ""),
         "db_version": getattr(result, "db_version", None),
         "database_url_masked": getattr(result, "database_url_masked", None),

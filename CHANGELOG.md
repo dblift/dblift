@@ -25,6 +25,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cause instead of `current transaction is aborted`. On PostgreSQL the read runs under a
   savepoint, so the caller's own uncommitted work survives; on DuckDB and Redshift, which have
   no savepoint, the connection is rolled back.
+- `DBLiftClient.from_config_file(path)` resolves a relative migrations directory, SQLite file
+  (`database.url` or `database.path`) and log directory written in the file against the file's
+  folder, as the CLI and the MCP server now do. It resolved them against the working directory
+  unless `relative_to_config=True` was passed. A relative `sqlite:` URL in a configuration file is
+  now reported as an absolute `sqlite:` URL.
+
+### Fixed
+
+- On MySQL, MariaDB and SQL Server, `info`, `migrate` and the API and MCP equivalents fail with
+  the engine's `SELECT command denied` or `SELECT permission was denied` error when the connected
+  account cannot read the schema-history table. They reported success with every migration
+  Pending, because the existence check listed only tables the account could read. An account
+  holding only table-level grants on the database gets the same denial error when the history
+  table does not exist, because MySQL and MariaDB do not tell the two apart.
+- `info` and `migrate --dry-run` print a warning and report `history_table_exists: false` (JSON,
+  API and MCP results) when the schema-history table does not exist. A role that can read but not
+  create saw every migration Pending and no schema version, with nothing saying none was applied.
+  The exit code is unchanged. On Oracle a table the account may not read gives the same
+  `ORA-00942` as a missing one, so the warning there reads "does not exist or cannot be read by
+  this account".
+- `dblift --config path/to/dblift.yaml ...` run from another directory no longer fails with
+  `Migration scripts directory not found`, and a relative SQLite file in the file is created next
+  to it instead of in the working directory. Relative paths written in a configuration file
+  (migrations directories, SQLite file, log directory) resolve against the file's folder; values
+  given on the command line, such as `--scripts` and `--db-url`, still resolve against the working
+  directory. The CLI's log files still go to `--log-dir` (default `logs`) in the working directory.
 
 ### Removed
 
