@@ -29,7 +29,6 @@ from dataclasses import dataclass
 from typing import Callable, Iterable, List, Mapping, Optional, Protocol, Sequence, Tuple, Union
 
 from sqlalchemy.engine import Connection
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.pool import SingletonThreadPool, StaticPool
 
 from dblift.db.native_connection_manager import NativeConnectionManager
@@ -371,9 +370,6 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
     #: providers built without ``__init__`` hold none.
     _migration_lease: Optional[LeaseLock] = None
 
-    #: Set by :meth:`prepare_migration_lock`, spent by the next acquire.
-    _lock_table_prepared: bool = False
-
     def _migration_lease_dialect(self, schema: str) -> SqlLeaseDialect:
         """Describe the lock table of *schema* to :class:`SqlLeaseStore`."""
         raise NotImplementedError
@@ -390,6 +386,10 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
         a caller-owned migration transaction cannot prevent its heartbeat.
         """
         return self._migration_lease_is_private()
+
+    def settles_preflight_ddl(self) -> bool:
+        """The lock's second connection waits on DDL the caller's transaction left uncommitted."""
+        return self.is_caller_owned() and self.supports_transactional_ddl()
 
     def _ensure_migration_lock_table_for_external_connection(self, schema: str) -> None:
         """Prepare the lock table without committing the caller's transaction."""
@@ -422,23 +422,6 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
         self._migration_lease = lease
         return True
 
-    def prepare_migration_lock(self, schema: str) -> None:
-        """Create the lock table before the caller's connection writes.
-
-        The table is made on a second connection. Once the caller's open
-        transaction holds the schema or history table it created, an engine
-        with transactional DDL makes that connection wait on those rows. A
-        failure here is raised again by the acquire.
-        """
-        if not self.is_caller_owned() or self._migration_lease_is_private():
-            return
-        try:
-            self._ensure_migration_lock_table_for_external_connection(schema)
-        except (SQLAlchemyError, RuntimeError) as exc:
-            self.log.debug(f"Could not prepare the migration lock table: {exc}")
-            return
-        self._lock_table_prepared = True
-
     def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:
         """Take the migration lock lease, waiting up to *wait_timeout_seconds*.
 
@@ -447,10 +430,8 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
         """
         if self._migration_lease is not None:
             return True
-        prepared, self._lock_table_prepared = self._lock_table_prepared, False
         if self.is_caller_owned() and not self._migration_lease_is_private():
-            if not prepared:
-                self._ensure_migration_lock_table_for_external_connection(schema)
+            self._ensure_migration_lock_table_for_external_connection(schema)
         else:
             self.create_migration_lock_table_if_not_exists(schema)
         if self._migration_lease_on_own_connection():
@@ -463,7 +444,6 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
 
     def _release_migration_lease(self) -> bool:
         lease, self._migration_lease = self._migration_lease, None
-        self._lock_table_prepared = False
         return lease.release() if lease is not None else False
 
     def release_migration_lock(self, schema: str) -> bool:

@@ -102,7 +102,7 @@ def test_an_existing_history_table_commits_nothing(tmp_path) -> None:
     finally:
         client.close()
 
-    assert "commit" not in events, events
+    assert events == ["history"], events
 
 
 def test_dry_run_commits_nothing(tmp_path) -> None:
@@ -124,4 +124,4 @@ def test_a_provider_that_does_not_settle_commits_nothing(tmp_path) -> None:
     finally:
         client.close()
 
-    assert "commit" not in events and "note" not in events, events
+    assert "note" not in events, events

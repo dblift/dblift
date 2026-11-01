@@ -109,9 +109,7 @@ class RepairCommand(BaseCommand):
                 "repair",
                 result,
                 body,
-                preflight=lambda: self._run_preflight(
-                    result, ensure_history=True, lock=not dry_run
-                ),
+                preflight=lambda: self._run_preflight(result, ensure_history=True),
                 error_message_prefix="Repair operation failed",
                 header_kwargs={"dry_run": dry_run},
             ),

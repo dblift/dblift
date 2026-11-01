@@ -49,7 +49,7 @@ from dblift.db.provider_capabilities import (
     get_provider_display_url,
     get_provider_driver_display,
 )
-from dblift.db.provider_interfaces import MigrationProvider, SchemaProvider, TransactionalProvider
+from dblift.db.provider_interfaces import SchemaProvider, TransactionalProvider
 from dblift.db.provider_registry import ProviderRegistry
 
 from ._script_events import emit_script_event as _emit_script_event
@@ -736,7 +736,6 @@ class BaseCommand:
         dry_run: bool = False,
         create_schema: bool = False,
         ensure_schema: bool = False,
-        lock: bool = False,
     ) -> None:
         """Run the canonical pre-execute lifecycle for every command.
 
@@ -783,15 +782,18 @@ class BaseCommand:
                 ``baseline`` passes True to enable its history safety checks.
             ensure_schema: Create a missing target schema for ``migrate``
                 without enabling baseline history safety checks.
-            lock: The command takes the migration lock after this preflight,
-                so the provider prepares the lock table before the history
-                table is created.
         """
         self._preflight_connect(result)
         if ensure_history and not dry_run:
-            if lock:
-                self._prepare_migration_lock()
             try:
+                provider = self.provider
+                settling = (
+                    provider
+                    if isinstance(provider, TransactionalProvider)
+                    and provider.settles_preflight_ddl()
+                    and not self.history_manager.has_history_table
+                    else None
+                )
                 if ensure_schema:
                     self.history_manager.create_schema_and_history_table(
                         create_schema=create_schema, ensure_schema=True
@@ -800,6 +802,9 @@ class BaseCommand:
                     self.history_manager.create_schema_and_history_table(
                         create_schema=create_schema
                     )
+                if settling is not None:
+                    settling.note_caller_work()
+                    settling.commit_caller_work()
             except Exception as exc:
                 from dblift.core.migration.sql.sql_execution_service import (
                     _format_execution_error,
@@ -828,11 +833,6 @@ class BaseCommand:
                     result,
                 ) from exc
         self._populate_database_info(result)
-
-    def _prepare_migration_lock(self) -> None:
-        """Let the provider ready its lock table before the history table is created."""
-        if isinstance(self.provider, MigrationProvider):
-            self.provider.prepare_migration_lock(self.config.database.schema)
 
     def _flag_missing_history(
         self, result: Union[InfoResult, MigrateResult], applied: List[Migration]

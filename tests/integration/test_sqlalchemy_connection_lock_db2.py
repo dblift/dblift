@@ -33,7 +33,8 @@ _COMMAND = textwrap.dedent("""
         client = DBLiftClient.from_sqlalchemy(
             connection=conn, schema=schema, migrations_dir=migrations, logger=NullLog()
         )
-        result = getattr(client, command)()
+        run = getattr(client, command)
+        result = run(version="1") if command == "baseline" else run()
         client.close()
     print("SUCCESS" if result.success else "FAILED: %s" % getattr(result, "error_message", ""))
     """)

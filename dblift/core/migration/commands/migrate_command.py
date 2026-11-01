@@ -404,11 +404,7 @@ class MigrateCommand(BaseCommand):
                 self._preflight_connect(result)
                 restore_busy_timeout = widen_busy_timeout(DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS)
             self._run_preflight(
-                result,
-                ensure_history=not defer_history,
-                dry_run=dry_run,
-                ensure_schema=True,
-                lock=True,
+                result, ensure_history=not defer_history, dry_run=dry_run, ensure_schema=True
             )
 
         def body() -> None:
@@ -479,7 +475,7 @@ class MigrateCommand(BaseCommand):
             if not dry_run and not mark_as_executed and check_execution_sql:
                 if pending_migrations:
                     preflight_sql(pending_migrations)
-                self._run_preflight(result, ensure_history=True, ensure_schema=True, lock=True)
+                self._run_preflight(result, ensure_history=True, ensure_schema=True)
 
             def validate(
                 state: MigrationState, snapshot: MigrationReadSnapshot

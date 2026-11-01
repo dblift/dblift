@@ -50,6 +50,11 @@ Calling `client.close()` releases DBLift resources but does not dispose your
 engine or close your externally supplied connection. Your application remains
 responsible for its normal SQLAlchemy lifecycle.
 
+On Db2, whose DDL is transactional, DBLift commits the transaction of a connection you pass in
+right after it creates a missing schema or schema-history table, so the migration lock, which
+uses a second connection, never waits on them. Anything you left uncommitted on that connection
+is committed with them, so commit or roll back your own work before the first call.
+
 ## MySQL and MariaDB Engines
 
 A migration unit that holds several statements (for example `INSERT ...; INSERT ...`

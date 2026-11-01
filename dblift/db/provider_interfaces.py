@@ -281,6 +281,10 @@ class TransactionalProvider(ABC):
     def note_caller_work(self) -> None:
         """Record that dblift wrote inside the caller's open transaction."""
 
+    def settles_preflight_ddl(self) -> bool:
+        """Whether dblift commits the schema and history DDL it ran on a caller's connection."""
+        return False
+
     def commit_caller_work(self) -> None:
         """Commit the caller's open transaction if dblift wrote in it (see above)."""
 
@@ -350,9 +354,6 @@ class MigrationProvider(ABC):
             schema: Schema name
         """
         ...
-
-    def prepare_migration_lock(self, schema: str) -> None:
-        """Ready the lock before the caller's connection is written to."""
 
     @abstractmethod
     def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:
