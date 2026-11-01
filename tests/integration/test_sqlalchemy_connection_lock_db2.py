@@ -1,9 +1,10 @@
 """``from_sqlalchemy(connection=...)`` on Db2 never waits on its own transaction.
 
 The migration lock lives on a second connection, and Db2 DDL is transactional.
-Each command below runs in a child process killed after ``TIMEOUT`` seconds, so
-a regression fails the test instead of hanging the run (and the catalog locks
-a hung session holds on the shared server).
+Each sequence of commands below runs on one caller-owned connection in a child
+process killed after ``TIMEOUT`` seconds, so a regression fails the test
+instead of hanging the run (and the catalog locks a hung session holds on the
+shared server).
 """
 
 from __future__ import annotations
@@ -27,16 +28,21 @@ _COMMAND = textwrap.dedent("""
     from dblift.api import DBLiftClient
     from dblift.core.logger import NullLog
 
-    command, schema, migrations = sys.argv[1:4]
+    commands, schema, migrations = sys.argv[1:4]
     engine = create_engine(os.environ["Q_DB2_URL"])
     with engine.connect() as conn:
         client = DBLiftClient.from_sqlalchemy(
             connection=conn, schema=schema, migrations_dir=migrations, logger=NullLog()
         )
-        run = getattr(client, command)
-        result = run(version="1") if command == "baseline" else run()
+        for command in commands.split(","):
+            run = getattr(client, command)
+            result = run(version="1") if command == "baseline" else run()
+            if not result.success:
+                print("FAILED %s: %s" % (command, getattr(result, "error_message", "")))
+                break
+        else:
+            print("SUCCESS")
         client.close()
-    print("SUCCESS" if result.success else "FAILED: %s" % getattr(result, "error_message", ""))
     """)
 
 
@@ -47,17 +53,17 @@ def _url(config: dict) -> str:
     )
 
 
-def _run(command: str, url: str, schema: str, migrations) -> None:
+def _run(commands: str, url: str, schema: str, migrations) -> None:
     try:
         done = subprocess.run(
-            [sys.executable, "-c", _COMMAND, command, schema, str(migrations)],
+            [sys.executable, "-c", _COMMAND, commands, schema, str(migrations)],
             env={**os.environ, "Q_DB2_URL": url},
             capture_output=True,
             text=True,
             timeout=TIMEOUT,
         )
     except subprocess.TimeoutExpired:
-        pytest.fail(f"{command} on a caller-owned Db2 connection did not return in {TIMEOUT}s")
+        pytest.fail(f"{commands} on a caller-owned Db2 connection did not return in {TIMEOUT}s")
     assert "SUCCESS" in done.stdout, done.stdout + done.stderr
 
 
@@ -102,22 +108,18 @@ def run_scenario(url: str, tmp_path) -> None:
     schemas = [f"Q_CONN_{uid}_{name}" for name in ("A", "B", "C")]
     try:
         # The schema does not exist: dblift creates it and the history table
-        # through the caller's connection, then takes the lock.
+        # on the caller's connection, then takes the lock.
         _run("migrate", url, schemas[0], migrations)
         (migrations / "V2__second.sql").write_text(
             f"CREATE TABLE T_{uid}_2 (id INTEGER NOT NULL PRIMARY KEY);"
         )
-        _run("info", url, schemas[0], migrations)
-        _run("validate", url, schemas[0], migrations)
-        _run("migrate", url, schemas[0], migrations)
+        _run("info,validate,migrate", url, schemas[0], migrations)
         assert _applied(engine, schemas[0]) == ["1", "2"]
-        # Each of these leaves the schema and history table of a fresh schema
-        # on the caller's connection before the migration that takes the lock.
-        _run("validate", url, schemas[1], migrations)
-        _run("migrate", url, schemas[1], migrations)
+        # On a fresh schema these leave the schema and history table on the
+        # caller's connection, still open, before the migration takes the lock.
+        _run("validate,migrate", url, schemas[1], migrations)
         assert _applied(engine, schemas[1]) == ["1", "2"]
-        _run("baseline", url, schemas[2], migrations)
-        _run("migrate", url, schemas[2], migrations)
+        _run("baseline,migrate", url, schemas[2], migrations)
         assert _applied(engine, schemas[2])[-1] == "2"
     finally:
         engine.dispose()
