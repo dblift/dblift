@@ -7,10 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-### Changed
-
 ### Fixed
 
 - On PostgreSQL, `info`, `migrate` and the API and MCP equivalents fail with the engine's
@@ -24,8 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the configured schema instead of `public`; the schema cache is invalidated when a rollback
   undoes an uncommitted `SET search_path`, and the schema is re-applied when the migration's
   transaction begins.
-
-### Removed
 
 ## [5.1.2] - 2026-10-28
 
@@ -5588,6 +5582,7 @@ All additions are backward compatible (MINOR): two new modules, two new
 - Cross-platform distributions (Windows, Linux, macOS).
 - Modular provider architecture for easy database support extension.
 
-[Unreleased]: https://github.com/dblift/dblift/compare/v5.1.2...develop
+[Unreleased]: https://github.com/dblift/dblift/compare/v5.1.3...develop
+[5.1.3]: https://github.com/dblift/dblift/compare/v5.1.2...v5.1.3
 [5.1.2]: https://github.com/dblift/dblift/compare/v5.1.1...v5.1.2
 [4.12.0]: https://github.com/dblift/dblift/compare/v4.11.1...v4.12.0
