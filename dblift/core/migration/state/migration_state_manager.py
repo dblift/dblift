@@ -130,10 +130,25 @@ class MigrationStateManager:
         self.history_manager.ensure_history_table()
         self.new_read_snapshot()
 
-    def require_scripts_directory(self, scripts_dir: Path) -> None:
-        """Fail on a missing primary migrations directory, as ``validate`` does."""
-        if not self.script_manager.migration_directory_exists(scripts_dir):
-            raise FileNotFoundError(f"Migration scripts directory not found: {scripts_dir}")
+    def missing_scripts_directory(
+        self, scripts_dir: Path, additional_dirs: Optional[Sequence[Path]] = None
+    ) -> str:
+        """Name the first configured directory that does not exist, or ``""``."""
+        exists = self.script_manager.migration_directory_exists
+        if not exists(scripts_dir):
+            return f"Migration scripts directory not found: {scripts_dir}"
+        for directory in additional_dirs or ():
+            if directory != scripts_dir and not exists(directory):
+                return f"Additional scripts directory not found: {directory}"
+        return ""
+
+    def require_scripts_directory(
+        self, scripts_dir: Path, additional_dirs: Optional[Sequence[Path]] = None
+    ) -> None:
+        """Fail when any configured migrations directory is missing, as ``validate`` does."""
+        message = self.missing_scripts_directory(scripts_dir, additional_dirs)
+        if message:
+            raise FileNotFoundError(message)
 
     def build_validation_snapshot(
         self,
@@ -155,13 +170,12 @@ class MigrationStateManager:
     ) -> MigrationValidationSnapshot:
         """Aggregate catalog and history data without deciding validation outcomes."""
         catalog_read_error = None
+        directory_error = ""
         directory_exists = False
         try:
-            directory_exists = (
-                resolved_migrations is not None
-                or scripts_dir is None
-                or self.script_manager.migration_directory_exists(scripts_dir)
-            )
+            if resolved_migrations is None and scripts_dir is not None:
+                directory_error = self.missing_scripts_directory(scripts_dir, additional_dirs)
+            directory_exists = not directory_error
             if resolved_migrations is None:
                 resolved_migrations = (
                     self.get_resolved_migrations(
@@ -224,6 +238,7 @@ class MigrationStateManager:
             scoped_applied_migrations=tuple(scoped_applied),
             history_table_exists=history_exists,
             scripts_directory_exists=directory_exists,
+            scripts_directory_error=directory_error,
             strict_mode=strict_mode,
             scripts_directory=scripts_dir,
             history_read_error=history_read_error,

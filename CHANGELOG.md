@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- MCP: the `dblift://history` and `dblift://pending` resources report a command that failed
+  (for example `permission denied` on the history table, or a missing migrations directory) as an
+  error carrying its message. They returned an empty list, which reads as nothing applied and
+  nothing pending.
 - `from_sqlalchemy(connection=...)`: a `beforeMigrate` callback that ran on a connection that had
   already begun a transaction lost its writes, because the first migration's rollback discarded
   them.
@@ -38,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   anything the caller had left uncommitted there. DDL the caller left uncommitted in that schema
   still blocks the lock when the history table already exists. Other engines are unchanged.
   CockroachDB shares the code path; it is unverified.
+- `migrate`, `info`, `validate`, `undo` and `repair`, and the API and MCP equivalents, fail with
+  `Additional scripts directory not found: <path>` when any entry of `migrations.directories`
+  after the first does not exist. They exited 0 and applied the other directories' scripts, so a
+  typo succeeded or failed depending on list order. `undo` and `repair` now also fail on a missing
+  first directory instead of reporting a missing undo script or no repair needed.
 
 ### Fixed
 

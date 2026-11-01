@@ -218,4 +218,9 @@ history table that could not be created, an exception inside the command —
 is returned as an MCP error result carrying the CLI's message, and
 `dblift://history` / `dblift://pending` report that failure instead of
 returning an empty list. A command that ran to a result, even a failed one
-such as validation issues, is still a normal result with `success: false`.
+such as validation issues, is still a normal result with `success: false`
+for a tool. A resource reports that failure too — an error carrying the
+command's message, for example `permission denied` on the history table or a
+missing migrations directory — because an empty list would read as "nothing
+applied" or "nothing pending". A database with no history table yet is not a
+failure: the resources return the rows `info` reports.
