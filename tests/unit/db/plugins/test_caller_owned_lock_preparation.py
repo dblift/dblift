@@ -15,8 +15,10 @@ from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 
 from dblift.api import DBLiftClient
+from dblift.core.logger import NullLog
 from dblift.db.plugins.db2.provider import Db2Provider
 
 pytestmark = [pytest.mark.unit]
@@ -25,9 +27,12 @@ pytestmark = [pytest.mark.unit]
 class _LeaseProvider(Db2Provider):
     """A lease provider with no database behind it, recording what it does."""
 
-    def __init__(self, caller_owned: bool, private: bool = False) -> None:  # no super().__init__
+    def __init__(self, caller_owned: bool, private: bool = False, fail=None) -> None:
+        # No super().__init__: no database behind it.
         self._external_connection = caller_owned
         self._private = private
+        self.fail = fail
+        self.log = NullLog()
         self.events: List[str] = []
 
     engine = SimpleNamespace(connect=lambda: None)
@@ -37,6 +42,8 @@ class _LeaseProvider(Db2Provider):
 
     def _ensure_migration_lock_table_for_external_connection(self, schema: str) -> None:
         self.events.append("ensure")
+        if self.fail is not None:
+            raise self.fail
 
     def _acquire_migration_lease(self, schema, session, wait_timeout_seconds, heartbeat=True):
         self.events.append("lease")
@@ -138,14 +145,14 @@ def test_validate_prepares_nothing(tmp_path) -> None:
     assert "prepare" not in events
 
 
-def test_a_failed_preparation_is_left_to_the_acquire(tmp_path) -> None:
-    client = _client(tmp_path)
+@pytest.mark.parametrize(
+    "error", [RuntimeError("one connection"), OperationalError("s", {}, Exception())]
+)
+def test_a_failed_preparation_is_left_to_the_acquire(error) -> None:
+    provider = _LeaseProvider(caller_owned=True, fail=error)
 
-    def fail(schema: str) -> None:
-        raise RuntimeError("no privilege")
+    provider.prepare_migration_lock("S")
+    provider.fail = None
+    provider.acquire_migration_lock("S")
 
-    client.provider.prepare_migration_lock = fail
-    try:
-        assert client.migrate().success
-    finally:
-        client.close()
+    assert provider.events == ["ensure", "ensure", "lease"]

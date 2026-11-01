@@ -351,6 +351,9 @@ class MigrationProvider(ABC):
         """
         ...
 
+    def prepare_migration_lock(self, schema: str) -> None:
+        """Ready the lock before the caller's connection is written to."""
+
     @abstractmethod
     def acquire_migration_lock(self, schema: str, wait_timeout_seconds: int = 60) -> bool:
         """Acquire a lock for migration.

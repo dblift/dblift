@@ -63,6 +63,10 @@ def _run(command: str, url: str, schema: str, migrations) -> None:
 def _drop_schema(url: str, schema: str) -> None:
     engine = create_engine(url)
     with engine.begin() as conn:
+        if not conn.execute(
+            text("SELECT 1 FROM SYSCAT.SCHEMATA WHERE SCHEMANAME = :s"), {"s": schema}
+        ).first():
+            return
         tables = conn.execute(
             text("SELECT TABNAME FROM SYSCAT.TABLES WHERE TABSCHEMA = :s"), {"s": schema}
         ).scalars()
@@ -95,8 +99,8 @@ def run_scenario(url: str, tmp_path) -> None:
             applied = (
                 conn.execute(
                     text(
-                        f'SELECT "version" FROM "{schema}"."DBLIFT_SCHEMA_HISTORY" '
-                        'WHERE "success" = 1 ORDER BY "installed_rank"'
+                        f'SELECT VERSION FROM "{schema}".DBLIFT_SCHEMA_HISTORY '
+                        "WHERE SUCCESS = 1 ORDER BY INSTALLED_RANK"
                     )
                 )
                 .scalars()

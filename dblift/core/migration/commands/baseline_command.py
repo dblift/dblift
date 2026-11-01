@@ -97,7 +97,7 @@ class BaselineCommand(BaseCommand):
                 result,
                 body,
                 preflight=lambda: self._run_preflight(
-                    result, ensure_history=True, dry_run=dry_run, create_schema=True
+                    result, ensure_history=True, dry_run=dry_run, create_schema=True, lock=True
                 ),
                 error_message_prefix="Baseline operation failed",
                 header_kwargs=header_kwargs,

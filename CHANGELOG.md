@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   folder, as the CLI and the MCP server now do. It resolved them against the working directory
   unless `relative_to_config=True` was passed. A relative `sqlite:` URL in a configuration file is
   now reported as an absolute `sqlite:` URL.
+- `from_sqlalchemy(connection=...)`: on Db2, `migrate` on a schema that did not exist yet, or
+  had no schema-history table, never returned. The migration lock table was created on a second
+  connection that waited for the schema and history table the caller's still-uncommitted
+  transaction had just created. The lock table is now created before the caller's connection
+  writes anything.
 
 ### Fixed
 
