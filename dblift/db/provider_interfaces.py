@@ -278,6 +278,12 @@ class TransactionalProvider(ABC):
         """Return True if the caller supplied the connection and owns its transactions."""
         return False
 
+    def note_caller_work(self) -> None:
+        """Record that dblift wrote inside the caller's open transaction."""
+
+    def commit_caller_work(self) -> None:
+        """Commit the caller's open transaction if dblift wrote in it (see above)."""
+
 
 class MigrationProvider(ABC):
     """Capacité de tracking des migrations."""

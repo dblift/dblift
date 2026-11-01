@@ -11,15 +11,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `from_sqlalchemy(connection=...)`: a `beforeMigrate` callback's writes are committed at the
+  migration boundary. Anything the caller left pending in the same transaction is committed with
+  them instead of being rolled back.
+
 ### Fixed
 
-- `from_sqlalchemy(connection=...)`: a `beforeMigrate` callback that ran on a
-  connection that had already begun a transaction lost its writes, because the first migration's
-  rollback discarded them. Callbacks now start their own unit as migrations do, and persist.
-- `from_sqlalchemy(connection=...)` on PostgreSQL: a failed read of the history table (for
-  example `permission denied`) no longer leaves the connection aborted. Later calls report the
-  real cause instead of `current transaction is aborted`, and the caller's own uncommitted work
-  survives.
+- `from_sqlalchemy(connection=...)`: a `beforeMigrate` callback that ran on a connection that had
+  already begun a transaction lost its writes, because the first migration's rollback discarded
+  them.
+- `from_sqlalchemy(connection=...)`: a failed read of the history table (for example
+  `permission denied`) no longer leaves the connection aborted. Later calls report the real
+  cause instead of `current transaction is aborted`. On PostgreSQL the read runs under a
+  savepoint, so the caller's own uncommitted work survives; on DuckDB and Redshift, which have
+  no savepoint, the connection is rolled back.
 
 ### Removed
 

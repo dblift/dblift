@@ -253,7 +253,7 @@ def test_identifier_quote_chars_derived_from_quirks() -> None:
 
 
 def test_query_executor_statement_commits_without_provider_transaction() -> None:
-    provider = SimpleNamespace(_tx=None)
+    provider = SimpleNamespace(_tx=None, is_caller_owned=lambda: False)
     executor = _SqlAlchemyQueryExecutor(provider)  # type: ignore[arg-type]
     connection = MagicMock()
     connection.exec_driver_sql.return_value.rowcount = 1

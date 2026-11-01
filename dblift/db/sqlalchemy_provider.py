@@ -10,8 +10,8 @@ are left abstract for per-DB subclasses (e.g. SqliteNativeProvider).
 
 import re
 import threading
-from contextlib import AbstractContextManager, nullcontext
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from contextlib import AbstractContextManager, contextmanager, nullcontext
+from typing import Any, Dict, Iterator, List, Mapping, Optional, Tuple
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection, Engine, Transaction
@@ -63,7 +63,7 @@ class _SqlAlchemyQueryExecutor:
             result = connection.exec_driver_sql(driver_sql, bound_params)
         if (
             getattr(self._provider, "_tx", None) is None
-            and not getattr(self._provider, "_external_connection", False)
+            and not self._provider.is_caller_owned()
             and hasattr(connection, "commit")
         ):
             connection.commit()
@@ -144,6 +144,9 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
     # ``self.__dict__``; a per-instance lock would itself be subject to the
     # same unsynchronized check-then-act it is meant to fix.
     _lock_creation_lock = threading.Lock()
+
+    #: The caller's transaction that dblift wrote in; see :meth:`note_caller_work`.
+    _caller_work_tx: Optional[Transaction] = None
 
     def __getattr__(self, name: str) -> Any:
         """Fall back to a fresh lock for instances built without ``__init__``.
@@ -363,7 +366,7 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
             else:
                 named_sql, bound_params = self._bind(sql, params)
                 result = conn.execute(text(named_sql), bound_params)
-            if self._tx is None and not getattr(self, "_external_connection", False):
+            if self._tx is None and not self.is_caller_owned():
                 conn.commit()
             return result.rowcount if result.rowcount is not None else -1
 
@@ -395,9 +398,38 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
         """Return True when bound to a connection passed to ``from_sqlalchemy``."""
         return bool(getattr(self, "_external_connection", False))
 
+    def note_caller_work(self) -> None:
+        """Remember the caller's open transaction as holding dblift's writes."""
+        with self._lock:
+            conn = self._connection
+            self._caller_work_tx = conn.get_transaction() if conn is not None else None
+
+    def commit_caller_work(self) -> None:
+        """Commit that transaction, unless the caller has since moved on to another."""
+        with self._lock:
+            tx, self._caller_work_tx = self._caller_work_tx, None
+            conn = self._connection
+            if tx is not None and conn is not None and conn.get_transaction() is tx:
+                conn.commit()
+
     def _read_scope(self, conn: Connection) -> AbstractContextManager[object]:
         """Unit a read runs in on a caller-owned connection; none by default."""
         return nullcontext()
+
+    @contextmanager
+    def _rollback_on_failure(self, conn: Connection) -> Iterator[None]:
+        """Roll back when the body fails, for engines that abort the transaction on an error."""
+        try:
+            yield
+        except BaseException:
+            conn.rollback()
+            self._caller_work_tx = None
+            raise
+
+    @staticmethod
+    def _is_dbapi_autocommit(conn: Connection) -> bool:
+        """Whether the driver connection autocommits, so no transaction block can open."""
+        return bool(getattr(conn.connection.dbapi_connection, "autocommit", False))
 
     # ------------------------------------------------------------------
     # TransactionalProvider
@@ -421,6 +453,7 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
     def commit_transaction(self) -> None:
         """Commit the current explicit transaction."""
         with self._lock:
+            self._caller_work_tx = None
             if self._tx is not None:
                 self._tx.commit()
                 self._tx = None
@@ -428,6 +461,7 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
     def rollback_transaction(self) -> None:
         """Roll back the current explicit transaction."""
         with self._lock:
+            self._caller_work_tx = None
             if self._tx is not None:
                 self._tx.rollback()
                 self._tx = None

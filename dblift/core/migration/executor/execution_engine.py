@@ -482,6 +482,10 @@ class ExecutionEngine:
         if not isinstance(self.provider, TransactionalProvider):
             return False
         try:
+            # A callback's writes in the caller's transaction must outlive the
+            # rollback below.
+            if self.provider.is_caller_owned():
+                self.provider.commit_caller_work()
             # Check connection state before beginning
             if (
                 isinstance(self.provider, TransactionalProvider)
@@ -1160,15 +1164,12 @@ class ExecutionEngine:
                 transaction_started = True
                 self.log.debug(f"Started transaction for callback {callback.script_name}")
             except Exception as e:
+                self.log.warning(
+                    f"Could not begin transaction for callback {callback.script_name}: {e}"
+                )
+                # Continue in the caller's open transaction, without managing it
                 if self.provider.is_caller_owned():
-                    # The caller's connection autobegan: reset the boundary as a
-                    # migration does, or the next migration's rollback loses this.
-                    transaction_started = self._prepare_transaction(callback)
-                else:
-                    self.log.warning(
-                        f"Could not begin transaction for callback {callback.script_name}: {e}"
-                    )
-                    # Continue without explicit transaction management
+                    self.provider.note_caller_work()
 
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)

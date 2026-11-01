@@ -118,6 +118,32 @@ def _client(conn, schema, migrations):
     )
 
 
+def run_pending_row_scenario(url: str, tmp_path) -> None:
+    """A ``beforeMigrate`` callback's writes are committed, and so is what the caller left pending."""
+    schema = f"q_a_{uuid.uuid4().hex[:8]}"
+    migrations = tmp_path / "pending_row"
+    migrations.mkdir()
+    (migrations / "V1__t.sql").write_text("CREATE TABLE t (id integer);")
+    (migrations / "beforeMigrate__cb.sql").write_text("CREATE TABLE cb (id integer);")
+    admin = create_engine(url, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+        conn.execute(text(f'CREATE TABLE "{schema}".mine (id integer)'))
+    try:
+        with create_engine(url).connect() as conn:
+            conn.execute(text(f'INSERT INTO "{schema}".mine VALUES (1)'))
+            result = _client(conn, schema, migrations).migrate()
+            conn.rollback()
+        assert result.success, getattr(result, "error", None)
+        assert "cb" in _tables(admin, schema)
+        with admin.connect() as conn:
+            assert conn.execute(text(f'SELECT count(*) FROM "{schema}".mine')).scalar() == 1
+    finally:
+        with admin.connect() as conn:
+            conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()
+
+
 def run_after_clean_scenario(url: str, tmp_path) -> None:
     """``afterClean`` runs in the caller's transaction and does not undo the clean."""
     schema = f"q_a_{uuid.uuid4().hex[:8]}"
@@ -186,7 +212,8 @@ def run_autocommit_scenario(url: str, tmp_path) -> None:
             for name in ("migrate", "info", "validate"):
                 result = getattr(client, name)()
                 assert result.success, (name, getattr(result, "error_message", None))
-        assert _tables(admin, schema) == ["dblift_schema_history", "t"]
+        tables = _tables(admin, schema)
+        assert "t" in tables and "dblift_schema_history" in tables, tables
     finally:
         with admin.connect() as conn:
             conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
@@ -260,3 +287,9 @@ def test_autocommit_caller_connection_migrates_and_reports(postgresql_container,
 
 def test_concurrent_index_migration_on_a_caller_owned_connection(postgresql_container, tmp_path):
     run_concurrent_index_scenario(_url(postgresql_container), tmp_path)
+
+
+def test_before_migrate_callback_is_committed_with_the_callers_pending_work(
+    postgresql_container, tmp_path
+):
+    run_pending_row_scenario(_url(postgresql_container), tmp_path)

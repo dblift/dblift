@@ -76,6 +76,10 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
         self._external_engine: Optional[Any] = None
         self._external_sa_connection: Optional[Any] = None
 
+    def is_caller_owned(self) -> bool:
+        """Return True once ``from_sqlalchemy`` has attached the caller's connection."""
+        return self._external_connection
+
     def attach_external_sqlalchemy(self, engine: Any, connection: Any) -> None:
         """Bind a caller-owned SQLAlchemy engine/connection (from_sqlalchemy).
 

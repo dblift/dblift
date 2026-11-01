@@ -121,7 +121,7 @@ class MySqlProvider(SqlAlchemyProvider, CleanTargetProvider):
                 raise DBAPIError.instance(sql, None, exc, MySQLError) from exc
             finally:
                 result.close()
-            if self._tx is None and not getattr(self, "_external_connection", False):
+            if self._tx is None and not self.is_caller_owned():
                 conn.commit()
             return rows
 
