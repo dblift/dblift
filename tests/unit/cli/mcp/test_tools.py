@@ -342,6 +342,33 @@ def test_validate_argv_strict_parses_through_the_real_parser():
     assert ns.strict_mode is True
 
 
+@pytest.mark.unit
+def test_missing_migrations_directory_is_a_failed_read_for_both_resources(project):
+    """The tools report the missing directory as `success: false`; the resources
+    must not turn the same payload into an empty list."""
+    import shutil
+
+    from mcp.shared.exceptions import MCPError
+
+    shutil.rmtree(project / "migrations")
+
+    async def scenario(client):
+        info = await client.call_tool("info", {})
+        errors = {}
+        for uri in ("dblift://history", "dblift://pending"):
+            with pytest.raises(MCPError) as exc_info:
+                await client.read_resource(uri)
+            errors[uri] = str(exc_info.value)
+        return info, errors
+
+    info, errors = anyio.run(_session, scenario)
+
+    assert info.structured_content["success"] is False
+    assert "Migration scripts directory not found" in info.structured_content["error"]
+    for message in errors.values():
+        assert "Migration scripts directory not found" in message
+
+
 @pytest.fixture
 def unreachable_project(tmp_path, monkeypatch):
     """A PostgreSQL project pointed at a localhost port nothing listens on."""
