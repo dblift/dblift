@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- On MySQL, MariaDB and SQL Server, `info`, `migrate` and the API and MCP equivalents fail with
+  the engine's `SELECT command denied` or `SELECT permission was denied` error when the connected
+  account cannot read the schema-history table. They reported success with every migration
+  Pending, because the existence check listed only tables the account could read.
+
 ### Removed
 
 ## [5.1.3] - 2026-11-01

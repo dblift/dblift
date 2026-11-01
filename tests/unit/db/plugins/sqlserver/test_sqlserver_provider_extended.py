@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock
 
+from sqlalchemy.exc import ProgrammingError
+
 from dblift.core.migration.sql.execution_statement import classify_execution_statement
 from dblift.db.plugins.sqlserver.provider import SqlServerProvider
 from dblift.db.provider_interfaces import DroppableObject
@@ -19,6 +21,8 @@ def _provider(execute_query_map=None, raise_on_statement=None):
         for key, rows in qmap.items():
             if key in sql:
                 return rows
+        if "WHERE 1=0" in sql:  # the existence probe of a table the catalog does not list
+            raise ProgrammingError(sql, None, Exception(208, b"Invalid object name"))
         return []
 
     def execute_statement(sql, schema=None, params=None):
