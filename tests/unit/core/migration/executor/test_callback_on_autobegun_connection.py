@@ -1,8 +1,9 @@
-"""A callback on a connection that already autobegan still runs in a committed unit.
+"""Callbacks and migrations on a connection whose transaction the caller already began.
 
-SQLAlchemy refuses ``begin()`` once the connection has autobegun (a caller-owned
-connection after any earlier statement). The callback used to carry on in that
-transaction and the next migration's rollback discarded its writes.
+SQLAlchemy refuses ``begin()`` once a connection has autobegun. A callback then
+runs inside the caller's transaction with no begin/commit of its own, and must
+never roll that transaction back. Its writes are committed when the next
+migration prepares its own unit, so that rollback cannot discard them.
 """
 
 from typing import List
@@ -22,7 +23,7 @@ SQL = "CREATE TABLE cb (id integer)"
 
 
 class _AutobegunProvider(TransactionalProvider):
-    """Starts inside a transaction: ``begin_transaction`` fails until it is rolled back."""
+    """Starts inside a transaction: ``begin_transaction`` fails until it is ended."""
 
     connection = object()  # no ``getAutoCommit``, like a SQLAlchemy connection
 
@@ -33,6 +34,13 @@ class _AutobegunProvider(TransactionalProvider):
 
     def is_caller_owned(self) -> bool:
         return self._external
+
+    def note_caller_work(self) -> None:
+        self.calls.append("note")
+
+    def commit_caller_work(self) -> None:
+        self.calls.append("commit-caller-work")
+        self.in_tx = False
 
     def check_transaction_state(self) -> None:
         pass
@@ -57,24 +65,27 @@ class _AutobegunProvider(TransactionalProvider):
         return 0
 
 
-def _run_callback(provider: _AutobegunProvider) -> None:
+def _engine(provider: _AutobegunProvider) -> ExecutionEngine:
     engine = ExecutionEngine(provider, StatementReader(dialect="postgresql"), MagicMock())
     engine._classify_execution_statements = MagicMock(return_value=[])
     engine.transaction_policy = MagicMock()
     engine.transaction_policy.decide.return_value = TransactionPolicyDecision(transactional=True)
+    return engine
+
+
+def _run_callback(provider: _AutobegunProvider) -> None:
     callback = make_migration(
         script_name="beforeMigrate__cb.sql", content=SQL, sql_statements=[SQL]
     )
+    _engine(provider).execute_callback(callback)
 
-    engine.execute_callback(callback)
 
-
-def test_callback_on_a_caller_owned_connection_resets_the_boundary_and_commits_its_unit():
+def test_callback_on_a_caller_owned_connection_runs_in_the_open_transaction():
     provider = _AutobegunProvider()
 
     _run_callback(provider)
 
-    assert provider.calls == ["begin-refused", "rollback", "begin", "execute", "commit"]
+    assert provider.calls == ["begin-refused", "note", "execute"]
 
 
 def test_callback_on_an_owned_connection_still_continues_without_a_transaction():
@@ -83,3 +94,23 @@ def test_callback_on_an_owned_connection_still_continues_without_a_transaction()
     _run_callback(provider)
 
     assert provider.calls == ["begin-refused", "execute"]
+
+
+def test_next_migration_commits_the_callbacks_work_before_its_own_rollback():
+    provider = _AutobegunProvider()
+    migration = MagicMock()
+    migration.script_name = "V1__t.sql"
+
+    assert _engine(provider)._prepare_transaction(migration)
+
+    assert provider.calls[:3] == ["commit-caller-work", "rollback", "begin"]
+
+
+def test_next_migration_on_an_owned_connection_commits_nothing_extra():
+    provider = _AutobegunProvider(external=False)
+    migration = MagicMock()
+    migration.script_name = "V1__t.sql"
+
+    _engine(provider)._prepare_transaction(migration)
+
+    assert "commit-caller-work" not in provider.calls

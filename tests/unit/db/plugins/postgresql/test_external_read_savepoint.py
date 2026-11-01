@@ -5,10 +5,12 @@ connection dblift does not own, nothing of dblift's would ever end it. The read
 runs under a savepoint so only the read is undone.
 """
 
+from types import SimpleNamespace
 from typing import List, Optional
 
 import pytest
 
+from dblift.db.plugins.duckdb.provider import DuckDBProvider
 from dblift.db.plugins.postgresql.provider import PostgreSqlProvider
 from dblift.db.plugins.redshift.provider import RedshiftProvider
 
@@ -51,8 +53,9 @@ class _Connection:
 
     closed = False
 
-    def __init__(self, failing: Optional[str] = None) -> None:
+    def __init__(self, failing: Optional[str] = None, autocommit: bool = False) -> None:
         self.failing = failing
+        self.connection = SimpleNamespace(dbapi_connection=SimpleNamespace(autocommit=autocommit))
         self.aborted = False
         self.log: List[str] = []
 
@@ -74,6 +77,10 @@ class _Connection:
 
     def commit(self) -> None:
         self.log.append("commit")
+
+    def rollback(self) -> None:
+        self.aborted = False
+        self.log.append("rollback")
 
 
 def _provider(provider_class, connection: _Connection, *, external=True, tx=None):
@@ -125,6 +132,7 @@ def test_successful_read_releases_the_savepoint_and_never_commits():
         (PostgreSqlProvider, False, None),  # dblift owns the connection
         (PostgreSqlProvider, True, object()),  # inside dblift's own transaction
         (RedshiftProvider, True, None),  # no SAVEPOINT statement
+        (DuckDBProvider, True, None),  # no SAVEPOINT statement
     ],
 )
 def test_no_savepoint_where_it_does_not_apply(provider_class, external, tx):
@@ -134,3 +142,45 @@ def test_no_savepoint_where_it_does_not_apply(provider_class, external, tx):
     provider.execute_query("SELECT 1")
 
     assert "savepoint" not in connection.log
+
+
+def test_no_savepoint_on_an_autocommit_connection():
+    """SAVEPOINT is refused outside a transaction block, and nothing there can abort."""
+    connection = _Connection(autocommit=True)
+    provider = _provider(PostgreSqlProvider, connection)
+
+    assert provider.execute_query("SELECT 1") == [{"n": 1}]
+
+    assert connection.log == ["run SELECT 1"]
+
+
+@pytest.mark.parametrize("provider_class", [RedshiftProvider, DuckDBProvider])
+def test_without_savepoints_a_failed_read_rolls_the_connection_back(provider_class):
+    connection = _Connection(failing="SELECT bad")
+    provider = _provider(provider_class, connection)
+
+    with pytest.raises(RuntimeError, match="permission denied"):
+        provider.execute_query("SELECT bad")
+
+    assert connection.log == ["rollback"]
+    assert provider.execute_query("SELECT 1") == [{"n": 1}]
+
+
+@pytest.mark.parametrize("provider_class", [RedshiftProvider, DuckDBProvider])
+def test_without_savepoints_a_successful_read_changes_nothing(provider_class):
+    connection = _Connection()
+    provider = _provider(provider_class, connection)
+
+    provider.execute_query("SELECT 1")
+
+    assert connection.log == ["run SELECT 1"]
+
+
+def test_a_failed_read_inside_dblifts_own_transaction_is_left_to_its_rollback():
+    connection = _Connection(failing="SELECT bad")
+    provider = _provider(RedshiftProvider, connection, tx=object())
+
+    with pytest.raises(RuntimeError):
+        provider.execute_query("SELECT bad")
+
+    assert connection.log == []

@@ -100,6 +100,132 @@ def run_failed_read_scenario(url: str, tmp_path) -> None:
         admin.dispose()
 
 
+def _tables(admin, schema: str) -> list:
+    with admin.connect() as conn:
+        return (
+            conn.execute(
+                text("SELECT tablename FROM pg_tables WHERE schemaname = :s ORDER BY 1"),
+                {"s": schema},
+            )
+            .scalars()
+            .all()
+        )
+
+
+def _client(conn, schema, migrations):
+    return DBLiftClient.from_sqlalchemy(
+        connection=conn, schema=schema, migrations_dir=migrations, logger=NullLog()
+    )
+
+
+def run_after_clean_scenario(url: str, tmp_path) -> None:
+    """``afterClean`` runs in the caller's transaction and does not undo the clean."""
+    schema = f"q_a_{uuid.uuid4().hex[:8]}"
+    migrations = tmp_path / "after_clean"
+    migrations.mkdir()
+    (migrations / "V1__t.sql").write_text("CREATE TABLE t (id integer);")
+    admin = create_engine(url, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+    try:
+        DBLiftClient.from_sqlalchemy(
+            engine=admin, schema=schema, migrations_dir=migrations, logger=NullLog()
+        ).migrate()
+        (migrations / "afterClean__cb.sql").write_text("CREATE TABLE cb (id integer);")
+        with create_engine(url).connect() as conn:
+            result = _client(conn, schema, migrations).clean(clean_enabled=True)
+            conn.commit()
+        assert result.success, getattr(result, "error", None)
+        assert _tables(admin, schema) == ["cb"], _tables(admin, schema)
+    finally:
+        with admin.connect() as conn:
+            conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()
+
+
+def run_validate_callback_scenario(url: str, tmp_path) -> None:
+    """``validate`` with a ``beforeValidate`` callback keeps the caller's pending row."""
+    schema = f"q_a_{uuid.uuid4().hex[:8]}"
+    migrations = tmp_path / "validate_cb"
+    migrations.mkdir()
+    (migrations / "V1__t.sql").write_text("CREATE TABLE t (id integer);")
+    admin = create_engine(url, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+        conn.execute(text(f'CREATE TABLE "{schema}".mine (id integer)'))
+    try:
+        DBLiftClient.from_sqlalchemy(
+            engine=admin, schema=schema, migrations_dir=migrations, logger=NullLog()
+        ).migrate()
+        (migrations / "beforeValidate__cb.sql").write_text("SELECT 1;")
+        with create_engine(url).connect() as conn:
+            conn.execute(text(f'INSERT INTO "{schema}".mine VALUES (1)'))
+            result = _client(conn, schema, migrations).validate()
+            pending = conn.execute(text(f'SELECT count(*) FROM "{schema}".mine')).scalar()
+            conn.rollback()
+        assert result.success, getattr(result, "error", None)
+        assert pending == 1
+    finally:
+        with admin.connect() as conn:
+            conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()
+
+
+def run_autocommit_scenario(url: str, tmp_path) -> None:
+    """A caller-owned ``AUTOCOMMIT`` connection migrates, reports and validates."""
+    schema = f"q_a_{uuid.uuid4().hex[:8]}"
+    migrations = tmp_path / "autocommit"
+    migrations.mkdir()
+    (migrations / "V1__t.sql").write_text("CREATE TABLE t (id integer);")
+    admin = create_engine(url, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+    try:
+        with admin.connect() as conn:
+            client = _client(conn, schema, migrations)
+            for name in ("migrate", "info", "validate"):
+                result = getattr(client, name)()
+                assert result.success, (name, getattr(result, "error_message", None))
+        assert _tables(admin, schema) == ["dblift_schema_history", "t"]
+    finally:
+        with admin.connect() as conn:
+            conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()
+
+
+def run_concurrent_index_scenario(url: str, tmp_path) -> None:
+    """A ``CREATE INDEX CONCURRENTLY`` migration succeeds on a caller-owned connection."""
+    schema = f"q_a_{uuid.uuid4().hex[:8]}"
+    migrations = tmp_path / "cic"
+    migrations.mkdir()
+    (migrations / "V1__t.sql").write_text("CREATE TABLE t (id integer);")
+    (migrations / "V2__i.sql").write_text("CREATE INDEX CONCURRENTLY ix ON t (id);")
+    admin = create_engine(url, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+    try:
+        with create_engine(url).connect() as conn:
+            result = _client(conn, schema, migrations).migrate()
+            conn.commit()
+        assert result.success, getattr(result, "error", None)
+        with admin.connect() as conn:
+            indexes = (
+                conn.execute(
+                    text(
+                        "SELECT schemaname FROM pg_indexes WHERE indexname = 'ix' AND schemaname = :s"
+                    ),
+                    {"s": schema},
+                )
+                .scalars()
+                .all()
+            )
+        assert indexes == [schema]
+    finally:
+        with admin.connect() as conn:
+            conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()
+
+
 def _config_of(url: str) -> dict:
     parsed = create_engine(url).url
     return {
@@ -118,3 +244,19 @@ def test_callback_persists_on_a_caller_owned_connection(callback, postgresql_con
 
 def test_failed_history_read_leaves_the_caller_connection_usable(postgresql_container, tmp_path):
     run_failed_read_scenario(_url(postgresql_container), tmp_path)
+
+
+def test_after_clean_callback_does_not_undo_clean(postgresql_container, tmp_path):
+    run_after_clean_scenario(_url(postgresql_container), tmp_path)
+
+
+def test_validate_callback_keeps_the_callers_pending_work(postgresql_container, tmp_path):
+    run_validate_callback_scenario(_url(postgresql_container), tmp_path)
+
+
+def test_autocommit_caller_connection_migrates_and_reports(postgresql_container, tmp_path):
+    run_autocommit_scenario(_url(postgresql_container), tmp_path)
+
+
+def test_concurrent_index_migration_on_a_caller_owned_connection(postgresql_container, tmp_path):
+    run_concurrent_index_scenario(_url(postgresql_container), tmp_path)
