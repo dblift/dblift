@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `DBLiftClient.from_config_file(path)` resolves a relative migrations directory, SQLite file
+  (`database.url` or `database.path`) and log directory written in the file against the file's
+  folder, as the CLI and the MCP server now do. It resolved them against the working directory
+  unless `relative_to_config=True` was passed. A relative `sqlite:` URL in a configuration file is
+  now reported as an absolute `sqlite:` URL.
+
 ### Fixed
 
 - On MySQL, MariaDB and SQL Server, `info`, `migrate` and the API and MCP equivalents fail with
@@ -25,6 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The exit code is unchanged. On Oracle a table the account may not read gives the same
   `ORA-00942` as a missing one, so the warning there reads "does not exist or cannot be read by
   this account".
+- `dblift --config path/to/dblift.yaml ...` run from another directory no longer fails with
+  `Migration scripts directory not found`, and a relative SQLite file in the file is created next
+  to it instead of in the working directory. Relative paths written in a configuration file
+  (migrations directories, SQLite file, log directory) resolve against the file's folder; values
+  given on the command line, such as `--scripts` and `--db-url`, still resolve against the working
+  directory. The CLI's log files still go to `--log-dir` (default `logs`) in the working directory.
 
 ### Removed
 

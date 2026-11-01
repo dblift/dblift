@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Union
 
 from dblift.config.dblift_config import DbliftConfig, DirectoryConfig
-
-_IN_MEMORY = ":memory:"
+from dblift.config.file_path_anchoring import _IN_MEMORY, anchorer
 
 
 def is_derived_log_dir(config: DbliftConfig, directory: str) -> bool:
@@ -24,10 +23,7 @@ def anchor_config_paths(config: DbliftConfig, base_dir: Path) -> None:
     :func:`is_derived_log_dir` can tell it apart from one the user set.
     """
     base = Path(base_dir).expanduser().resolve()
-
-    def anchor(value: Any) -> str:
-        path = Path(str(value)).expanduser()
-        return str(path if path.is_absolute() else (base / path).resolve())
+    anchor = anchorer(base)
 
     migrations = config.migrations
     anchored: List[Union[str, DirectoryConfig]] = []
