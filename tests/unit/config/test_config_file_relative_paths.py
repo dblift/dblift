@@ -5,11 +5,13 @@ from pathlib import Path
 
 import pytest
 import yaml
+from sqlalchemy.engine import make_url
 
 from dblift.api.client import DBLiftClient
 from dblift.cli._config_helpers import _resolve_scripts_directories
 from dblift.config.config_builder import ConfigBuilder
 from dblift.config.dblift_config import load_config
+from dblift.config.file_path_anchoring import anchor_file_data
 
 pytestmark = pytest.mark.unit
 
@@ -237,3 +239,34 @@ class TestClientFromConfigFile:
         assert (project / "rel.db").exists()
         assert (project / "logs").is_dir()
         assert list(elsewhere.iterdir()) == []
+
+
+class TestAnchorFileData:
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "postgresql+psycopg://u:p@host/db",
+            "sqlite:///:memory:",
+            "sqlite:///file:rel.db?uri=true",
+            "sqlite:////abs/x.db",
+            "sqlite://",
+            "sqlite://[bad",
+        ],
+    )
+    def test_urls_that_name_no_relative_file_are_unchanged(self, tmp_path, url):
+        data = {"database": {"url": url}}
+        anchor_file_data(data, tmp_path)
+        assert data == {"database": {"url": url}}
+
+    def test_sqlite3_alias_and_directory_alias_entries(self, tmp_path):
+        data = {
+            "database": {"url": "sqlite3:///rel.db"},
+            "migrations": {"directories": [{"directory": "d", "recursive": False}, "", 3]},
+        }
+        anchor_file_data(data, tmp_path)
+        assert make_url(data["database"]["url"]).database == str(tmp_path.resolve() / "rel.db")
+        assert data["migrations"]["directories"] == [
+            {"directory": str(tmp_path.resolve() / "d"), "recursive": False},
+            "",
+            3,
+        ]

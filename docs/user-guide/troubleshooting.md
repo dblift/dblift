@@ -360,7 +360,7 @@ execute — reads are `find()` calls, not statements.
 
 **Solution**:
 - Use absolute paths: `/path/to/database.db`
-- Or relative paths from the working directory
+- Or relative paths: from the configuration file's folder when written in it, from the working directory on the command line
 - Ensure the directory exists
 - Check file permissions
 

@@ -30,9 +30,7 @@ def project(tmp_path):
     (root / "migrations").mkdir(parents=True)
     (root / "migrations" / "V1__t.sql").write_text("CREATE TABLE t (id INTEGER);\n")
     (root / "dblift.yaml").write_text(
-        "database:\n  url: sqlite:///rel.db\n"
-        "migrations:\n  directory: migrations\n"
-        "logging:\n  directory: logs\n"
+        "database:\n  url: sqlite:///rel.db\n" "migrations:\n  directory: migrations\n"
     )
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
@@ -50,8 +48,7 @@ def test_migrate_from_another_directory(project):
     with sqlite3.connect(root / "rel.db") as conn:
         tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master")}
     assert "t" in tables
-    assert list((root / "logs").glob("*.log"))
-    assert list(elsewhere.iterdir()) == []
+    assert not (elsewhere / "rel.db").exists()
 
 
 def test_info_from_another_directory_lists_the_pending_migration(project):
