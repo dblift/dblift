@@ -328,7 +328,7 @@ def test_resource_failure_carries_the_cli_message():
     assert "no config here" in message
 
 
-def _read_history_resource(payload):
+def _read_history_resource(payload=None, **run_command_kwargs):
     """Read a ``command_resource`` whose command returns *payload*; return its text or error."""
     server = _server()
     server.command_resource(
@@ -348,7 +348,8 @@ def _read_history_resource(payload):
         except MCPError as exc:
             return exc
 
-    with patch("dblift.cli.mcp.server.run_command", return_value=payload):
+    run_command_kwargs.setdefault("return_value", payload)
+    with patch("dblift.cli.mcp.server.run_command", **run_command_kwargs):
         return anyio.run(_with_client, server, scenario)
 
 
@@ -364,10 +365,7 @@ def test_resource_reports_a_failed_command_payload_like_a_connection_failure():
     assert isinstance(failed, MCPError)
     assert "permission denied for table dblift_schema_history" in str(failed)
 
-    with patch(
-        "dblift.cli.mcp.server.run_command", side_effect=CommandInvocationError("refused", 1)
-    ):
-        connection_failure = _read_history_resource({})
+    connection_failure = _read_history_resource(side_effect=CommandInvocationError("refused", 1))
     assert type(failed) is type(connection_failure)
 
 
