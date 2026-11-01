@@ -426,7 +426,7 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
         """
         if self._migration_lease is not None:
             return True
-        if getattr(self, "_external_connection", False) and not self._migration_lease_is_private():
+        if self.is_caller_owned() and not self._migration_lease_is_private():
             self._ensure_migration_lock_table_for_external_connection(schema)
         else:
             self.create_migration_lock_table_if_not_exists(schema)

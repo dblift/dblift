@@ -1,8 +1,10 @@
 """DuckDB provider backed by SQLAlchemy Core (duckdb_engine driver)."""
 
+from contextlib import AbstractContextManager
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
+from sqlalchemy.engine import Connection
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
@@ -125,9 +127,13 @@ class DuckDBProvider(SqlLeaseLockingProvider):
             named_sql, bound_params = self._bind(rewritten, params)
             result = conn.execute(text(named_sql), bound_params)
         rows = result.fetchall()
-        if self._tx is None and not getattr(self, "_external_connection", False):
+        if self._tx is None and not self.is_caller_owned():
             conn.commit()
         return len(rows)
+
+    def _read_scope(self, conn: Connection) -> AbstractContextManager[object]:
+        """DuckDB has no SAVEPOINT: a failed read rolls back the aborted transaction."""
+        return self._rollback_on_failure(conn)
 
     @staticmethod
     def _has_top_level_keyword(sql: str, keyword: str) -> bool:

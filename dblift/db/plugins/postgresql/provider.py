@@ -2,6 +2,7 @@
 
 import io
 import time
+from contextlib import AbstractContextManager, nullcontext
 from itertools import takewhile
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -161,6 +162,20 @@ class PostgreSqlProvider(SqlAlchemyProvider):
             raise
         if savepoint.is_active:
             savepoint.commit()
+
+    def _read_scope(self, conn: Connection) -> AbstractContextManager[object]:
+        """Savepoint for a read on a caller-owned connection.
+
+        A failed statement aborts the whole transaction, and nothing of dblift's
+        would end it. Without SAVEPOINT (the flag is the engine's capability,
+        not only for ``clean``) the connection is rolled back instead. An
+        autocommit connection has no transaction to abort.
+        """
+        if self._is_dbapi_autocommit(conn):
+            return nullcontext()
+        if self.clean_drop_uses_savepoint:
+            return conn.begin_nested()
+        return self._rollback_on_failure(conn)
 
     def execute_statement(
         self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None

@@ -253,7 +253,7 @@ def test_identifier_quote_chars_derived_from_quirks() -> None:
 
 
 def test_query_executor_statement_commits_without_provider_transaction() -> None:
-    provider = SimpleNamespace(_tx=None)
+    provider = SimpleNamespace(_tx=None, is_caller_owned=lambda: False)
     executor = _SqlAlchemyQueryExecutor(provider)  # type: ignore[arg-type]
     connection = MagicMock()
     connection.exec_driver_sql.return_value.rowcount = 1
@@ -486,7 +486,7 @@ def test_catalog_query_executor_without_params_sends_sql_verbatim_to_format_driv
             self.driver_calls.append((sql, params, execution_options))
             return _Result()
 
-    provider = SimpleNamespace(_tx=None, _external_connection=False)
+    provider = SimpleNamespace(_tx=None, is_caller_owned=lambda: False)
     executor = _SqlAlchemyQueryExecutor(provider)  # type: ignore[arg-type]
     connection = _Connection()
 
@@ -516,7 +516,7 @@ def test_catalog_query_executor_execute_statement_without_params_is_unbound() ->
             self.driver_calls.append((sql, params, execution_options))
             return _Result()
 
-    provider = SimpleNamespace(_tx=None, _external_connection=True)
+    provider = SimpleNamespace(_tx=None, is_caller_owned=lambda: True)
     connection = _Connection()
 
     affected = _SqlAlchemyQueryExecutor(provider).execute_statement(  # type: ignore[arg-type]
@@ -559,7 +559,7 @@ def test_catalog_query_executor_bound_statement_doubles_percent_except_for_pymss
             return _Result()
 
     provider = SimpleNamespace(
-        _tx=None, _external_connection=True, _driver_bind=SqlAlchemyProvider._driver_bind
+        _tx=None, is_caller_owned=lambda: True, _driver_bind=SqlAlchemyProvider._driver_bind
     )
     executor = _SqlAlchemyQueryExecutor(provider)  # type: ignore[arg-type]
     sql = "UPDATE t SET c = ? WHERE d LIKE 'a%'"

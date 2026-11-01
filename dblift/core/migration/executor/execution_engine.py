@@ -482,6 +482,10 @@ class ExecutionEngine:
         if not isinstance(self.provider, TransactionalProvider):
             return False
         try:
+            # A callback's writes in the caller's transaction must outlive the
+            # rollback below.
+            if self.provider.is_caller_owned():
+                self.provider.commit_caller_work()
             # Check connection state before beginning
             if (
                 isinstance(self.provider, TransactionalProvider)
@@ -1163,7 +1167,9 @@ class ExecutionEngine:
                 self.log.warning(
                     f"Could not begin transaction for callback {callback.script_name}: {e}"
                 )
-                # Continue without explicit transaction management
+                # Continue in the caller's open transaction, without managing it
+                if self.provider.is_caller_owned():
+                    self.provider.note_caller_work()
 
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)

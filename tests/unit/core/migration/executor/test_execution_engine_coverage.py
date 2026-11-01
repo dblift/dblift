@@ -793,6 +793,7 @@ class TestExecuteCallbackAdditional(unittest.TestCase):
     def test_sql_callback_no_transaction_started_no_rollback(self):
         """Lines 1072-1084: begin_transaction fails → no rollback when error occurs."""
         engine = _make_engine()
+        engine.provider.is_caller_owned.return_value = False
         engine.provider.begin_transaction.side_effect = Exception("begin failed")
         engine.sql_analyzer.get_statement_type.return_value = "DML"
         engine.provider.execute_statement.side_effect = Exception("exec failed")
