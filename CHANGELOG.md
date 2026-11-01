@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- On MySQL, MariaDB and SQL Server, `info`, `migrate` and the API and MCP equivalents fail with
+  the engine's `SELECT command denied` or `SELECT permission was denied` error when the connected
+  account cannot read the schema-history table. They reported success with every migration
+  Pending, because the existence check listed only tables the account could read. An account
+  holding only table-level grants on the database gets the same denial error when the history
+  table does not exist, because MySQL and MariaDB do not tell the two apart.
+- `info` and `migrate --dry-run` print a warning and report `history_table_exists: false` (JSON,
+  API and MCP results) when the schema-history table does not exist. A role that can read but not
+  create saw every migration Pending and no schema version, with nothing saying none was applied.
+  The exit code is unchanged. On Oracle a table the account may not read gives the same
+  `ORA-00942` as a missing one, so the warning there reads "does not exist or cannot be read by
+  this account".
 - `dblift --config path/to/dblift.yaml ...` run from another directory no longer fails with
   `Migration scripts directory not found`, and a relative SQLite file in the file is created next
   to it instead of in the working directory. Relative paths written in a configuration file

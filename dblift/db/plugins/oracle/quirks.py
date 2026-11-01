@@ -77,6 +77,7 @@ class OracleQuirks(BaseQuirks):
     # import-flyway reads the verbatim-cased Flyway source table directly,
     # because get_applied_migrations would uppercase the name and miss it.
     flyway_source_table_case_sensitive = True
+    unreadable_table_looks_missing = True
 
     def is_schema_history_race_error(self, error_message: str) -> bool:
         """Oracle's ``CREATE TABLE`` for the migration history table has no

@@ -247,6 +247,8 @@ class MigrateResult(OperationResult):
         self.current_schema_version: Optional[str] = None
         self.dry_run_count: int = 0
         self.dry_run: bool = False
+        # False when a dry run found no schema-history table, so every migration is pending.
+        self.history_table_exists: bool = True
 
     def add_migration(self, migration: MigrationInfo) -> None:
         """Add a migration to the result."""
@@ -485,6 +487,8 @@ class InfoResult(OperationResult):
         self.target_schema: str = ""
         self.migration_data: Optional[Any] = None
         self.current_schema_version: Optional[str] = None
+        # False when the schema-history table is missing, so nothing is recorded as applied.
+        self.history_table_exists: bool = True
         # ``schema_name`` comes from OperationResult as a property.
         self.migrations: List[MigrationInfo] = []
 
