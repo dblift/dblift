@@ -76,40 +76,52 @@ def _drop_schema(url: str, schema: str) -> None:
     engine.dispose()
 
 
+def _applied(engine, schema: str) -> list:
+    with engine.connect() as conn:
+        return (
+            conn.execute(
+                text(
+                    f'SELECT VERSION FROM "{schema}".DBLIFT_SCHEMA_HISTORY '
+                    "WHERE SUCCESS = 1 ORDER BY INSTALLED_RANK"
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+
 def run_scenario(url: str, tmp_path) -> None:
-    schema = f"Q_CONN_{uuid.uuid4().hex[:8].upper()}"
+    uid = uuid.uuid4().hex[:8].upper()
     migrations = tmp_path / "migrations"
     migrations.mkdir()
     (migrations / "V1__first.sql").write_text(
-        f"CREATE TABLE T_{schema[-8:]}_1 (id INTEGER NOT NULL PRIMARY KEY);"
+        f"CREATE TABLE T_{uid}_1 (id INTEGER NOT NULL PRIMARY KEY);"
     )
     engine = create_engine(url)
+    schemas = [f"Q_CONN_{uid}_{name}" for name in ("A", "B", "C")]
     try:
-        # The schema does not exist: dblift creates it, the history table and
-        # the lock table, all through the caller's connection.
-        _run("migrate", url, schema, migrations)
+        # The schema does not exist: dblift creates it and the history table
+        # through the caller's connection, then takes the lock.
+        _run("migrate", url, schemas[0], migrations)
         (migrations / "V2__second.sql").write_text(
-            f"CREATE TABLE T_{schema[-8:]}_2 (id INTEGER NOT NULL PRIMARY KEY);"
+            f"CREATE TABLE T_{uid}_2 (id INTEGER NOT NULL PRIMARY KEY);"
         )
-        _run("info", url, schema, migrations)
-        _run("validate", url, schema, migrations)
-        # An initialised schema with a pending migration.
-        _run("migrate", url, schema, migrations)
-        with engine.connect() as conn:
-            applied = (
-                conn.execute(
-                    text(
-                        f'SELECT VERSION FROM "{schema}".DBLIFT_SCHEMA_HISTORY '
-                        "WHERE SUCCESS = 1 ORDER BY INSTALLED_RANK"
-                    )
-                )
-                .scalars()
-                .all()
-            )
-        assert applied == ["1", "2"], applied
+        _run("info", url, schemas[0], migrations)
+        _run("validate", url, schemas[0], migrations)
+        _run("migrate", url, schemas[0], migrations)
+        assert _applied(engine, schemas[0]) == ["1", "2"]
+        # Each of these leaves the schema and history table of a fresh schema
+        # on the caller's connection before the migration that takes the lock.
+        _run("validate", url, schemas[1], migrations)
+        _run("migrate", url, schemas[1], migrations)
+        assert _applied(engine, schemas[1]) == ["1", "2"]
+        _run("baseline", url, schemas[2], migrations)
+        _run("migrate", url, schemas[2], migrations)
+        assert _applied(engine, schemas[2])[-1] == "2"
     finally:
         engine.dispose()
-        _drop_schema(url, schema)
+        for schema in schemas:
+            _drop_schema(url, schema)
 
 
 def test_caller_owned_connection_migrates_without_waiting_on_itself(db2_container, tmp_path):
