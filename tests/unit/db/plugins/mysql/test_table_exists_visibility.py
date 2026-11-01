@@ -72,6 +72,13 @@ def test_an_unlisted_table_missing_from_the_database_is_absent(provider_class):
     assert provider.table_exists("app", "h") is False
 
 
+def test_an_unlisted_table_in_a_database_that_does_not_exist_is_absent(provider_class):
+    """A dry run before the first deploy: the database is created by ``migrate``."""
+    provider = provider_class([], _error(1049, "Unknown database 'app'"))
+
+    assert provider.table_exists("app", "h") is False
+
+
 def test_a_probe_that_reads_means_the_table_exists(provider_class):
     """A table the catalog does not list but a SELECT reads (a temporary table)."""
     provider = provider_class([])

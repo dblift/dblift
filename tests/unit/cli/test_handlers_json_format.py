@@ -207,7 +207,6 @@ def test_info_result_to_dict_payload_is_unchanged():
         success=True,
         error_message=None,
         current_schema_version="1",
-        history_table_exists=True,
         target_schema="main",
         db_version="3.45",
         database_url_masked="sqlite:///x",
@@ -575,7 +574,6 @@ def test_migrate_result_to_dict_shape():
         error_message=None,
         target_schema="main",
         current_schema_version="1",
-        history_table_exists=True,
         dry_run_count=2,
         migrations=[_migration(status="SUCCESS")],
         migrations_applied=["1"],
@@ -606,7 +604,6 @@ def test_migrate_result_to_dict_carries_sql_only_when_show_sql_is_true():
         error_message=None,
         target_schema="main",
         current_schema_version="1",
-        history_table_exists=True,
         dry_run_count=1,
         migrations=[],
         migrations_applied=[],
@@ -636,7 +633,6 @@ def test_migrate_result_to_dict_carries_sql_only_when_show_sql_is_true():
         error_message=None,
         target_schema="main",
         current_schema_version="1",
-        history_table_exists=True,
         dry_run_count=1,
         migrations=[],
         migrations_applied=[],
@@ -679,7 +675,6 @@ def test_handle_migrate_dry_run_json(capsys):
         error_message=None,
         target_schema="main",
         current_schema_version=None,
-        history_table_exists=True,
         dry_run_count=1,
         migrations=[],
         migrations_applied=[],
@@ -742,3 +737,14 @@ def test_migration_info_to_dict_carries_analysis_or_null():
 
     assert _migration_info_to_dict(_migration(analysis=analysis))["analysis"] == analysis
     assert _migration_info_to_dict(_migration(analysis=None))["analysis"] is None
+
+
+@pytest.mark.unit
+def test_payloads_default_the_history_marker_for_a_result_without_it():
+    from dblift.cli.handlers.info import _info_result_to_dict
+    from dblift.cli.handlers.migrate import _migrate_result_to_dict
+
+    result = SimpleNamespace(success=True, migrations=[])
+
+    assert _info_result_to_dict(result)["history_table_exists"] is True
+    assert _migrate_result_to_dict(result, dry_run=True)["history_table_exists"] is True

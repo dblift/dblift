@@ -54,7 +54,7 @@ def test_info_flags_a_missing_history_table(client_factory):
     assert result.success, result.error_message
     assert result.history_table_exists is False
     assert [m.status for m in result.migrations] == ["PENDING"]
-    assert any("dblift_schema_history" in w and "does not exist" in w for w in log.warnings)
+    assert any("dblift_schema_history" in w and "does not exist yet" in w for w in log.warnings)
 
 
 def test_dry_run_flags_a_missing_history_table(client_factory):
@@ -64,7 +64,24 @@ def test_dry_run_flags_a_missing_history_table(client_factory):
     assert result.success, result.error_message
     assert result.history_table_exists is False
     assert result.dry_run_count == 1
-    assert any("dblift_schema_history" in w and "does not exist" in w for w in log.warnings)
+    assert any("dblift_schema_history" in w and "does not exist yet" in w for w in log.warnings)
+
+
+def test_a_dialect_that_cannot_tell_missing_from_unreadable_says_so(client_factory, monkeypatch):
+    """Oracle answers ORA-00942 for both, so the text must not claim the table is missing."""
+    log = _Recorder()
+    client = client_factory(log)
+    monkeypatch.setattr(client.provider.quirks, "unreadable_table_looks_missing", True, raising=False)
+
+    client.info()
+
+    assert any("does not exist or cannot be read by this account" in w for w in log.warnings)
+
+
+def test_oracle_cannot_tell_missing_from_unreadable():
+    from dblift.db.plugins.oracle.quirks import OracleQuirks
+
+    assert OracleQuirks.unreadable_table_looks_missing is True
 
 
 def test_a_history_table_with_rows_is_not_flagged(client_factory):
