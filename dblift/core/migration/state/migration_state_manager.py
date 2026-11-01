@@ -130,6 +130,11 @@ class MigrationStateManager:
         self.history_manager.ensure_history_table()
         self.new_read_snapshot()
 
+    def require_scripts_directory(self, scripts_dir: Path) -> None:
+        """Fail on a missing primary migrations directory, as ``validate`` does."""
+        if not self.script_manager.migration_directory_exists(scripts_dir):
+            raise FileNotFoundError(f"Migration scripts directory not found: {scripts_dir}")
+
     def build_validation_snapshot(
         self,
         scripts_dir: Optional[Path],

@@ -11,6 +11,7 @@ from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 class _Provider(PostgreSqlProvider):
     def __init__(self):
+        self._tx = None
         self.queries = []
         self.statements = []
         self.lock_attempts = 0

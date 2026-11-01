@@ -79,6 +79,7 @@ class InfoCommand(BaseCommand):
         read_snapshot = self.state_manager.new_read_snapshot()
 
         def _body() -> None:
+            self.state_manager.require_scripts_directory(scripts_dir)
             # Use MigrationStateManager to get centralized migration state
             migration_state = self.state_manager.build_state(
                 scripts_dir,
