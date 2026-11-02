@@ -10,8 +10,9 @@ from sqlalchemy.engine import make_url
 from dblift.api.client import DBLiftClient
 from dblift.cli._config_helpers import _resolve_scripts_directories
 from dblift.config.config_builder import ConfigBuilder
-from dblift.config.dblift_config import load_config
+from dblift.config.dblift_config import ENV_PLACEHOLDER_PATTERN, DbliftConfig, load_config
 from dblift.config.file_path_anchoring import anchor_file_data
+from dblift.config.path_anchoring import anchor_config_paths
 
 pytestmark = pytest.mark.unit
 
@@ -270,3 +271,75 @@ class TestAnchorFileData:
             "",
             3,
         ]
+
+
+REFERENCES = [
+    "secret://p/q#r",
+    "s3://bucket/migrations",
+    "git+ssh://host/repo",
+    "${UNSET_DIR}",
+    "${UNSET_DIR}/migrations",
+    "${UNSET_DIR:-}",
+    "${secret:p/q}",
+    "${secret:p/q}/migrations",
+]
+# The loader expands a plain ``${VAR}`` itself; a form it cannot parse stays literal.
+LEFT_LITERAL_BY_THE_LOADER = [v for v in REFERENCES if not ENV_PLACEHOLDER_PATTERN.search(v)]
+
+
+def _every_anchored_key(value):
+    """The same *value* under every key the module anchors, in the root and an environment."""
+
+    def block():
+        return {
+            "migrations": {
+                "directory": value,
+                "directories": [value, {"path": value, "recursive": False}, {"directory": value}],
+            },
+            "database": {"path": value},
+            "logging": {"directory": value, "file": value},
+            "log_dir": value,
+            "log_file": value,
+        }
+
+    return {**block(), "environments": {"dev": block()}}
+
+
+class TestReferencesAreNotPaths:
+    @pytest.mark.parametrize("value", REFERENCES)
+    def test_every_anchored_key_keeps_a_reference_as_written(self, tmp_path, value):
+        data = _every_anchored_key(value)
+        expected = _every_anchored_key(value)
+        anchor_file_data(data, tmp_path)
+        assert data == expected
+
+    @pytest.mark.parametrize("value", REFERENCES)
+    def test_a_database_url_naming_a_reference_is_unchanged(self, tmp_path, value):
+        for url in (value, f"sqlite:///{value}"):
+            data = {"database": {"url": url}, "environments": {"dev": {"database": {"url": url}}}}
+            anchor_file_data(data, tmp_path)
+            assert data["database"]["url"] == url
+            assert data["environments"]["dev"]["database"]["url"] == url
+
+    @pytest.mark.parametrize("value", LEFT_LITERAL_BY_THE_LOADER)
+    def test_loading_a_file_keeps_a_reference_as_written(self, layout, value):
+        project, _ = layout
+        body = _every_anchored_key(value)
+        data = DbliftConfig.load_config_data_from_yaml(_write(project, body))
+        assert data == body
+
+    def test_a_relative_path_with_a_colon_but_no_scheme_is_still_a_path(self, tmp_path):
+        data = {"migrations": {"directory": "db/migrations"}, "log_dir": "a:b/logs"}
+        anchor_file_data(data, tmp_path)
+        assert data["migrations"]["directory"] == str(tmp_path.resolve() / "db" / "migrations")
+        assert data["log_dir"] == str(tmp_path.resolve() / "a:b" / "logs")
+
+    def test_a_loaded_config_keeps_a_reference_as_written(self, tmp_path):
+        config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": "x.db"}})
+        config.migrations.directory = "secret://p/q"
+        config.migrations.directories = ["${secret:p/q}"]
+        config.log_dir = "secret://logs"
+        anchor_config_paths(config, tmp_path)
+        assert config.migrations.directory == "secret://p/q"
+        assert config.migrations.directories == ["${secret:p/q}"]
+        assert config.log_dir == "secret://logs"
