@@ -111,8 +111,9 @@ def _native_canonical_from_scheme(scheme: str) -> Optional[str]:
     return None
 
 
-def _file_dialect(name: str) -> Optional[Tuple[str, str]]:
-    """Return ``(canonical name, locator pattern)`` of the native dialect called *name*
+def _file_dialect(name: str) -> Optional[Tuple[str, str, bool]]:
+    """Return ``(canonical name, locator pattern, opened through a URL)`` of the native dialect
+    called *name*
     (a URL scheme or a ``type``) *iff* that dialect is file-based, else ``None``.
 
     A file-based dialect's quirks advertise ``url_optional_when_file_path_given``: the file
@@ -128,7 +129,7 @@ def _file_dialect(name: str) -> Optional[Tuple[str, str]]:
     quirks = ProviderRegistry.get_quirks(canonical)
     if not getattr(quirks, "url_optional_when_file_path_given", False):
         return None
-    return canonical, quirks.file_url_locator_pattern
+    return canonical, quirks.file_url_locator_pattern, quirks.file_path_opened_through_url
 
 
 def _file_url_dialect_from_scheme(scheme: str) -> Optional[str]:

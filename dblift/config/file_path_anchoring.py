@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Tuple
 
 import sqlalchemy
 from sqlalchemy.exc import ArgumentError
@@ -10,7 +10,9 @@ from sqlalchemy.exc import ArgumentError
 from dblift.config.database_config import _file_dialect
 
 _IN_MEMORY = ":memory:"
-_REFERENCE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://|\$\{")
+_SCHEME = r"[A-Za-z][A-Za-z0-9+.-]*"
+URL_SCHEME = re.compile(rf"^({_SCHEME})://")
+_REFERENCE = re.compile(rf"^{_SCHEME}://|\$\{{")
 
 
 def anchorer(base_dir: Path) -> Callable[[object], str]:
@@ -25,26 +27,51 @@ def anchorer(base_dir: Path) -> Callable[[object], str]:
     return anchor
 
 
+def left_relative(database: str, locator: Optional[str]) -> bool:
+    """Whether *database* is a relative file that the anchoring would resolve."""
+    return bool(
+        database
+        and database != _IN_MEMORY
+        and not (locator and re.match(locator, database))
+        and not _REFERENCE.search(database)
+        and not Path(database).expanduser().is_absolute()
+    )
+
+
 def _anchor_database_file(
-    database: str, locator: Optional[str], anchor: Callable[[object], str]
+    database: str, locator: Optional[str], anchor: Callable[[object], str], declined: bool = False
 ) -> str:
-    """Anchor a relative database file; ``:memory:`` and a *locator* match are kept."""
+    """Anchor a relative database file; ``:memory:`` and a *locator* match are kept.
+
+    With *declined* a relative file is kept too: a SQLAlchemy URL cannot carry the anchored
+    path when the folder holds a '?', and ``refuse_unusable_file_paths`` refuses it if selected.
+    """
     if not database or database == _IN_MEMORY or (locator and re.match(locator, database)):
+        return database
+    if declined and left_relative(database, locator):
         return database
     return anchor(database)
 
 
-def _anchor_file_url(url: str, anchor: Callable[[object], str]) -> str:
-    """Anchor the file of a relative file-based dialect URL; any other URL is returned as is."""
+def file_url(url: str) -> Optional[Tuple[sqlalchemy.engine.URL, str, str]]:
+    """Return the parsed *url*, its database (``""`` if none) and its dialect's locator pattern
+    for a file-based dialect URL, else ``None``."""
     try:
         parsed = sqlalchemy.engine.make_url(url)
     except ArgumentError:
-        return url
+        return None
     dialect = _file_dialect(parsed.drivername.split("+", 1)[0])
-    if not dialect or not parsed.database:
+    return (parsed, parsed.database or "", dialect[1]) if dialect else None
+
+
+def _anchor_file_url(url: str, anchor: Callable[[object], str], declined: bool) -> str:
+    """Anchor the file of a relative file-based dialect URL; any other URL is returned as is."""
+    found = file_url(url)
+    if not found or not found[1]:
         return url
-    anchored = _anchor_database_file(parsed.database, dialect[1], anchor)
-    if anchored == parsed.database:
+    parsed, database, locator = found
+    anchored = _anchor_database_file(database, locator, anchor, declined)
+    if anchored == database:
         return url
     return parsed.set(database=anchored).render_as_string(hide_password=False)
 
@@ -69,6 +96,7 @@ def anchor_file_data(data: Dict[str, object], base_dir: Path) -> None:
     relative to the working directory.
     """
     anchor = anchorer(base_dir)
+    qmark = "?" in str(Path(base_dir).expanduser().resolve())
     environments = data.get("environments")
     blocks = [data]
     if isinstance(environments, dict):
@@ -86,15 +114,20 @@ def anchor_file_data(data: Dict[str, object], base_dir: Path) -> None:
         database = block.get("database")
         if isinstance(database, dict):
             if isinstance(database.get("url"), str):
-                database["url"] = _anchor_file_url(database["url"], anchor)
+                database["url"] = _anchor_file_url(database["url"], anchor, qmark)
             name = database.get("database")
             dialect = _file_dialect(str(database.get("type") or root_type or ""))
             if dialect and isinstance(name, str):
-                database["database"] = _anchor_database_file(name, dialect[1], anchor)
+                database["database"] = _anchor_database_file(
+                    name, dialect[1], anchor, qmark and dialect[2]
+                )
             path = database.get("path")
             if isinstance(path, str):
                 database["path"] = _anchor_database_file(
-                    path, dialect[1] if dialect else None, anchor
+                    path,
+                    dialect[1] if dialect else None,
+                    anchor,
+                    bool(qmark and dialect and dialect[2]),
                 )
         logging = block.get("logging")
         if isinstance(logging, dict) and isinstance(logging.get("directory"), str):
