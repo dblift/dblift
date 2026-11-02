@@ -9,7 +9,12 @@ from dblift.api._cli_support import ConnectionProvider
 from dblift.api._client_factory import apply_derived_schema
 from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
 from dblift.config.config_builder import ConfigBuilder
-from dblift.config.dblift_config import DbliftConfig, _placeholder_tokens, load_config
+from dblift.config.dblift_config import (
+    DbliftConfig,
+    _placeholder_tokens,
+    load_config,
+    refuse_empty_migrations_path,
+)
 from dblift.config.errors import ConfigurationError
 from dblift.config.secrets._provider_base import SecretsResolutionError
 from dblift.core.logger import LogFactory, LogFormat, LogLevel
@@ -607,8 +612,11 @@ def _resolve_scripts_directories(
             config_base_dir = config_path.resolve().parent
 
     if hasattr(args, "scripts_list") and args.scripts_list:
-        if "" in args.scripts_list:
-            parser.error("--scripts is empty (an unset ${VAR} expands to an empty string)")
+        for scripts_path in args.scripts_list:
+            try:
+                refuse_empty_migrations_path(scripts_path, "--scripts")
+            except ConfigurationError as e:
+                parser.error(str(e))
         scripts_dir = Path(args.scripts_list[0]).resolve()
         if not scripts_dir.exists() and args.command not in ["baseline"]:
             parser.error(f"Migration scripts directory not found: {args.scripts_list[0]}")

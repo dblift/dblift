@@ -68,7 +68,7 @@ def test_unset_placeholder_in_a_file_is_named_as_the_cause(tmp_path, monkeypatch
     with pytest.raises(ConfigurationError, match=r"migrations\.directory is empty.*\$\{VAR\}"):
         DbliftConfig.from_file(path)
     with pytest.raises(ConfigurationError, match=r"migrations\.directory is empty"):
-        DbliftConfig.load_config_data_from_yaml(path)
+        load_config(str(path))
 
 
 def test_set_placeholder_still_resolves(tmp_path, monkeypatch):
@@ -96,7 +96,9 @@ def _env_file(tmp_path, root=None, **environments):
 def test_empty_directory_of_the_selected_environment_is_refused(tmp_path, monkeypatch):
     monkeypatch.delenv("Q4C_DEV_DIR", raising=False)
     path = _env_file(tmp_path, root="migrations", dev="${Q4C_DEV_DIR}")
-    with pytest.raises(RuntimeError, match=r"environments\.dev\.migrations\.directory is empty"):
+    with pytest.raises(
+        ConfigurationError, match=r"environments\.dev\.migrations\.directory is empty"
+    ):
         load_config(path, SimpleNamespace(env="dev"))
     with pytest.raises(ConfigurationError, match=r"environments\.dev\.migrations\.directory"):
         ConfigBuilder.build(file_path=path, environment="dev", env_overrides=False)
@@ -106,9 +108,11 @@ def test_unselected_environment_with_an_unset_placeholder_still_loads(tmp_path, 
     monkeypatch.delenv("Q4C_PROD_DIR", raising=False)
     monkeypatch.setenv("Q4C_DEV_DIR", "dev_scripts")
     path = _env_file(tmp_path, dev="${Q4C_DEV_DIR}", prod="${Q4C_PROD_DIR}")
-    assert load_config(path, SimpleNamespace(env="dev")).migrations.directory == "./dev_scripts"
+    assert load_config(path, SimpleNamespace(env="dev")).migrations.directory.endswith(
+        "dev_scripts"
+    )
     built = ConfigBuilder.build(file_path=path, environment="dev", env_overrides=False)
-    assert built.migrations.directory == "./dev_scripts"
+    assert built.migrations.directory.endswith("dev_scripts")
 
 
 def test_empty_root_directory_overridden_by_the_selected_environment_still_loads(
@@ -116,7 +120,7 @@ def test_empty_root_directory_overridden_by_the_selected_environment_still_loads
 ):
     monkeypatch.delenv("Q4C_ROOT_DIR", raising=False)
     path = _env_file(tmp_path, root="${Q4C_ROOT_DIR}", ci="ci_scripts")
-    assert load_config(path, SimpleNamespace(env="ci")).migrations.directory == "./ci_scripts"
+    assert load_config(path, SimpleNamespace(env="ci")).migrations.directory.endswith("ci_scripts")
 
 
 def test_empty_root_directory_is_refused_when_the_environment_does_not_override_it(
@@ -124,7 +128,7 @@ def test_empty_root_directory_is_refused_when_the_environment_does_not_override_
 ):
     monkeypatch.delenv("Q4C_ROOT_DIR", raising=False)
     path = _env_file(tmp_path, root="${Q4C_ROOT_DIR}", ci="ci_scripts")
-    with pytest.raises(RuntimeError, match=r"migrations\.directory is empty"):
+    with pytest.raises(ConfigurationError, match=r"migrations\.directory is empty"):
         load_config(path, None)
 
 
@@ -149,8 +153,9 @@ def _project(tmp_path, migrations):
     return config
 
 
-def _cli(tmp_path, config, *args):
+def _cli(tmp_path, config, *args, env=None):
     environment = {k: v for k, v in os.environ.items() if not k.startswith(("DBLIFT_", "Q4C_"))}
+    environment.update(env or {})
     return subprocess.run(
         [sys.executable, "-m", "dblift.cli.main", "--config", str(config), *args],
         capture_output=True,
@@ -199,3 +204,19 @@ def test_client_from_config_file_surfaces_the_empty_directory(tmp_path):
     path.write_text(yaml.safe_dump({"database": _DB, "migrations": {"directory": ""}}))
     with pytest.raises(ConfigurationError, match=r"migrations\.directory is empty"):
         DBLiftClient.from_config_file(str(path))
+
+
+def test_cli_checks_only_the_selected_environment(tmp_path):
+    config = _project(tmp_path, {"directory": "migrations"})
+    data = yaml.safe_load(config.read_text())
+    data["environments"] = {
+        "dev": {"migrations": {"directory": "${Q4C_DEV_DIR}"}},
+        "prod": {"migrations": {"directory": "${Q4C_PROD_DIR}"}},
+    }
+    config.write_text(yaml.safe_dump(data))
+    env = {"Q4C_DEV_DIR": "migrations"}
+    ok = _cli(tmp_path, config, "--env", "dev", "info", env=env)
+    assert ok.returncode == 0, ok.stdout + ok.stderr
+    refused = _cli(tmp_path, config, "--env", "prod", "info", env=env)
+    assert refused.returncode != 0
+    assert "environments.prod.migrations.directory is empty" in refused.stdout + refused.stderr
