@@ -23,6 +23,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for SQLite, any `name:` extension prefix such as `md:` for DuckDB) are left as written.
   A SQLite `database.path` starting with `file:` is now treated as such a locator too, as in the URL
   form, and is no longer anchored as a plain file.
+- An empty `migrations.directory` (a literal `""`, a blank value, or an unset `${VAR}` placeholder) or
+  an empty `migrations.directories` entry, at the root or in an `environments` block, no longer reads
+  as the working directory, from which `migrate` applied every `V*.sql` it found. It is now a
+  configuration error naming the key; an empty `--scripts` value and an empty `migrations_dir`
+  passed to the Python API are refused the same way.
+- A baseline recorded on a connection passed to `from_sqlalchemy(connection=...)` is no longer
+  discarded by the next `migrate()`. With no commit in between, the history kept only the migrated
+  versions and a fresh client applied the baselined versions again; the baseline row is now
+  committed at the migration boundary, as a callback's writes are. Anything the caller left
+  pending in the same transaction is committed with it.
+- `repair()` on a connection passed to `from_sqlalchemy(connection=...)`: the removed failed
+  entries and corrected checksums are no longer rolled back by the next `migrate()`.
+- `migrate(mark_as_executed=True)` on a connection passed to `from_sqlalchemy(connection=...)`: the
+  history rows it wrote are no longer rolled back by the next `migrate()`.
+- `import_flyway()` on a connection passed to `from_sqlalchemy(connection=...)`: the history rows
+  it imported are no longer rolled back by the next `migrate()`.
+- `clean()` on a connection passed to `from_sqlalchemy(connection=...)`: the objects it dropped are
+  no longer restored by the next `migrate()`, which failed on the leftover objects.
 
 ### Removed
 

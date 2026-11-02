@@ -11,6 +11,7 @@ from dblift.core.sql_validator._flyway_compatibility import (
     dblift_type_for_flyway_row,
     is_flyway_schema_marker,
 )
+from dblift.db.provider_interfaces import TransactionalProvider
 
 
 class ImportFlywayCommand(BaseCommand):
@@ -117,6 +118,11 @@ class ImportFlywayCommand(BaseCommand):
                     commit = getattr(self.provider, "commit_transaction", None)
                     if callable(commit):
                         commit()
+                        if (
+                            isinstance(self.provider, TransactionalProvider)
+                            and self.provider.is_caller_owned()
+                        ):
+                            self.provider.note_caller_work()
                     self.state_manager.new_read_snapshot()
 
                 action = "would be imported" if dry_run else "imported"

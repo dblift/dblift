@@ -325,6 +325,60 @@ def _refuse_empty_target_version(data: Mapping[str, object]) -> None:
         raise InvalidTargetVersionError("", None)
 
 
+def refuse_empty_migrations_path(value: object, key: str) -> None:
+    """Refuse an empty migrations path: an unset ``${VAR}`` is not the working directory."""
+    if value is None or value == "":
+        raise ConfigurationError(
+            f"{key} is empty (an unset ${{VAR}} placeholder resolves to an empty string)"
+        )
+
+
+def _refuse_empty_migrations_paths(migrations: object, prefix: str = "") -> None:
+    """Refuse an empty ``directory`` or ``directories`` entry of a raw ``migrations`` mapping."""
+    if not isinstance(migrations, Mapping):
+        return
+    entries = migrations.get("directories")
+    if "directory" in migrations and not (isinstance(entries, list) and entries):
+        refuse_empty_migrations_path(migrations["directory"], f"{prefix}migrations.directory")
+    for index, entry in enumerate(entries if isinstance(entries, list) else []):
+        if isinstance(entry, Mapping):
+            entry = entry.get("path") or entry.get("directory")
+        elif isinstance(entry, DirectoryConfig):
+            entry = entry.path
+        refuse_empty_migrations_path(entry, f"{prefix}migrations.directories[{index}]")
+
+
+def refuse_empty_migrations_directory(
+    file_data: Mapping[str, object], environment: Optional[str]
+) -> None:
+    """Refuse an empty migrations path of the effective file config (selected block, else root).
+
+    Runs on the raw file data, as the config merge drops empty values.
+    Other environments are not read.
+    """
+    environments = file_data.get("environments")
+    block = environments.get(environment) if isinstance(environments, dict) else None
+    sources = [("", file_data)]
+    if environment and isinstance(block, dict):
+        sources.insert(0, (f"environments.{environment}.", block))
+
+    def effective(key: str) -> Optional[Tuple[str, Dict[str, object]]]:
+        for prefix, source in sources:
+            migrations = source.get("migrations")
+            if isinstance(migrations, Mapping) and key in migrations:
+                return prefix, {key: migrations[key]}
+        return None
+
+    listed = effective("directories")
+    if listed:
+        _refuse_empty_migrations_paths(listed[1], listed[0])
+    # ``directories`` wins over ``directory`` once it lists anything.
+    if not (listed and listed[1]["directories"]):
+        single = effective("directory")
+        if single:
+            _refuse_empty_migrations_paths(single[1], single[0])
+
+
 def _extract_paid_raw_config(data: Dict[str, Any]) -> Dict[str, Any]:
     paid_raw: Dict[str, Any] = {}
     for key in _PAID_RAW_CONFIG_KEYS:
@@ -346,6 +400,7 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
         DbliftConfig object with merged configuration
     """
     config_data: Dict[str, Any] = {}
+    file_data: Mapping[str, object] = {}
 
     # If a config path was provided explicitly, it must exist and be loadable. Silently
     # falling back to defaults hides typos in --config and produces surprising downstream errors.
@@ -368,6 +423,7 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
     # are stripped here in every case.
     explicit_env = getattr(args, "env", None) if args else None
     active_environment = select_environment(config_data, explicit=explicit_env)
+    refuse_empty_migrations_directory(file_data, active_environment)
     config_data = apply_environment(config_data, active_environment)
 
     # Override with environment variables.
@@ -778,6 +834,7 @@ class DbliftConfig:
 
         # Extract migrations config
         migrations = data.get("migrations", {})
+        _refuse_empty_migrations_paths(migrations)
         migrations_dir = migrations.get("directory", "migrations")
 
         migrations_table = migrations.get("table", "schema_version")

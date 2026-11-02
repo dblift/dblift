@@ -96,3 +96,18 @@ class TestCleanCommandEmptySchemaCommit:
 
         assert result.success is True
         provider.commit_transaction.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("caller_owned", [True, False])
+def test_clean_notes_the_callers_transaction_only_on_a_caller_owned_connection(caller_owned):
+    """The clean's drops live in the caller's transaction, so the next boundary must commit them."""
+    cmd, provider, _ = _make_command()
+    provider.is_caller_owned.return_value = caller_owned
+    provider.list_droppable_objects.return_value = [
+        DroppableObject(name="t1", object_type="table", drop_sql="DROP TABLE myschema.t1")
+    ]
+
+    assert cmd.execute().success is True
+
+    assert provider.note_caller_work.call_count == (1 if caller_owned else 0)

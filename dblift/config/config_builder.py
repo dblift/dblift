@@ -8,14 +8,19 @@ overrides, handling URL parsing, and creating new configurations when needed.
 import warnings
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Mapping, Optional, Union
 
 from dblift.config.database_config import (
     BaseDatabaseConfig,
     _detect_dialect_from_url,
     _file_url_dialect_from_scheme,
 )
-from dblift.config.dblift_config import DbliftConfig, apply_environment, select_environment
+from dblift.config.dblift_config import (
+    DbliftConfig,
+    apply_environment,
+    refuse_empty_migrations_directory,
+    select_environment,
+)
 from dblift.config.errors import ConfigurationError
 from dblift.core.exceptions import InvalidTargetVersionError
 
@@ -239,6 +244,7 @@ class ConfigBuilder:
             ... )
         """
         config_data: Dict[str, Any] = {}
+        file_data: Mapping[str, object] = {}
 
         # Load from file if provided. Raw data from every source is merged before
         # constructing the typed config, so database type is selected only once.
@@ -262,6 +268,7 @@ class ConfigBuilder:
         # merge the active environments.<name> block over the root sections
         # BEFORE env vars and kwargs, and strip the selector keys.
         active_environment = select_environment(config_data, explicit=environment)
+        refuse_empty_migrations_directory(file_data, active_environment)
         config_data = apply_environment(config_data, active_environment)
 
         # Apply environment variables if enabled.
