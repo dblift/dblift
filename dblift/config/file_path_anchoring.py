@@ -2,16 +2,15 @@
 
 import re
 from pathlib import Path
-from typing import Callable, Dict
+from typing import Callable, Dict, Tuple
 
 import sqlalchemy
 from sqlalchemy.exc import ArgumentError
 
-from dblift.config.database_config import _file_url_dialect_from_scheme
+from dblift.config.database_config import _file_dialect
 
 _IN_MEMORY = ":memory:"
 _REFERENCE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://|\$\{")
-_LOCATOR = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]+:")
 
 
 def anchorer(base_dir: Path) -> Callable[[object], str]:
@@ -26,19 +25,26 @@ def anchorer(base_dir: Path) -> Callable[[object], str]:
     return anchor
 
 
+def _anchor_database_file(
+    database: str, locators: Tuple[str, ...], anchor: Callable[[object], str]
+) -> str:
+    """Anchor a relative database file; ``:memory:`` and the dialect's locators are kept."""
+    if not database or database == _IN_MEMORY or database.lower().startswith(locators):
+        return database
+    return anchor(database)
+
+
 def _anchor_file_url(url: str, anchor: Callable[[object], str]) -> str:
     """Anchor the file of a relative file-based dialect URL; any other URL is returned as is."""
     try:
         parsed = sqlalchemy.engine.make_url(url)
     except ArgumentError:
         return url
-    if not _file_url_dialect_from_scheme(parsed.drivername.split("+", 1)[0].lower()):
+    dialect = _file_dialect(parsed.drivername.split("+", 1)[0])
+    if not dialect or not parsed.database:
         return url
-    database = parsed.database
-    if not database or database == _IN_MEMORY or _LOCATOR.match(database):
-        return url
-    anchored = anchor(database)
-    if anchored == database:
+    anchored = _anchor_database_file(parsed.database, dialect[1], anchor)
+    if anchored == parsed.database:
         return url
     return parsed.set(database=anchored).render_as_string(hide_password=False)
 
@@ -67,6 +73,8 @@ def anchor_file_data(data: Dict[str, object], base_dir: Path) -> None:
     blocks = [data]
     if isinstance(environments, dict):
         blocks.extend(b for b in environments.values() if isinstance(b, dict))
+    root_database = data.get("database")
+    root_type = root_database.get("type") if isinstance(root_database, dict) else None
     for block in blocks:
         migrations = block.get("migrations")
         if isinstance(migrations, dict):
@@ -79,6 +87,10 @@ def anchor_file_data(data: Dict[str, object], base_dir: Path) -> None:
         if isinstance(database, dict):
             if isinstance(database.get("url"), str):
                 database["url"] = _anchor_file_url(database["url"], anchor)
+            name = database.get("database")
+            dialect = _file_dialect(str(database.get("type") or root_type or ""))
+            if dialect and isinstance(name, str):
+                database["database"] = _anchor_database_file(name, dialect[1], anchor)
             path = database.get("path")
             if isinstance(path, str) and path and path != _IN_MEMORY:
                 database["path"] = anchor(path)

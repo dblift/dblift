@@ -3,7 +3,7 @@ import re
 import urllib.parse
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Callable, ClassVar, Dict, Optional, Type
+from typing import Any, Callable, ClassVar, Dict, Optional, Tuple, Type
 
 from dblift.config._credential_masking import mask_credentials
 from dblift.config._url_builder_mixin import UrlBuilderMixin
@@ -111,29 +111,38 @@ def _native_canonical_from_scheme(scheme: str) -> Optional[str]:
     return None
 
 
-def _file_url_dialect_from_scheme(scheme: str) -> Optional[str]:
-    """Resolve a URL scheme to its canonical dialect *iff* that dialect uses
-    file-URL semantics (ADR-26 E5).
+def _file_dialect(name: str) -> Optional[Tuple[str, Tuple[str, ...]]]:
+    """Return ``(canonical name, locator prefixes)`` of the native dialect called *name*
+    (a URL scheme or a ``type``) *iff* that dialect is file-based, else ``None``.
 
-    A "file-URL" dialect is one whose quirks advertise
-    ``url_optional_when_file_path_given`` — the file path *is* the database, so
-    a stale ``database`` attribute on a copied config (e.g. SQL Server's
-    ``master``) must not win over the URL. SQLite and DuckDB are such native
-    dialects; any future embedded/file-based plugin is handled the same
-    way without naming a dialect here.
-
-    Returns the canonical dialect name, or ``None`` when the scheme is unknown
-    or its dialect is not file-URL based.
+    A file-based dialect's quirks advertise ``url_optional_when_file_path_given``: the file
+    path *is* the database. SQLite and DuckDB are such dialects; a future embedded plugin is
+    handled the same way without naming a dialect here. The prefixes are the database values
+    that name a location, not a file (``file_url_locator_prefixes``).
     """
-    canonical = _native_canonical_from_scheme(scheme)
+    canonical = _native_canonical_from_scheme(name.strip().lower())
     if not canonical:
         return None
     from dblift.db.provider_registry import ProviderRegistry
 
     quirks = ProviderRegistry.get_quirks(canonical)
-    if getattr(quirks, "url_optional_when_file_path_given", False):
-        return canonical
-    return None
+    if not getattr(quirks, "url_optional_when_file_path_given", False):
+        return None
+    return canonical, tuple(quirks.file_url_locator_prefixes)
+
+
+def _file_url_dialect_from_scheme(scheme: str) -> Optional[str]:
+    """Resolve a URL scheme to its canonical dialect *iff* that dialect uses
+    file-URL semantics (ADR-26 E5).
+
+    The file path *is* the database, so a stale ``database`` attribute on a copied
+    config (e.g. SQL Server's ``master``) must not win over the URL.
+
+    Returns the canonical dialect name, or ``None`` when the scheme is unknown
+    or its dialect is not file-URL based.
+    """
+    found = _file_dialect(scheme)
+    return found[0] if found else None
 
 
 def _normalize_sqlite_url_alias(data: Dict[str, Any]) -> None:
