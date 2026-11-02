@@ -220,3 +220,38 @@ def test_cli_checks_only_the_selected_environment(tmp_path):
     refused = _cli(tmp_path, config, "--env", "prod", "info", env=env)
     assert refused.returncode != 0
     assert "environments.prod.migrations.directory is empty" in refused.stdout + refused.stderr
+
+
+def _write(tmp_path, data):
+    path = tmp_path / "c.yaml"
+    path.write_text(yaml.safe_dump({"database": _DB, **data}))
+    return str(path)
+
+
+def test_directories_of_the_selected_environment_make_an_empty_root_directory_irrelevant(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("Q4C_ROOT_DIR", raising=False)
+    path = _write(
+        tmp_path,
+        {
+            "migrations": {"directory": "${Q4C_ROOT_DIR}"},
+            "environments": {"ci": {"migrations": {"directories": ["migrations"]}}},
+        },
+    )
+    config = load_config(path, SimpleNamespace(env="ci"))
+    assert [d.path for d in config.migrations.get_directory_configs()][0].endswith("migrations")
+
+
+def test_root_directories_make_an_empty_root_directory_irrelevant(tmp_path, monkeypatch):
+    monkeypatch.delenv("Q4C_ROOT_DIR", raising=False)
+    path = _write(
+        tmp_path, {"migrations": {"directory": "${Q4C_ROOT_DIR}", "directories": ["migrations"]}}
+    )
+    assert load_config(path, None).migrations.get_directory_configs()
+
+
+def test_empty_directory_is_still_refused_next_to_an_empty_directories_list(tmp_path):
+    path = _write(tmp_path, {"migrations": {"directory": "", "directories": []}})
+    with pytest.raises(ConfigurationError, match=r"migrations\.directory is empty"):
+        load_config(path, None)
