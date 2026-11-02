@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   command, in the console and in the JSON `error` field: the engine's message, without the
   driver's exception tuple, the `[SQL: ...]` block or the SQLAlchemy `sqlalche.me` link. It was
   printed raw by `clean` (for example the missing EVENT privilege on MySQL and MariaDB), by `info`
-  (for example a schema name in the wrong case on Db2), by `repair`, and by `migrate` and `undo`
+  (for example a schema name in the wrong case on Db2), by `validate` (history table not
+  readable by the role), by `repair`, and by `migrate` and `undo`
   when writing the schema history failed (for example a Db2 lock timeout).
 - A relative DuckDB URL in a configuration file (`database.url: duckdb:///rel.db`, in the root
   section, in an `environments` block, or next to `migrations.directories`) created and used

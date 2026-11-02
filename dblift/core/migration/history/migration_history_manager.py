@@ -10,6 +10,7 @@ from dblift.core.logger import Log
 from dblift.core.migration.migration import AppliedMigration, Migration, MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.sql_model.dialect import quote_identifier
+from dblift.db.error import engine_error_message
 from dblift.db.object_naming import configured_identifier_text
 from dblift.db.provider_interfaces import TransactionalProvider
 
@@ -389,5 +390,5 @@ class MigrationHistoryManager:
             return bool(updated)
         except Exception as e:
             if hasattr(self, "logger") and self.logger:
-                self.logger.error(f"Failed to repair migration checksum: {str(e)}")
+                self.logger.error(f"Failed to repair migration checksum: {engine_error_message(e)}")
             return False

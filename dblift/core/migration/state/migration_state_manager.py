@@ -57,6 +57,7 @@ from dblift.core.migration.version_utils import (
     is_migration_failure,
 )
 from dblift.db.base_quirks import BaseQuirks
+from dblift.db.error import engine_error_message
 
 
 @dataclass(slots=True)
@@ -216,8 +217,8 @@ class MigrationStateManager:
                     self.get_applied_migrations(read_snapshot) if history_exists else []
                 )
             except Exception as error:
-                history_read_error = str(error)
-                self.logger.error(f"Error getting applied migrations: {error}")
+                history_read_error = engine_error_message(error)
+                self.logger.error(f"Error getting applied migrations: {history_read_error}")
                 applied_migrations = []
         if strict_mode is None:
             config = getattr(self.history_manager.provider, "config", None)
