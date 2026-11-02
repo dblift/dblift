@@ -337,9 +337,9 @@ def _refuse_empty_migrations_paths(migrations: object, prefix: str = "") -> None
     """Refuse an empty ``directory`` or ``directories`` entry of a raw ``migrations`` mapping."""
     if not isinstance(migrations, Mapping):
         return
-    if "directory" in migrations:
-        refuse_empty_migrations_path(migrations["directory"], f"{prefix}migrations.directory")
     entries = migrations.get("directories")
+    if "directory" in migrations and not (isinstance(entries, list) and entries):
+        refuse_empty_migrations_path(migrations["directory"], f"{prefix}migrations.directory")
     for index, entry in enumerate(entries if isinstance(entries, list) else []):
         if isinstance(entry, Mapping):
             entry = entry.get("path") or entry.get("directory")
@@ -361,12 +361,22 @@ def refuse_empty_migrations_directory(
     sources = [("", file_data)]
     if environment and isinstance(block, dict):
         sources.insert(0, (f"environments.{environment}.", block))
-    for key in ("directory", "directories"):
+
+    def effective(key: str) -> Optional[Tuple[str, Dict[str, object]]]:
         for prefix, source in sources:
             migrations = source.get("migrations")
             if isinstance(migrations, Mapping) and key in migrations:
-                _refuse_empty_migrations_paths({key: migrations[key]}, prefix)
-                break
+                return prefix, {key: migrations[key]}
+        return None
+
+    listed = effective("directories")
+    if listed:
+        _refuse_empty_migrations_paths(listed[1], listed[0])
+    # ``directories`` wins over ``directory`` once it lists anything.
+    if not (listed and listed[1]["directories"]):
+        single = effective("directory")
+        if single:
+            _refuse_empty_migrations_paths(single[1], single[0])
 
 
 def _extract_paid_raw_config(data: Dict[str, Any]) -> Dict[str, Any]:
