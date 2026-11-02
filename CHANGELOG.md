@@ -20,6 +20,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (for example a schema name in the wrong case on Db2), by `validate` (history table not
   readable by the role), by `repair`, and by `migrate` and `undo`
   when writing the schema history failed (for example a Db2 lock timeout).
+- A `?` in the configuration file's folder (`/data/q?dir/dblift.yaml`) made a relative file URL
+  (`database.url: sqlite:///rel.db` or `duckdb:///rel.db`) read the rest of the path as a query
+  string, so `migrate` exited 0 on a file named `q` instead of `q?dir/rel.db`. The same held for a
+  relative DuckDB `database.path` or `database.database`. Each is now a configuration error naming
+  the key, asking for an absolute path or a folder without `?`; only the selected environment is
+  read. A SQLite `database.path` or `database.database`, and a `?` the user wrote in an absolute
+  path or URL (`/data/x.duckdb?threads=2`), are unaffected.
+- A `database.path`, `database.database`, `database.url` file or `migrations.directory` /
+  `migrations.directories` entry of the form `scheme://...` that no secrets provider handles
+  (`secret://x/db`) was opened as a relative path: SQLite created `secret:/x/db` under the working
+  directory and reported success, and the directory was reported with one slash lost. It is now a
+  configuration error naming the key and the scheme, whether the value comes from the file,
+  `--db-url`, `DBLIFT_DB_URL` or a dictionary. A scheme that has a provider is resolved as before,
+  and DuckDB keeps opening any `name:` locator as written.
+- An unset `${VAR}` in `database.path`, `database.database` or `database.url` of a SQLite or DuckDB
+  configuration, or a file URL naming no file (`sqlite:///`), now fails naming the key instead of
+  `'sqlite' configuration requires path, database, or url`. A value supplied by `--db-url` or
+  `DBLIFT_DB_URL`, or by another key of the file, still takes over.
+- The MCP resources `dblift://history` and `dblift://pending` no longer return a bare list of
+  PENDING migrations when the history table does not exist or cannot be read by the account (an
+  Oracle reader without `SELECT` on it listed an applied V1 as pending). They now return
+  `{"history_table_exists": false, "message": ..., "migrations": [...]}`, as `info` and
+  `migrate_dry_run` already report `history_table_exists: false`; with a readable table they
+  remain a JSON array. `docs/user-guide/mcp.md` describes the shape.
+- `migrate --dry-run` now reports `history_table_exists: false` (and the warning) when the history
+  table is missing or unreadable even if nothing is pending, such as an empty migrations directory
+  or a filter that leaves nothing; it reported `true`, unlike `info`. With nothing pending the
+  warning no longer claims that every migration is listed as pending.
 - A relative DuckDB URL in a configuration file (`database.url: duckdb:///rel.db`, in the root
   section, in an `environments` block, or next to `migrations.directories`) created and used
   `rel.db` in the working directory instead of next to the configuration file, so a run from
