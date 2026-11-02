@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in `database.database`, is now resolved against the configuration file, as the SQLite URL and
   `database.path` already were. `:memory:`, absolute paths and the dialect's own locators (`file:`
   for SQLite, any `name:` extension prefix such as `md:` for DuckDB) are left as written.
+  A SQLite `database.path` starting with `file:` is now treated as such a locator too, as in the URL
+  form, and is no longer anchored as a plain file.
 
 ### Removed
 
