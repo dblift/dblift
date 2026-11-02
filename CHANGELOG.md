@@ -34,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   folder, as the CLI and the MCP server now do. It resolved them against the working directory
   unless `relative_to_config=True` was passed. A relative `sqlite:` URL in a configuration file is
   now reported as an absolute `sqlite:` URL.
+- `from_sqlalchemy(connection=...)`: on Db2, `migrate`, `baseline` and `repair` on a schema that
+  did not exist yet never returned, and neither did a `migrate` that followed a `validate` or
+  `baseline` on the same connection. The migration lock uses a second connection, which waited
+  behind the schema and history table the caller's still-uncommitted transaction had just
+  created. DBLift now commits that transaction as soon as it has created them, and with it
+  anything the caller had left uncommitted there. DDL the caller left uncommitted in that schema
+  still blocks the lock when the history table already exists. Other engines are unchanged.
+  CockroachDB shares the code path; it is unverified.
 - `migrate`, `info`, `validate`, `undo` and `repair`, and the API and MCP equivalents, fail with
   `Additional scripts directory not found: <path>` when any entry of `migrations.directories`
   after the first does not exist. They exited 0 and applied the other directories' scripts, so a

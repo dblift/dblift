@@ -387,6 +387,10 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
         """
         return self._migration_lease_is_private()
 
+    def settles_preflight_ddl(self) -> bool:
+        """The lock's second connection waits on DDL the caller's transaction left uncommitted."""
+        return self.is_caller_owned() and self.supports_transactional_ddl()
+
     def _ensure_migration_lock_table_for_external_connection(self, schema: str) -> None:
         """Prepare the lock table without committing the caller's transaction."""
         if isinstance(self.engine.pool, (StaticPool, SingletonThreadPool)):

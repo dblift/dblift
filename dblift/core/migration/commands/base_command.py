@@ -786,6 +786,14 @@ class BaseCommand:
         self._preflight_connect(result)
         if ensure_history and not dry_run:
             try:
+                provider = self.provider
+                settling = (
+                    provider
+                    if isinstance(provider, TransactionalProvider)
+                    and provider.settles_preflight_ddl()
+                    and not self.history_manager.has_history_table
+                    else None
+                )
                 if ensure_schema:
                     self.history_manager.create_schema_and_history_table(
                         create_schema=create_schema, ensure_schema=True
@@ -794,6 +802,9 @@ class BaseCommand:
                     self.history_manager.create_schema_and_history_table(
                         create_schema=create_schema
                     )
+                if settling is not None:
+                    settling.note_caller_work()
+                    settling.commit_caller_work()
             except Exception as exc:
                 from dblift.core.migration.sql.sql_execution_service import (
                     _format_execution_error,

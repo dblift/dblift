@@ -281,6 +281,10 @@ class TransactionalProvider(ABC):
     def note_caller_work(self) -> None:
         """Record that dblift wrote inside the caller's open transaction."""
 
+    def settles_preflight_ddl(self) -> bool:
+        """Whether dblift commits the schema and history DDL it ran on a caller's connection."""
+        return False
+
     def commit_caller_work(self) -> None:
         """Commit the caller's open transaction if dblift wrote in it (see above)."""
 

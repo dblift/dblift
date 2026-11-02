@@ -374,6 +374,10 @@ class DuckDBProvider(SqlLeaseLockingProvider):
             count_with_returning=True,
         )
 
+    def settles_preflight_ddl(self) -> bool:
+        """DuckDB's catalog reads do not wait on another connection's uncommitted DDL."""
+        return False
+
     def _migration_lease_is_private(self) -> bool:
         """An in-memory DuckDB database exists only on the provider's own connection."""
         database = str(self.engine.url.database or "")
