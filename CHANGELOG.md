@@ -15,6 +15,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [5.1.5] - 2026-11-01
+
+### Fixed
+
+- Configuration-file path anchoring (5.1.4) treated a value with a URI scheme (such as
+  `secret://p/q#r`) or an unresolved `${...}` placeholder as a relative path and rewrote it as
+  `<config dir>/secret:/p/q#r`. In every anchored key (migration directories, a SQLite
+  `database.path` or URL, the log directory, and their `environments` copies) such values are now
+  kept exactly as written; only plain relative paths are anchored.
+
 ## [5.1.4] - 2026-11-01
 
 ### Changed
@@ -5651,7 +5661,8 @@ All additions are backward compatible (MINOR): two new modules, two new
 - Cross-platform distributions (Windows, Linux, macOS).
 - Modular provider architecture for easy database support extension.
 
-[Unreleased]: https://github.com/dblift/dblift/compare/v5.1.4...develop
+[Unreleased]: https://github.com/dblift/dblift/compare/v5.1.5...develop
+[5.1.5]: https://github.com/dblift/dblift/compare/v5.1.4...v5.1.5
 [5.1.4]: https://github.com/dblift/dblift/compare/v5.1.3...v5.1.4
 [5.1.3]: https://github.com/dblift/dblift/compare/v5.1.2...v5.1.3
 [5.1.2]: https://github.com/dblift/dblift/compare/v5.1.1...v5.1.2
