@@ -50,6 +50,10 @@ from typing import (
 import dblift
 from dblift.cli.mcp.registry import load_mcp_tool_registrars
 from dblift.cli.mcp.runner import JSON_FORMAT_ARGV, CommandInvocationError, run_command
+from dblift.core.migration.commands.base_command import (
+    HISTORY_MISSING_EFFECT,
+    HISTORY_MISSING_OR_UNREADABLE,
+)
 from dblift.core.seams.feature_loading import load_feature_extensions
 
 SDK_HINT = 'The MCP server needs the "mcp" package. Install it with: pip install "dblift[mcp]"'
@@ -72,7 +76,9 @@ parse or check the SQL inside the scripts, so a script with invalid SQL still
 passes both `validate` and `migrate_dry_run`.
 `info` shows the schema history; the
 `dblift://history` resource is the same list, and `dblift://pending` is the
-same list `migrate_dry_run` returns. Every tool runs against the project's
+same list `migrate_dry_run` returns. Each is a JSON array, except an object
+with `history_table_exists: false`, `message` and `migrations` when the
+history table is missing or unreadable. Every tool runs against the project's
 dblift.yaml in the working directory (or the --config the server was started
 with).
 
@@ -135,6 +141,10 @@ def _offline_refusal(what: str) -> CommandInvocationError:
 ArgvBuilder = Callable[..., List[str]]
 
 _LOG = logging.getLogger(__name__)
+
+_MISSING_HISTORY_MESSAGE = (
+    f"The schema-history table {HISTORY_MISSING_OR_UNREADABLE}: {HISTORY_MISSING_EFFECT}"
+)
 
 
 class MissingMcpSdkError(RuntimeError):
@@ -608,6 +618,9 @@ class DbliftMcpServer:
         the CLI's message, the way a tool's does. So does a ``success: false``
         payload, carrying its ``error``: ``pick`` only ever sees a successful one.
 
+        A payload with ``history_table_exists: false`` is returned as an object
+        wrapping ``pick``'s result, so a bare list is never read as "nothing applied".
+
         A resource outside the server's ``allowed_resources`` is skipped, not
         raised — see :meth:`skipped_resources`. Either spelling matches: the
         allowlist is checked against ``name`` and ``uri`` alike.
@@ -629,7 +642,14 @@ class DbliftMcpServer:
                 raise CommandInvocationError(
                     str(payload.get("error") or f"dblift {command} failed"), 1
                 )
-            return json.dumps(pick(payload), indent=2)
+            content = pick(payload)
+            if payload.get("history_table_exists") is False:
+                content = {
+                    "history_table_exists": False,
+                    "message": _MISSING_HISTORY_MESSAGE,
+                    "migrations": content,
+                }
+            return json.dumps(content, indent=2)
 
         self.resource(uri=uri, name=name, description=description, fn=render, connects=connects)
 

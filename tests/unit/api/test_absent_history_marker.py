@@ -67,6 +67,47 @@ def test_dry_run_flags_a_missing_history_table(client_factory):
     assert any("dblift_schema_history" in w and "does not exist yet" in w for w in log.warnings)
 
 
+def test_dry_run_with_nothing_pending_still_flags_a_missing_history_table(client_factory, tmp_path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    log = _Recorder()
+    result = client_factory(log, directory=empty).migrate(dry_run=True)
+
+    assert result.success, result.error_message
+    assert result.history_table_exists is False
+    assert result.dry_run_count == 0
+    [warning] = log.warnings
+    assert "does not exist yet" in warning
+    assert "pending" not in warning
+
+
+def test_dry_run_flags_a_missing_history_table_when_a_filter_leaves_nothing(client_factory):
+    log = _Recorder()
+    result = client_factory(log).migrate(dry_run=True, versions=["99"])
+
+    assert result.success, result.error_message
+    assert result.history_table_exists is False
+    assert any("does not exist yet" in w for w in log.warnings)
+
+
+def test_dry_run_with_pending_scripts_keeps_the_effect_sentence(client_factory):
+    log = _Recorder()
+    client_factory(log).migrate(dry_run=True)
+
+    [warning] = log.warnings
+    assert "every migration is listed as pending" in warning
+
+
+def test_dry_run_with_a_history_table_and_nothing_pending_is_not_flagged(client_factory):
+    assert client_factory().migrate().success
+    log = _Recorder()
+    result = client_factory(log).migrate(dry_run=True)
+
+    assert result.history_table_exists is True
+    assert result.dry_run_count == 0
+    assert not log.warnings
+
+
 def test_a_dialect_that_cannot_tell_missing_from_unreadable_says_so(client_factory, monkeypatch):
     """Oracle answers ORA-00942 for both, so the text must not claim the table is missing."""
     log = _Recorder()

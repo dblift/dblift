@@ -58,6 +58,12 @@ from ._script_events import emit_script_event as _emit_script_event
 # raised type is PreflightConnectionError; the wording stays stable.
 SCHEMA_HISTORY_CREATE_ERROR_PREFIX = "Could not create the schema-history table"
 
+# Wording shared by the missing-history warning and the MCP resources' marker message.
+HISTORY_MISSING_OR_UNREADABLE = "does not exist or cannot be read by this account"
+HISTORY_MISSING_EFFECT = (
+    "no migration is recorded as applied, so every migration is listed as pending."
+)
+
 # Error reported by the commands that hold the migration lock when they cannot get it.
 MIGRATION_LOCK_REFUSAL = "Could not acquire migration lock - another migration may be running"
 
@@ -835,24 +841,28 @@ class BaseCommand:
         self._populate_database_info(result)
 
     def _flag_missing_history(
-        self, result: Union[InfoResult, MigrateResult], applied: List[Migration]
+        self,
+        result: Union[InfoResult, MigrateResult],
+        applied: List[Migration],
+        pending: bool = True,
     ) -> None:
         """Say so when a read finds no applied migration because the history table is missing.
 
-        Only an empty history costs the extra existence check.
+        Only an empty history costs the extra existence check. The effect sentence is
+        left out when nothing is pending.
         """
         if applied or self.history_manager.has_history_table:
             return
         result.history_table_exists = False
         missing = (
-            "does not exist or cannot be read by this account"
+            HISTORY_MISSING_OR_UNREADABLE
             if self.history_manager.provider.quirks.unreadable_table_looks_missing
             else "does not exist yet"
         )
         self.log.warning(
             f"Schema-history table {self.config.database.schema}."
-            f"{self.history_manager.normalized_history_table} {missing}: "
-            "no migration is recorded as applied, so every migration is listed as pending."
+            f"{self.history_manager.normalized_history_table} {missing}"
+            + (f": {HISTORY_MISSING_EFFECT}" if pending else "")
         )
 
     @contextmanager

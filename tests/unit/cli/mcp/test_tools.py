@@ -187,6 +187,9 @@ def test_info_and_history_resource_agree(project):
 
     assert info.is_error is False
     assert info.structured_content["migrations"][0]["status"] == "PENDING"
+    resource = json.loads(history.contents[0].text)
+    assert resource["history_table_exists"] is False
+    assert resource["migrations"] == info.structured_content["migrations"]
     assert '"V1__init.sql"' in history.contents[0].text
 
 
@@ -199,7 +202,11 @@ def test_migrate_dry_run_and_pending_resource_agree(project):
 
     dry_run, pending = anyio.run(_session, scenario)
 
-    assert json.loads(pending.contents[0].text) == dry_run.structured_content["migrations"]
+    # The project has no history table yet: the tool says so, and so must the resource.
+    assert dry_run.structured_content["history_table_exists"] is False
+    resource = json.loads(pending.contents[0].text)
+    assert resource["history_table_exists"] is False
+    assert resource["migrations"] == dry_run.structured_content["migrations"]
     assert '"V1__init.sql"' in pending.contents[0].text
 
 
