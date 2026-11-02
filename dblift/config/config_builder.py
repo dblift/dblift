@@ -18,6 +18,7 @@ from dblift.config.database_config import (
 from dblift.config.dblift_config import (
     DbliftConfig,
     apply_environment,
+    refuse_empty_database_locator,
     refuse_unusable_file_paths,
     select_environment,
 )
@@ -348,6 +349,7 @@ class ConfigBuilder:
                 "No configuration source provided. Pass --config, --db-url, or set DBLIFT_DB_URL."
             )
 
+        refuse_empty_database_locator(file_data, active_environment, config_data)
         config = cls.from_dict(config_data)
         if active_environment:
             setattr(config, "_active_environment", active_environment)

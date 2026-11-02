@@ -308,3 +308,24 @@ class TestEveryEntryPoint:
         path = _write(tmp_path, {"database": {"type": "sqlite", "path": "secret://x/db"}})
         args = Namespace(db_url="sqlite:///x.db", command="info")
         assert load_config(path, args).database.path == "x.db"
+
+
+class TestEmptyLocatorWithAnOverride:
+    @pytest.fixture(autouse=True)
+    def _unset(self, monkeypatch):
+        monkeypatch.delenv("Q5B_NOT_SET", raising=False)
+
+    def test_a_db_url_flag_supplies_the_database(self, tmp_path):
+        path = _write(tmp_path, {"database": {"type": "sqlite", "path": "${Q5B_NOT_SET}"}})
+        args = Namespace(db_url="sqlite:///x.db", command="info")
+        assert load_config(path, args).database.path == "x.db"
+
+    def test_a_db_url_environment_variable_supplies_the_database(self, tmp_path, monkeypatch):
+        path = _write(tmp_path, {"database": {"type": "sqlite", "path": "${Q5B_NOT_SET}"}})
+        monkeypatch.setenv("DBLIFT_DB_URL", "sqlite:///x.db")
+        assert load_config(path).database.path == "x.db"
+
+    def test_the_builder_accepts_a_url_override(self, tmp_path):
+        path = _write(tmp_path, {"database": {"type": "sqlite", "path": "${Q5B_NOT_SET}"}})
+        config = ConfigBuilder.build(file_path=path, database_url="sqlite:///x.db")
+        assert config.database.path == "x.db"

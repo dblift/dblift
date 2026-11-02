@@ -1,10 +1,9 @@
 """DuckDB-specific ``BaseDatabaseConfig`` subclass."""
 
-import re
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from dblift.config.database_config import BaseDatabaseConfig, _file_dialect, register_database_type
+from dblift.config.database_config import BaseDatabaseConfig, register_database_type
 
 
 # lint: allow-dialect-string: config type registration
@@ -24,15 +23,6 @@ class DuckDBConfig(BaseDatabaseConfig):
     def __post_init__(self) -> None:
         """Resolve the file path from path/url/database and apply defaults."""
         super().__post_init__()
-
-        # The file is opened through a SQLAlchemy URL, which reads a '?' as a query string.
-        name = None if self.url else self.path or self.database
-        dialect = _file_dialect("duckdb")
-        if name and "?" in name and not (dialect and re.match(dialect[1], name)):
-            raise ValueError(
-                f"DuckDB database file {name!r} contains '?', which the SQLAlchemy URL it is "
-                "opened with reads as a query string; rename the folder or file"
-            )
 
         if not self.path:
             if self.url:
