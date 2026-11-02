@@ -7,13 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
 ### Changed
 
 - `from_sqlalchemy(connection=...)`: a `beforeMigrate` callback's writes are committed at the
   migration boundary. Anything the caller left pending in the same transaction is committed with
   them instead of being rolled back.
+- `DBLiftClient.from_config_file(path)` resolves a relative migrations directory, SQLite file
+  (`database.url` or `database.path`) and log directory written in the file against the file's
+  folder, as the CLI and the MCP server now do. It resolved them against the working directory
+  unless `relative_to_config=True` was passed. A relative `sqlite:` URL in a configuration file is
+  now reported as an absolute `sqlite:` URL.
 
 ### Fixed
 
@@ -29,11 +32,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cause instead of `current transaction is aborted`. On PostgreSQL the read runs under a
   savepoint, so the caller's own uncommitted work survives; on DuckDB and Redshift, which have
   no savepoint, the connection is rolled back.
-- `DBLiftClient.from_config_file(path)` resolves a relative migrations directory, SQLite file
-  (`database.url` or `database.path`) and log directory written in the file against the file's
-  folder, as the CLI and the MCP server now do. It resolved them against the working directory
-  unless `relative_to_config=True` was passed. A relative `sqlite:` URL in a configuration file is
-  now reported as an absolute `sqlite:` URL.
 - `from_sqlalchemy(connection=...)`: on Db2, `migrate`, `baseline` and `repair` on a schema that
   did not exist yet never returned, and neither did a `migrate` that followed a `validate` or
   `baseline` on the same connection. The migration lock uses a second connection, which waited
@@ -47,9 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after the first does not exist. They exited 0 and applied the other directories' scripts, so a
   typo succeeded or failed depending on list order. `undo` and `repair` now also fail on a missing
   first directory instead of reporting a missing undo script or no repair needed.
-
-### Fixed
-
 - On MySQL, MariaDB and SQL Server, `info`, `migrate` and the API and MCP equivalents fail with
   the engine's `SELECT command denied` or `SELECT permission was denied` error when the connected
   account cannot read the schema-history table. They reported success with every migration
@@ -67,9 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to it instead of in the working directory. Relative paths written in a configuration file
   (migrations directories, SQLite file, log directory) resolve against the file's folder; values
   given on the command line, such as `--scripts` and `--db-url`, still resolve against the working
-  directory. The CLI's log files still go to `--log-dir` (default `logs`) in the working directory.
-
-### Removed
+  directory. A `log_dir` written in the file is honoured and now resolves against the file; `logging.directory` in the file is still ignored by the CLI.
 
 ## [5.1.3] - 2026-11-01
 
@@ -5648,7 +5641,8 @@ All additions are backward compatible (MINOR): two new modules, two new
 - Cross-platform distributions (Windows, Linux, macOS).
 - Modular provider architecture for easy database support extension.
 
-[Unreleased]: https://github.com/dblift/dblift/compare/v5.1.3...develop
+[Unreleased]: https://github.com/dblift/dblift/compare/v5.1.4...develop
+[5.1.4]: https://github.com/dblift/dblift/compare/v5.1.3...v5.1.4
 [5.1.3]: https://github.com/dblift/dblift/compare/v5.1.2...v5.1.3
 [5.1.2]: https://github.com/dblift/dblift/compare/v5.1.1...v5.1.2
 [4.12.0]: https://github.com/dblift/dblift/compare/v4.11.1...v4.12.0
