@@ -43,7 +43,7 @@ from dblift.core.seams.runtime_checks import SqlPreflightError, registered_check
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.core.utils.url_masking import mask_database_url
 from dblift.db.base_provider import BaseProvider
-from dblift.db.error import redact_driver_error_text
+from dblift.db.error import engine_error_message, redact_driver_error_text
 from dblift.db.provider_capabilities import (
     ensure_provider_connection,
     get_provider_display_url,
@@ -438,7 +438,7 @@ class BaseCommand:
                     record.status = "OK"
                 except Exception as e:
                     record.status = "FAILED"
-                    reason = redact_driver_error_text(str(e))
+                    reason = redact_driver_error_text(engine_error_message(e))
                     _emit_script_event(
                         "callback.failed", {"name": callback.script_name, "error": reason}
                     )
@@ -939,7 +939,8 @@ class BaseCommand:
         except PreflightConnectionError:
             raise
         except Exception as e:
-            message = f"{error_message_prefix}: {e}" if error_message_prefix else str(e)
+            reason = engine_error_message(e)
+            message = f"{error_message_prefix}: {reason}" if error_message_prefix else reason
             self.log.error(message)
             result.set_error(message)
             if on_error is not None:

@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from typing import Iterator
 
 from dblift.core.logger import Log
+from dblift.db.error import engine_error_message
 from dblift.db.provider_interfaces import TransactionalProvider
 
 
@@ -41,7 +42,7 @@ def history_transaction(provider: object, log: Log, label: str) -> Iterator[None
         try:
             provider.commit_transaction()  # type: ignore[attr-defined]
         except Exception as e:
-            log.error(f"Failed to commit {label} transaction: {e}")
+            log.error(f"Failed to commit {label} transaction: {engine_error_message(e)}")
             _rollback(provider, log, label)
             raise
 

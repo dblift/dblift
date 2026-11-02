@@ -41,7 +41,7 @@ def _db2_undefined_name() -> Exception:
     orig = _driver_error(
         "ibm_db_dbi",
         "ProgrammingError",
-        'ibm_db_dbi::ProgrammingError: Statement Execute Failed: [IBM][CLI Driver][DB2/LINUXX8664] '
+        "ibm_db_dbi::ProgrammingError: Statement Execute Failed: [IBM][CLI Driver][DB2/LINUXX8664] "
         'SQL0204N  "r2_eng_d2.DBLIFT_SCHEMA_HISTORY" is an undefined name.  '
         "SQLSTATE=42704 SQLCODE=-204",
     )
@@ -164,7 +164,9 @@ def _script():
 @pytest.mark.unit
 @pytest.mark.parametrize("policy", [MIGRATE_POLICY, UNDO_POLICY], ids=["migrate", "undo"])
 @pytest.mark.parametrize("make_error, engine_text", ENGINE_ERRORS)
-def test_script_failure_outside_the_statement_is_the_engine_message(policy, make_error, engine_text):
+def test_script_failure_outside_the_statement_is_the_engine_message(
+    policy, make_error, engine_text
+):
     command = MagicMock()
     command.execution_engine.execute_migration.side_effect = make_error()
     result = MigrateResult()
@@ -257,3 +259,98 @@ def test_failing_migration_statement_keeps_naming_the_statement_and_the_engine_m
         "Failed to execute statement 2 in V1__bad.sql: "
         "duplicate key value violates unique constraint"
     )
+
+
+def _plugin_operations():
+    from dblift.db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
+    from dblift.db.plugins.postgresql.postgresql.schema_operations import (
+        PostgreSqlSchemaOperations,
+    )
+    from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
+    from dblift.db.plugins.sqlserver.sqlserver.schema_operations import (
+        SqlServerSchemaOperations,
+    )
+
+    return [
+        pytest.param(MySqlSchemaOperations, "set_current_schema", id="mysql-set-database"),
+        pytest.param(MySqlSchemaOperations, "clean_schema", id="mysql-clean"),
+        pytest.param(PostgreSqlSchemaOperations, "create_schema_if_not_exists", id="pg-create"),
+        pytest.param(PostgreSqlSchemaOperations, "clean_schema", id="pg-clean"),
+        pytest.param(SqlServerSchemaOperations, "create_schema_if_not_exists", id="mssql-create"),
+        pytest.param(SqlServerSchemaOperations, "clean_schema", id="mssql-clean"),
+        pytest.param(SQLiteSchemaOperations, "clean_schema", id="sqlite-clean"),
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("operations_class, method", _plugin_operations())
+def test_schema_operation_failure_is_logged_as_the_engine_message(operations_class, method):
+    executor = MagicMock()
+    executor.get_quoted_schema_name.side_effect = lambda name: f'"{name}"'
+    executor.get_schema_qualified_name.side_effect = lambda schema, name: f'"{schema}"."{name}"'
+    for call in ("execute_query", "execute_statement", "execute_update"):
+        getattr(executor, call).side_effect = _db2_lock_timeout()
+    log = MagicMock()
+    operations = operations_class(executor, log=log)
+    connection = MagicMock()
+    connection.execute.side_effect = _db2_lock_timeout()
+    connection.cursor.side_effect = _db2_lock_timeout()
+
+    try:
+        getattr(operations, method)(connection, "q5d_s")
+    except Exception:  # noqa: BLE001 - the failure is expected, its log line is under test
+        pass
+
+    lines = [c.args[0] for c in log.error.call_args_list + log.warning.call_args_list]
+    assert lines, "the failure was not logged"
+    for line in lines:
+        _assert_readable(line, "SQL0911N")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("failing", ["repair_checksum", "commit_transaction"])
+@pytest.mark.parametrize("make_error, engine_text", ENGINE_ERRORS)
+def test_repair_failure_is_the_engine_message(failing, make_error, engine_text):
+    from dblift.core.logger.results import RepairResult
+    from dblift.db.base_provider import TransactionalProvider
+    from tests.unit.core.migration.commands.test_repair_command_extended import (
+        _make_cmd,
+        as_actions,
+    )
+
+    provider = MagicMock()
+    provider.__class__ = TransactionalProvider
+    history_manager = MagicMock()
+    history_manager.normalized_history_table = "dblift_schema_history"
+    getattr(
+        provider if failing == "commit_transaction" else history_manager, failing
+    ).side_effect = make_error()
+    config = MagicMock()
+    config.database.schema = "public"
+    config.database.type = "postgresql"
+    command = _make_cmd(provider=provider, config=config, history_manager=history_manager)
+    repairs = [{"type": "CHECKSUM_MISMATCH", "script": "V1__a.sql", "new_checksum": 200}]
+    result = RepairResult()
+
+    with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
+        command._execute_repair_loop(as_actions(repairs), result)
+
+    assert result.error_message.startswith("Repair")
+    _assert_readable(result.error_message, engine_text)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("make_error, engine_text", ENGINE_ERRORS)
+def test_history_commit_failure_is_logged_as_the_engine_message(make_error, engine_text):
+    from dblift.core.migration.history.history_transaction import history_transaction
+    from dblift.db.provider_interfaces import TransactionalProvider
+
+    provider = MagicMock(spec=TransactionalProvider)
+    provider.commit_transaction.side_effect = make_error()
+    log = MagicMock()
+
+    with pytest.raises(DBAPIError):
+        with history_transaction(provider, log, "baseline"):
+            pass
+
+    _assert_readable(log.error.call_args.args[0], engine_text)

@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from dblift.core.logger import Log, NullLog
 from dblift.core.migration.clean_summary import CleanExecutionSummary
+from dblift.db.error import engine_error_message
 from dblift.db.plugins.base_schema_operations import BaseSchemaOperations
 from dblift.db.plugins.mysql.sql_literals import string_literal
 
@@ -93,7 +94,7 @@ class MySqlSchemaOperations(BaseSchemaOperations):
             self.query_executor.execute_statement(connection, use_sql)
             self.log.debug(f"Current database set to: {schema}")
         except Exception as e:
-            error_msg = f"Failed to set current database: {str(e)}"
+            error_msg = f"Failed to set current database: {engine_error_message(e)}"
             self.log.warning(error_msg)
             raise
 
@@ -224,7 +225,7 @@ class MySqlSchemaOperations(BaseSchemaOperations):
             return summary
 
         except Exception as e:
-            error_msg = f"Error cleaning database {schema}: {str(e)}"
+            error_msg = f"Error cleaning database {schema}: {engine_error_message(e)}"
             self.log.error(error_msg)
             raise
 
@@ -243,7 +244,7 @@ class MySqlSchemaOperations(BaseSchemaOperations):
         except SQLAlchemyError as e:
             raise RuntimeError(
                 f"Cannot list the events in database '{schema}': clean needs the "
-                f"EVENT privilege on it to find and drop events ({e})"
+                f"EVENT privilege on it to find and drop events ({engine_error_message(e)})"
             ) from e
 
     def get_clean_preview(self, connection: Any, schema: str) -> CleanExecutionSummary:
