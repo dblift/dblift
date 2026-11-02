@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+import zlib
 
 import pytest
 from sqlalchemy import create_engine, text
@@ -78,6 +79,28 @@ def _full_history(admin, schema: str) -> list:
     return [tuple(row) for row in rows]
 
 
+def _create_flyway_history(admin, schema: str, migrations) -> None:
+    """A Flyway history holding ``V1`` and ``V2`` with the checksums dblift computes."""
+    with admin.connect() as conn:
+        conn.execute(
+            text(
+                f'CREATE TABLE "{schema}".flyway_schema_history (installed_rank int primary key, '
+                "version varchar(50), description varchar(200), type varchar(20), "
+                "script varchar(1000), checksum int, installed_by varchar(100), "
+                "installed_on timestamp default now(), execution_time int, success boolean)"
+            )
+        )
+        for rank, script in enumerate(["V1__a.sql", "V2__b.sql"], 1):
+            checksum = zlib.crc32((migrations / script).read_bytes())
+            conn.execute(
+                text(
+                    f'INSERT INTO "{schema}".flyway_schema_history (installed_rank, version, '
+                    "description, type, script, checksum, installed_by, execution_time, success) "
+                    f"VALUES ({rank}, '{rank}', 't', 'SQL', '{script}', {checksum}, 'u', 5, true)"
+                )
+            )
+
+
 def _sibling_history(url: str, tmp_path, name: str, commit_between: bool) -> list:
     """History after a command then ``migrate`` on one connection (``V3`` is added in between)."""
     schema = f"q_a_{uuid.uuid4().hex[:8]}"
@@ -92,7 +115,9 @@ def _sibling_history(url: str, tmp_path, name: str, commit_between: bool) -> lis
     with admin.connect() as conn:
         conn.execute(text(f'CREATE SCHEMA "{schema}"'))
     try:
-        if name != "mark_as_executed":
+        if name == "import_flyway":
+            _create_flyway_history(admin, schema, migrations)
+        elif name != "mark_as_executed":
             DBLiftClient.from_sqlalchemy(
                 engine=admin, schema=schema, migrations_dir=migrations, logger=NullLog()
             ).migrate()
@@ -106,6 +131,7 @@ def _sibling_history(url: str, tmp_path, name: str, commit_between: bool) -> lis
                 "undo": lambda: client.undo(target_version="1"),
                 "mark_as_executed": lambda: client.migrate(mark_as_executed=True),
                 "clean": lambda: client.clean(clean_enabled=True),
+                "import_flyway": client.import_flyway,
             }.get(name, client.repair)()
             if commit_between:
                 conn.commit()
@@ -133,7 +159,7 @@ def test_baseline_then_migrate_keeps_the_baseline_row(postgresql_container, tmp_
 
 
 @pytest.mark.parametrize(
-    "name", ["repair_failed", "repair_checksum", "undo", "mark_as_executed", "clean"]
+    "name", ["repair_failed", "repair_checksum", "undo", "mark_as_executed", "clean", "import_flyway"],
 )
 def test_command_then_migrate_keeps_the_history(name, postgresql_container, tmp_path):
     run_sibling_scenario(name, _url(postgresql_container), tmp_path)

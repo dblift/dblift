@@ -131,6 +131,20 @@ class TestImportFlywayAllOrNothing:
         assert mock_dependencies["provider"].record_migration.call_count == 2
         mock_dependencies["provider"].commit_transaction.assert_called_once()
 
+    @pytest.mark.parametrize("caller_owned", [True, False])
+    def test_import_notes_the_callers_transaction_only_on_a_caller_owned_connection(
+        self, command, mock_dependencies, caller_owned
+    ):
+        """The imported rows live in the caller's transaction; the next boundary must commit them."""
+        rows = [_flyway_row("1", "V1__init.sql"), _flyway_row("2", "V2__orders.sql")]
+        provider = mock_dependencies["provider"]
+        provider.get_applied_migrations.side_effect = [rows, []]
+        provider.is_caller_owned.return_value = caller_owned
+
+        assert command.execute(scripts_dir=Path("/scripts"), dry_run=False).success is True
+
+        assert provider.note_caller_work.call_count == (1 if caller_owned else 0)
+
     @pytest.mark.parametrize("raw_success", [1, 0, "1", True, False])
     def test_success_is_carried_as_a_boolean(self, command, mock_dependencies, raw_success):
         """Flyway's ``success`` column type varies by engine; ours does not.
