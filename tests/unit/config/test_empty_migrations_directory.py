@@ -8,13 +8,15 @@ import os
 import sqlite3
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 import yaml
 from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
-from dblift.config.dblift_config import DbliftConfig
+from dblift.config.config_builder import ConfigBuilder
+from dblift.config.dblift_config import DbliftConfig, load_config
 from dblift.config.errors import ConfigurationError
 
 pytestmark = pytest.mark.unit
@@ -57,12 +59,6 @@ def test_non_empty_entries_are_accepted():
     assert config.migrations.directory == "./a"
 
 
-def test_merge_refuses_an_empty_directory():
-    config = DbliftConfig.from_dict({"database": _DB})
-    with pytest.raises(ConfigurationError, match=r"migrations\.directory is empty"):
-        config.merge({"migrations": {"directory": ""}})
-
-
 def test_unset_placeholder_in_a_file_is_named_as_the_cause(tmp_path, monkeypatch):
     monkeypatch.delenv("Q4C_NOT_SET", raising=False)
     path = tmp_path / "c.yaml"
@@ -82,19 +78,54 @@ def test_set_placeholder_still_resolves(tmp_path, monkeypatch):
     assert DbliftConfig.from_file(path).migrations.directory == "./scripts"
 
 
-def test_empty_directory_in_an_environment_block_is_refused(tmp_path):
+def _env_file(tmp_path, root=None, **environments):
+    data = {
+        "database": _DB,
+        "environments": {
+            name: {"migrations": {"directory": directory}}
+            for name, directory in environments.items()
+        },
+    }
+    if root is not None:
+        data["migrations"] = {"directory": root}
     path = tmp_path / "c.yaml"
-    path.write_text(
-        yaml.safe_dump(
-            {
-                "database": _DB,
-                "migrations": {"directory": "migrations"},
-                "environments": {"ci": {"migrations": {"directory": ""}}},
-            }
-        )
-    )
-    with pytest.raises(ConfigurationError, match=r"environments\.ci\.migrations\.directory"):
-        DbliftConfig.load_config_data_from_yaml(path)
+    path.write_text(yaml.safe_dump(data))
+    return str(path)
+
+
+def test_empty_directory_of_the_selected_environment_is_refused(tmp_path, monkeypatch):
+    monkeypatch.delenv("Q4C_DEV_DIR", raising=False)
+    path = _env_file(tmp_path, root="migrations", dev="${Q4C_DEV_DIR}")
+    with pytest.raises(RuntimeError, match=r"environments\.dev\.migrations\.directory is empty"):
+        load_config(path, SimpleNamespace(env="dev"))
+    with pytest.raises(ConfigurationError, match=r"environments\.dev\.migrations\.directory"):
+        ConfigBuilder.build(file_path=path, environment="dev", env_overrides=False)
+
+
+def test_unselected_environment_with_an_unset_placeholder_still_loads(tmp_path, monkeypatch):
+    monkeypatch.delenv("Q4C_PROD_DIR", raising=False)
+    monkeypatch.setenv("Q4C_DEV_DIR", "dev_scripts")
+    path = _env_file(tmp_path, dev="${Q4C_DEV_DIR}", prod="${Q4C_PROD_DIR}")
+    assert load_config(path, SimpleNamespace(env="dev")).migrations.directory == "./dev_scripts"
+    built = ConfigBuilder.build(file_path=path, environment="dev", env_overrides=False)
+    assert built.migrations.directory == "./dev_scripts"
+
+
+def test_empty_root_directory_overridden_by_the_selected_environment_still_loads(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("Q4C_ROOT_DIR", raising=False)
+    path = _env_file(tmp_path, root="${Q4C_ROOT_DIR}", ci="ci_scripts")
+    assert load_config(path, SimpleNamespace(env="ci")).migrations.directory == "./ci_scripts"
+
+
+def test_empty_root_directory_is_refused_when_the_environment_does_not_override_it(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("Q4C_ROOT_DIR", raising=False)
+    path = _env_file(tmp_path, root="${Q4C_ROOT_DIR}", ci="ci_scripts")
+    with pytest.raises(RuntimeError, match=r"migrations\.directory is empty"):
+        load_config(path, None)
 
 
 @pytest.mark.parametrize("value", ["", [""], [{"path": ""}]])
