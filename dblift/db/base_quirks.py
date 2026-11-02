@@ -565,6 +565,9 @@ class BaseQuirks:
     #: sufficient to connect without a database URL. SQLite only.
     url_optional_when_file_path_given: bool = False
 
+    #: Database values that name a location, not a file, in a file-based dialect (SQLite URIs).
+    file_url_locator_pattern: str = r"^file:"
+
     #: Names of ``DatabaseConfig`` attributes that, if non-empty, satisfy the
     #: "is there enough information to connect?" check in
     #: :meth:`dblift.db.provider_registry.ProviderRegistry.validate_database_configuration`.
