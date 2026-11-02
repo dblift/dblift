@@ -58,11 +58,13 @@ from ._script_events import emit_script_event as _emit_script_event
 # raised type is PreflightConnectionError; the wording stays stable.
 SCHEMA_HISTORY_CREATE_ERROR_PREFIX = "Could not create the schema-history table"
 
-# Error reported by the commands that hold the migration lock when they cannot get it.
+# Wording shared by the missing-history warning and the MCP resources' marker message.
 HISTORY_MISSING_OR_UNREADABLE = "does not exist or cannot be read by this account"
 HISTORY_MISSING_EFFECT = (
     "no migration is recorded as applied, so every migration is listed as pending."
 )
+
+# Error reported by the commands that hold the migration lock when they cannot get it.
 MIGRATION_LOCK_REFUSAL = "Could not acquire migration lock - another migration may be running"
 
 # Shared by the CLI config validation and the command preflight.
