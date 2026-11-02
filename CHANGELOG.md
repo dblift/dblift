@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The MCP resources `dblift://history` and `dblift://pending` no longer return a bare list of
+  PENDING migrations when the history table does not exist or cannot be read by the account (an
+  Oracle reader without `SELECT` on it listed an applied V1 as pending). They now return
+  `{"history_table_exists": false, "message": ..., "migrations": [...]}`, as `info` and
+  `migrate_dry_run` already report `history_table_exists: false`; with a readable table they
+  remain a JSON array. `docs/user-guide/mcp.md` describes the shape.
 - A relative DuckDB URL in a configuration file (`database.url: duckdb:///rel.db`, in the root
   section, in an `environments` block, or next to `migrations.directories`) created and used
   `rel.db` in the working directory instead of next to the configuration file, so a run from

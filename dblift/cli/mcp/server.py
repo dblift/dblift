@@ -136,6 +136,11 @@ ArgvBuilder = Callable[..., List[str]]
 
 _LOG = logging.getLogger(__name__)
 
+_MISSING_HISTORY_MESSAGE = (
+    "The schema-history table does not exist or cannot be read by this account: "
+    "no migration is recorded as applied, so every migration is listed as pending."
+)
+
 
 class MissingMcpSdkError(RuntimeError):
     """The ``mcp`` SDK is not installed (the ``dblift[mcp]`` extra)."""
@@ -608,6 +613,9 @@ class DbliftMcpServer:
         the CLI's message, the way a tool's does. So does a ``success: false``
         payload, carrying its ``error``: ``pick`` only ever sees a successful one.
 
+        A payload with ``history_table_exists: false`` is returned as an object
+        wrapping ``pick``'s result, so a bare list is never read as "nothing applied".
+
         A resource outside the server's ``allowed_resources`` is skipped, not
         raised — see :meth:`skipped_resources`. Either spelling matches: the
         allowlist is checked against ``name`` and ``uri`` alike.
@@ -629,7 +637,14 @@ class DbliftMcpServer:
                 raise CommandInvocationError(
                     str(payload.get("error") or f"dblift {command} failed"), 1
                 )
-            return json.dumps(pick(payload), indent=2)
+            content = pick(payload)
+            if payload.get("history_table_exists") is False:
+                content = {
+                    "history_table_exists": False,
+                    "message": _MISSING_HISTORY_MESSAGE,
+                    "migrations": content,
+                }
+            return json.dumps(content, indent=2)
 
         self.resource(uri=uri, name=name, description=description, fn=render, connects=connects)
 

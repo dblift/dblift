@@ -10,6 +10,7 @@ create it).
 
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
@@ -185,9 +186,10 @@ def test_reader_role_on_schema_with_no_history_table_fails_closed(tmp_path):
         async def scenario(client):
             validate = await client.call_tool("validate", {})
             info = await client.call_tool("info", {})
-            return validate, info
+            history = await client.read_resource("dblift://history")
+            return validate, info, history
 
-        validate, info = anyio.run(_session, reader_yaml, scenario)
+        validate, info, history = anyio.run(_session, reader_yaml, scenario)
 
         # `validate` tries to create the history table and is refused. `info` only
         # reads, so it succeeds and says the table does not exist instead of
@@ -199,6 +201,11 @@ def test_reader_role_on_schema_with_no_history_table_fails_closed(tmp_path):
         assert info.structured_content["success"] is True
         assert info.structured_content["history_table_exists"] is False
         assert {m["status"] for m in info.structured_content["migrations"]} == {"PENDING"}
+
+        # The resource carries the same marker instead of a bare list of PENDING rows.
+        resource = json.loads(history.contents[0].text)
+        assert resource["history_table_exists"] is False
+        assert resource["migrations"] == info.structured_content["migrations"]
 
         assert admin.table_exists(schema, "dblift_schema_history") is False
     finally:
