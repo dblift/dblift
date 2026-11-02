@@ -86,3 +86,38 @@ def test_rollback_failure_does_not_mask_body_error():
             raise ValueError("boom")
 
     log.warning.assert_called_once_with("Could not roll back baseline transaction: rollback")
+
+
+def _provider_that_cannot_begin(caller_owned):
+    provider = _transactional_provider()
+    provider.begin_transaction.side_effect = RuntimeError("no begin")
+    provider.is_caller_owned.return_value = caller_owned
+    return provider
+
+
+def test_caller_owned_provider_that_cannot_begin_notes_the_caller_work():
+    provider = _provider_that_cannot_begin(caller_owned=True)
+
+    with history_transaction(provider, MagicMock(), "baseline"):
+        pass
+
+    provider.note_caller_work.assert_called_once_with()
+
+
+def test_provider_that_begins_does_not_note_caller_work():
+    provider = _transactional_provider()
+    provider.is_caller_owned.return_value = True
+
+    with history_transaction(provider, MagicMock(), "baseline"):
+        pass
+
+    provider.note_caller_work.assert_not_called()
+
+
+def test_provider_that_owns_its_connection_does_not_note_caller_work():
+    provider = _provider_that_cannot_begin(caller_owned=False)
+
+    with history_transaction(provider, MagicMock(), "baseline"):
+        pass
+
+    provider.note_caller_work.assert_not_called()
