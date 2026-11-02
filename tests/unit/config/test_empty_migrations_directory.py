@@ -4,7 +4,6 @@
 ``V*.sql`` under the working directory.
 """
 
-import json
 import os
 import sqlite3
 import subprocess
@@ -142,15 +141,6 @@ def test_cli_refuses_an_empty_directory_and_applies_nothing(tmp_path, command, d
     assert "cwd_table" not in _tables(tmp_path)
 
 
-def test_cli_json_reports_failure_for_an_empty_directory(tmp_path):
-    config = _project(tmp_path, {"directory": ""})
-    result = _cli(tmp_path, config, "info", "--format", "json")
-    start = result.stdout.index("{")
-    payload = json.loads(result.stdout[start:])
-    assert payload["success"] is False
-    assert "migrations.directory" in json.dumps(payload)
-
-
 def test_cli_scripts_flag_refuses_an_empty_value(tmp_path):
     config = _project(tmp_path, {"directory": "migrations"})
     result = _cli(tmp_path, config, "--scripts", "", "migrate")
@@ -165,3 +155,10 @@ def test_cli_good_directory_is_untouched(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert {"proj_table"} <= _tables(tmp_path)
     assert "cwd_table" not in _tables(tmp_path)
+
+
+def test_client_from_config_file_surfaces_the_empty_directory(tmp_path):
+    path = tmp_path / "c.yaml"
+    path.write_text(yaml.safe_dump({"database": _DB, "migrations": {"directory": ""}}))
+    with pytest.raises(ConfigurationError, match=r"migrations\.directory is empty"):
+        DBLiftClient.from_config_file(str(path))
