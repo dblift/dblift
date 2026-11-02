@@ -307,6 +307,9 @@ class BaseQuirks:
     #: Flyway table — Oracle and DB2, where ``get_applied_migrations``
     #: uppercases but Flyway creates a quoted lowercase table.
     flyway_source_table_case_sensitive: bool = False
+    #: A table the account may not read raises the same error as a missing one
+    #: (Oracle's ORA-00942), so a history table that looks missing may exist.
+    unreadable_table_looks_missing: bool = False
 
     # ------------------------------------------------------------------
     # Trigger DDL hooks.

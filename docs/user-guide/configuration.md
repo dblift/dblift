@@ -206,7 +206,7 @@ export DBLIFT_DB_PATH="/path/to/database.db"
 - SQLite uses Python's native `sqlite3` module
 - No username/password needed (SQLite doesn't have authentication)
 - Schema is always "main" (SQLite doesn't support multiple schemas)
-- File path can be absolute or relative to the working directory
+- File path can be absolute or relative: in the configuration file a relative path (like a relative migrations or log directory) is resolved against the file's folder, on the command line against the working directory
 - Use `:memory:` for an in-memory database (useful for testing)
 
 ## CosmosDB Configuration

@@ -39,6 +39,7 @@ class RepairCommand(BaseCommand):
         result.target_schema = self.config.database.schema
 
         def detect_and_repair() -> None:
+            self.state_manager.require_scripts_directory(scripts_dir, additional_dirs)
             try:
                 plan = self.state_manager.plan_repairs(
                     scripts_dir,

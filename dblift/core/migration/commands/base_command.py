@@ -10,13 +10,13 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Iterator, List, Optional, Union
 
 from dblift.config import DbliftConfig
 from dblift.config.database_config import BaseDatabaseConfig
 
 if TYPE_CHECKING:
-    from dblift.core.logger.results import OperationResult
+    from dblift.core.logger.results import InfoResult, MigrateResult, OperationResult
     from dblift.core.migration.journals.migration_journal import MigrationJournal
     from dblift.core.migration.migration import Migration
     from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
@@ -786,6 +786,14 @@ class BaseCommand:
         self._preflight_connect(result)
         if ensure_history and not dry_run:
             try:
+                provider = self.provider
+                settling = (
+                    provider
+                    if isinstance(provider, TransactionalProvider)
+                    and provider.settles_preflight_ddl()
+                    and not self.history_manager.has_history_table
+                    else None
+                )
                 if ensure_schema:
                     self.history_manager.create_schema_and_history_table(
                         create_schema=create_schema, ensure_schema=True
@@ -794,6 +802,9 @@ class BaseCommand:
                     self.history_manager.create_schema_and_history_table(
                         create_schema=create_schema
                     )
+                if settling is not None:
+                    settling.note_caller_work()
+                    settling.commit_caller_work()
             except Exception as exc:
                 from dblift.core.migration.sql.sql_execution_service import (
                     _format_execution_error,
@@ -822,6 +833,27 @@ class BaseCommand:
                     result,
                 ) from exc
         self._populate_database_info(result)
+
+    def _flag_missing_history(
+        self, result: Union[InfoResult, MigrateResult], applied: List[Migration]
+    ) -> None:
+        """Say so when a read finds no applied migration because the history table is missing.
+
+        Only an empty history costs the extra existence check.
+        """
+        if applied or self.history_manager.has_history_table:
+            return
+        result.history_table_exists = False
+        missing = (
+            "does not exist or cannot be read by this account"
+            if self.history_manager.provider.quirks.unreadable_table_looks_missing
+            else "does not exist yet"
+        )
+        self.log.warning(
+            f"Schema-history table {self.config.database.schema}."
+            f"{self.history_manager.normalized_history_table} {missing}: "
+            "no migration is recorded as applied, so every migration is listed as pending."
+        )
 
     @contextmanager
     def _migration_lock(self) -> Iterator[bool]:

@@ -548,7 +548,11 @@ class OracleProvider(SqlLeaseLockingProvider):
         self._schema_applied_for = cache_key
 
     def table_exists(self, schema: str, table_name: str) -> bool:
-        """Return whether a table exists in the given Oracle schema."""
+        """Return whether a table exists in the given Oracle schema.
+
+        ``ALL_TABLES`` lists only tables the account can access, and reading one it
+        cannot gives ORA-00942, as for a missing table. Nothing tells them apart.
+        """
         rows = self.execute_query(
             """
             SELECT COUNT(*) AS cnt

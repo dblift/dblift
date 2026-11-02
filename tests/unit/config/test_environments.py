@@ -10,6 +10,7 @@ environment-scoped effective config.
 from __future__ import annotations
 
 import types
+from pathlib import Path
 
 import pytest
 
@@ -59,6 +60,11 @@ def config_file(tmp_path):
     path = tmp_path / "dblift.yaml"
     path.write_text(_BASE_YAML, encoding="utf-8")
     return str(path)
+
+
+def _sqlite_url(config_file, name):
+    """The URL a relative file in ``config_file`` resolves to: next to the file."""
+    return f"sqlite:///{Path(config_file).resolve().parent / name}"
 
 
 def _args(**kwargs):
@@ -156,25 +162,25 @@ class TestLoadConfig:
     def test_no_selection_yields_root_config(self, config_file, monkeypatch):
         monkeypatch.delenv(DEFAULT_ENV_SELECTOR_VAR, raising=False)
         config = load_config(config_file)
-        assert config.database.url == "sqlite:///base.db"
+        assert config.database.url == _sqlite_url(config_file, "base.db")
         assert getattr(config, "_active_environment", None) is None
 
     def test_backward_compat_without_environments(self, tmp_path):
         plain = tmp_path / "plain.yaml"
         plain.write_text("database:\n  type: sqlite\n  url: sqlite:///only.db\n", encoding="utf-8")
         config = load_config(str(plain))
-        assert config.database.url == "sqlite:///only.db"
+        assert config.database.url == _sqlite_url(plain, "only.db")
         assert getattr(config, "_active_environment", None) is None
 
     def test_explicit_env_flag(self, config_file):
         config = load_config(config_file, _args(env="prod"))
-        assert config.database.url == "sqlite:///prod.db"
+        assert config.database.url == _sqlite_url(config_file, "prod.db")
         assert config._active_environment == "prod"
 
     def test_selector_env_var(self, config_file, monkeypatch):
         monkeypatch.setenv(DEFAULT_ENV_SELECTOR_VAR, "uat")
         config = load_config(config_file)
-        assert config.database.url == "sqlite:///uat.db"
+        assert config.database.url == _sqlite_url(config_file, "uat.db")
         assert config._active_environment == "uat"
 
     def test_branch_map_selection(self, config_file, monkeypatch):
@@ -197,7 +203,8 @@ class TestLoadConfig:
     def test_env_block_list_replaces_root(self, config_file):
         config = load_config(config_file, _args(env="uat"))
         paths = [d.path if hasattr(d, "path") else d for d in config.migrations.directories]
-        assert paths == ["migrations", "migrations_uat"]
+        base = Path(config_file).resolve().parent
+        assert paths == [str(base / "migrations"), str(base / "migrations_uat")]
 
     def test_unknown_env_is_actionable(self, config_file):
         with pytest.raises(ConfigurationError) as exc:
@@ -230,7 +237,7 @@ class TestLoadConfig:
 class TestConfigBuilder:
     def test_environment_keyword(self, config_file):
         config = ConfigBuilder.build(file_path=config_file, environment="prod", env_overrides=False)
-        assert config.database.url == "sqlite:///prod.db"
+        assert config.database.url == _sqlite_url(config_file, "prod.db")
         assert config._active_environment == "prod"
 
     def test_selector_env_var_honored(self, config_file, monkeypatch):

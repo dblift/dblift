@@ -234,6 +234,17 @@ class TestTableExists:
         p = _Provider()
         assert p.table_exists("MYSCHEMA", "orders") is False
 
+    def test_a_catalog_miss_is_not_probed(self):
+        """ORA-00942 is the answer for a missing table and for one the account holds no
+        privilege on, so a read after the miss cannot tell them apart: one query only."""
+        p = _Provider()
+        p.query_results["TABLE_NAME = ?"] = [{"cnt": 0}]
+
+        assert p.table_exists("MYSCHEMA", "orders") is False
+
+        assert len(p.queries) == 1
+        assert "ALL_TABLES" in p.queries[0][0]
+
     def test_preserves_quoted_mixed_case_table_name(self):
         p = _Provider()
         p.query_results["TABLE_NAME = ?"] = [{"cnt": 1}]

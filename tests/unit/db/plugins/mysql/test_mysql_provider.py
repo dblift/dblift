@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock
 
+from sqlalchemy.exc import ProgrammingError
+
 import dblift.db.plugins.mysql.provider as mysql_provider_module
 import dblift.db.sqlalchemy_provider as sqlalchemy_provider_module
 from dblift.db.plugins.mysql.provider import MySqlProvider, _quote_identifier
@@ -26,6 +28,8 @@ class _Provider(MySqlProvider):
         for key, rows in self.query_results.items():
             if key in sql:
                 return rows
+        if "WHERE 1=0" in sql:  # the existence probe of a table the catalog does not list
+            raise ProgrammingError(sql, None, Exception(1146, "Table doesn't exist"))
         return []
 
     def table_exists(self, schema, table_name):

@@ -79,7 +79,7 @@ class InfoCommand(BaseCommand):
         read_snapshot = self.state_manager.new_read_snapshot()
 
         def _body() -> None:
-            self.state_manager.require_scripts_directory(scripts_dir)
+            self.state_manager.require_scripts_directory(scripts_dir, additional_dirs)
             # Use MigrationStateManager to get centralized migration state
             migration_state = self.state_manager.build_state(
                 scripts_dir,
@@ -131,6 +131,7 @@ class InfoCommand(BaseCommand):
             all_applied_migrations = migration_state.all_applied_objects
 
             result.current_schema_version = migration_state.current_version
+            self._flag_missing_history(result, all_applied_migrations)
 
             # Use the migration UI to display the information properly
             # Pass the full state so UI can access undone_versions and other state info
