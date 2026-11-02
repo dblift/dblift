@@ -13,36 +13,11 @@ from typing import Any, Dict, Optional, Union
 from dblift.config.database_config import (
     BaseDatabaseConfig,
     _detect_dialect_from_url,
-    _native_canonical_from_scheme,
+    _file_url_dialect_from_scheme,
 )
 from dblift.config.dblift_config import DbliftConfig, apply_environment, select_environment
 from dblift.config.errors import ConfigurationError
 from dblift.core.exceptions import InvalidTargetVersionError
-
-
-def _file_url_dialect_from_scheme(scheme: str) -> Optional[str]:
-    """Resolve a URL scheme to its canonical dialect *iff* that dialect uses
-    file-URL semantics (ADR-26 E5).
-
-    A "file-URL" dialect is one whose quirks advertise
-    ``url_optional_when_file_path_given`` — the file path *is* the database, so
-    a stale ``database`` attribute on a copied config (e.g. SQL Server's
-    ``master``) must not win over the URL. SQLite is the only such native
-    dialect today; any future embedded/file-based plugin is handled the same
-    way without naming a dialect here.
-
-    Returns the canonical dialect name, or ``None`` when the scheme is unknown
-    or its dialect is not file-URL based.
-    """
-    canonical = _native_canonical_from_scheme(scheme)
-    if not canonical:
-        return None
-    from dblift.db.provider_registry import ProviderRegistry
-
-    quirks = ProviderRegistry.get_quirks(canonical)
-    if getattr(quirks, "url_optional_when_file_path_given", False):
-        return canonical
-    return None
 
 
 class ConfigBuilder:

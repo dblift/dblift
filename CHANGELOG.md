@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A relative DuckDB URL in a configuration file (`database.url: duckdb:///rel.db`, in the root
+  section, in an `environments` block, or next to `migrations.directories`) created and used
+  `rel.db` in the working directory instead of next to the configuration file, so a run from
+  another folder silently migrated the wrong file. The database file of every file-based dialect's
+  URL is now resolved against the configuration file, as the SQLite URL and `database.path` already
+  were. `:memory:`, absolute paths and locators such as `md:` or `file:` are left as written.
+
 ### Removed
 
 ## [5.1.5] - 2026-11-01

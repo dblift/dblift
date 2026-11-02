@@ -7,8 +7,11 @@ from typing import Callable, Dict
 import sqlalchemy
 from sqlalchemy.exc import ArgumentError
 
+from dblift.config.database_config import _file_url_dialect_from_scheme
+
 _IN_MEMORY = ":memory:"
 _REFERENCE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://|\$\{")
+_LOCATOR = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]+:")
 
 
 def anchorer(base_dir: Path) -> Callable[[object], str]:
@@ -23,16 +26,16 @@ def anchorer(base_dir: Path) -> Callable[[object], str]:
     return anchor
 
 
-def _anchor_sqlite_url(url: str, anchor: Callable[[object], str]) -> str:
-    """Anchor the file of a relative ``sqlite:`` URL; any other URL is returned as is."""
-    if not url.lower().startswith(("sqlite:", "sqlite3:")):
-        return url
+def _anchor_file_url(url: str, anchor: Callable[[object], str]) -> str:
+    """Anchor the file of a relative file-based dialect URL; any other URL is returned as is."""
     try:
-        parsed = sqlalchemy.engine.make_url(f"sqlite:{url.split(':', 1)[1]}")
+        parsed = sqlalchemy.engine.make_url(url)
     except ArgumentError:
         return url
+    if not _file_url_dialect_from_scheme(parsed.drivername.split("+", 1)[0].lower()):
+        return url
     database = parsed.database
-    if not database or database == _IN_MEMORY or database.startswith("file:"):
+    if not database or database == _IN_MEMORY or _LOCATOR.match(database):
         return url
     anchored = anchor(database)
     if anchored == database:
@@ -53,9 +56,9 @@ def _anchor_directory_entry(entry: object, anchor: Callable[[object], str]) -> o
 def anchor_file_data(data: Dict[str, object], base_dir: Path) -> None:
     """Rewrite, in place, the relative paths of raw configuration-file *data* under *base_dir*.
 
-    Covers the migration directories, a SQLite file (``database.url`` or
-    ``database.path``) and the log directory, in the root sections and in each
-    ``environments`` block. Runs on the file's own data, before environment
+    Covers the migration directories, the file of a file-based database
+    (``database.url`` or ``database.path``) and the log directory, in the root
+    sections and in each ``environments`` block. Runs on the file's own data, before environment
     variables and command-line values are merged over it, so those stay
     relative to the working directory.
     """
@@ -75,7 +78,7 @@ def anchor_file_data(data: Dict[str, object], base_dir: Path) -> None:
         database = block.get("database")
         if isinstance(database, dict):
             if isinstance(database.get("url"), str):
-                database["url"] = _anchor_sqlite_url(database["url"], anchor)
+                database["url"] = _anchor_file_url(database["url"], anchor)
             path = database.get("path")
             if isinstance(path, str) and path and path != _IN_MEMORY:
                 database["path"] = anchor(path)
