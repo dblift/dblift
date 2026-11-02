@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [5.1.5] - 2026-11-01
+
 ### Fixed
 
 - Configuration-file path anchoring (5.1.4) treated a value with a URI scheme (such as
