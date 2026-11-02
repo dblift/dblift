@@ -150,6 +150,7 @@ class UndoCommand(BaseCommand):
                         placeholders, recursive, additional_dirs, self.placeholder_service
                     )
                 )
+                self.state_manager.require_scripts_directory(scripts_dir, use_additional_dirs)
                 self._bind_callbacks(
                     scripts_dir, use_recursive, use_additional_dirs, dir_recursive_map, result
                 )

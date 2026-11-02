@@ -38,6 +38,7 @@ class MigrationValidationSnapshot:
     out_of_order: Tuple[OutOfOrder, ...]
     missing_applied: Tuple[Migration, ...]
     scripts_directory: Optional[Path] = None
+    scripts_directory_error: str = ""
     history_read_error: str = ""
     catalog_read_error: Optional[str] = None
     repeatable_runs: Mapping[str, RepeatableRun] = field(default_factory=dict)

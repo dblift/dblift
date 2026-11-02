@@ -458,3 +458,21 @@ def test_reapplied_version_with_deleted_script_is_missing(client, tmp_path):
 
     assert [m.script_name for m in snapshot.missing_applied] == ["V2__b.sql"]
     assert [m.script_name for m in state.missing_applied] == ["V2__b.sql"]
+
+
+def test_require_scripts_directory_checks_every_configured_directory(client, tmp_path):
+    manager = client.executor.state_manager
+    (tmp_path / "extra").mkdir()
+    manager.require_scripts_directory(tmp_path, [tmp_path / "extra"])
+    with pytest.raises(FileNotFoundError, match="Additional scripts directory not found"):
+        manager.require_scripts_directory(tmp_path, [tmp_path / "extra", tmp_path / "typo"])
+    with pytest.raises(FileNotFoundError, match="Migration scripts directory not found"):
+        manager.require_scripts_directory(tmp_path / "typo", [tmp_path / "extra"])
+    snapshot = manager.build_validation_snapshot(
+        tmp_path, "validate", additional_dirs=[tmp_path / "typo"]
+    )
+    assert not snapshot.scripts_directory_exists
+    assert (
+        snapshot.scripts_directory_error
+        == f"Additional scripts directory not found: {tmp_path / 'typo'}"
+    )

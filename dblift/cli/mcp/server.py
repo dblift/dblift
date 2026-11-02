@@ -605,7 +605,8 @@ class DbliftMcpServer:
         """Register a resource whose content is ``pick(run_command(...))`` as JSON.
 
         A :class:`CommandInvocationError` surfaces as a resource error carrying
-        the CLI's message, the way a tool's does.
+        the CLI's message, the way a tool's does. So does a ``success: false``
+        payload, carrying its ``error``: ``pick`` only ever sees a successful one.
 
         A resource outside the server's ``allowed_resources`` is skipped, not
         raised — see :meth:`skipped_resources`. Either spelling matches: the
@@ -623,7 +624,12 @@ class DbliftMcpServer:
         argv_list = list(argv)
 
         def render() -> str:
-            return json.dumps(pick(run_command(global_argv, command, argv_list)), indent=2)
+            payload = run_command(global_argv, command, argv_list)
+            if payload.get("success") is False:
+                raise CommandInvocationError(
+                    str(payload.get("error") or f"dblift {command} failed"), 1
+                )
+            return json.dumps(pick(payload), indent=2)
 
         self.resource(uri=uri, name=name, description=description, fn=render, connects=connects)
 

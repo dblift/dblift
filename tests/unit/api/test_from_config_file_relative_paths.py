@@ -47,7 +47,7 @@ class TestRelativeToConfig:
         assert (config.parent / "logs").is_dir()
         assert list(elsewhere.iterdir()) == []
 
-    def test_default_still_resolves_from_working_directory(self, tmp_path, monkeypatch):
+    def test_default_resolves_from_config_folder(self, tmp_path, monkeypatch):
         config = _project(tmp_path)
         elsewhere = tmp_path / "elsewhere"
         elsewhere.mkdir()
@@ -56,7 +56,7 @@ class TestRelativeToConfig:
         with DBLiftClient.from_config_file(str(config)) as client:
             pending = [m.script for m in client.info().migrations]
 
-        assert pending == []
+        assert pending == ["V1_0_0__create_a.sql"]
 
     def test_absolute_paths_are_left_alone(self, tmp_path, monkeypatch):
         config = _project(tmp_path)

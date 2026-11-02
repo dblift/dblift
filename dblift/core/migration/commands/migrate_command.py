@@ -408,10 +408,10 @@ class MigrateCommand(BaseCommand):
             )
 
         def body() -> None:
-            self.state_manager.require_scripts_directory(scripts_dir)
             use_recursive, use_additional_dirs = self.migration_helpers.setup_migration_parameters(
                 placeholders, recursive, additional_dirs, self.placeholder_service
             )
+            self.state_manager.require_scripts_directory(scripts_dir, use_additional_dirs)
             self._bind_callbacks(
                 scripts_dir, use_recursive, use_additional_dirs, dir_recursive_map, result
             )
@@ -530,6 +530,7 @@ class MigrateCommand(BaseCommand):
                 )
 
             if dry_run:
+                self._flag_missing_history(result, migration_state.all_applied_objects)
                 self._handle_dry_run(pending_migrations, result, show_sql=show_sql)
                 return
 

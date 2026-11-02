@@ -97,7 +97,7 @@ class SqlServerProvider(SqlAlchemyProvider):
         return super().execute_statement(sql, schema=schema, params=params)
 
     def table_exists(self, schema: str, table_name: str) -> bool:
-        """Return whether a table exists in the given schema."""
+        """Return whether a table exists; ``sys.tables`` hides tables the login cannot read."""
         rows = self.execute_query(
             """
             SELECT COUNT(1) AS cnt
@@ -107,7 +107,9 @@ class SqlServerProvider(SqlAlchemyProvider):
             """,
             [schema, table_name],
         )
-        return bool(rows and int(rows[0].get("cnt", 0)) > 0)
+        return bool(rows and int(rows[0].get("cnt", 0)) > 0) or self._unlisted_table_exists(
+            schema, table_name, absent=(208,), denied=(229,)
+        )
 
     def get_schema_qualified_name(self, schema: str, object_name: str) -> str:
         """Return a bracket-quoted schema-qualified name."""

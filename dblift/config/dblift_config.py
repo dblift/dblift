@@ -13,6 +13,7 @@ import yaml
 
 from dblift.config.database_config import BaseDatabaseConfig, _infer_type_from_url_scheme
 from dblift.config.errors import ConfigurationError
+from dblift.config.file_path_anchoring import anchor_file_data
 from dblift.config.secrets import SecretsConfig, resolve_secret_refs
 from dblift.core.constants import (
     DBLIFT_SCHEMA_SNAPSHOTS_TABLE,
@@ -1187,6 +1188,7 @@ class DbliftConfig:
         if not isinstance(resolved, dict):
             return {}
         _refuse_empty_target_version(resolved)
+        anchor_file_data(resolved, Path(config_file).resolve().parent)
         return resolved
 
     def to_dict(self) -> Dict[str, Any]:

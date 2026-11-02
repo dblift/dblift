@@ -15,6 +15,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [5.1.4] - 2026-11-01
+
+### Changed
+
+- `from_sqlalchemy(connection=...)`: a `beforeMigrate` callback's writes are committed at the
+  migration boundary. Anything the caller left pending in the same transaction is committed with
+  them instead of being rolled back.
+- `DBLiftClient.from_config_file(path)` resolves a relative migrations directory, SQLite file
+  (`database.url` or `database.path`) and log directory written in the file against the file's
+  folder, as the CLI and the MCP server now do. It resolved them against the working directory
+  unless `relative_to_config=True` was passed. A relative `sqlite:` URL in a configuration file is
+  now reported as an absolute `sqlite:` URL.
+
+### Fixed
+
+- MCP: the `dblift://history` and `dblift://pending` resources report a command that failed
+  (for example `permission denied` on the history table, or a missing migrations directory) as an
+  error carrying its message. They returned an empty list, which reads as nothing applied and
+  nothing pending.
+- `from_sqlalchemy(connection=...)`: a `beforeMigrate` callback that ran on a connection that had
+  already begun a transaction lost its writes, because the first migration's rollback discarded
+  them.
+- `from_sqlalchemy(connection=...)`: a failed read of the history table (for example
+  `permission denied`) no longer leaves the connection aborted. Later calls report the real
+  cause instead of `current transaction is aborted`. On PostgreSQL the read runs under a
+  savepoint, so the caller's own uncommitted work survives; on DuckDB and Redshift, which have
+  no savepoint, the connection is rolled back.
+- `from_sqlalchemy(connection=...)`: on Db2, `migrate`, `baseline` and `repair` on a schema that
+  did not exist yet never returned, and neither did a `migrate` that followed a `validate` or
+  `baseline` on the same connection. The migration lock uses a second connection, which waited
+  behind the schema and history table the caller's still-uncommitted transaction had just
+  created. DBLift now commits that transaction as soon as it has created them, and with it
+  anything the caller had left uncommitted there. DDL the caller left uncommitted in that schema
+  still blocks the lock when the history table already exists. Other engines are unchanged.
+  CockroachDB shares the code path; it is unverified.
+- `migrate`, `info`, `validate`, `undo` and `repair`, and the API and MCP equivalents, fail with
+  `Additional scripts directory not found: <path>` when any entry of `migrations.directories`
+  after the first does not exist. They exited 0 and applied the other directories' scripts, so a
+  typo succeeded or failed depending on list order. `undo` and `repair` now also fail on a missing
+  first directory instead of reporting a missing undo script or no repair needed.
+- On MySQL, MariaDB and SQL Server, `info`, `migrate` and the API and MCP equivalents fail with
+  the engine's `SELECT command denied` or `SELECT permission was denied` error when the connected
+  account cannot read the schema-history table. They reported success with every migration
+  Pending, because the existence check listed only tables the account could read. An account
+  holding only table-level grants on the database gets the same denial error when the history
+  table does not exist, because MySQL and MariaDB do not tell the two apart.
+- `info` and `migrate --dry-run` print a warning and report `history_table_exists: false` (JSON,
+  API and MCP results) when the schema-history table does not exist. A role that can read but not
+  create saw every migration Pending and no schema version, with nothing saying none was applied.
+  The exit code is unchanged. On Oracle a table the account may not read gives the same
+  `ORA-00942` as a missing one, so the warning there reads "does not exist or cannot be read by
+  this account".
+- `dblift --config path/to/dblift.yaml ...` run from another directory no longer fails with
+  `Migration scripts directory not found`, and a relative SQLite file in the file is created next
+  to it instead of in the working directory. Relative paths written in a configuration file
+  (migrations directories, SQLite file, log directory) resolve against the file's folder; values
+  given on the command line, such as `--scripts` and `--db-url`, still resolve against the working
+  directory. A `log_dir` written in the file is honoured and now resolves against the file; `logging.directory` in the file is still ignored by the CLI.
+
 ## [5.1.3] - 2026-11-01
 
 ### Fixed
@@ -5592,7 +5651,8 @@ All additions are backward compatible (MINOR): two new modules, two new
 - Cross-platform distributions (Windows, Linux, macOS).
 - Modular provider architecture for easy database support extension.
 
-[Unreleased]: https://github.com/dblift/dblift/compare/v5.1.3...develop
+[Unreleased]: https://github.com/dblift/dblift/compare/v5.1.4...develop
+[5.1.4]: https://github.com/dblift/dblift/compare/v5.1.3...v5.1.4
 [5.1.3]: https://github.com/dblift/dblift/compare/v5.1.2...v5.1.3
 [5.1.2]: https://github.com/dblift/dblift/compare/v5.1.1...v5.1.2
 [4.12.0]: https://github.com/dblift/dblift/compare/v4.11.1...v4.12.0
