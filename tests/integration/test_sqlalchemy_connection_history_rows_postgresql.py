@@ -159,7 +159,8 @@ def test_baseline_then_migrate_keeps_the_baseline_row(postgresql_container, tmp_
 
 
 @pytest.mark.parametrize(
-    "name", ["repair_failed", "repair_checksum", "undo", "mark_as_executed", "clean", "import_flyway"],
+    "name",
+    ["repair_failed", "repair_checksum", "undo", "mark_as_executed", "clean", "import_flyway"],
 )
 def test_command_then_migrate_keeps_the_history(name, postgresql_container, tmp_path):
     run_sibling_scenario(name, _url(postgresql_container), tmp_path)

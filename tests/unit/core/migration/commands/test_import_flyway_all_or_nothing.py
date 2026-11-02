@@ -19,6 +19,7 @@ from unittest.mock import Mock
 import pytest
 
 from dblift.core.migration.commands.import_flyway_command import ImportFlywayCommand
+from dblift.db.provider_interfaces import TransactionalProvider
 
 
 def _flyway_row(version, script, type_val="SQL", success=True):
@@ -139,6 +140,7 @@ class TestImportFlywayAllOrNothing:
         rows = [_flyway_row("1", "V1__init.sql"), _flyway_row("2", "V2__orders.sql")]
         provider = mock_dependencies["provider"]
         provider.get_applied_migrations.side_effect = [rows, []]
+        provider.__class__ = TransactionalProvider
         provider.is_caller_owned.return_value = caller_owned
 
         assert command.execute(scripts_dir=Path("/scripts"), dry_run=False).success is True
