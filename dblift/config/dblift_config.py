@@ -11,10 +11,15 @@ from typing import Any, Dict, FrozenSet, List, Mapping, Optional, Set, Tuple, Ty
 
 import yaml
 
-from dblift.config.database_config import BaseDatabaseConfig, _infer_type_from_url_scheme
+from dblift.config.database_config import (
+    BaseDatabaseConfig,
+    _file_dialect,
+    _infer_type_from_url_scheme,
+)
 from dblift.config.errors import ConfigurationError
-from dblift.config.file_path_anchoring import anchor_file_data
+from dblift.config.file_path_anchoring import anchor_file_data, file_url
 from dblift.config.secrets import SecretsConfig, resolve_secret_refs
+from dblift.config.secrets._registry import is_secret_uri
 from dblift.core.constants import (
     DBLIFT_SCHEMA_SNAPSHOTS_TABLE,
     DEFAULT_HISTORY_TABLE,
@@ -326,39 +331,91 @@ def _refuse_empty_target_version(data: Mapping[str, object]) -> None:
 
 
 def refuse_empty_migrations_path(value: object, key: str) -> None:
-    """Refuse an empty migrations path: an unset ``${VAR}`` is not the working directory."""
+    """Refuse an empty path: an unset ``${VAR}`` is not the working directory."""
     if value is None or value == "":
         raise ConfigurationError(
             f"{key} is empty (an unset ${{VAR}} placeholder resolves to an empty string)"
         )
 
 
-def _refuse_empty_migrations_paths(migrations: object, prefix: str = "") -> None:
-    """Refuse an empty ``directory`` or ``directories`` entry of a raw ``migrations`` mapping."""
+_URL_SCHEME = re.compile(r"^([A-Za-z][A-Za-z0-9+.-]*)://")
+
+
+def refuse_unresolved_reference(value: object, key: str, locator: Optional[str] = None) -> None:
+    """Refuse a ``scheme://`` value no secrets provider handles and *locator* does not accept.
+
+    It is a mistyped or unregistered reference, never a relative path to open.
+    """
+    found = _URL_SCHEME.match(value) if isinstance(value, str) else None
+    if found and not is_secret_uri(str(value)) and not (locator and re.match(locator, str(value))):
+        raise ConfigurationError(
+            f"{key}: unresolved reference {value!r} "
+            f"(no secrets provider handles scheme {found.group(1)!r})"
+        )
+
+
+def _refuse_unusable_migrations_paths(migrations: object, prefix: str = "") -> None:
+    """Refuse an empty or unresolved ``directory`` or ``directories`` entry of a raw mapping."""
     if not isinstance(migrations, Mapping):
         return
     entries = migrations.get("directories")
+    keyed = []
     if "directory" in migrations and not (isinstance(entries, list) and entries):
-        refuse_empty_migrations_path(migrations["directory"], f"{prefix}migrations.directory")
+        keyed.append((f"{prefix}migrations.directory", migrations["directory"]))
     for index, entry in enumerate(entries if isinstance(entries, list) else []):
         if isinstance(entry, Mapping):
             entry = entry.get("path") or entry.get("directory")
         elif isinstance(entry, DirectoryConfig):
             entry = entry.path
-        refuse_empty_migrations_path(entry, f"{prefix}migrations.directories[{index}]")
+        keyed.append((f"{prefix}migrations.directories[{index}]", entry))
+    for key, value in keyed:
+        refuse_empty_migrations_path(value, key)
+        refuse_unresolved_reference(value, key)
 
 
-def refuse_empty_migrations_directory(
-    file_data: Mapping[str, object], environment: Optional[str]
-) -> None:
-    """Refuse an empty migrations path of the effective file config (selected block, else root).
+_DATABASE_LOCATORS = ("path", "database", "url")
 
-    Runs on the raw file data, as the config merge drops empty values.
-    Other environments are not read.
+
+def _refuse_unusable_database_locators(sources: List[Tuple[str, Mapping[str, object]]]) -> None:
+    """Refuse an empty or unresolved file locator of the effective ``database`` section.
+
+    An empty one is refused only when no other locator is set, as then the run has no database file.
+    """
+    effective: Dict[str, Tuple[str, object]] = {}
+    for prefix, source in sources:
+        database = source.get("database")
+        if isinstance(database, Mapping):
+            for key in ("type", *_DATABASE_LOCATORS):
+                if key in database:
+                    effective.setdefault(key, (f"{prefix}database.{key}", database[key]))
+
+    def value(key: str) -> object:
+        return effective.get(key, ("", None))[1]
+
+    dialect = _file_dialect(str(value("type") or ""))
+    empty = [key for key in _DATABASE_LOCATORS if key in effective and not value(key)]
+    if dialect and empty and not any(value(key) for key in _DATABASE_LOCATORS):
+        refuse_empty_migrations_path(value(empty[0]), effective[empty[0]][0])
+    for key in ("path", "database"):
+        if key in effective and (dialect or key == "path"):
+            refuse_unresolved_reference(
+                value(key), effective[key][0], dialect[1] if dialect else None
+            )
+    url = value("url")
+    found = file_url(url) if isinstance(url, str) else None
+    if found:
+        refuse_unresolved_reference(found[1], effective["url"][0], found[2])
+
+
+def refuse_unusable_file_paths(file_data: Mapping[str, object], environment: Optional[str]) -> None:
+    """Refuse an empty or unresolved path of the effective file config (selected block, else root).
+
+    Covers the migrations directories and the database file locators. Runs on the raw file data,
+    as the config merge drops empty values. Other environments are not read.
     """
     environments = file_data.get("environments")
     block = environments.get(environment) if isinstance(environments, dict) else None
-    sources = [("", file_data)]
+    sources: List[Tuple[str, Mapping[str, object]]] = [("", file_data)]
     if environment and isinstance(block, dict):
         sources.insert(0, (f"environments.{environment}.", block))
 
@@ -371,12 +428,13 @@ def refuse_empty_migrations_directory(
 
     listed = effective("directories")
     if listed:
-        _refuse_empty_migrations_paths(listed[1], listed[0])
+        _refuse_unusable_migrations_paths(listed[1], listed[0])
     # ``directories`` wins over ``directory`` once it lists anything.
     if not (listed and listed[1]["directories"]):
         single = effective("directory")
         if single:
-            _refuse_empty_migrations_paths(single[1], single[0])
+            _refuse_unusable_migrations_paths(single[1], single[0])
+    _refuse_unusable_database_locators(sources)
 
 
 def _extract_paid_raw_config(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -410,7 +468,7 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
         try:
             file_data = DbliftConfig.load_config_data_from_yaml(config_file_path)
             config_data = DbliftConfig.merge_config_data(config_data, file_data)
-        except InvalidTargetVersionError:
+        except (InvalidTargetVersionError, ConfigurationError):
             raise
         except _CONFIG_LOAD_EXC as e:
             raise RuntimeError(f"Error loading config file {config_file_path}: {e}") from e
@@ -423,7 +481,7 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
     # are stripped here in every case.
     explicit_env = getattr(args, "env", None) if args else None
     active_environment = select_environment(config_data, explicit=explicit_env)
-    refuse_empty_migrations_directory(file_data, active_environment)
+    refuse_unusable_file_paths(file_data, active_environment)
     config_data = apply_environment(config_data, active_environment)
 
     # Override with environment variables.
@@ -834,7 +892,7 @@ class DbliftConfig:
 
         # Extract migrations config
         migrations = data.get("migrations", {})
-        _refuse_empty_migrations_paths(migrations)
+        _refuse_unusable_migrations_paths(migrations)
         migrations_dir = migrations.get("directory", "migrations")
 
         migrations_table = migrations.get("table", "schema_version")

@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A `?` in the configuration file's folder (`/data/q?dir/dblift.yaml`) made a relative file URL
+  (`database.url: sqlite:///rel.db` or `duckdb:///rel.db`) read the rest of the path as a query
+  string, so `migrate` exited 0 on a file named `q` instead of `q?dir/rel.db`. It is now a
+  configuration error naming `database.url`, as is a DuckDB `database.path` or `database.database`
+  containing a `?`; a SQLite `database.path` or `database.database` is unaffected.
+- A `database.path`, `database.database`, SQLite URL file or `migrations.directory` /
+  `migrations.directories` entry of the form `scheme://...` that no secrets provider handles
+  (`secret://x/db`) was opened as a relative path: SQLite created `secret:/x/db` under the working
+  directory and reported success, and the directory was reported with one slash lost. It is now a
+  configuration error naming the key and the scheme. A scheme that has a provider is resolved as
+  before, and DuckDB keeps opening any `name:` locator as written.
+- An unset `${VAR}` in `database.path`, `database.database` or `database.url` of a SQLite or DuckDB
+  configuration now fails with `database.path is empty (...)` naming the key, instead of
+  `'sqlite' configuration requires path, database, or url`. An empty key next to a usable locator
+  is still ignored.
 - A relative DuckDB URL in a configuration file (`database.url: duckdb:///rel.db`, in the root
   section, in an `environments` block, or next to `migrations.directories`) created and used
   `rel.db` in the working directory instead of next to the configuration file, so a run from

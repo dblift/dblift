@@ -18,7 +18,7 @@ from dblift.config.database_config import (
 from dblift.config.dblift_config import (
     DbliftConfig,
     apply_environment,
-    refuse_empty_migrations_directory,
+    refuse_unusable_file_paths,
     select_environment,
 )
 from dblift.config.errors import ConfigurationError
@@ -256,7 +256,7 @@ class ConfigBuilder:
                 file_data = DbliftConfig.load_config_data_from_yaml(file_path_str)
                 if file_data:
                     config_data = DbliftConfig.merge_config_data(config_data, file_data)
-            except (FileNotFoundError, InvalidTargetVersionError):
+            except (FileNotFoundError, InvalidTargetVersionError, ConfigurationError):
                 raise
             except Exception as e:
                 warnings.warn(
@@ -268,7 +268,7 @@ class ConfigBuilder:
         # merge the active environments.<name> block over the root sections
         # BEFORE env vars and kwargs, and strip the selector keys.
         active_environment = select_environment(config_data, explicit=environment)
-        refuse_empty_migrations_directory(file_data, active_environment)
+        refuse_unusable_file_paths(file_data, active_environment)
         config_data = apply_environment(config_data, active_environment)
 
         # Apply environment variables if enabled.

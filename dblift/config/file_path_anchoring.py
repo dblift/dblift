@@ -2,12 +2,13 @@
 
 import re
 from pathlib import Path
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Tuple
 
 import sqlalchemy
 from sqlalchemy.exc import ArgumentError
 
 from dblift.config.database_config import _file_dialect
+from dblift.config.errors import ConfigurationError
 
 _IN_MEMORY = ":memory:"
 _REFERENCE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://|\$\{")
@@ -34,18 +35,34 @@ def _anchor_database_file(
     return anchor(database)
 
 
-def _anchor_file_url(url: str, anchor: Callable[[object], str]) -> str:
-    """Anchor the file of a relative file-based dialect URL; any other URL is returned as is."""
+def file_url(url: str) -> Optional[Tuple[sqlalchemy.engine.URL, str, str]]:
+    """Return the parsed *url*, its database and its dialect's locator pattern for a file-based
+    dialect URL that names a database, else ``None``."""
     try:
         parsed = sqlalchemy.engine.make_url(url)
     except ArgumentError:
-        return url
+        return None
     dialect = _file_dialect(parsed.drivername.split("+", 1)[0])
     if not dialect or not parsed.database:
+        return None
+    return parsed, parsed.database, dialect[1]
+
+
+def _anchor_file_url(url: str, anchor: Callable[[object], str]) -> str:
+    """Anchor the file of a relative file-based dialect URL; any other URL is returned as is."""
+    found = file_url(url)
+    if not found:
         return url
-    anchored = _anchor_database_file(parsed.database, dialect[1], anchor)
-    if anchored == parsed.database:
+    parsed, database, locator = found
+    anchored = _anchor_database_file(database, locator, anchor)
+    if anchored == database:
         return url
+    if "?" in anchored:  # no rendering survives SQLAlchemy 2.0 and 2.1 alike
+        raise ConfigurationError(
+            f"database.url: the resolved file {anchored!r} contains '?', which a SQLAlchemy URL "
+            "reads as the start of a query string; use database.path or move the configuration "
+            "out of that folder"
+        )
     return parsed.set(database=anchored).render_as_string(hide_password=False)
 
 
