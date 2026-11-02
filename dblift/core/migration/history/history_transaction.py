@@ -14,15 +14,18 @@ def history_transaction(provider: object, log: Log, label: str) -> Iterator[None
     The transaction is committed when the body returns and rolled back when it
     raises; the body's exception always propagates. A provider without
     transaction support, or one that cannot begin a transaction, runs the body
-    unwrapped.
+    unwrapped; on a caller-owned connection a body that returns is noted, so
+    the next boundary commits its writes instead of rolling them back.
     """
     started = False
+    in_caller_transaction = False
     if isinstance(provider, TransactionalProvider):
         try:
             provider.begin_transaction()
             started = True
         except Exception as e:
             log.warning(f"Could not begin transaction for {label}: {e}")
+            in_caller_transaction = provider.is_caller_owned()
 
     try:
         yield
@@ -30,6 +33,9 @@ def history_transaction(provider: object, log: Log, label: str) -> Iterator[None
         if started:
             _rollback(provider, log, label)
         raise
+
+    if in_caller_transaction:
+        provider.note_caller_work()  # type: ignore[attr-defined]
 
     if started:
         try:

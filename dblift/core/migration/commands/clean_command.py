@@ -192,6 +192,8 @@ class CleanCommand(BaseCommand):
             if executed_statements and isinstance(self.provider, TransactionalProvider):
                 try:
                     self.provider.commit_transaction()
+                    if self.provider.is_caller_owned():
+                        self.provider.note_caller_work()
                     self.log.debug("Committed clean operation changes")
                 except Exception as commit_err:
                     self.log.error(f"Failed to commit clean operation: {commit_err}")
