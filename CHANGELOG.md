@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Configuration-file path anchoring (5.1.4) treated a value with a URI scheme (such as
+  `secret://p/q#r`) or an unresolved `${...}` placeholder as a relative path and rewrote it as
+  `<config dir>/secret:/p/q#r`. In every anchored key (migration directories, a SQLite
+  `database.path` or URL, the log directory, and their `environments` copies) such values are now
+  kept exactly as written; only plain relative paths are anchored.
+
 ### Removed
 
 ## [5.1.4] - 2026-11-01

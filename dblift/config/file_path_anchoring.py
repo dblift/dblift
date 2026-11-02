@@ -1,5 +1,6 @@
 """Resolve the relative paths of raw configuration-file data from the file's folder."""
 
+import re
 from pathlib import Path
 from typing import Callable, Dict
 
@@ -7,12 +8,15 @@ import sqlalchemy
 from sqlalchemy.exc import ArgumentError
 
 _IN_MEMORY = ":memory:"
+_REFERENCE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://|\$\{")
 
 
 def anchorer(base_dir: Path) -> Callable[[object], str]:
     base = Path(base_dir).expanduser().resolve()
 
     def anchor(value: object) -> str:
+        if _REFERENCE.search(str(value)):
+            return str(value)
         path = Path(str(value)).expanduser()
         return str(path if path.is_absolute() else (base / path).resolve())
 
@@ -30,7 +34,10 @@ def _anchor_sqlite_url(url: str, anchor: Callable[[object], str]) -> str:
     database = parsed.database
     if not database or database == _IN_MEMORY or database.startswith("file:"):
         return url
-    return parsed.set(database=anchor(database)).render_as_string(hide_password=False)
+    anchored = anchor(database)
+    if anchored == database:
+        return url
+    return parsed.set(database=anchored).render_as_string(hide_password=False)
 
 
 def _anchor_directory_entry(entry: object, anchor: Callable[[object], str]) -> object:
