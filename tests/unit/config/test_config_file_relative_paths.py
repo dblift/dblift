@@ -282,6 +282,8 @@ REFERENCES = [
     "${UNSET_DIR:-}",
     "${secret:p/q}",
     "${secret:p/q}/migrations",
+    "db/${secret:p/q}/migrations",
+    "HTTP://h/x",
 ]
 # The loader expands a plain ``${VAR}`` itself; a form it cannot parse stays literal.
 LEFT_LITERAL_BY_THE_LOADER = [v for v in REFERENCES if not ENV_PLACEHOLDER_PATTERN.search(v)]
@@ -327,6 +329,11 @@ class TestReferencesAreNotPaths:
         body = _every_anchored_key(value)
         data = DbliftConfig.load_config_data_from_yaml(_write(project, body))
         assert data == body
+
+    def test_a_scheme_must_start_the_value(self, tmp_path):
+        data = {"log_dir": "dir/a://b"}
+        anchor_file_data(data, tmp_path)
+        assert data["log_dir"] == str(tmp_path.resolve() / "dir" / "a:" / "b")
 
     def test_a_relative_path_with_a_colon_but_no_scheme_is_still_a_path(self, tmp_path):
         data = {"migrations": {"directory": "db/migrations"}, "log_dir": "a:b/logs"}
