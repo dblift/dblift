@@ -35,7 +35,13 @@ def test_empty_directory_is_a_configuration_error(value):
 
 @pytest.mark.parametrize(
     "entries",
-    [[""], ["migrations", ""], [{"path": ""}], [{"directory": ""}], [{"path": "", "recursive": False}]],
+    [
+        [""],
+        ["migrations", ""],
+        [{"path": ""}],
+        [{"directory": ""}],
+        [{"path": "", "recursive": False}],
+    ],
 )
 def test_empty_directories_entry_is_a_configuration_error(entries):
     with pytest.raises(ConfigurationError, match=r"migrations\.directories\[\d\] is empty"):

@@ -326,7 +326,7 @@ def _refuse_empty_target_version(data: Mapping[str, object]) -> None:
 
 
 def refuse_empty_migrations_path(value: object, key: str) -> None:
-    """Refuse an empty migrations path: ``""`` (an unset ``${VAR}``) is not the working directory."""
+    """Refuse an empty migrations path: an unset ``${VAR}`` is not the working directory."""
     if value is None or value == "":
         raise ConfigurationError(
             f"{key} is empty (an unset ${{VAR}} placeholder resolves to an empty string)"
