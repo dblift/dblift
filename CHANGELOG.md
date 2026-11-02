@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [5.1.4] - 2026-11-01
+
 ### Changed
 
 - `from_sqlalchemy(connection=...)`: a `beforeMigrate` callback's writes are committed at the
