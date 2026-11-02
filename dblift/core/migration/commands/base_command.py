@@ -59,6 +59,10 @@ from ._script_events import emit_script_event as _emit_script_event
 SCHEMA_HISTORY_CREATE_ERROR_PREFIX = "Could not create the schema-history table"
 
 # Error reported by the commands that hold the migration lock when they cannot get it.
+HISTORY_MISSING_OR_UNREADABLE = "does not exist or cannot be read by this account"
+HISTORY_MISSING_EFFECT = (
+    "no migration is recorded as applied, so every migration is listed as pending."
+)
 MIGRATION_LOCK_REFUSAL = "Could not acquire migration lock - another migration may be running"
 
 # Shared by the CLI config validation and the command preflight.
@@ -845,14 +849,13 @@ class BaseCommand:
             return
         result.history_table_exists = False
         missing = (
-            "does not exist or cannot be read by this account"
+            HISTORY_MISSING_OR_UNREADABLE
             if self.history_manager.provider.quirks.unreadable_table_looks_missing
             else "does not exist yet"
         )
         self.log.warning(
             f"Schema-history table {self.config.database.schema}."
-            f"{self.history_manager.normalized_history_table} {missing}: "
-            "no migration is recorded as applied, so every migration is listed as pending."
+            f"{self.history_manager.normalized_history_table} {missing}: {HISTORY_MISSING_EFFECT}"
         )
 
     @contextmanager

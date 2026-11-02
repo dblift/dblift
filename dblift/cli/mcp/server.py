@@ -50,6 +50,10 @@ from typing import (
 import dblift
 from dblift.cli.mcp.registry import load_mcp_tool_registrars
 from dblift.cli.mcp.runner import JSON_FORMAT_ARGV, CommandInvocationError, run_command
+from dblift.core.migration.commands.base_command import (
+    HISTORY_MISSING_EFFECT,
+    HISTORY_MISSING_OR_UNREADABLE,
+)
 from dblift.core.seams.feature_loading import load_feature_extensions
 
 SDK_HINT = 'The MCP server needs the "mcp" package. Install it with: pip install "dblift[mcp]"'
@@ -72,7 +76,9 @@ parse or check the SQL inside the scripts, so a script with invalid SQL still
 passes both `validate` and `migrate_dry_run`.
 `info` shows the schema history; the
 `dblift://history` resource is the same list, and `dblift://pending` is the
-same list `migrate_dry_run` returns. Every tool runs against the project's
+same list `migrate_dry_run` returns. Each is a JSON array, except an object
+with `history_table_exists: false`, `message` and `migrations` when the
+history table is missing or unreadable. Every tool runs against the project's
 dblift.yaml in the working directory (or the --config the server was started
 with).
 
@@ -137,8 +143,7 @@ ArgvBuilder = Callable[..., List[str]]
 _LOG = logging.getLogger(__name__)
 
 _MISSING_HISTORY_MESSAGE = (
-    "The schema-history table does not exist or cannot be read by this account: "
-    "no migration is recorded as applied, so every migration is listed as pending."
+    f"The schema-history table {HISTORY_MISSING_OR_UNREADABLE}: {HISTORY_MISSING_EFFECT}"
 )
 
 
