@@ -121,3 +121,13 @@ def test_provider_that_owns_its_connection_does_not_note_caller_work():
         pass
 
     provider.note_caller_work.assert_not_called()
+
+
+def test_failing_body_in_the_callers_transaction_is_not_noted():
+    provider = _provider_that_cannot_begin(caller_owned=True)
+
+    with pytest.raises(ValueError):
+        with history_transaction(provider, MagicMock(), "repair"):
+            raise ValueError("boom")
+
+    provider.note_caller_work.assert_not_called()

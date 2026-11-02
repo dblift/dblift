@@ -79,7 +79,7 @@ def _full_history(admin, schema: str) -> list:
 
 
 def _sibling_history(url: str, tmp_path, name: str, commit_between: bool) -> list:
-    """History after ``first`` then ``migrate`` on one connection (``V3`` is added in between)."""
+    """History after a command then ``migrate`` on one connection (``V3`` is added in between)."""
     schema = f"q_a_{uuid.uuid4().hex[:8]}"
     migrations = tmp_path / f"{name}_{int(commit_between)}"
     migrations.mkdir()
@@ -92,19 +92,24 @@ def _sibling_history(url: str, tmp_path, name: str, commit_between: bool) -> lis
     with admin.connect() as conn:
         conn.execute(text(f'CREATE SCHEMA "{schema}"'))
     try:
-        DBLiftClient.from_sqlalchemy(
-            engine=admin, schema=schema, migrations_dir=migrations, logger=NullLog()
-        ).migrate()
+        if name != "mark_as_executed":
+            DBLiftClient.from_sqlalchemy(
+                engine=admin, schema=schema, migrations_dir=migrations, logger=NullLog()
+            ).migrate()
         if name == "repair_failed":
             (migrations / "V2__b.sql").write_text("CREATE TABLE b (id integer);")
         elif name == "repair_checksum":
             (migrations / "V1__a.sql").write_text("CREATE TABLE a (id integer, v integer);")
-        (migrations / "V3__c.sql").write_text("CREATE TABLE c (id integer);")
         with create_engine(url).connect() as conn:
             client = _client(conn, schema, migrations)
-            first = client.undo(target_version="1") if name == "undo" else client.repair()
+            first = {
+                "undo": lambda: client.undo(target_version="1"),
+                "mark_as_executed": lambda: client.migrate(mark_as_executed=True),
+                "clean": lambda: client.clean(clean_enabled=True),
+            }.get(name, client.repair)()
             if commit_between:
                 conn.commit()
+            (migrations / "V3__c.sql").write_text("CREATE TABLE c (id integer);")
             migrated = client.migrate()
             client.close()
             conn.commit()
@@ -117,7 +122,7 @@ def _sibling_history(url: str, tmp_path, name: str, commit_between: bool) -> lis
 
 
 def run_sibling_scenario(name: str, url: str, tmp_path) -> None:
-    """``repair`` or ``undo`` then ``migrate``: the same history with or without a commit between."""
+    """A command then ``migrate``: the same history with or without a commit between."""
     expected = _sibling_history(url, tmp_path, name, commit_between=True)
     history = _sibling_history(url, tmp_path, name, commit_between=False)
     assert history == expected, (history, expected)
@@ -127,6 +132,8 @@ def test_baseline_then_migrate_keeps_the_baseline_row(postgresql_container, tmp_
     run_baseline_then_migrate_scenario(_url(postgresql_container), tmp_path)
 
 
-@pytest.mark.parametrize("name", ["repair_failed", "repair_checksum", "undo"])
-def test_repair_or_undo_then_migrate_keeps_the_history(name, postgresql_container, tmp_path):
+@pytest.mark.parametrize(
+    "name", ["repair_failed", "repair_checksum", "undo", "mark_as_executed", "clean"]
+)
+def test_command_then_migrate_keeps_the_history(name, postgresql_container, tmp_path):
     run_sibling_scenario(name, _url(postgresql_container), tmp_path)
