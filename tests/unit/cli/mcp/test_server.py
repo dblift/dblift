@@ -387,11 +387,38 @@ def test_resource_on_a_successful_payload_returns_its_rows():
 
 
 @pytest.mark.unit
-def test_resource_on_a_fresh_database_is_an_empty_list_not_an_error():
-    """`history_table_exists: false` with no rows is a successful read of nothing."""
-    payload = {"success": True, "history_table_exists": False, "migrations": []}
+@pytest.mark.parametrize("rows", [[], [{"script": "V1", "status": "PENDING"}]])
+def test_resource_without_a_history_table_carries_the_marker(rows):
+    """Bare PENDING rows would read as "nothing applied" when the table is missing or unreadable."""
+    payload = {"success": True, "history_table_exists": False, "migrations": rows}
 
-    assert json.loads(_read_history_resource(payload)) == []
+    result = json.loads(_read_history_resource(payload))
+
+    assert result["history_table_exists"] is False
+    assert "schema-history table" in result["message"].lower()
+    assert result["migrations"] == rows
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("marker", [{}, {"history_table_exists": True}])
+def test_resource_with_a_readable_history_table_stays_a_bare_array(marker):
+    rows = [{"script": "V1", "status": "APPLIED"}]
+
+    payload = {"success": True, "migrations": rows, **marker}
+
+    assert json.loads(_read_history_resource(payload)) == rows
+
+
+@pytest.mark.unit
+def test_resource_failed_payload_still_errors_when_it_carries_the_marker():
+    from mcp.shared.exceptions import MCPError
+
+    failed = _read_history_resource(
+        {"success": False, "error": "boom", "history_table_exists": False, "migrations": []}
+    )
+
+    assert isinstance(failed, MCPError)
+    assert "boom" in str(failed)
 
 
 # --- v2: destructive=, the write boundary, the allowlist ---------------------
