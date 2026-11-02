@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Optional
 
 import sqlalchemy
 from sqlalchemy.exc import ArgumentError
@@ -26,10 +26,10 @@ def anchorer(base_dir: Path) -> Callable[[object], str]:
 
 
 def _anchor_database_file(
-    database: str, locators: Tuple[str, ...], anchor: Callable[[object], str]
+    database: str, locator: Optional[str], anchor: Callable[[object], str]
 ) -> str:
-    """Anchor a relative database file; ``:memory:`` and the dialect's locators are kept."""
-    if not database or database == _IN_MEMORY or database.lower().startswith(locators):
+    """Anchor a relative database file; ``:memory:`` and a *locator* match are kept."""
+    if not database or database == _IN_MEMORY or (locator and re.match(locator, database)):
         return database
     return anchor(database)
 
@@ -92,8 +92,10 @@ def anchor_file_data(data: Dict[str, object], base_dir: Path) -> None:
             if dialect and isinstance(name, str):
                 database["database"] = _anchor_database_file(name, dialect[1], anchor)
             path = database.get("path")
-            if isinstance(path, str) and path and path != _IN_MEMORY:
-                database["path"] = anchor(path)
+            if isinstance(path, str):
+                database["path"] = _anchor_database_file(
+                    path, dialect[1] if dialect else None, anchor
+                )
         logging = block.get("logging")
         if isinstance(logging, dict) and isinstance(logging.get("directory"), str):
             logging["directory"] = anchor(logging["directory"]) if logging["directory"] else ""

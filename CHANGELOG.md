@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with `type: sqlite` or `type: duckdb`. The database file of every file-based dialect, in a URL or
   in `database.database`, is now resolved against the configuration file, as the SQLite URL and
   `database.path` already were. `:memory:`, absolute paths and the dialect's own locators (`file:`
-  for SQLite, `md:` and `motherduck:` for DuckDB) are left as written.
+  for SQLite, any `name:` extension prefix such as `md:` for DuckDB) are left as written.
 
 ### Removed
 

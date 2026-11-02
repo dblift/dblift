@@ -301,6 +301,7 @@ class TestAnchorFileData:
             ("duckdb:///rel.db", "duckdb:///{base}/rel.db"),
             ("duckdb:///sub/rel.db", "duckdb:///{base}/sub/rel.db"),
             ("sqlite:///db:2024.db", "sqlite:///{base}/db:2024.db"),
+            ("sqlite:///FILE:up.db", "sqlite:///{base}/FILE:up.db"),
             ("sqlite3:///backup:1.db", "sqlite3:///{base}/backup:1.db"),
             ("duckdb+duckdb_engine:///rel.db", "duckdb+duckdb_engine:///{base}/rel.db"),
             ("duckdb:///rel.db?threads=2", "duckdb:///{base}/rel.db?threads=2"),

@@ -111,14 +111,14 @@ def _native_canonical_from_scheme(scheme: str) -> Optional[str]:
     return None
 
 
-def _file_dialect(name: str) -> Optional[Tuple[str, Tuple[str, ...]]]:
-    """Return ``(canonical name, locator prefixes)`` of the native dialect called *name*
+def _file_dialect(name: str) -> Optional[Tuple[str, str]]:
+    """Return ``(canonical name, locator pattern)`` of the native dialect called *name*
     (a URL scheme or a ``type``) *iff* that dialect is file-based, else ``None``.
 
     A file-based dialect's quirks advertise ``url_optional_when_file_path_given``: the file
     path *is* the database. SQLite and DuckDB are such dialects; a future embedded plugin is
-    handled the same way without naming a dialect here. The prefixes are the database values
-    that name a location, not a file (``file_url_locator_prefixes``).
+    handled the same way without naming a dialect here. The pattern matches the database values
+    that name a location, not a file (``file_url_locator_pattern``).
     """
     canonical = _native_canonical_from_scheme(name.strip().lower())
     if not canonical:
@@ -128,7 +128,7 @@ def _file_dialect(name: str) -> Optional[Tuple[str, Tuple[str, ...]]]:
     quirks = ProviderRegistry.get_quirks(canonical)
     if not getattr(quirks, "url_optional_when_file_path_given", False):
         return None
-    return canonical, tuple(quirks.file_url_locator_prefixes)
+    return canonical, quirks.file_url_locator_pattern
 
 
 def _file_url_dialect_from_scheme(scheme: str) -> Optional[str]:

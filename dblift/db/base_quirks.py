@@ -565,10 +565,8 @@ class BaseQuirks:
     #: sufficient to connect without a database URL. SQLite only.
     url_optional_when_file_path_given: bool = False
 
-    #: Lower-case prefixes of a file-based dialect's database value that name a
-    #: location rather than a file (``file:`` URIs for SQLite). Such a value is
-    #: never resolved against the configuration file.
-    file_url_locator_prefixes: "tuple[str, ...]" = ("file:",)
+    #: Database values that name a location, not a file, in a file-based dialect (SQLite URIs).
+    file_url_locator_pattern: str = r"^file:"
 
     #: Names of ``DatabaseConfig`` attributes that, if non-empty, satisfy the
     #: "is there enough information to connect?" check in
