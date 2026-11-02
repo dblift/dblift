@@ -97,3 +97,19 @@ def test_dry_run_lists_pending_placeholder_migration_without_execution_parse(mon
     command.execution_engine.execute_migration.assert_not_called()
     provider.commit_transaction.assert_not_called()
     command._log_command_completion.assert_called_once()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("caller_owned", [True, False])
+def test_mark_as_executed_notes_the_callers_transaction_only_on_a_caller_owned_connection(
+    monkeypatch, caller_owned
+):
+    """The history rows live in the caller's transaction, so the next boundary must commit them."""
+    provider = MagicMock()
+    provider.__class__ = TransactionalProvider
+    provider.is_caller_owned.return_value = caller_owned
+    command = _command_with_pending_migration(monkeypatch, provider)
+
+    assert command.execute(Path("migrations"), mark_as_executed=True).success is True
+
+    assert provider.note_caller_work.call_count == (1 if caller_owned else 0)
