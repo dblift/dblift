@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A database error raised by one of dblift's own statements now reads the same in every
+  command, in the console and in the JSON `error` field: the engine's message, without the
+  driver's exception tuple, the `[SQL: ...]` block or the SQLAlchemy `sqlalche.me` link. It was
+  printed raw by `clean` (for example the missing EVENT privilege on MySQL and MariaDB), by `info`
+  (for example a schema name in the wrong case on Db2), by `validate` (history table not
+  readable by the role), by `repair`, and by `migrate` and `undo`
+  when writing the schema history failed (for example a Db2 lock timeout).
 - A `?` in the configuration file's folder (`/data/q?dir/dblift.yaml`) made a relative file URL
   (`database.url: sqlite:///rel.db` or `duckdb:///rel.db`) read the rest of the path as a query
   string, so `migrate` exited 0 on a file named `q` instead of `q?dir/rel.db`. The same held for a

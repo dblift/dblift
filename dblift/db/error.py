@@ -102,6 +102,14 @@ def strip_sql_statement_block(message: str) -> str:
     return _SQL_STATEMENT_BLOCK_RE.sub("", message).strip()
 
 
+def engine_error_message(error: object) -> str:
+    """The engine's message for a failure of dblift's own statement, without the driver wrapper.
+
+    Drops the exception tuple, the ``[SQL: ...]`` block and the SQLAlchemy doc link.
+    """
+    return strip_sql_statement_block(clean_driver_error_message(str(error)))
+
+
 # Everything a driver may quote from the failing statement, removed by shape rather than by
 # matching the statement's own literals (which escapes, truncated excerpts and $$ bodies defeat).
 _DRIVER_BLOCK_RE = re.compile(r"\s*\[(?:SQL|parameters):.*", re.IGNORECASE | re.DOTALL)

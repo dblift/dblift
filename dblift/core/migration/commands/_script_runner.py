@@ -16,7 +16,7 @@ from dblift.core.constants import SECONDS_TO_MILLISECONDS
 from dblift.core.logger.results import OperationResult
 from dblift.core.migration.migration import Migration
 from dblift.core.seams.runtime_checks import SqlPreflightError, registered_checks
-from dblift.db.error import redact_driver_error_text
+from dblift.db.error import engine_error_message, redact_driver_error_text
 
 from ._script_events import emit_script_event
 
@@ -155,7 +155,7 @@ class ScriptRunner:
                 # The failure was already reported in full; this is the error
                 # callback itself failing.
                 raise
-            reason = redact_driver_error_text(str(e))
+            reason = redact_driver_error_text(engine_error_message(e))
             error = result.error_message or reason
             if not result.error_message:
                 command.log.error(f"{policy.failure_prefix} for {script.script_name}: {reason}")

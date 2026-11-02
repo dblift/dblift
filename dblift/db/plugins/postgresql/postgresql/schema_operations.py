@@ -9,6 +9,7 @@ from typing import Any, List, Mapping, Optional, Set, Tuple
 
 from dblift.core.logger import Log, NullLog
 from dblift.core.migration.clean_summary import CleanExecutionSummary
+from dblift.db.error import engine_error_message
 from dblift.db.plugins.base_schema_operations import BaseSchemaOperations
 
 # Routines are read from pg_proc rather than information_schema.routines,
@@ -101,7 +102,7 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
             if "already exists" in str(e).lower():
                 self.log.debug(f"Schema {schema} already exists")
             else:
-                error_msg = f"Error creating schema {schema}: {str(e)}"
+                error_msg = f"Error creating schema {schema}: {engine_error_message(e)}"
                 self.log.error(error_msg)
                 raise
 
@@ -261,7 +262,7 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
                         )
                         self.log.debug(f"Dropped {recorded_type}: {type_name}")
                     except Exception as e:
-                        error_msg = f"Failed to drop type {type_name}: {str(e)}"
+                        error_msg = f"Failed to drop type {type_name}: {engine_error_message(e)}"
                         type_drop_failures.append(error_msg)
                         self.log.warning(error_msg)
 
@@ -290,7 +291,7 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
             return summary
 
         except Exception as e:
-            error_msg = f"Error cleaning schema {schema}: {str(e)}"
+            error_msg = f"Error cleaning schema {schema}: {engine_error_message(e)}"
             self.log.error(error_msg)
             raise
 

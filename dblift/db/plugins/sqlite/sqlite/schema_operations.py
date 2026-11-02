@@ -12,6 +12,7 @@ from typing import Any, List, Optional, Tuple
 
 from dblift.core.logger import Log, NullLog
 from dblift.core.migration.clean_summary import CleanExecutionSummary
+from dblift.db.error import engine_error_message
 
 
 class SQLiteSchemaOperations:
@@ -170,7 +171,7 @@ class SQLiteSchemaOperations:
             return summary
 
         except Exception as e:
-            error_msg = f"Error cleaning database: {str(e)}"
+            error_msg = f"Error cleaning database: {engine_error_message(e)}"
             self.log.error(error_msg)
             # Try to re-enable foreign keys even on error
             try:
