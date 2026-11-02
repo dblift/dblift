@@ -116,7 +116,10 @@ def register_oss_tools(server: DbliftMcpServer) -> None:
     server.command_resource(
         uri="dblift://history",
         name="history",
-        description="Migration history as a JSON array (same rows as the info tool).",
+        description=(
+            "Migration history as a JSON array (same rows as the info tool); an object with "
+            "history_table_exists: false when the history table is missing or unreadable."
+        ),
         command="info",
         argv=[],
         pick=lambda payload: payload.get("migrations", []),
@@ -124,7 +127,10 @@ def register_oss_tools(server: DbliftMcpServer) -> None:
     server.command_resource(
         uri="dblift://pending",
         name="pending",
-        description="Migrations not yet applied, as a JSON array (same rows as migrate_dry_run).",
+        description=(
+            "Migrations not yet applied, as a JSON array (same rows as migrate_dry_run); an object "
+            "with history_table_exists: false when the history table is missing or unreadable."
+        ),
         command="migrate",
         argv=["--dry-run"],
         pick=lambda payload: payload.get("migrations", []),
