@@ -23,6 +23,9 @@ from dblift.config.secrets._resolver import clear_cache
 pytestmark = pytest.mark.unit
 
 FILE_ENGINES = ["sqlite", "duckdb"]
+GUIDANCE = (
+    r"the configuration folder .*'\?'.*use an absolute path or a configuration folder without '\?'"
+)
 
 
 class _SsmStub(AbstractSecretsProvider):
@@ -59,31 +62,55 @@ def _load(tmp_path, database, **extra):
 
 class TestQuestionMarkInTheConfigurationFolder:
     @pytest.mark.parametrize("engine", FILE_ENGINES)
-    def test_a_relative_file_url_is_refused(self, tmp_path, engine):
-        data = {
-            "database": {"url": f"{engine}:///rel.db"},
-            "environments": {"dev": {"database": {"url": f"{engine}:///rel.db"}}},
-        }
-        with pytest.raises(ConfigurationError, match=r"database\.url.*'\?'.*database\.path"):
-            anchor_file_data(data, tmp_path / "q?dir")
+    def test_anchoring_leaves_a_url_it_cannot_anchor_relative(self, tmp_path, engine):
+        data = {"database": {"url": f"{engine}:///rel.db"}}
+        anchor_file_data(data, tmp_path / "q?dir")
+        assert data == {"database": {"url": f"{engine}:///rel.db"}}
 
     @pytest.mark.parametrize("engine", FILE_ENGINES)
-    def test_load_config_and_the_builder_refuse_it(self, tmp_path, engine):
+    def test_load_config_and_the_builder_refuse_a_relative_url(self, tmp_path, engine):
         path = _write(tmp_path / "q?dir", {"database": {"url": f"{engine}:///rel.db"}})
-        with pytest.raises(ConfigurationError, match=r"database\.url.*'\?'"):
+        with pytest.raises(ConfigurationError, match=rf"database\.url: {GUIDANCE}"):
             load_config(path)
-        with pytest.raises(ConfigurationError, match=r"database\.url.*'\?'"):
+        with pytest.raises(ConfigurationError, match=rf"database\.url: {GUIDANCE}"):
             ConfigBuilder.build(file_path=path)
 
     @pytest.mark.parametrize("key", ["path", "database"])
-    def test_a_duckdb_file_name_is_refused(self, tmp_path, key):
+    def test_a_relative_duckdb_file_name_is_refused_naming_the_key(self, tmp_path, key):
         path = _write(tmp_path / "q?dir", {"database": {"type": "duckdb", key: "rel.db"}})
-        with pytest.raises(ConfigurationError, match=r"'\?'"):
+        with pytest.raises(ConfigurationError, match=rf"database\.{key}: {GUIDANCE}"):
             load_config(path)
 
-    def test_an_absolute_duckdb_path_is_refused(self):
-        with pytest.raises(ConfigurationError, match=r"'\?'"):
-            DbliftConfig.from_dict({"database": {"type": "duckdb", "path": "/a/q?dir/x.db"}})
+    def test_only_the_selected_environment_is_refused(self, tmp_path):
+        body = {
+            "environments": {
+                "dev": {"database": {"url": "sqlite:///dev.db"}},
+                "prod": {"database": {"type": "sqlite", "path": "prod.db"}},
+            }
+        }
+        path = _write(tmp_path / "q?dir", body)
+        config = load_config(path, Namespace(env="prod", command="info"))
+        assert config.database.path == str((tmp_path / "q?dir").resolve() / "prod.db")
+        with pytest.raises(
+            ConfigurationError, match=rf"environments\.dev\.database\.url: {GUIDANCE}"
+        ):
+            load_config(path, Namespace(env="dev", command="info"))
+
+    @pytest.mark.parametrize("key", ["path", "database"])
+    @pytest.mark.parametrize("folder", ["proj", "q?dir"])
+    def test_a_duckdb_query_string_written_by_the_user_is_kept(self, tmp_path, key, folder):
+        absolute = str(tmp_path / "data" / "x.duckdb?threads=2")
+        config = load_config(
+            _write(tmp_path / folder, {"database": {"type": "duckdb", key: absolute}})
+        )
+        assert config.database.path == absolute
+
+    @pytest.mark.parametrize("key", ["path", "database"])
+    def test_a_relative_duckdb_query_string_in_a_plain_folder_is_anchored(self, tmp_path, key):
+        config = load_config(
+            _write(tmp_path / "proj", {"database": {"type": "duckdb", key: "x.duckdb?threads=2"}})
+        )
+        assert config.database.path == str((tmp_path / "proj").resolve() / "x.duckdb?threads=2")
 
     @pytest.mark.parametrize("key", ["path", "database"])
     def test_sqlite_file_names_are_anchored_into_the_folder(self, tmp_path, key):
@@ -182,7 +209,7 @@ class TestUnresolvedReferenceScheme:
         }
         path = _write(tmp_path, body)
         load_config(path, Namespace(env="prod", command="info"))
-        with pytest.raises(ConfigurationError, match=r"environments\.dev\.database\.path"):
+        with pytest.raises(ConfigurationError, match=r"database\.path: unresolved"):
             load_config(path, Namespace(env="dev", command="info"))
 
     def test_an_environment_value_overrides_the_root_one(self, tmp_path):
@@ -232,3 +259,52 @@ class TestEmptyDatabaseFileLocator:
     )
     def test_an_empty_key_next_to_a_usable_locator_is_not_refused(self, tmp_path, database):
         _load(tmp_path, database)
+
+
+class TestUrlWithoutAFile:
+    @pytest.mark.parametrize("url", ["sqlite:///", "sqlite://", "duckdb:///", "duckdb://"])
+    def test_a_file_url_naming_no_file_names_the_key(self, url):
+        with pytest.raises(ConfigurationError, match=r"database\.url.*is empty.*\$\{VAR\}"):
+            DbliftConfig.from_dict({"database": {"url": url}})
+
+    def test_an_unset_placeholder_in_the_file_part_names_the_key(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("Q5B_NOT_SET", raising=False)
+        with pytest.raises(ConfigurationError, match=r"database\.url.*is empty"):
+            _load(tmp_path, {"url": "sqlite:///${Q5B_NOT_SET}"})
+
+    def test_memory_and_server_urls_are_untouched(self):
+        DbliftConfig.from_dict({"database": {"url": "sqlite:///:memory:"}})
+        DbliftConfig.from_dict({"database": {"url": "postgresql+psycopg://u:p@h/d"}})
+
+
+class TestEveryEntryPoint:
+    """The unresolved-scheme check sees the merged value, whichever source supplied it."""
+
+    @pytest.mark.parametrize(
+        "database",
+        [
+            {"type": "sqlite", "path": "secret://x/db"},
+            {"type": "sqlite", "database": "secret://x/db"},
+            {"url": "sqlite:///secret://x/db"},
+        ],
+    )
+    def test_from_dict_refuses_it(self, database):
+        with pytest.raises(ConfigurationError, match=r"database\.\w+: unresolved reference"):
+            DbliftConfig.from_dict({"database": database})
+
+    def test_a_db_url_flag_is_refused(self, tmp_path):
+        path = _write(tmp_path, {"database": {"type": "sqlite", "path": "x.db"}})
+        args = Namespace(db_url="sqlite:///secret://x/db", command="info")
+        with pytest.raises(ConfigurationError, match=r"database\.url: unresolved reference"):
+            load_config(path, args)
+
+    def test_a_db_url_environment_variable_is_refused(self, tmp_path, monkeypatch):
+        path = _write(tmp_path, {"database": {"type": "sqlite", "path": "x.db"}})
+        monkeypatch.setenv("DBLIFT_DB_URL", "sqlite:///secret://x/db")
+        with pytest.raises(ConfigurationError, match=r"database\.url: unresolved reference"):
+            load_config(path)
+
+    def test_a_flag_overrides_an_unresolved_file_value(self, tmp_path):
+        path = _write(tmp_path, {"database": {"type": "sqlite", "path": "secret://x/db"}})
+        args = Namespace(db_url="sqlite:///x.db", command="info")
+        assert load_config(path, args).database.path == "x.db"
