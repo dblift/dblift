@@ -7,6 +7,7 @@ statement block (dblift's own statement) and the link are noise.
 
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -32,9 +33,9 @@ def _mysql_access_denied() -> Exception:
         "pymysql.err",
         "OperationalError",
         1044,
-        "Access denied for user 'q5d_u'@'%' to database 'q5d_db'",
+        "Access denied for user 'app_user'@'%' to database 'app_db'",
     )
-    return OperationalError("SHOW EVENTS FROM `q5d_db`", None, orig)
+    return OperationalError("SHOW EVENTS FROM `app_db`", None, orig)
 
 
 def _db2_undefined_name() -> Exception:
@@ -42,11 +43,11 @@ def _db2_undefined_name() -> Exception:
         "ibm_db_dbi",
         "ProgrammingError",
         "ibm_db_dbi::ProgrammingError: Statement Execute Failed: [IBM][CLI Driver][DB2/LINUXX8664] "
-        'SQL0204N  "r2_eng_d2.DBLIFT_SCHEMA_HISTORY" is an undefined name.  '
+        'SQL0204N  "app_schema.DBLIFT_SCHEMA_HISTORY" is an undefined name.  '
         "SQLSTATE=42704 SQLCODE=-204",
     )
     statement = (
-        '\n            SELECT SCRIPT, INSTALLED_RANK FROM "r2_eng_d2"."DBLIFT_SCHEMA_HISTORY"'
+        '\n            SELECT SCRIPT, INSTALLED_RANK FROM "app_schema"."DBLIFT_SCHEMA_HISTORY"'
         "\n            ORDER BY INSTALLED_RANK\n            "
     )
     return ProgrammingError(statement, None, orig)
@@ -144,10 +145,10 @@ def test_mysql_event_probe_message_keeps_the_privilege_hint_and_drops_the_wrappe
     operations = MySqlSchemaOperations(executor, log=MagicMock())
 
     with pytest.raises(RuntimeError) as raised:
-        operations._check_events_listable(MagicMock(), "q5d_db")
+        operations._check_events_listable(MagicMock(), "app_db")
 
     message = str(raised.value)
-    assert message.startswith("Cannot list the events in database 'q5d_db': clean needs the EVENT")
+    assert message.startswith("Cannot list the events in database 'app_db': clean needs the EVENT")
     _assert_readable(message, "Access denied for user")
     assert raised.value.__cause__ is wrapped
 
@@ -297,7 +298,7 @@ def test_schema_operation_failure_is_logged_as_the_engine_message(operations_cla
     connection.cursor.side_effect = _db2_lock_timeout()
 
     try:
-        getattr(operations, method)(connection, "q5d_s")
+        getattr(operations, method)(connection, "app_schema")
     except Exception:  # noqa: BLE001 - the failure is expected, its log line is under test
         pass
 
@@ -354,3 +355,159 @@ def test_history_commit_failure_is_logged_as_the_engine_message(make_error, engi
             pass
 
     _assert_readable(log.error.call_args.args[0], engine_text)
+
+
+def _migrate_command():
+    from tests.unit.core.migration.commands.test_command_lifecycle_contract import (
+        _migrate_command as build,
+    )
+
+    return build()
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("make_error, engine_text", ENGINE_ERRORS)
+def test_validate_history_read_failure_is_the_engine_message(make_error, engine_text, tmp_path):
+    from sqlalchemy import create_engine
+
+    from dblift.api import DBLiftClient
+    from dblift.core.sql_validator.migration_validator import MigrationValidator
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'app.db'}")
+    client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=str(tmp_path))
+    try:
+        client.executor.history_manager.create_schema_and_history_table(create_schema=False)
+        manager = client.executor.state_manager
+        manager.logger = MagicMock()
+        with patch.object(manager, "get_applied_migrations", side_effect=make_error()):
+            snapshot = manager.build_validation_snapshot(tmp_path, "validate")
+        validation = MigrationValidator.validate_snapshot(
+            MigrationValidator.__new__(MigrationValidator), snapshot
+        )
+    finally:
+        client.close()
+        engine.dispose()
+
+    _assert_readable(snapshot.history_read_error, engine_text)
+    _assert_readable(validation.error_message, engine_text)
+    assert validation.error_message.startswith(
+        "Validation failed: could not read migration history"
+    )
+    _assert_readable(manager.logger.error.call_args.args[0], engine_text)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("make_error, engine_text", ENGINE_ERRORS)
+def test_checksum_repair_failure_is_logged_as_the_engine_message(make_error, engine_text):
+    from tests.unit.core.migration.history.test_migration_history_manager_extended import (
+        _make_manager,
+    )
+
+    manager = _make_manager()
+    manager.provider.repair_migration_history.side_effect = make_error()
+
+    assert manager.repair_checksum("V1__test.sql", 1) is False
+
+    _assert_readable(manager.logger.error.call_args.args[0], engine_text)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("make_error, engine_text", ENGINE_ERRORS)
+def test_clean_drop_failure_is_the_engine_message(make_error, engine_text):
+    provider = MagicMock()
+    provider.list_droppable_objects.return_value = [
+        SimpleNamespace(object_type="table", name="t", drop_sql="DROP TABLE t", record_result=True)
+    ]
+    provider.drop_object.side_effect = make_error()
+    command = _clean_command(provider)
+
+    result = command.execute(clean_enabled=True)
+
+    assert result.warnings
+    for warning in result.warnings:
+        _assert_readable(warning, engine_text)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("make_error, engine_text", ENGINE_ERRORS)
+def test_mark_as_executed_failure_is_the_engine_message(make_error, engine_text):
+    command = _migrate_command()
+    command.history_manager.record_migration.side_effect = make_error()
+    result = MigrateResult()
+    migration = SimpleNamespace(
+        script_name="V1__a.sql", version="1", description="a", type=None, checksum=1
+    )
+
+    assert command._mark_migrations_as_executed([migration], result) is False
+
+    _assert_readable(result.error_message, engine_text)
+    _assert_readable(command.log.error.call_args.args[0], engine_text)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("make_error, engine_text", ENGINE_ERRORS)
+def test_migrate_loop_failure_is_the_engine_message(make_error, engine_text):
+    command = _migrate_command()
+    command._execute_migration_loop = MagicMock(side_effect=make_error())
+    command._fire = MagicMock()
+
+    result = command.execute(Path("/migrations"))
+
+    assert result.error_message.startswith("Migration execution failed: ")
+    _assert_readable(result.error_message, engine_text)
+    _assert_readable(command.log.error.call_args.args[0], engine_text)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("make_error, engine_text", ENGINE_ERRORS)
+def test_callback_failure_is_the_engine_message(make_error, engine_text):
+    from dblift.core.exceptions import CallbackExecutionError
+
+    command = _migrate_command()
+    callback = MagicMock(script_name="beforeMigrate.sql", description=None)
+    command.state_manager.get_callbacks_by_event.return_value = [callback]
+    command.execution_engine.execute_callback.side_effect = make_error()
+
+    with pytest.raises(CallbackExecutionError) as raised:
+        command._execute_callbacks(Path("/m"), "beforeMigrate", False, None)
+
+    _assert_readable(str(raised.value), engine_text)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("make_error, engine_text", ENGINE_ERRORS)
+def test_postgresql_type_drop_failure_is_logged_as_the_engine_message(make_error, engine_text):
+    from dblift.db.plugins.postgresql.postgresql.schema_operations import (
+        PostgreSqlSchemaOperations,
+    )
+
+    executor = MagicMock()
+    executor.execute_query.side_effect = lambda connection, query, params=None: (
+        [{"type_name": "mood", "typtype": "e"}] if "typtype" in query else []
+    )
+    executor.get_schema_qualified_name.side_effect = lambda schema, name: f'"{schema}"."{name}"'
+    executor.execute_statement.side_effect = make_error()
+    log = MagicMock()
+
+    PostgreSqlSchemaOperations(executor, log=log).clean_schema(MagicMock(), "app_schema")
+
+    warnings = [c.args[0] for c in log.warning.call_args_list if "drop type" in c.args[0]]
+    assert warnings
+    for line in warnings:
+        _assert_readable(line, engine_text)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("make_error, engine_text", ENGINE_ERRORS)
+def test_mysql_clean_failure_is_logged_as_the_engine_message(make_error, engine_text):
+    executor = MagicMock()
+    operations = MySqlSchemaOperations(executor, log=MagicMock())
+    operations.validate_clean_target = MagicMock()
+    operations.set_current_schema = MagicMock()
+    operations._check_events_listable = MagicMock()
+    operations._drop_triggers = MagicMock(side_effect=make_error())
+
+    with pytest.raises(DBAPIError):
+        operations.clean_schema(MagicMock(), "app_db")
+
+    _assert_readable(operations.log.error.call_args.args[0], engine_text)
