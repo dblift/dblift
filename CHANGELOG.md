@@ -13,6 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A baseline recorded on a connection passed to `from_sqlalchemy(connection=...)` is no longer
+  discarded by the next `migrate()`. With no commit in between, the history kept only the migrated
+  versions and a fresh client applied the baselined versions again; the baseline row is now
+  committed at the migration boundary, as a callback's writes are.
+- `repair()` on a connection passed to `from_sqlalchemy(connection=...)`: the removed failed
+  entries and corrected checksums are no longer rolled back by the next `migrate()`.
+- `migrate(mark_as_executed=True)` on a connection passed to `from_sqlalchemy(connection=...)`: the
+  history rows it wrote are no longer rolled back by the next `migrate()`.
+- `clean()` on a connection passed to `from_sqlalchemy(connection=...)`: the objects it dropped are
+  no longer restored by the next `migrate()`, which failed on the leftover objects.
+
 ### Removed
 
 ## [5.1.5] - 2026-11-01

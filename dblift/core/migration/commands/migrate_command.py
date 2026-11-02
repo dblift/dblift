@@ -597,6 +597,8 @@ class MigrateCommand(BaseCommand):
                     try:
                         if isinstance(self.provider, TransactionalProvider):
                             self.provider.commit_transaction()
+                            if self.provider.is_caller_owned():
+                                self.provider.note_caller_work()
                     except Exception as commit_error:
                         self.log.error(
                             f"Failed to commit mark-as-executed history records: {commit_error}"
