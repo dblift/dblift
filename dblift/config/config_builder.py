@@ -275,7 +275,7 @@ class ConfigBuilder:
                 file_data = DbliftConfig.load_config_data_from_yaml(file_path_str)
                 if file_data:
                     config_data = DbliftConfig.merge_config_data(config_data, file_data)
-            except (FileNotFoundError, InvalidTargetVersionError):
+            except (FileNotFoundError, InvalidTargetVersionError, ConfigurationError):
                 raise
             except Exception as e:
                 warnings.warn(

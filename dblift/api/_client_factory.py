@@ -163,6 +163,11 @@ def normalize_migrations_dirs(config: Any, migrations_dir: Union[str, Path, List
     """
     if isinstance(migrations_dir, (str, Path)):
         migrations_dir = [migrations_dir]
+    from dblift.config.dblift_config import refuse_empty_migrations_path
+
+    for raw in migrations_dir:
+        path = raw.get("path") or raw.get("directory") if isinstance(raw, dict) else raw
+        refuse_empty_migrations_path(getattr(path, "path", path), "migrations_dir")
     entries = [_as_migration_dir_entry(d) for d in migrations_dir]
     if entries:
         config.migrations.directory = str(_migration_directory_path(entries[0]))

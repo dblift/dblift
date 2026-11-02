@@ -607,6 +607,8 @@ def _resolve_scripts_directories(
             config_base_dir = config_path.resolve().parent
 
     if hasattr(args, "scripts_list") and args.scripts_list:
+        if "" in args.scripts_list:
+            parser.error("--scripts is empty (an unset ${VAR} expands to an empty string)")
         scripts_dir = Path(args.scripts_list[0]).resolve()
         if not scripts_dir.exists() and args.command not in ["baseline"]:
             parser.error(f"Migration scripts directory not found: {args.scripts_list[0]}")

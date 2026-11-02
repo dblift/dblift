@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An empty `migrations.directory` (a literal `""`, a blank value, or an unset `${VAR}` placeholder) or
+  an empty `migrations.directories` entry, at the root or in an `environments` block, no longer reads
+  as the working directory, from which `migrate` applied every `V*.sql` it found. It is now a
+  configuration error naming the key; an empty `--scripts` value and an empty `migrations_dir`
+  passed to the Python API are refused the same way.
+
 ### Removed
 
 ## [5.1.5] - 2026-11-01

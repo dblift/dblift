@@ -325,6 +325,42 @@ def _refuse_empty_target_version(data: Mapping[str, object]) -> None:
         raise InvalidTargetVersionError("", None)
 
 
+def refuse_empty_migrations_path(value: object, key: str) -> None:
+    """Refuse an empty migrations path: ``""`` (an unset ``${VAR}``) is not the working directory."""
+    if value is None or value == "":
+        raise ConfigurationError(
+            f"{key} is empty (an unset ${{VAR}} placeholder resolves to an empty string)"
+        )
+
+
+def _refuse_empty_migrations_paths(migrations: object, prefix: str = "") -> None:
+    """Refuse an empty ``directory`` or ``directories`` entry of a raw ``migrations`` mapping."""
+    if not isinstance(migrations, Mapping):
+        return
+    if "directory" in migrations:
+        refuse_empty_migrations_path(migrations["directory"], f"{prefix}migrations.directory")
+    entries = migrations.get("directories")
+    for index, entry in enumerate(entries if isinstance(entries, list) else []):
+        if isinstance(entry, Mapping):
+            entry = entry.get("path") or entry.get("directory")
+        elif isinstance(entry, DirectoryConfig):
+            entry = entry.path
+        refuse_empty_migrations_path(entry, f"{prefix}migrations.directories[{index}]")
+
+
+def _refuse_empty_migrations_directories(data: Mapping[str, object]) -> None:
+    """Refuse an empty migrations path at the root or in any ``environments`` block.
+
+    The config merge drops empty values, so an empty one in an environment would
+    otherwise be ignored in favour of the root value.
+    """
+    _refuse_empty_migrations_paths(data.get("migrations"))
+    environments = data.get("environments")
+    for name, block in environments.items() if isinstance(environments, dict) else ():
+        if isinstance(block, dict):
+            _refuse_empty_migrations_paths(block.get("migrations"), f"environments.{name}.")
+
+
 def _extract_paid_raw_config(data: Dict[str, Any]) -> Dict[str, Any]:
     paid_raw: Dict[str, Any] = {}
     for key in _PAID_RAW_CONFIG_KEYS:
@@ -616,6 +652,7 @@ class DbliftConfig:
         if "migrations" in other_config:
             migrations = other_config["migrations"]
             if isinstance(migrations, dict):
+                _refuse_empty_migrations_paths(migrations)
                 self.migrations.directory = migrations.get("directory", self.migrations.directory)
                 self.migrations.table = migrations.get("table", self.migrations.table)
                 self.migrations.script_encoding = migrations.get(
@@ -778,6 +815,7 @@ class DbliftConfig:
 
         # Extract migrations config
         migrations = data.get("migrations", {})
+        _refuse_empty_migrations_paths(migrations)
         migrations_dir = migrations.get("directory", "migrations")
 
         migrations_table = migrations.get("table", "schema_version")
@@ -1188,6 +1226,7 @@ class DbliftConfig:
         if not isinstance(resolved, dict):
             return {}
         _refuse_empty_target_version(resolved)
+        _refuse_empty_migrations_directories(resolved)
         anchor_file_data(resolved, Path(config_file).resolve().parent)
         return resolved
 
