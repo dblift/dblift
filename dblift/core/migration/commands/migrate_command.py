@@ -509,6 +509,11 @@ class MigrateCommand(BaseCommand):
                 result.complete()
                 return
 
+            if dry_run:
+                self._flag_missing_history(
+                    result, migration_state.all_applied_objects, bool(pending_migrations)
+                )
+
             if not pending_migrations:
                 if (
                     target_version is not None
@@ -530,7 +535,6 @@ class MigrateCommand(BaseCommand):
                 )
 
             if dry_run:
-                self._flag_missing_history(result, migration_state.all_applied_objects)
                 self._handle_dry_run(pending_migrations, result, show_sql=show_sql)
                 return
 

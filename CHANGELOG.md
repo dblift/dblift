@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `{"history_table_exists": false, "message": ..., "migrations": [...]}`, as `info` and
   `migrate_dry_run` already report `history_table_exists: false`; with a readable table they
   remain a JSON array. `docs/user-guide/mcp.md` describes the shape.
+- `migrate --dry-run` now reports `history_table_exists: false` (and the warning) when the history
+  table is missing or unreadable even if nothing is pending, such as an empty migrations directory
+  or a filter that leaves nothing; it reported `true`, unlike `info`. With nothing pending the
+  warning no longer claims that every migration is listed as pending.
 - A relative DuckDB URL in a configuration file (`database.url: duckdb:///rel.db`, in the root
   section, in an `environments` block, or next to `migrations.directories`) created and used
   `rel.db` in the working directory instead of next to the configuration file, so a run from

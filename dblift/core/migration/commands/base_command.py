@@ -839,11 +839,15 @@ class BaseCommand:
         self._populate_database_info(result)
 
     def _flag_missing_history(
-        self, result: Union[InfoResult, MigrateResult], applied: List[Migration]
+        self,
+        result: Union[InfoResult, MigrateResult],
+        applied: List[Migration],
+        pending: bool = True,
     ) -> None:
         """Say so when a read finds no applied migration because the history table is missing.
 
-        Only an empty history costs the extra existence check.
+        Only an empty history costs the extra existence check. The effect sentence is
+        left out when nothing is pending.
         """
         if applied or self.history_manager.has_history_table:
             return
@@ -855,7 +859,8 @@ class BaseCommand:
         )
         self.log.warning(
             f"Schema-history table {self.config.database.schema}."
-            f"{self.history_manager.normalized_history_table} {missing}: {HISTORY_MISSING_EFFECT}"
+            f"{self.history_manager.normalized_history_table} {missing}"
+            + (f": {HISTORY_MISSING_EFFECT}" if pending else "")
         )
 
     @contextmanager
