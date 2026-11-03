@@ -13,6 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+### Removed
+
+## [5.1.6] - 2026-11-02
+
+### Added
+
+### Changed
+
+### Fixed
+
 - A database error raised by one of dblift's own statements now reads the same in every
   command, in the console and in the JSON `error` field: the engine's message, without the
   driver's exception tuple, the `[SQL: ...]` block or the SQLAlchemy `sqlalche.me` link. It was
