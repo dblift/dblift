@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from sqlalchemy.engine import URL
+
 
 def _file_target(database_config: Any) -> str:
     """Resolve the DuckDB file target from the config (path/database or :memory:)."""
@@ -27,4 +29,4 @@ def build_sqlalchemy_url(database_config: Any) -> str:
     target = _file_target(database_config)
     if target == ":memory:":
         return "duckdb:///:memory:"
-    return f"duckdb:///{target}"
+    return URL.create("duckdb", database=target).render_as_string(hide_password=False)
