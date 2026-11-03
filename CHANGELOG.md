@@ -37,8 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A bare `scheme://...` database URL that no secrets provider handles (`DBLIFT_DB_URL=secret://x/db`,
   `database.url` or `--db-url`) with `type: sqlite` was opened as a file path: SQLite created
   `secret:/x/db` under the working directory and `migrate` exited 0. It is now a configuration error
-  naming `database.url` and the scheme, before any file is created. A URL with no scheme
-  (`rel.db`) is still a path, and DuckDB is unchanged.
+  naming `database.url` and the scheme, before any file is created; so is a URL of another
+  dialect (`postgresql+psycopg://...`) under `type: sqlite`, instead of being opened as a file. A URL
+  with no scheme (`rel.db`) is still a path, and DuckDB is unchanged.
 - An unset `${VAR}` in `database.path`, `database.database` or `database.url` of a SQLite or DuckDB
   configuration, or a file URL naming no file (`sqlite:///`), now fails naming the key instead of
   `'sqlite' configuration requires path, database, or url`. A value supplied by `--db-url` or

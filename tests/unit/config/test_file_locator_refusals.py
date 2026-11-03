@@ -338,6 +338,17 @@ class TestBareSchemeUrl:
         with pytest.raises(ConfigurationError, match=self.REFUSED):
             load_config(path)
 
+    def test_a_url_of_another_dialect_is_refused_not_opened_as_a_file(self, tmp_path, monkeypatch):
+        url = "postgresql+psycopg://u:p@h/db"
+        path = _write(tmp_path, {"database": {"type": "sqlite", "path": "x.db"}})
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("DBLIFT_DB_URL", url)
+        with pytest.raises(ConfigurationError, match=r"database\.url: unresolved reference"):
+            load_config(path)
+        with pytest.raises(ConfigurationError, match=r"database\.url: unresolved reference"):
+            DbliftConfig.from_dict({"database": {"type": "sqlite", "url": url}})
+        assert sorted(p.name for p in tmp_path.iterdir()) == ["c.yaml"]
+
     def test_a_url_without_a_scheme_is_still_a_path(self):
         config = DbliftConfig.from_dict({"database": {"type": "sqlite", "url": "plain_rel.db"}})
         assert config.database.path == "plain_rel.db"
