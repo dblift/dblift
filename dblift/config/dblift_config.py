@@ -385,6 +385,8 @@ def refuse_unusable_database_locators(database: object) -> None:
     if found:
         refuse_empty_migrations_path(found[1], "database.url (the file part)")
         refuse_unresolved_reference(found[1], "database.url", found[2])
+    elif dialect:  # a bare ``scheme://`` url is read as the file path itself
+        refuse_unresolved_reference(url, "database.url", dialect[1])
 
 
 _DATABASE_LOCATORS = ("path", "database", "url")
