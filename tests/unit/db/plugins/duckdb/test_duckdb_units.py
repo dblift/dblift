@@ -120,6 +120,43 @@ class TestSqlAlchemyUrl:
         built = make_url(build_sqlalchemy_url(_C()))
         assert (built.drivername, built.database, dict(built.query)) == ("duckdb", target, {})
 
+    @pytest.mark.parametrize("attr", ["path", "database"])
+    @pytest.mark.parametrize(
+        "target, database, query",
+        [
+            ("rel.db?threads=2", "rel.db", {"threads": "2"}),
+            ("/t/a%20b/rel.db?threads=2", "/t/a%20b/rel.db", {"threads": "2"}),
+            ("md:my_db?motherduck_token=t", "md:my_db", {"motherduck_token": "t"}),
+        ],
+    )
+    def test_built_url_keeps_a_query_the_user_wrote(self, attr, target, database, query):
+        from dblift.db.plugins.duckdb.sqlalchemy_url import build_sqlalchemy_url
+
+        config = type("_C", (), {"url": None, "path": None, "database": None, attr: target})
+        built = make_url(build_sqlalchemy_url(config()))
+        assert (built.drivername, built.database, dict(built.query)) == (
+            "duckdb",
+            database,
+            query,
+        )
+
+    @pytest.mark.parametrize("attr", ["path", "database"])
+    def test_engine_from_a_path_with_a_query_opens_the_file_without_it(self, tmp_path, attr):
+        import sqlalchemy
+
+        from dblift.db.plugins.duckdb.sqlalchemy_url import build_sqlalchemy_url
+
+        file = tmp_path / "rel.db"
+        config = type("_C", (), {"url": None, "path": None, "database": None})
+        setattr(config, attr, f"{file}?threads=2")
+        engine = sqlalchemy.create_engine(build_sqlalchemy_url(config()))
+        try:
+            with engine.connect() as conn:
+                conn.execute(sqlalchemy.text("SELECT 1"))
+        finally:
+            engine.dispose()
+        assert [p.name for p in tmp_path.iterdir()] == ["rel.db"]
+
     @pytest.mark.parametrize("folder", ["h#ash", "a%20b"])
     def test_engine_from_the_built_url_opens_the_configured_file(self, tmp_path, folder):
         import sqlalchemy
