@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
+import sqlalchemy
+
 from dblift.config.database_config import BaseDatabaseConfig, register_database_type
 
 
@@ -28,17 +30,11 @@ class DuckDBConfig(BaseDatabaseConfig):
             if self.url:
                 url = self.url
                 if url.startswith("duckdb://"):
-                    # Match duckdb_engine's URL convention:
+                    # SQLAlchemy's reading, as in ``sqlite_path_from_url``:
                     #   duckdb:///rel.db   (3 slashes) -> relative "rel.db"
                     #   duckdb:////abs.db  (4 slashes) -> absolute "/abs.db"
                     #   duckdb:///:memory: -> ":memory:"
-                    self.path = url[len("duckdb://") :]
-                    if self.path in ("/:memory:", ":memory:"):
-                        self.path = ":memory:"
-                    elif self.path.startswith("//"):
-                        self.path = "/" + self.path.lstrip("/")
-                    elif self.path.startswith("/"):
-                        self.path = self.path[1:]
+                    self.path = sqlalchemy.engine.make_url(url).database or ""
                 else:
                     self.path = url
             elif self.database:

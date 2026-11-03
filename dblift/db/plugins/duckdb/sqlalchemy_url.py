@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from dblift.config.file_path_anchoring import render_file_url
+
 
 def _file_target(database_config: Any) -> str:
     """Resolve the DuckDB file target from the config (path/database or :memory:)."""
@@ -24,7 +26,4 @@ def build_sqlalchemy_url(database_config: Any) -> str:
             return raw_url
         raise ValueError("DuckDB connections require a duckdb:// SQLAlchemy URL or a file path")
 
-    target = _file_target(database_config)
-    if target == ":memory:":
-        return "duckdb:///:memory:"
-    return f"duckdb:///{target}"
+    return render_file_url("duckdb", _file_target(database_config))

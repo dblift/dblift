@@ -314,8 +314,25 @@ class TestAnchorFileData:
             "environments": {"dev": {"database": {"url": url}}},
         }
         anchor_file_data(data, tmp_path)
-        assert data["database"]["url"] == expected.format(base=base)
-        assert data["environments"]["dev"]["database"]["url"] == expected.format(base=base)
+        # Compare the parsed URL: SQLAlchemy 2.1 renders ':' in a file name as '%3A'.
+        want = make_url(expected.format(base=base))
+        for actual in (data["database"]["url"], data["environments"]["dev"]["database"]["url"]):
+            got = make_url(actual)
+            assert (got.drivername, got.database, dict(got.query)) == (
+                want.drivername,
+                want.database,
+                dict(want.query),
+            )
+
+    @pytest.mark.parametrize("folder", ["h#ash", "a%20b", "a b", "p%23q"])
+    @pytest.mark.parametrize("scheme", ["duckdb", "sqlite"])
+    def test_a_relative_file_url_in_a_folder_with_reserved_characters_names_the_file(
+        self, tmp_path, scheme, folder
+    ):
+        base = tmp_path / folder
+        data = {"database": {"url": f"{scheme}:///rel.db"}}
+        anchor_file_data(data, base)
+        assert make_url(data["database"]["url"]).database == str(base.resolve() / "rel.db")
 
     @pytest.mark.parametrize("db_type", ["sqlite", "sqlite3", "duckdb", "DuckDB"])
     def test_a_relative_database_key_of_a_file_based_dialect_is_anchored(self, tmp_path, db_type):

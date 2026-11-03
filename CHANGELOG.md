@@ -92,6 +92,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it imported are no longer rolled back by the next `migrate()`.
 - `clean()` on a connection passed to `from_sqlalchemy(connection=...)`: the objects it dropped are
   no longer restored by the next `migrate()`, which failed on the leftover objects.
+- On SQLAlchemy 2.1, `migrate` with a DuckDB `database.path` or `database.database` holding a `%`
+  escape (`/data/a%20b/x.duckdb`) failed opening `/data/a b/x.duckdb`; it now opens the configured
+  file. The `path` of a DuckDB `database.url` is now the file SQLAlchemy opens: it no longer
+  carries `%23` for a configuration folder `h#ash` (SQLAlchemy 2.1) nor the `?threads=2` of the URL.
 
 ### Removed
 
