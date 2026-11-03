@@ -3,6 +3,7 @@
 import re
 from pathlib import Path
 from typing import Callable, Dict, Optional, Tuple
+from urllib.parse import parse_qs
 
 import sqlalchemy
 from sqlalchemy.exc import ArgumentError
@@ -62,6 +63,17 @@ def file_url(url: str) -> Optional[Tuple[sqlalchemy.engine.URL, str, str]]:
         return None
     dialect = _file_dialect(parsed.drivername.split("+", 1)[0])
     return (parsed, parsed.database or "", dialect[1]) if dialect else None
+
+
+def render_file_url(drivername: str, target: str) -> str:
+    """Render the URL of file *target*; a ``?query`` written after the file stays a query."""
+    database, _, query = target.partition("?")
+    if database == _IN_MEMORY:  # SQLAlchemy 2.1 would escape the colons
+        return f"{drivername}:///{target}"
+    url = sqlalchemy.engine.URL.create(
+        drivername, database=database, query=parse_qs(query, keep_blank_values=True)
+    )
+    return url.render_as_string(hide_password=False)
 
 
 def _anchor_file_url(url: str, anchor: Callable[[object], str], declined: bool) -> str:

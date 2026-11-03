@@ -2,6 +2,8 @@
 
 from typing import Any
 
+from dblift.config.file_path_anchoring import render_file_url
+
 
 def build_sqlalchemy_url(database_config: Any) -> str:
     """Build the SQLite SQLAlchemy URL from the plugin config object."""
@@ -11,6 +13,4 @@ def build_sqlalchemy_url(database_config: Any) -> str:
     configured_path = getattr(database_config, "path", None)
     configured_database = getattr(database_config, "database", None)
     path = configured_path or configured_database or ""
-    if path == ":memory:":
-        return "sqlite:///:memory:"
-    return f"sqlite:///{path}"
+    return render_file_url("sqlite", path)
