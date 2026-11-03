@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `validate-sql --dialect <name>` on a project whose configuration file names another database
+  type (for example `type: sqlite` with `--dialect postgresql`) was refused since 5.1.6 with
+  `database.url: unresolved reference`. The dialect given on the command line now decides the
+  lint-only database section, and the file's section for the other database is not mixed into
+  it; without `--dialect` the file's own type is still used.
+
 ### Removed
 
 ## [5.1.6] - 2026-11-02

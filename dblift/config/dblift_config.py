@@ -178,6 +178,11 @@ def _validate_sql_effective_dialect(args: Any, config_data: Dict[str, Any]) -> O
     if isinstance(cli_dialect, str) and cli_dialect.strip():
         return cli_dialect.strip().lower()
 
+    return _database_section_dialect(config_data)
+
+
+def _database_section_dialect(config_data: Dict[str, object]) -> Optional[str]:
+    """Canonical dialect named by the ``database`` section (``type`` or URL scheme), if any."""
     database_config = config_data.get("database")
     if isinstance(database_config, dict):
         from dblift.db.provider_registry import ProviderRegistry
@@ -567,6 +572,11 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
             )
         filler = _validate_sql_lint_filler(dialect)
         if filler:
+            # A section naming another database is not this run's: drop it whole, so its
+            # type, locators and schema cannot mix with the lint section built for the dialect.
+            section_dialect = _database_section_dialect(config_data)
+            if section_dialect and section_dialect != filler["database"]["type"]:
+                config_data = {k: v for k, v in config_data.items() if k != "database"}
             config_data = DbliftConfig.merge_config_data(filler, config_data)
 
     if not config_data:
