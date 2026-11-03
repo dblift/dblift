@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from sqlalchemy.engine import URL, make_url
 
 from tests.support.facts_parser import facts_parser
 
@@ -37,6 +38,32 @@ class TestDuckDBConfig:
         assert DuckDBConfig(type="duckdb", url="duckdb:///app.db").path == "app.db"
         assert DuckDBConfig(type="duckdb", url="duckdb:///sub/app.db").path == "sub/app.db"
         assert DuckDBConfig(type="duckdb", url="duckdb:////abs/app.db").path == "/abs/app.db"
+
+    @pytest.mark.parametrize("folder", ["h#ash", "a%20b", "a b", "p%23q"])
+    def test_path_from_url_is_the_file_sqlalchemy_opens(self, tmp_path, folder):
+        from dblift.db.plugins.duckdb.config import DuckDBConfig
+
+        file = str(tmp_path / folder / "rel.db")
+        url = URL.create("duckdb", database=file).render_as_string(hide_password=False)
+        assert DuckDBConfig(type="duckdb", url=url).path == file
+
+    @pytest.mark.parametrize("folder", ["h#ash", "a%20b"])
+    def test_path_from_an_anchored_relative_url_is_the_file_sqlalchemy_opens(
+        self, tmp_path, folder
+    ):
+        from dblift.config.file_path_anchoring import anchor_file_data
+        from dblift.db.plugins.duckdb.config import DuckDBConfig
+
+        data = {"database": {"url": "duckdb:///rel.db"}}
+        anchor_file_data(data, tmp_path / folder)
+        cfg = DuckDBConfig(type="duckdb", url=data["database"]["url"])
+        assert cfg.path == str(tmp_path.resolve() / folder / "rel.db")
+
+    def test_path_from_url_leaves_the_query_out(self):
+        from dblift.db.plugins.duckdb.config import DuckDBConfig
+
+        cfg = DuckDBConfig(type="duckdb", url="duckdb:///rel.db?threads=2")
+        assert cfg.path == "rel.db"
 
     def test_path_from_database_field(self):
         from dblift.db.plugins.duckdb.config import DuckDBConfig
@@ -69,6 +96,51 @@ class TestSqlAlchemyUrl:
         assert build_sqlalchemy_url(DuckDBConfig(type="duckdb", path="/tmp/x.duckdb")) == (
             "duckdb:////tmp/x.duckdb"
         )
+
+    @pytest.mark.parametrize(
+        "target",
+        [
+            "/t/h#ash/rel.db",
+            "/t/a%20b/rel.db",
+            "/t/p%23q/rel.db",
+            "/t/a b/rel.db",
+            "/t/db:2024.db",
+            "rel.db",
+            "sub/rel.db",
+        ],
+    )
+    def test_built_url_names_the_configured_file(self, target):
+        from dblift.db.plugins.duckdb.sqlalchemy_url import build_sqlalchemy_url
+
+        class _C:
+            url = None
+            path = target
+            database = None
+
+        built = make_url(build_sqlalchemy_url(_C()))
+        assert (built.drivername, built.database, dict(built.query)) == ("duckdb", target, {})
+
+    @pytest.mark.parametrize("folder", ["h#ash", "a%20b"])
+    def test_engine_from_the_built_url_opens_the_configured_file(self, tmp_path, folder):
+        import sqlalchemy
+
+        from dblift.db.plugins.duckdb.sqlalchemy_url import build_sqlalchemy_url
+
+        (tmp_path / folder).mkdir()
+        file = tmp_path / folder / "rel.db"
+
+        class _C:
+            url = None
+            path = str(file)
+            database = None
+
+        engine = sqlalchemy.create_engine(build_sqlalchemy_url(_C()))
+        try:
+            with engine.connect() as conn:
+                conn.execute(sqlalchemy.text("SELECT 1"))
+        finally:
+            engine.dispose()
+        assert file.exists()
 
     def test_build_memory(self):
         from dblift.db.plugins.duckdb.sqlalchemy_url import build_sqlalchemy_url
