@@ -31,6 +31,7 @@ def _load(tmp_path, database, dialect):
         ({"type": "duckdb", "path": "t.duckdb"}, "mysql", "mysql://"),
         (POSTGRES_FILE, "postgres", "postgresql://"),
         (None, "postgresql", "postgresql://"),
+        ({"url": "postgresql://u:p@h/db"}, "sqlite", "sqlite://"),
     ],
 )
 def test_dialect_flag_decides_the_lint_section(tmp_path, database, dialect, url_prefix):
@@ -43,11 +44,18 @@ def test_file_section_for_another_database_does_not_carry_its_schema(tmp_path):
     assert _load(tmp_path, POSTGRES_FILE, "sqlite").database.schema == "main"
 
 
-@pytest.mark.parametrize("dialect", ["postgresql", "postgres"])
-def test_agreeing_dialect_keeps_the_file_section(tmp_path, dialect):
-    config = _load(tmp_path, POSTGRES_FILE, dialect)
+@pytest.mark.parametrize(
+    "file_type,dialect",
+    [("postgresql", "postgresql"), ("postgresql", "postgres"), ("postgres", "postgresql")],
+)
+def test_agreeing_dialect_keeps_the_file_section(tmp_path, file_type, dialect):
+    config = _load(tmp_path, {**POSTGRES_FILE, "type": file_type}, dialect)
     assert config.database.url == POSTGRES_FILE["url"]
     assert config.database.schema == "s1"
+
+
+def test_aliased_file_type_agreeing_with_the_dialect_keeps_the_file_section(tmp_path):
+    assert _load(tmp_path, {"type": "sqlite3", "schema": "s1"}, "sqlite").database.schema == "s1"
 
 
 def test_without_dialect_flag_the_file_type_is_inferred(tmp_path):
