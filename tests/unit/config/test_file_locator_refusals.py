@@ -310,6 +310,46 @@ class TestEveryEntryPoint:
         assert load_config(path, args).database.path == "x.db"
 
 
+@pytest.mark.usefixtures("ssm_provider")
+class TestBareSchemeUrl:
+    """A ``scheme://`` url with an explicit file ``type`` is a reference, never a path to open."""
+
+    REFUSED = (
+        r"database\.url: unresolved reference 'secret://x/db' "
+        r"\(no secrets provider handles scheme 'secret'\)"
+    )
+
+    def test_from_dict_refuses_it(self):
+        with pytest.raises(ConfigurationError, match=self.REFUSED):
+            DbliftConfig.from_dict({"database": {"type": "sqlite", "url": "secret://x/db"}})
+
+    def test_a_configuration_file_refuses_it(self, tmp_path):
+        with pytest.raises(ConfigurationError, match=self.REFUSED):
+            _load(tmp_path, {"type": "sqlite", "url": "secret://x/db"})
+
+    def test_a_db_url_flag_is_refused(self, tmp_path):
+        path = _write(tmp_path, {"database": {"type": "sqlite", "path": "x.db"}})
+        with pytest.raises(ConfigurationError, match=self.REFUSED):
+            load_config(path, Namespace(db_url="secret://x/db", command="info"))
+
+    def test_a_db_url_environment_variable_is_refused(self, tmp_path, monkeypatch):
+        path = _write(tmp_path, {"database": {"type": "sqlite", "path": "x.db"}})
+        monkeypatch.setenv("DBLIFT_DB_URL", "secret://x/db")
+        with pytest.raises(ConfigurationError, match=self.REFUSED):
+            load_config(path)
+
+    def test_a_url_without_a_scheme_is_still_a_path(self):
+        config = DbliftConfig.from_dict({"database": {"type": "sqlite", "url": "plain_rel.db"}})
+        assert config.database.path == "plain_rel.db"
+
+    def test_a_registered_scheme_is_left_alone(self):
+        DbliftConfig.from_dict({"database": {"type": "sqlite", "url": "aws-ssm://p/db"}})
+
+    def test_duckdb_keeps_any_name_locator_as_its_locator_rule_says(self):
+        # the DuckDB locator pattern accepts ``secret:``-shaped values (see the cases above)
+        DbliftConfig.from_dict({"database": {"type": "duckdb", "url": "secret://x/db"}})
+
+
 class TestEmptyLocatorWithAnOverride:
     @pytest.fixture(autouse=True)
     def _unset(self, monkeypatch):
