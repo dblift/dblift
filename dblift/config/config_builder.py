@@ -8,41 +8,22 @@ overrides, handling URL parsing, and creating new configurations when needed.
 import warnings
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Mapping, Optional, Union
 
 from dblift.config.database_config import (
     BaseDatabaseConfig,
     _detect_dialect_from_url,
-    _native_canonical_from_scheme,
+    _file_url_dialect_from_scheme,
 )
-from dblift.config.dblift_config import DbliftConfig, apply_environment, select_environment
+from dblift.config.dblift_config import (
+    DbliftConfig,
+    apply_environment,
+    refuse_empty_database_locator,
+    refuse_unusable_file_paths,
+    select_environment,
+)
 from dblift.config.errors import ConfigurationError
 from dblift.core.exceptions import InvalidTargetVersionError
-
-
-def _file_url_dialect_from_scheme(scheme: str) -> Optional[str]:
-    """Resolve a URL scheme to its canonical dialect *iff* that dialect uses
-    file-URL semantics (ADR-26 E5).
-
-    A "file-URL" dialect is one whose quirks advertise
-    ``url_optional_when_file_path_given`` — the file path *is* the database, so
-    a stale ``database`` attribute on a copied config (e.g. SQL Server's
-    ``master``) must not win over the URL. SQLite is the only such native
-    dialect today; any future embedded/file-based plugin is handled the same
-    way without naming a dialect here.
-
-    Returns the canonical dialect name, or ``None`` when the scheme is unknown
-    or its dialect is not file-URL based.
-    """
-    canonical = _native_canonical_from_scheme(scheme)
-    if not canonical:
-        return None
-    from dblift.db.provider_registry import ProviderRegistry
-
-    quirks = ProviderRegistry.get_quirks(canonical)
-    if getattr(quirks, "url_optional_when_file_path_given", False):
-        return canonical
-    return None
 
 
 class ConfigBuilder:
@@ -264,6 +245,7 @@ class ConfigBuilder:
             ... )
         """
         config_data: Dict[str, Any] = {}
+        file_data: Mapping[str, object] = {}
 
         # Load from file if provided. Raw data from every source is merged before
         # constructing the typed config, so database type is selected only once.
@@ -275,7 +257,7 @@ class ConfigBuilder:
                 file_data = DbliftConfig.load_config_data_from_yaml(file_path_str)
                 if file_data:
                     config_data = DbliftConfig.merge_config_data(config_data, file_data)
-            except (FileNotFoundError, InvalidTargetVersionError):
+            except (FileNotFoundError, InvalidTargetVersionError, ConfigurationError):
                 raise
             except Exception as e:
                 warnings.warn(
@@ -287,6 +269,7 @@ class ConfigBuilder:
         # merge the active environments.<name> block over the root sections
         # BEFORE env vars and kwargs, and strip the selector keys.
         active_environment = select_environment(config_data, explicit=environment)
+        refuse_unusable_file_paths(file_data, active_environment)
         config_data = apply_environment(config_data, active_environment)
 
         # Apply environment variables if enabled.
@@ -366,6 +349,7 @@ class ConfigBuilder:
                 "No configuration source provided. Pass --config, --db-url, or set DBLIFT_DB_URL."
             )
 
+        refuse_empty_database_locator(file_data, active_environment, config_data)
         config = cls.from_dict(config_data)
         if active_environment:
             setattr(config, "_active_environment", active_environment)

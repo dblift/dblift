@@ -15,6 +15,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [5.1.6] - 2026-11-02
+
+### Added
+
+### Changed
+
+### Fixed
+
+- A database error raised by one of dblift's own statements now reads the same in every
+  command, in the console and in the JSON `error` field: the engine's message, without the
+  driver's exception tuple, the `[SQL: ...]` block or the SQLAlchemy `sqlalche.me` link. It was
+  printed raw by `clean` (for example the missing EVENT privilege on MySQL and MariaDB), by `info`
+  (for example a schema name in the wrong case on Db2), by `validate` (history table not
+  readable by the role), by `repair`, and by `migrate` and `undo`
+  when writing the schema history failed (for example a Db2 lock timeout).
+- A `?` in the configuration file's folder (`/data/q?dir/dblift.yaml`) made a relative file URL
+  (`database.url: sqlite:///rel.db` or `duckdb:///rel.db`) read the rest of the path as a query
+  string, so `migrate` exited 0 on a file named `q` instead of `q?dir/rel.db`. The same held for a
+  relative DuckDB `database.path` or `database.database`. Each is now a configuration error naming
+  the key, asking for an absolute path or a folder without `?`; only the selected environment is
+  read. A SQLite `database.path` or `database.database`, and a `?` the user wrote in an absolute
+  path or URL (`/data/x.duckdb?threads=2`), are unaffected.
+- A `database.path`, `database.database`, `database.url` file or `migrations.directory` /
+  `migrations.directories` entry of the form `scheme://...` that no secrets provider handles
+  (`secret://x/db`) was opened as a relative path: SQLite created `secret:/x/db` under the working
+  directory and reported success, and the directory was reported with one slash lost. It is now a
+  configuration error naming the key and the scheme, whether the value comes from the file,
+  `--db-url`, `DBLIFT_DB_URL` or a dictionary. A scheme that has a provider is resolved as before,
+  and DuckDB keeps opening any `name:` locator as written.
+- A bare `scheme://...` database URL that no secrets provider handles (`DBLIFT_DB_URL=secret://x/db`,
+  `database.url` or `--db-url`) with `type: sqlite` was opened as a file path: SQLite created
+  `secret:/x/db` under the working directory and `migrate` exited 0. It is now a configuration error
+  naming `database.url` and the scheme, before any file is created; so is a URL of another
+  dialect (`postgresql+psycopg://...`) under `type: sqlite`, instead of being opened as a file. A URL
+  with no scheme (`rel.db`) is still a path, and DuckDB is unchanged.
+- An unset `${VAR}` in `database.path`, `database.database` or `database.url` of a SQLite or DuckDB
+  configuration, or a file URL naming no file (`sqlite:///`), now fails naming the key instead of
+  `'sqlite' configuration requires path, database, or url`. A value supplied by `--db-url` or
+  `DBLIFT_DB_URL`, or by another key of the file, still takes over.
+- The MCP resources `dblift://history` and `dblift://pending` no longer return a bare list of
+  PENDING migrations when the history table does not exist or cannot be read by the account (an
+  Oracle reader without `SELECT` on it listed an applied V1 as pending). They now return
+  `{"history_table_exists": false, "message": ..., "migrations": [...]}`, as `info` and
+  `migrate_dry_run` already report `history_table_exists: false`; with a readable table they
+  remain a JSON array. `docs/user-guide/mcp.md` describes the shape.
+- `migrate --dry-run` now reports `history_table_exists: false` (and the warning) when the history
+  table is missing or unreadable even if nothing is pending, such as an empty migrations directory
+  or a filter that leaves nothing; it reported `true`, unlike `info`. With nothing pending the
+  warning no longer claims that every migration is listed as pending.
+- A relative DuckDB URL in a configuration file (`database.url: duckdb:///rel.db`, in the root
+  section, in an `environments` block, or next to `migrations.directories`) created and used
+  `rel.db` in the working directory instead of next to the configuration file, so a run from
+  another folder silently migrated the wrong file. The same held for `database.database: rel.db`
+  with `type: sqlite` or `type: duckdb`. The database file of every file-based dialect, in a URL or
+  in `database.database`, is now resolved against the configuration file, as the SQLite URL and
+  `database.path` already were. `:memory:`, absolute paths and the dialect's own locators (`file:`
+  for SQLite, any `name:` extension prefix such as `md:` for DuckDB) are left as written.
+  A SQLite `database.path` starting with `file:` is now treated as such a locator too, as in the URL
+  form, and is no longer anchored as a plain file.
+- An empty `migrations.directory` (a literal `""`, a blank value, or an unset `${VAR}` placeholder) or
+  an empty `migrations.directories` entry, at the root or in an `environments` block, no longer reads
+  as the working directory, from which `migrate` applied every `V*.sql` it found. It is now a
+  configuration error naming the key; an empty `--scripts` value and an empty `migrations_dir`
+  passed to the Python API are refused the same way.
+- A baseline recorded on a connection passed to `from_sqlalchemy(connection=...)` is no longer
+  discarded by the next `migrate()`. With no commit in between, the history kept only the migrated
+  versions and a fresh client applied the baselined versions again; the baseline row is now
+  committed at the migration boundary, as a callback's writes are. Anything the caller left
+  pending in the same transaction is committed with it.
+- `repair()` on a connection passed to `from_sqlalchemy(connection=...)`: the removed failed
+  entries and corrected checksums are no longer rolled back by the next `migrate()`.
+- `migrate(mark_as_executed=True)` on a connection passed to `from_sqlalchemy(connection=...)`: the
+  history rows it wrote are no longer rolled back by the next `migrate()`.
+- `import_flyway()` on a connection passed to `from_sqlalchemy(connection=...)`: the history rows
+  it imported are no longer rolled back by the next `migrate()`.
+- `clean()` on a connection passed to `from_sqlalchemy(connection=...)`: the objects it dropped are
+  no longer restored by the next `migrate()`, which failed on the leftover objects.
+
+### Removed
+
 ## [5.1.5] - 2026-11-01
 
 ### Fixed

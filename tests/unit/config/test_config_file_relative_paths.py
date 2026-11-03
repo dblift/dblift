@@ -83,6 +83,30 @@ class TestLoadConfig:
         config = load_config(_write(project, {"database": {"url": "sqlite:///rel.db?mode=rw"}}))
         assert Path(config.database.path) == project / "rel.db"
 
+    def test_duckdb_url(self, layout):
+        project, _ = layout
+        config = load_config(_write(project, {"database": {"url": "duckdb:///rel.db"}}))
+        assert Path(config.database.path) == project / "rel.db"
+        assert make_url(config.database.url).database == str(project.resolve() / "rel.db")
+
+    def test_duckdb_url_in_an_environment_block(self, layout):
+        project, _ = layout
+        path = _write(project, {"environments": {"dev": {"database": {"url": "duckdb:///rel.db"}}}})
+        config = load_config(path, Namespace(env="dev"))
+        assert make_url(config.database.url).database == str(project.resolve() / "rel.db")
+
+    def test_duckdb_url_flag_stays_relative_to_the_working_directory(self, layout):
+        project, _ = layout
+        path = _write(project, {"database": {"url": "duckdb:///rel.db"}})
+        config = load_config(path, Namespace(db_url="duckdb:///cli.db", command="info"))
+        assert make_url(config.database.url).database == "cli.db"
+
+    @pytest.mark.parametrize("db_type", ["sqlite", "duckdb"])
+    def test_database_key(self, layout, db_type):
+        project, _ = layout
+        config = load_config(_write(project, {"database": {"type": db_type, "database": "rel.db"}}))
+        assert Path(config.database.path) == project / "rel.db"
+
     def test_sqlite_memory_is_untouched(self, layout):
         project, _ = layout
         config = load_config(_write(project, {"database": {"url": "sqlite:///:memory:"}}))
@@ -217,21 +241,22 @@ class TestResolveScriptsDirectories:
 
 
 class TestClientFromConfigFile:
-    def _project(self, project: Path) -> str:
+    def _project(self, project: Path, url: str = "sqlite:///rel.db") -> str:
         (project / "migrations").mkdir()
         (project / "migrations" / "V1__t.sql").write_text("CREATE TABLE t (id INTEGER);\n")
         return _write(
             project,
             {
-                "database": {"url": "sqlite:///rel.db"},
+                "database": {"url": url},
                 "migrations": {"directory": "migrations"},
                 "logging": {"directory": "logs", "file": "dblift.log"},
             },
         )
 
-    def test_from_config_file_resolves_against_the_file_by_default(self, layout):
+    @pytest.mark.parametrize("url", ["sqlite:///rel.db", "duckdb:///rel.db"])
+    def test_from_config_file_resolves_against_the_file_by_default(self, layout, url):
         project, elsewhere = layout
-        path = self._project(project)
+        path = self._project(project, url)
 
         with DBLiftClient.from_config_file(path) as client:
             assert [m.script for m in client.info().migrations] == ["V1__t.sql"]
@@ -252,12 +277,84 @@ class TestAnchorFileData:
             "sqlite:////abs/x.db",
             "sqlite://",
             "sqlite://[bad",
+            "duckdb:///:memory:",
+            "duckdb:////abs/x.db",
+            "duckdb://",
+            "duckdb:///md:my_db",
+            "duckdb:///MD:my_db",
+            "duckdb:///motherduck:my_db",
+            "duckdb:///sqlite:legacy.db",
+            "duckdb:///ducklake:meta.ducklake",
+            "postgresql://h/db",
+            "postgresql://h/rel.db",
+            "mysql+pymysql://u:p@h/rel.db",
         ],
     )
     def test_urls_that_name_no_relative_file_are_unchanged(self, tmp_path, url):
         data = {"database": {"url": url}}
         anchor_file_data(data, tmp_path)
         assert data == {"database": {"url": url}}
+
+    @pytest.mark.parametrize(
+        "url, expected",
+        [
+            ("duckdb:///rel.db", "duckdb:///{base}/rel.db"),
+            ("duckdb:///sub/rel.db", "duckdb:///{base}/sub/rel.db"),
+            ("sqlite:///db:2024.db", "sqlite:///{base}/db:2024.db"),
+            ("sqlite:///FILE:up.db", "sqlite:///{base}/FILE:up.db"),
+            ("sqlite3:///backup:1.db", "sqlite3:///{base}/backup:1.db"),
+            ("duckdb+duckdb_engine:///rel.db", "duckdb+duckdb_engine:///{base}/rel.db"),
+            ("duckdb:///rel.db?threads=2", "duckdb:///{base}/rel.db?threads=2"),
+        ],
+    )
+    def test_a_relative_file_url_is_anchored(self, tmp_path, url, expected):
+        base = tmp_path.resolve().as_posix()
+        data = {
+            "database": {"url": url},
+            "environments": {"dev": {"database": {"url": url}}},
+        }
+        anchor_file_data(data, tmp_path)
+        assert data["database"]["url"] == expected.format(base=base)
+        assert data["environments"]["dev"]["database"]["url"] == expected.format(base=base)
+
+    @pytest.mark.parametrize("db_type", ["sqlite", "sqlite3", "duckdb", "DuckDB"])
+    def test_a_relative_database_key_of_a_file_based_dialect_is_anchored(self, tmp_path, db_type):
+        data = {
+            "database": {"type": db_type, "database": "rel.db"},
+            "environments": {"dev": {"database": {"database": "env.db"}}},
+        }
+        anchor_file_data(data, tmp_path)
+        assert data["database"]["database"] == str(tmp_path.resolve() / "rel.db")
+        assert data["environments"]["dev"]["database"]["database"] == str(
+            tmp_path.resolve() / "env.db"
+        )
+
+    @pytest.mark.parametrize(
+        "database",
+        [
+            {"type": "postgresql", "database": "mydb"},
+            {"type": "mysql", "database": "rel.db"},
+            {"database": "rel.db"},
+            {"type": "sqlite", "database": ":memory:"},
+            {"type": "sqlite", "database": "file:rel.db"},
+            {"type": "duckdb", "database": "md:my_db"},
+            {"type": "duckdb", "database": "sqlite:legacy.db"},
+            {"type": "duckdb", "path": "md:my_db"},
+            {"type": "duckdb", "path": "ducklake:meta.ducklake"},
+            {"type": "sqlite", "path": "file:rel.db"},
+            {"type": "duckdb", "database": "/abs/x.db"},
+            {"type": "sqlite", "database": ""},
+        ],
+    )
+    def test_a_database_key_that_names_no_relative_file_is_unchanged(self, tmp_path, database):
+        data = {"database": dict(database)}
+        anchor_file_data(data, tmp_path)
+        assert data == {"database": database}
+
+    def test_an_anchored_duckdb_url_keeps_the_file_the_driver_opens(self, tmp_path):
+        data = {"database": {"url": "duckdb:///rel.db"}}
+        anchor_file_data(data, tmp_path)
+        assert make_url(data["database"]["url"]).database == str(tmp_path.resolve() / "rel.db")
 
     def test_sqlite3_alias_and_directory_alias_entries(self, tmp_path):
         data = {

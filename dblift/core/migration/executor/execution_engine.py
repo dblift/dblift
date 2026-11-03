@@ -53,6 +53,7 @@ from dblift.core.sql_parser.redaction import describe_statement, mask_string_lit
 from dblift.db.base_provider import BaseProvider
 from dblift.db.error import (
     clean_driver_error_message,
+    engine_error_message,
     redact_driver_error_text,
     strip_sql_statement_block,
 )
@@ -904,7 +905,8 @@ class ExecutionEngine:
                 self.provider.commit_transaction()
         except Exception as history_error:
             self.log.error(
-                f"Failed to record migration history for {migration.script_name}: {history_error}"
+                f"Failed to record migration history for {migration.script_name}: "
+                f"{engine_error_message(history_error)}"
             )
             if transaction_started and isinstance(self.provider, TransactionalProvider):
                 try:
@@ -929,7 +931,8 @@ class ExecutionEngine:
             )
         except Exception as history_error:
             self.log.error(
-                f"Failed to record migration history for {migration.script_name}: {history_error}"
+                f"Failed to record migration history for {migration.script_name}: "
+                f"{engine_error_message(history_error)}"
             )
             try:
                 if isinstance(self.provider, TransactionalProvider):
@@ -1007,9 +1010,12 @@ class ExecutionEngine:
                         )
                     except Exception as history_error:
                         self.log.error(
-                            f"Failed to record migration history for {migration.script_name}: {history_error}"
+                            f"Failed to record migration history for {migration.script_name}: "
+                            f"{engine_error_message(history_error)}"
                         )
-                        result.set_error(f"Failed to record migration history: {history_error}")
+                        result.set_error(
+                            f"Failed to record migration history: {engine_error_message(history_error)}"
+                        )
                         _rollback_best_effort()
                         return
 
@@ -1018,9 +1024,12 @@ class ExecutionEngine:
                         self.provider.commit_transaction()
                     except Exception as commit_error:
                         self.log.error(
-                            f"Failed to commit transaction for {migration.script_name}: {commit_error}"
+                            f"Failed to commit transaction for {migration.script_name}: "
+                            f"{engine_error_message(commit_error)}"
                         )
-                        result.set_error(f"Failed to commit transaction: {commit_error}")
+                        result.set_error(
+                            f"Failed to commit transaction: {engine_error_message(commit_error)}"
+                        )
                         _rollback_best_effort()
                         return
 

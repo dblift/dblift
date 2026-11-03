@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from dblift.core.logger import Log, NullLog
 from dblift.core.migration.clean_summary import CleanExecutionSummary
+from dblift.db.error import engine_error_message
 from dblift.db.plugins.base_schema_operations import BaseSchemaOperations
 
 
@@ -83,7 +84,7 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
                     raise
 
         except Exception as e:
-            error_msg = f"Error creating schema {schema}: {str(e)}"
+            error_msg = f"Error creating schema {schema}: {engine_error_message(e)}"
             self.log.error(error_msg)
             raise
 
@@ -365,7 +366,7 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
             return summary
 
         except Exception as e:
-            error_msg = f"Error cleaning schema {schema}: {str(e)}"
+            error_msg = f"Error cleaning schema {schema}: {engine_error_message(e)}"
             self.log.error(error_msg)
             raise
 

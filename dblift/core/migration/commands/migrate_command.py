@@ -34,7 +34,7 @@ from dblift.core.migration.ui.progress import NullProgress
 from dblift.core.migration.version_utils import compare_versions
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
-from dblift.db.error import redact_driver_error_text
+from dblift.db.error import engine_error_message, redact_driver_error_text
 
 from ._script_runner import ScriptRunner, ScriptRunPolicy
 from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand, BaseCommandContext
@@ -200,8 +200,9 @@ class MigrateCommand(BaseCommand):
 
                 self.log.info(f"Marked {migration.script_name} as executed")
             except Exception as e:
-                self.log.error(f"Failed to mark {migration.script_name} as executed: {e}")
-                result.set_error(f"Failed to mark migration as executed: {e}")
+                reason = engine_error_message(e)
+                self.log.error(f"Failed to mark {migration.script_name} as executed: {reason}")
+                result.set_error(f"Failed to mark migration as executed: {reason}")
                 return False
         return True
 
@@ -509,6 +510,11 @@ class MigrateCommand(BaseCommand):
                 result.complete()
                 return
 
+            if dry_run:
+                self._flag_missing_history(
+                    result, migration_state.all_applied_objects, bool(pending_migrations)
+                )
+
             if not pending_migrations:
                 if (
                     target_version is not None
@@ -530,7 +536,6 @@ class MigrateCommand(BaseCommand):
                 )
 
             if dry_run:
-                self._flag_missing_history(result, migration_state.all_applied_objects)
                 self._handle_dry_run(pending_migrations, result, show_sql=show_sql)
                 return
 
@@ -597,6 +602,8 @@ class MigrateCommand(BaseCommand):
                     try:
                         if isinstance(self.provider, TransactionalProvider):
                             self.provider.commit_transaction()
+                            if self.provider.is_caller_owned():
+                                self.provider.note_caller_work()
                     except Exception as commit_error:
                         self.log.error(
                             f"Failed to commit mark-as-executed history records: {commit_error}"
@@ -637,7 +644,7 @@ class MigrateCommand(BaseCommand):
                 # Handle any exception during lock acquisition or migration execution
                 # Only log if error_message is not already set (migration execution already logged it)
                 if not result.error_message:
-                    reason = redact_driver_error_text(str(e))
+                    reason = redact_driver_error_text(engine_error_message(e))
                     self.log.error(f"Exception during migration execution: {reason}")
                     result.set_error(f"Migration execution failed: {reason}")
                 # Execute afterMigrateError callbacks on exception

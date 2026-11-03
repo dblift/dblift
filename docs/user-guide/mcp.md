@@ -47,8 +47,8 @@ it was opened, so calls within the same second still land in one file.
 | `info` | `info --format json` | migration history rows |
 | `validate` | `validate --format json` | validated / failed migrations |
 | `migrate_dry_run` | `migrate --dry-run --format json` | what would be applied — applies nothing |
-| resource `dblift://history` | `info --format json` | the `migrations` array |
-| resource `dblift://pending` | `migrate --dry-run --format json` | pending migrations as a JSON array, the same rows `migrate_dry_run` returns |
+| resource `dblift://history` | `info --format json` | the `migrations` array (an object when the history table is missing or unreadable, see below) |
+| resource `dblift://pending` | `migrate --dry-run --format json` | pending migrations as a JSON array, the same rows `migrate_dry_run` returns (an object when the history table is missing or unreadable, see below) |
 
 `validate` checks the scripts on disk for consistency (duplicate versions,
 unsupported formats) and, once migrations have been applied, compares them
@@ -223,4 +223,9 @@ for a tool. A resource reports that failure too — an error carrying the
 command's message, for example `permission denied` on the history table or a
 missing migrations directory — because an empty list would read as "nothing
 applied" or "nothing pending". A database with no history table yet is not a
-failure: the resources return the rows `info` reports.
+failure: the resources return the rows `info` reports. So that those rows are not
+read as "nothing has been applied yet", `dblift://history` and `dblift://pending`
+return an object instead of the array when the history table does not exist or
+cannot be read by the account (the case where `info` and `migrate_dry_run` report
+`history_table_exists: false`): `{"history_table_exists": false, "message": "...",
+"migrations": [...]}`, with the rows under `migrations`.

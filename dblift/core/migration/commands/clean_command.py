@@ -9,6 +9,7 @@ from dblift.core.exceptions import FixedDboSchemaError
 from dblift.core.logger._null import NullLog
 from dblift.core.logger.console import rich_available
 from dblift.core.logger.results import CleanResult
+from dblift.db.error import engine_error_message
 from dblift.db.provider_capabilities import get_clean_listing_warnings
 from dblift.db.provider_interfaces import CleanTargetProvider, TransactionalProvider
 
@@ -77,7 +78,7 @@ class CleanCommand(BaseCommand):
                     self.config.database.schema = schema
                     result.target_schema = schema
         except Exception as e:
-            error_message = f"Clean operation failed: {e}"
+            error_message = f"Clean operation failed: {engine_error_message(e)}"
             self.log.error(error_message)
             result.set_error(error_message)
             result.complete()
@@ -105,7 +106,7 @@ class CleanCommand(BaseCommand):
                 try:
                     self.provider.prepare_clean_target(self.config.database.schema)
                 except Exception as e:
-                    error_message = f"Clean operation failed: {e}"
+                    error_message = f"Clean operation failed: {engine_error_message(e)}"
                     self.log.error(error_message)
                     result.set_error(error_message)
                     result.complete()
@@ -175,7 +176,9 @@ class CleanCommand(BaseCommand):
                             "clean.object.removed", {"type": obj.object_type, "name": obj.name}
                         )
                 except Exception as e:
-                    error = f"Failed to drop {obj.object_type} {obj.name}: {e}"
+                    error = (
+                        f"Failed to drop {obj.object_type} {obj.name}: {engine_error_message(e)}"
+                    )
                     self.log.warning(error)
                     result.add_warning(error)
                     drop_errors.append(error)
@@ -192,6 +195,8 @@ class CleanCommand(BaseCommand):
             if executed_statements and isinstance(self.provider, TransactionalProvider):
                 try:
                     self.provider.commit_transaction()
+                    if self.provider.is_caller_owned():
+                        self.provider.note_caller_work()
                     self.log.debug("Committed clean operation changes")
                 except Exception as commit_err:
                     self.log.error(f"Failed to commit clean operation: {commit_err}")
