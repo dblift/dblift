@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from sqlalchemy.engine import URL
+from dblift.config.file_path_anchoring import render_file_url
 
 
 def _file_target(database_config: Any) -> str:
@@ -26,7 +26,4 @@ def build_sqlalchemy_url(database_config: Any) -> str:
             return raw_url
         raise ValueError("DuckDB connections require a duckdb:// SQLAlchemy URL or a file path")
 
-    target = _file_target(database_config)
-    if target == ":memory:":
-        return "duckdb:///:memory:"
-    return URL.create("duckdb", database=target).render_as_string(hide_password=False)
+    return render_file_url("duckdb", _file_target(database_config))
