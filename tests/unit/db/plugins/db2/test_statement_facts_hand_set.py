@@ -349,3 +349,43 @@ def test_hand_set_statement(family, sql, operation, schema, name):
         assert facts.objects == ()
         return
     assert (facts.objects[0].schema, facts.objects[0].name) == (schema, name)
+
+
+def test_truncate_preserves_quoted_schema_and_table_flags():
+    facts = READ('TRUNCATE TABLE "Schema_Q"."Denied" IMMEDIATE')
+
+    assert facts.operation == "TRUNCATE"
+    assert len(facts.objects) == 1
+    obj = facts.objects[0]
+    assert (obj.schema, obj.name) == ("Schema_Q", "Denied")
+    assert obj.schema_quoted is True
+    assert obj.name_quoted is True
+
+
+@pytest.mark.parametrize(
+    ("sql", "operation"),
+    [
+        ('UPDATE "Schema_Q"."Denied" SET "Value" = 1', "UPDATE"),
+        ('CREATE TABLE "Schema_Q"."Denied" (id INTEGER)', "CREATE"),
+    ],
+)
+def test_dml_and_ddl_preserve_quoted_schema_and_table_flags(sql, operation):
+    facts = READ(sql)
+
+    assert facts.operation == operation
+    assert len(facts.objects) == 1
+    obj = facts.objects[0]
+    assert (obj.schema, obj.name) == ("Schema_Q", "Denied")
+    assert obj.schema_quoted is True
+    assert obj.name_quoted is True
+
+
+def test_truncate_unquoted_names_keep_db2_case_folding():
+    facts = READ("TRUNCATE TABLE schema_q.denied IMMEDIATE")
+
+    assert facts.operation == "TRUNCATE"
+    assert len(facts.objects) == 1
+    obj = facts.objects[0]
+    assert (obj.schema, obj.name) == ("SCHEMA_Q", "DENIED")
+    assert obj.schema_quoted is not True
+    assert obj.name_quoted is not True

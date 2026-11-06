@@ -83,6 +83,20 @@ def test_predicate_true_connects(monkeypatch, db_file):
     assert db_file.exists()
 
 
+def test_client_aware_predicate_receives_effective_client_and_skips_connection(
+    monkeypatch, db_file
+):
+    calls = []
+    seen = []
+    handler = _handler(calls)
+    handler._dblift_needs_connection_with_client = lambda args, client: seen.append(client) or False
+    code, _ = _dispatch(monkeypatch, db_file, handler)
+
+    assert code == 0 and len(calls) == 1
+    assert len(seen) == 1 and seen[0].config is not None
+    assert not db_file.exists()
+
+
 def test_pre_connection_check_denial_refuses_before_connecting(monkeypatch, db_file):
     calls = []
     handler = _handler(calls)

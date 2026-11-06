@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import OperationalError
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
@@ -348,18 +349,28 @@ class DuckDBProvider(SqlLeaseLockingProvider):
 
         A table created before the lease lacks the owner column; it is added.
         """
-        self.create_schema_if_not_exists(schema)
+        import time
+
         table = self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)
-        self.execute_statement(f"""
-            CREATE TABLE IF NOT EXISTS {table} (
-                lock_name VARCHAR PRIMARY KEY,
-                locked_at TIMESTAMP DEFAULT now(),
-                {OWNER_COLUMN} VARCHAR
-            )
-            """)
-        self.execute_statement(
-            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {OWNER_COLUMN} VARCHAR"
-        )
+        for attempt in range(3):
+            try:
+                self.create_schema_if_not_exists(schema)
+                self.execute_statement(f"""
+                    CREATE TABLE IF NOT EXISTS {table} (
+                        lock_name VARCHAR PRIMARY KEY,
+                        locked_at TIMESTAMP DEFAULT now(),
+                        {OWNER_COLUMN} VARCHAR
+                    )
+                    """)
+                self.execute_statement(
+                    f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {OWNER_COLUMN} VARCHAR"
+                )
+                return
+            except OperationalError as exc:
+                if not self.quirks.is_schema_history_race_error(str(exc)) or attempt == 2:
+                    raise
+                self.rollback_transaction()
+                time.sleep(0.1 * (2**attempt))
 
     def _migration_lease_dialect(self, schema: str) -> SqlLeaseDialect:
         """Describe the DuckDB lock table; rows before the lease used local ``now()``."""

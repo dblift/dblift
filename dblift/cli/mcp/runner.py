@@ -279,7 +279,9 @@ def _run_command_locked(
                 )
             if command == "migrate":
                 _validate_migrate_options(ctx.args, ctx.parser)
-            cli_main._ensure_connection(client, ctx.log, command)
+            cli_main._connect_if_needed(
+                client, ctx.log, command, ctx.args, raise_on_license_denial=True
+            )
             handler = _COMMAND_HANDLERS[command]
             success, _result = handler(
                 CliCommandContext(

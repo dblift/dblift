@@ -248,6 +248,94 @@ def test_client_is_closed_after_a_successful_call(sqlite_project, monkeypatch):
 
 
 @pytest.mark.unit
+def test_offline_handler_does_not_create_configured_duckdb_file(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    database = tmp_path / "not-created.duckdb"
+    config = tmp_path / "dblift.yaml"
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "database": {"type": "duckdb", "path": str(database)},
+                "migrations": {"directory": str(tmp_path / "migrations")},
+            }
+        )
+    )
+
+    def offline(ctx):
+        print(json.dumps({"success": True}))
+        return (True, None)
+
+    offline._dblift_needs_connection = lambda args: False
+    _install_fake_handler(monkeypatch, "info", offline)
+
+    assert run_command(["--config", str(config)], "info", []) == {"success": True}
+    assert not database.exists()
+
+
+@pytest.mark.unit
+def test_handler_without_connection_opt_out_still_connects_to_duckdb(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "dblift.yaml"
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "database": {"type": "duckdb", "path": str(tmp_path / "created.duckdb")},
+                "migrations": {"directory": str(tmp_path / "migrations")},
+            }
+        )
+    )
+    from dblift.cli import main as cli_main
+
+    connections = []
+    monkeypatch.setattr(
+        cli_main,
+        "_ensure_connection",
+        lambda client, log, command: connections.append((client, command)),
+    )
+
+    def connected(ctx):
+        print(json.dumps({"success": True}))
+        return (True, None)
+
+    _install_fake_handler(monkeypatch, "info", connected)
+
+    assert run_command(["--config", str(config)], "info", []) == {"success": True}
+    assert len(connections) == 1 and connections[0][1] == "info"
+
+
+@pytest.mark.unit
+def test_handler_license_denial_precedes_duckdb_connection(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    database = tmp_path / "not-created.duckdb"
+    config = tmp_path / "dblift.yaml"
+    config.write_text(
+        yaml.safe_dump(
+            {
+                "database": {"type": "duckdb", "path": str(database)},
+                "migrations": {"directory": str(tmp_path / "migrations")},
+            }
+        )
+    )
+
+    def denied(ctx):
+        print(json.dumps({"success": True}))
+        return (True, None)
+
+    def deny_before_connection(args, license_tier):
+        raise CapabilityDeniedError("Feature requires a higher license tier")
+
+    denied._dblift_pre_connection_check = deny_before_connection
+    _install_fake_handler(monkeypatch, "info", denied)
+
+    with pytest.raises(CommandInvocationError, match="higher license tier") as exc_info:
+        run_command(["--config", str(config)], "info", [])
+
+    assert exc_info.value.exit_code == 4
+    assert "(exit code 4)" in str(exc_info.value)
+    assert not database.exists()
+
+
+@pytest.mark.unit
 def test_unexpected_exception_becomes_invocation_error(sqlite_project, monkeypatch):
     def boom(ctx):
         raise RuntimeError("handler exploded")

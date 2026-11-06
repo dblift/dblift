@@ -577,6 +577,13 @@
   "reason": "the old hybrid path names no object for COMMENT statements; the reader names `ORDERS` in schema `PUBLIC` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "COMMENT ON TABLE public.orders IS 'x'"
  },
+ "167bb154bab713de/analyzer": {
+  "class": "opaque-reader-gap",
+  "issue": "by design: Db2 DML source references are not enumerated, so the reader preserves the target and reports opacity (docs/sql-parsing/db2.md section 13)",
+  "path": "analyzer",
+  "reason": "DELETE still names target `T`; its predicate reads source table `s` in a subquery, which the reader does not enumerate and therefore marks opaque.",
+  "sql": "DELETE FROM t WHERE id IN (SELECT id FROM s)"
+ },
  "167bb154bab713de/hybrid": {
   "class": "facts-adds-acted",
   "issue": "",
@@ -766,6 +773,13 @@
   "reason": "the old hybrid path names no object for a ALTER MODULE statement; the reader names `M` as altered, and is right: the statement does that",
   "sql": "ALTER MODULE m ADD PROCEDURE p() BEGIN SELECT 1; END"
  },
+ "1d21a18c88f5a607/analyzer": {
+  "class": "opaque-reader-gap",
+  "issue": "by design: Db2 DML source references are not enumerated, so the reader preserves the target and reports opacity (docs/sql-parsing/db2.md section 13)",
+  "path": "analyzer",
+  "reason": "INSERT still names target `T`; its SELECT reads source table `u`, which the reader does not enumerate and therefore marks opaque.",
+  "sql": "INSERT INTO t(a) SELECT a FROM u"
+ },
  "1d21a18c88f5a607/hybrid": {
   "class": "facts-adds-acted",
   "issue": "",
@@ -814,6 +828,13 @@
   "path": "both",
   "reason": "incomplete CREATE INDEX with no ON clause: the reader leaves the name unread rather than name an index of a statement Db2 rejects; the old extraction named `IDX_CUSTOMERS_ID` / `default_schema.idx_customers_id`",
   "sql": "CREATE INDEX idx_customers_id"
+ },
+ "214217741946c154/analyzer": {
+  "class": "opaque-reader-gap",
+  "issue": "by design: Db2 DML source references are not enumerated, so the reader preserves the target and reports opacity (docs/sql-parsing/db2.md section 13)",
+  "path": "analyzer",
+  "reason": "INSERT still names target `T`; its SELECT reads CTE `x` backed by table `src`, which the reader does not enumerate and therefore marks opaque.",
+  "sql": "INSERT INTO t WITH x AS (SELECT id FROM src) SELECT id FROM x"
  },
  "214217741946c154/hybrid": {
   "class": "facts-adds-acted",
@@ -987,6 +1008,13 @@
   "path": "analyzer",
   "reason": "not a Db2 statement: CREATE MATERIALIZED VIEW is Oracle's and PostgreSQL's (Db2 declares an MQT with CREATE TABLE ... AS); the old extraction named `default_schema.mv`",
   "sql": "CREATE MATERIALIZED VIEW mv AS SELECT 1 FROM orders"
+ },
+ "28fb40fa4063f6c2/analyzer": {
+  "class": "opaque-reader-gap",
+  "issue": "by design: Db2 DML source references are not enumerated, so the reader preserves the target and reports opacity (docs/sql-parsing/db2.md section 13)",
+  "path": "analyzer",
+  "reason": "MERGE still names target `CHILD`; its `USING` source is not enumerated, so the reader marks the statement opaque.",
+  "sql": "MERGE INTO child AS c USING source AS s ON c.id = s.id WHEN MATCHED THEN DELETE"
  },
  "28fb40fa4063f6c2/hybrid": {
   "class": "facts-adds-acted",
@@ -1401,10 +1429,10 @@
   "sql": "CREATE TYPE mood AS ENUM ('sad', 'happy')"
  },
  "35fa88b10f497bf0/analyzer": {
-  "class": "disagree",
-  "issue": "",
+  "class": "opaque-reader-gap",
+  "issue": "by design: Db2 DML source references are not enumerated, so the reader preserves the target and reports opacity (docs/sql-parsing/db2.md section 13)",
   "path": "analyzer",
-  "reason": "the analyzer path qualifies the unqualified `test` with a placeholder schema `default_schema` and keeps its spelling; the reader names `TEST` with no schema, folded to upper case as Db2 stores it",
+  "reason": "MERGE still names target `TEST`; `USING` source `other` is not enumerated, so the reader marks it opaque. Independently, the old analyzer assigned placeholder `default_schema` and kept spelling `test`, while Db2 folds the unquoted target to `TEST` with no explicit schema.",
   "sql": "MERGE INTO test USING other ON (test.id = other.id)"
  },
  "35fa88b10f497bf0/hybrid": {
@@ -2780,6 +2808,13 @@
   "reason": "CREATE INDEX: the reader names `IX`, `T` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
   "sql": "CREATE INDEX ix ON t USING hash (a)"
  },
+ "6e9b829e51f54862/analyzer": {
+  "class": "opaque-reader-gap",
+  "issue": "by design: Db2 DML source references are not enumerated, so the reader preserves the target and reports opacity (docs/sql-parsing/db2.md section 13)",
+  "path": "analyzer",
+  "reason": "MERGE still names target `T`; its `USING` source and nested query references are not enumerated, so the reader marks the statement opaque.",
+  "sql": "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET val=(WITH s AS (SELECT val FROM z) SELECT val FROM s)"
+ },
  "6e9b829e51f54862/hybrid": {
   "class": "facts-adds-acted",
   "issue": "",
@@ -2793,6 +2828,13 @@
   "path": "analyzer",
   "reason": "CREATE TABLE: the reader names `PARENT` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
   "sql": "CREATE TABLE parent (id INTEGER PRIMARY KEY)"
+ },
+ "6ed060381e6a367c/analyzer": {
+  "class": "opaque-reader-gap",
+  "issue": "by design: Db2 DML source references are not enumerated, so the reader preserves the target and reports opacity (docs/sql-parsing/db2.md section 13)",
+  "path": "analyzer",
+  "reason": "MERGE still names target `USERS`; its `USING` source is not enumerated, so the reader marks the statement opaque.",
+  "sql": "MERGE INTO users USING s ON s.id = users.id WHEN MATCHED AND s.expired THEN DELETE"
  },
  "6ed060381e6a367c/hybrid": {
   "class": "facts-adds-acted",
@@ -2980,6 +3022,13 @@
   "path": "both",
   "reason": "not a Db2 statement: ONLY is PostgreSQL's, so the reader leaves the target unread rather than take `ONLY` for it; the old helper named table `child`",
   "sql": "DELETE FROM ONLY child WHERE id = 1"
+ },
+ "7484ca522ba201fa/analyzer": {
+  "class": "opaque-reader-gap",
+  "issue": "by design: Db2 DML source references are not enumerated, so the reader preserves the target and reports opacity (docs/sql-parsing/db2.md section 13)",
+  "path": "analyzer",
+  "reason": "MERGE still names target `USERS`; its `USING` source `staged` is not enumerated, so the reader marks the statement opaque.",
+  "sql": "MERGE INTO users u USING staged s ON (u.id = s.id) WHEN MATCHED THEN UPDATE SET u.email = s.email"
  },
  "7484ca522ba201fa/hybrid": {
   "class": "facts-adds-acted",
@@ -3887,6 +3936,13 @@
   "reason": "not a Db2 statement: brackets are SQL Server's delimiters, which Db2 does not read as delimiters, so the reader leaves the name unread; the old extraction named `a]b.c]d`",
   "sql": "CREATE TABLE [a]]b].[c]]d] (id int)"
  },
+ "9a97e83bc411cf52/analyzer": {
+  "class": "opaque-reader-gap",
+  "issue": "by design: Db2 DML source references are not enumerated, so the reader preserves the target and reports opacity (docs/sql-parsing/db2.md section 13)",
+  "path": "analyzer",
+  "reason": "INSERT still names target `USERS`; its SELECT reads source table `old_users`, which the reader does not enumerate and therefore marks opaque.",
+  "sql": "INSERT INTO users SELECT * FROM old_users"
+ },
  "9a97e83bc411cf52/hybrid": {
   "class": "facts-adds-acted",
   "issue": "",
@@ -3942,6 +3998,13 @@
   "path": "analyzer",
   "reason": "the analyzer path qualifies the unqualified `trg1` with a placeholder schema `default_schema` and keeps its spelling; the reader names `TRG1` with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE TRIGGER trg1 BEFORE INSERT ON app.orders FOR EACH ROW SET NEW.created_at = NOW()"
+ },
+ "9e604e57b562b116/analyzer": {
+  "class": "opaque-reader-gap",
+  "issue": "by design: Db2 DML source references are not enumerated, so the reader preserves the target and reports opacity (docs/sql-parsing/db2.md section 13)",
+  "path": "analyzer",
+  "reason": "MERGE still names target `T`; its `USING` source is not enumerated, so the reader marks the statement opaque.",
+  "sql": "MERGE INTO t USING s ON t.id=s.id WHEN MATCHED THEN UPDATE SET t.x=s.x"
  },
  "9e604e57b562b116/hybrid": {
   "class": "facts-adds-acted",
@@ -4347,6 +4410,13 @@
   "path": "hybrid",
   "reason": "the old hybrid path names no object for UPDATE statements; the reader names `X` as altered, folded to upper case as Db2 does, and is right: the statement writes to it",
   "sql": "UPDATE x SET y=1"
+ },
+ "af821953d5a015f0/analyzer": {
+  "class": "opaque-reader-gap",
+  "issue": "by design: Db2 DML source references are not enumerated, so the reader preserves the target and reports opacity (docs/sql-parsing/db2.md section 13)",
+  "path": "analyzer",
+  "reason": "INSERT still names target `T`; its SELECT reads source table `s`, which the reader does not enumerate and therefore marks opaque.",
+  "sql": "INSERT INTO t SELECT * FROM s"
  },
  "af821953d5a015f0/hybrid": {
   "class": "facts-adds-acted",
@@ -5136,6 +5206,13 @@
   "reason": "not a Db2 statement: DROP ALERT is Snowflake's; the old extraction named `S.LOW_STOCK`, the object",
   "sql": "DROP ALERT IF EXISTS \"S\".\"LOW_STOCK\""
  },
+ "cabed7a5839c7236/analyzer": {
+  "class": "opaque-reader-gap",
+  "issue": "by design: Db2 DML source references are not enumerated, so the reader preserves the target and reports opacity (docs/sql-parsing/db2.md section 13)",
+  "path": "analyzer",
+  "reason": "UPDATE still names target `T`; its scalar subquery reads source table `s`, which the reader does not enumerate and therefore marks opaque.",
+  "sql": "UPDATE t SET a = (SELECT max(x) FROM s)"
+ },
  "cabed7a5839c7236/hybrid": {
   "class": "facts-adds-acted",
   "issue": "",
@@ -5289,6 +5366,13 @@
   "path": "both",
   "reason": "not a Db2 statement: `UPDATE OR IGNORE/REPLACE` is SQLite's, so the reader leaves the target unread rather than take `OR` for it; the old helper reported events UPDATE with no table",
   "sql": "UPDATE OR REPLACE t SET a=1 WHERE b=2"
+ },
+ "d12f648df7193d75/analyzer": {
+  "class": "opaque-reader-gap",
+  "issue": "by design: Db2 DML source references are not enumerated, so the reader preserves the target and reports opacity (docs/sql-parsing/db2.md section 13)",
+  "path": "analyzer",
+  "reason": "INSERT still names target `T`; its SELECT reads joined source tables `s1` and `main.s2`, which the reader does not enumerate and therefore marks opaque.",
+  "sql": "INSERT INTO t(a) SELECT a FROM s1 JOIN main.s2 USING (id)"
  },
  "d12f648df7193d75/hybrid": {
   "class": "facts-adds-acted",
@@ -5894,6 +5978,13 @@
   "path": "analyzer",
   "reason": "not a Db2 statement: DROP MATERIALIZED VIEW is Oracle's and PostgreSQL's (Db2 drops the table its MQT is); the old extraction named `default_schema.t`",
   "sql": "DROP MATERIALIZED VIEW LOG ON t"
+ },
+ "e8b8a20ae6fd14e8/analyzer": {
+  "class": "opaque-reader-gap",
+  "issue": "by design: Db2 DML source references are not enumerated, so the reader preserves the target and reports opacity (docs/sql-parsing/db2.md section 13)",
+  "path": "analyzer",
+  "reason": "MERGE still names target `T`; its `USING` source is not enumerated, so the reader marks the statement opaque.",
+  "sql": "MERGE INTO t USING s ON t.id = s.id WHEN MATCHED THEN UPDATE SET val = s.val WHEN NOT MATCHED THEN INSERT (id, val) VALUES (s.id, s.val)"
  },
  "e8b8a20ae6fd14e8/hybrid": {
   "class": "facts-adds-acted",

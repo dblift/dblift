@@ -10,7 +10,9 @@ driver and always run.
 from __future__ import annotations
 
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 from typing import Any
 
 import pytest
@@ -186,6 +188,107 @@ class TestDuckDBMigrationLock:
             assert contender.release_migration_lock("main") is True
         finally:
             contender.close()
+
+
+@pytest.mark.unit
+class TestDuckDBConcurrentBootstrap:
+    def _race_migrations(self, dbfile: Path, migrations: Path) -> list[object]:
+        from dblift.api.client import DBLiftClient
+        from dblift.config import DatabaseConfig, DbliftConfig
+        from dblift.db.plugins.duckdb.provider import DuckDBProvider
+
+        config = DbliftConfig(
+            database=DatabaseConfig(type="duckdb", url=f"duckdb:///{dbfile}", schema="main")
+        )
+        clients = [
+            DBLiftClient(
+                provider=DuckDBProvider(config), migrations_dir=str(migrations), config=config
+            )
+            for _ in range(2)
+        ]
+        barrier = Barrier(2)
+
+        def migrate(client):
+            barrier.wait()
+            return client.migrate()
+
+        try:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                return list(executor.map(migrate, clients))
+        finally:
+            for client in clients:
+                client.provider.close()
+
+    def test_cold_concurrent_migrations_converge(self, tmp_path: Path) -> None:
+        migrations = tmp_path / "cold_migrations"
+        migrations.mkdir()
+        (migrations / "V1__create.sql").write_text("CREATE TABLE cold_fixture (id INTEGER);")
+
+        results = self._race_migrations(tmp_path / "cold.duckdb", migrations)
+
+        assert all(result.success for result in results), [
+            result.error_message for result in results
+        ]
+        import duckdb
+
+        conn = duckdb.connect(str(tmp_path / "cold.duckdb"))
+        try:
+            assert (
+                conn.execute("SELECT count(*) FROM main.dblift_schema_history").fetchone()[0] == 1
+            )
+            assert conn.execute("SELECT count(*) FROM main.cold_fixture").fetchone()[0] == 0
+        finally:
+            conn.close()
+
+    def test_concurrent_missing_lock_table_bootstrap_converges(self, tmp_path: Path) -> None:
+        import duckdb
+
+        dbfile = tmp_path / "partial.duckdb"
+        # Seed only the history table so both clients race to bootstrap the lock table.
+        from dblift.config import DatabaseConfig, DbliftConfig
+        from dblift.db.plugins.duckdb.provider import DuckDBProvider
+
+        config = DbliftConfig(
+            database=DatabaseConfig(type="duckdb", url=f"duckdb:///{dbfile}", schema="main")
+        )
+        seed_provider = DuckDBProvider(config)
+        seed_provider.create_migration_history_table_if_not_exists("main")
+        seed_provider.close()
+        conn = duckdb.connect(str(dbfile))
+        try:
+            assert (
+                conn.execute(
+                    "SELECT count(*) FROM information_schema.tables WHERE table_schema='main' "
+                    "AND table_name='dblift_migration_lock'"
+                ).fetchone()[0]
+                == 0
+            )
+        finally:
+            conn.close()
+        migrations = tmp_path / "partial_migrations"
+        migrations.mkdir()
+        (migrations / "V2__create.sql").write_text("CREATE TABLE partial_fixture (id INTEGER);")
+
+        results = self._race_migrations(dbfile, migrations)
+
+        assert all(result.success for result in results), [
+            result.error_message for result in results
+        ]
+        conn = duckdb.connect(str(dbfile))
+        try:
+            assert (
+                conn.execute("SELECT count(*) FROM main.dblift_schema_history").fetchone()[0] == 1
+            )
+            assert conn.execute("SELECT count(*) FROM main.partial_fixture").fetchone()[0] == 0
+            assert (
+                conn.execute(
+                    "SELECT count(*) FROM information_schema.tables WHERE table_schema='main' "
+                    "AND table_name='dblift_migration_lock'"
+                ).fetchone()[0]
+                == 1
+            )
+        finally:
+            conn.close()
 
 
 @pytest.mark.unit
