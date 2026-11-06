@@ -410,7 +410,9 @@ class TestDuckDBDmlRowcount:
         provider.execute_statement("INSERT INTO t VALUES (1, true), (2, false)")
         assert provider.execute_statement("DELETE FROM t WHERE x") == 1
 
-    def test_returning_rewrite_runs_unbound_sql_through_exec_unbound(self, tmp_path: Path) -> None:
+    def test_returning_rewrite_runs_unbound_sql_through_exec_unbound(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
         """The RETURNING rewrite sends unbound SQL with no parameter argument."""
         from unittest.mock import patch
 
@@ -419,6 +421,7 @@ class TestDuckDBDmlRowcount:
         provider = self._provider(tmp_path)
         provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
         provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        monkeypatch.setattr(duckdb, "__version__", "1.4.3")
         real = SqlAlchemyProvider.__dict__["_exec_unbound"].__func__
         sent: list = []
 

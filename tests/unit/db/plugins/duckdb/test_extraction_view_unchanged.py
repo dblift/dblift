@@ -129,6 +129,7 @@ def observe_returning(sql: str) -> Any:
     provider = object.__new__(DuckDBProvider)
     provider._tx = object()  # an open transaction: the rewrite does not commit
     with (
+        patch("duckdb.__version__", "1.4.3"),
         patch.object(DuckDBProvider, "_ensure_connection", lambda self: "connection"),
         patch.object(SqlAlchemyProvider, "_exec_unbound", staticmethod(spy)),
     ):

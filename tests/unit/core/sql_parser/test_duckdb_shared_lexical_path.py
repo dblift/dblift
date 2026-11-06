@@ -87,6 +87,9 @@ def test_entry_points_reach_the_engine(monkeypatch, entry):
 
 
 def test_the_provider_rewrite_reads_the_engine(monkeypatch):
+    import duckdb
+
+    monkeypatch.setattr(duckdb, "__version__", "1.4.3")
     seen = []
     iter_segment_tokens = LexicalTokenizer._iter_segment_tokens
     monkeypatch.setattr(
