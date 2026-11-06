@@ -341,3 +341,24 @@ def test_insert_select_without_from_remains_readable():
     facts = READ("INSERT INTO t SELECT 1, 'a' || chr(10) || '-- b'")
 
     assert (facts.target, facts.opaque, facts.diagnostic) == ("T", False, None)
+
+
+def test_supported_data_change_cte_records_the_inner_update():
+    facts = READ(
+        "WITH changed_rows AS ("
+        "SELECT id FROM FINAL TABLE ("
+        "UPDATE app.orders SET status = 'done' WHERE id = 1"
+        ")) SELECT id FROM changed_rows"
+    )
+
+    assert facts.operation == "SELECT"
+    assert facts.kind == "DML"
+    assert not facts.opaque
+    assert [(obj.schema, obj.name, obj.role) for obj in facts.objects] == [
+        ("APP", "ORDERS", "altered")
+    ]
+    assert len(facts.cte_writes) == 1
+    assert (facts.cte_writes[0].operation, facts.cte_writes[0].target) == (
+        "UPDATE",
+        "APP.ORDERS",
+    )

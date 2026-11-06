@@ -49,12 +49,9 @@ class DuckDBProvider(SqlLeaseLockingProvider):
     ) -> int:
         """Execute a SQL statement, optionally preparing the schema first.
 
-        DuckDB/SQLAlchemy often reports ``rowcount == -1`` for DML (duckdb_engine
-        sets ``supports_sane_rowcount = False``). For single INSERT/UPDATE/DELETE
-        statements — with or without bound parameters — append ``RETURNING 1``
-        and return ``len(fetchall())`` so callers that assert ``expect=N``
-        (data-correction apply) or check restore counts (data undo) get a real
-        affected-row count.
+        For eligible single INSERT/UPDATE/DELETE statements, DuckDB 2 reports
+        native affected-row counts. Older engines use ``RETURNING 1`` instead.
+        Explicit RETURNING and noneligible statements retain the default path.
         """
         if schema:
             self.create_schema_if_not_exists(schema)
@@ -89,7 +86,7 @@ class DuckDBProvider(SqlLeaseLockingProvider):
     def _try_dml_rowcount_via_returning(
         self, sql: str, params: Optional[List[Any]] = None
     ) -> Optional[int]:
-        """Return affected-row count using RETURNING, or None if not applicable.
+        """Return a native or RETURNING affected-row count, or None if not applicable.
 
         Returns None only when the statement is not rewritten (caller falls back
         to the default path). Once execution is attempted, errors propagate —
@@ -119,6 +116,25 @@ class DuckDBProvider(SqlLeaseLockingProvider):
         # The engine keeps a U+00A0 in the last two bytes of a script; after RETURNING it replaces it
         if units[0].text.endswith("\xa0"):
             return None
+        import duckdb
+
+        # DuckDB 2 returns one affected-row count, including row-trigger tables.
+        if int(duckdb.__version__.split(".", 1)[0]) >= 2:
+            with self._lock:
+                conn = self._ensure_connection()
+                if params is None:
+                    result = conn.exec_driver_sql(sql, execution_options={"no_parameters": True})
+                else:
+                    named_sql, bound_params = self._bind(sql, params)
+                    result = conn.execute(
+                        text(named_sql),
+                        bound_params,
+                    )
+                count = result.scalar_one()
+                if self._tx is None and not self.is_caller_owned():
+                    conn.commit()
+                return int(count)
+
         # A newline keeps RETURNING out of a trailing ``--`` comment
         rewritten = f"{units[0].text}\nRETURNING 1"
         conn = self._ensure_connection()

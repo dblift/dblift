@@ -316,6 +316,47 @@ class TestDuckDBDmlRowcount:
         rc0 = provider.execute_statement("UPDATE t SET v = 'y' WHERE id = 99")
         assert rc0 == 0, f"expected rowcount 0, got {rc0}"
 
+    @pytest.mark.parametrize("params", [None, [1, 1]])
+    def test_duckdb_2_uses_native_dml_rowcount(self, tmp_path: Path, monkeypatch, params) -> None:
+        from dblift.db.plugins.duckdb.provider import DuckDBProvider
+
+        provider = self._provider(tmp_path)
+        monkeypatch.setattr(duckdb, "__version__", "2.0.0")
+        calls = []
+
+        class Result:
+            def scalar_one(self):
+                return 1
+
+            def fetchall(self):
+                return [(1,)]
+
+        class Connection:
+            def exec_driver_sql(self, sql, execution_options=None):
+                calls.append(("exec_driver_sql", sql, execution_options))
+                return Result()
+
+            def execute(self, statement, bound_params):
+                calls.append(("execute", str(statement), bound_params))
+                return Result()
+
+            def commit(self):
+                calls.append(("commit",))
+
+        connection = Connection()
+        monkeypatch.setattr(provider, "_ensure_connection", lambda: connection)
+        monkeypatch.setattr(provider, "is_caller_owned", lambda: False)
+        sql = (
+            "UPDATE t SET v = 1 WHERE id = 1"
+            if params is None
+            else "UPDATE t SET v = ? WHERE id = ?"
+        )
+
+        assert provider.execute_statement(sql, params=params) == 1
+        assert calls[0][0] == ("exec_driver_sql" if params is None else "execute")
+        assert "RETURNING" not in calls[0][1].upper()
+        assert calls[-1] == ("commit",)
+
     def test_update_with_leading_directive_comments(self, tmp_path: Path) -> None:
         provider = self._provider(tmp_path)
         provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")

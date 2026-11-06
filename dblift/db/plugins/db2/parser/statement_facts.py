@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import FrozenSet, Iterator, List, Optional, Tuple
 
@@ -10,6 +11,7 @@ from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
 from dblift.core.sql_parser.tokens import Token, TokenType
+from dblift.db.plugins.db2.parser.data_change_cte import holds_data_change, read_data_change_cte
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_RULES, DB2_SPEC
 
 COLUMNS_UNAVAILABLE = "db2 column-level facts are unavailable: declared columns, constraints and indexed columns are not read"
@@ -29,7 +31,6 @@ _DDL = frozenset("CREATE ALTER DROP RENAME COMMENT DECLARE GRANT REVOKE TRUNCATE
 _DML = frozenset("INSERT UPDATE DELETE MERGE".split())
 _QUERY = frozenset("SELECT WITH VALUES".split())
 _TRANSACTION = frozenset("COMMIT ROLLBACK SAVEPOINT RELEASE".split())
-_DATA_CHANGE = frozenset("FINAL NEW OLD".split())
 _QUERY_RESERVED = frozenset(
     """SELECT WITH VALUES FROM WHERE AS INTO FOR UPDATE DELETE INSERT MERGE FINAL NEW OLD
     TABLE JOIN INNER LEFT RIGHT FULL CROSS ON UNION EXCEPT INTERSECT GROUP ORDER HAVING
@@ -617,11 +618,6 @@ def _head_end(words: List[Token], at: int) -> int:
     return end
 
 
-def _holds_data_change(ups: List[str]) -> bool:
-    """Whether the tokens hold FINAL TABLE, NEW TABLE or OLD TABLE."""
-    return any(a in _DATA_CHANGE and b == "TABLE" for a, b in zip(ups, ups[1:]))
-
-
 def _query_name(words: List[Token], at: int, max_parts: int = 2) -> int:
     """Read a bounded ordinary or quoted name; return its end, or the original offset."""
     name = _read_name(words, at, max_parts, _QUERY_RESERVED)
@@ -755,7 +751,11 @@ class Db2StatementFactsReader:
                 return StatementFacts(first, "UNKNOWN", events=frozenset())
             return StatementFacts(first, "UNKNOWN")
         if first in _QUERY:
-            if _holds_data_change(ups):
+            if holds_data_change(ups):
+                if first == "WITH":
+                    facts = read_data_change_cte(sql, words, ups, sys.modules[__name__])
+                    if facts is not None:
+                        return facts
                 return _opaque(first, kind, DATA_CHANGE_QUERY)
             if all(
                 t.type is not TokenType.COMMENT
@@ -791,7 +791,7 @@ class Db2StatementFactsReader:
             char = _unread_character(sql, words, window)
             if char is not None:
                 return _opaque(first, kind, UNREAD_NAME.format(code=ord(sql[char])))
-            if _holds_data_change(ups):
+            if holds_data_change(ups):
                 return _opaque(first, kind, DATA_CHANGE_QUERY)
             return _read_dml(sql, words, ups, first)
         return _opaque(first, kind, NOT_CLASSIFIED.format(word=first))
