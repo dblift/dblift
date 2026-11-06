@@ -293,7 +293,7 @@ class StatementReader:
         # Log each statement for debugging
         for i, stmt in enumerate(statements):
             self.logger.debug(
-                f"Execution Statement {i+1}: '{stmt[:50]}{'...' if len(stmt) > 50 else ''}'"
+                f"Execution Statement {i + 1}: '{stmt[:50]}{'...' if len(stmt) > 50 else ''}'"
             )
 
         return list(statements)

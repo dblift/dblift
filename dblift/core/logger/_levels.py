@@ -72,7 +72,8 @@ class LogLevel(Enum):
             return cls(name)
         except ValueError:
             raise ValueError(
-                f"Invalid log level: {value}. Valid levels are: {', '.join(l.name for l in cls)}"
+                f"Invalid log level: {value}. Valid levels are: "
+                f"{', '.join(level.name for level in cls)}"
             )
 
 
