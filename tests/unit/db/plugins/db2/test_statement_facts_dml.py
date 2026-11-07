@@ -362,3 +362,43 @@ def test_supported_data_change_cte_records_the_inner_update():
         "UPDATE",
         "APP.ORDERS",
     )
+
+
+def test_data_change_cte_accepts_matching_declared_column():
+    facts = READ(
+        "WITH changed_rows (id) AS ("
+        "SELECT id FROM FINAL TABLE (UPDATE app.orders SET status = 'done' WHERE id = 1)"
+        ") SELECT id FROM changed_rows"
+    )
+
+    assert not facts.opaque
+    assert [(write.operation, write.target) for write in facts.cte_writes] == [
+        ("UPDATE", "APP.ORDERS")
+    ]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "WITH AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1)) SELECT id FROM c",
+        "WITH c (id, status) AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1)) SELECT id FROM c",
+        "WITH c (SELECT) AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1)) SELECT id FROM c",
+        "WITH c (id) AS (SELECT status FROM FINAL TABLE (UPDATE t SET id = 1)) SELECT status FROM c",
+        "WITH c AS SELECT id FROM FINAL TABLE (UPDATE t SET id = 1) SELECT id FROM c",
+        "WITH c AS () SELECT id FROM FINAL TABLE (UPDATE t SET id = 1)",
+        "WITH c AS (SELECT * FROM FINAL TABLE (UPDATE t SET id = 1)) SELECT id FROM c",
+        "WITH c AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1) WHERE id = 1) SELECT id FROM c",
+        "WITH c AS (SELECT id FROM FINAL TABLE (INSERT INTO t VALUES (1))) SELECT id FROM c",
+        "WITH c AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1 FROM u)) SELECT id FROM c",
+        "WITH c AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1 JOIN u ON t.id = u.id)) SELECT id FROM c",
+        "WITH c AS (SELECT id FROM FINAL TABLE (UPDATE SET id = 1)) SELECT id FROM c",
+        "WITH c AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1)) SELECT id FROM other_c",
+        "WITH c AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1)) SELECT status FROM c",
+    ],
+)
+def test_unsupported_data_change_cte_stays_opaque(sql):
+    facts = READ(sql)
+
+    assert facts.opaque
+    assert facts.cte_writes == ()
+    assert facts.diagnostic == DATA_CHANGE_QUERY

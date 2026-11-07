@@ -170,6 +170,52 @@ class TestDuckDBRoundTrip:
 
 @pytest.mark.unit
 class TestDuckDBMigrationLock:
+    @pytest.mark.parametrize(
+        ("message", "failures", "expected_calls", "expected_rollbacks"),
+        [
+            ("Catalog write-write conflict", 1, 3, 1),
+            ("Catalog write-write conflict", 3, 3, 2),
+            ("permission denied", 1, 1, 0),
+        ],
+    )
+    def test_lock_table_bootstrap_retries_only_schema_races(
+        self,
+        duckdb_provider,
+        monkeypatch: pytest.MonkeyPatch,
+        message: str,
+        failures: int,
+        expected_calls: int,
+        expected_rollbacks: int,
+    ) -> None:
+        from sqlalchemy.exc import OperationalError
+
+        provider, _ = duckdb_provider
+        calls: list[str] = []
+        rollbacks: list[None] = []
+        delays: list[float] = []
+        error = OperationalError("CREATE TABLE", {}, Exception(message))
+
+        def execute(sql: str) -> int:
+            calls.append(sql)
+            if len(calls) <= failures:
+                raise error
+            return -1
+
+        monkeypatch.setattr(provider, "create_schema_if_not_exists", lambda schema: None)
+        monkeypatch.setattr(provider, "execute_statement", execute)
+        monkeypatch.setattr(provider, "rollback_transaction", lambda: rollbacks.append(None))
+        monkeypatch.setattr("time.sleep", delays.append)
+
+        if failures == 3 or message == "permission denied":
+            with pytest.raises(OperationalError, match=message):
+                provider.create_migration_lock_table_if_not_exists("main")
+        else:
+            provider.create_migration_lock_table_if_not_exists("main")
+
+        assert len(calls) == expected_calls
+        assert len(rollbacks) == expected_rollbacks
+        assert delays == [0.1 * (2**attempt) for attempt in range(expected_rollbacks)]
+
     def test_contended_lock_times_out_with_false(self, duckdb_provider) -> None:
         from dblift.db.plugins.duckdb.provider import DuckDBProvider
 
@@ -529,6 +575,24 @@ class TestDuckDBDmlRowcount:
         cleaned = blank("UPDATE t SET v = 1  -- returning\nWHERE id = 1")
         assert "returning" not in cleaned.lower()
         assert has(cleaned, "RETURNING") is False
+
+    @pytest.mark.parametrize(
+        ("sql", "expected"),
+        [
+            ('UPDATE t SET "returning" = 1', False),
+            ('UPDATE t SET "a""returning" = 1', False),
+            ("UPDATE t SET v = 'it''s returning'", False),
+            ("UPDATE t SET v = 1 RETURNING_col", False),
+            ("UPDATE t SET v = 1 col_RETURNING", False),
+            ("UPDATE t SET v = 1 RETURNING id", True),
+        ],
+    )
+    def test_returning_keyword_respects_quoted_text_and_identifier_boundaries(
+        self, sql: str, expected: bool
+    ) -> None:
+        from dblift.db.plugins.duckdb.provider import DuckDBProvider
+
+        assert DuckDBProvider._has_top_level_keyword(sql, "RETURNING") is expected
 
     def test_schema_kwarg_path_with_dml_rowcount(self, tmp_path: Path) -> None:
         provider = self._provider(tmp_path)
