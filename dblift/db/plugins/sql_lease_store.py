@@ -25,6 +25,7 @@ from __future__ import annotations
 import contextlib
 import sqlite3
 import threading
+import time
 from dataclasses import dataclass
 from typing import Callable, Iterable, List, Mapping, Optional, Protocol, Sequence, Tuple, Union
 
@@ -391,7 +392,16 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
         """The lock's second connection waits on DDL the caller's transaction left uncommitted."""
         return self.is_caller_owned() and self.supports_transactional_ddl()
 
-    def _ensure_migration_lock_table_for_external_connection(self, schema: str) -> None:
+    def _prepare_external_migration_lock_table(
+        self, provider: "SqlLeaseLockingProvider", schema: str, wait_timeout_seconds: float
+    ) -> bool:
+        """Prepare the lock table on the independent connection."""
+        provider.create_migration_lock_table_if_not_exists(schema)
+        return True
+
+    def _ensure_migration_lock_table_for_external_connection(
+        self, schema: str, deadline: float
+    ) -> bool:
         """Prepare the lock table without committing the caller's transaction."""
         if isinstance(self.engine.pool, (StaticPool, SingletonThreadPool)):
             raise RuntimeError(
@@ -403,7 +413,9 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
             self.config, self.log, engine=self.engine, owns_engine=False
         )
         try:
-            provider.create_migration_lock_table_if_not_exists(schema)
+            return self._prepare_external_migration_lock_table(
+                provider, schema, max(0.0, deadline - time.monotonic())
+            )
         finally:
             provider.close()
 
@@ -430,17 +442,18 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
         """
         if self._migration_lease is not None:
             return True
+        deadline = time.monotonic() + wait_timeout_seconds
         if self.is_caller_owned() and not self._migration_lease_is_private():
-            self._ensure_migration_lock_table_for_external_connection(schema)
+            if not self._ensure_migration_lock_table_for_external_connection(schema, deadline):
+                return False
         else:
             self.create_migration_lock_table_if_not_exists(schema)
+        remaining = max(0.0, deadline - time.monotonic())
         if self._migration_lease_on_own_connection():
             session = SqlAlchemyLeaseSession(self._ensure_connection())
-            return self._acquire_migration_lease(
-                schema, session, wait_timeout_seconds, heartbeat=False
-            )
+            return self._acquire_migration_lease(schema, session, remaining, heartbeat=False)
         session = SqlAlchemyLeaseSession(self.engine.connect(), on_close=_close)
-        return self._acquire_migration_lease(schema, session, wait_timeout_seconds)
+        return self._acquire_migration_lease(schema, session, remaining)
 
     def _release_migration_lease(self) -> bool:
         lease, self._migration_lease = self._migration_lease, None

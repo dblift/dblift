@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from dblift.core.migration.commands.base_command import BaseCommand
 
@@ -59,3 +60,17 @@ def test_release_failure_warns():
         assert acquired is True
 
     cmd.log.warning.assert_called_once_with("Could not release migration lock: boom")
+
+
+def test_release_failure_hides_internal_sqlalchemy_statement():
+    cmd = _command(acquired=True)
+    error = OperationalError(
+        "SELECT pg_advisory_unlock(42) AS released", {}, Exception("connection lost")
+    )
+    assert "[SQL: SELECT pg_advisory_unlock" in str(error)
+    cmd.provider.release_migration_lock.side_effect = error
+
+    with cmd._migration_lock() as acquired:
+        assert acquired is True
+
+    cmd.log.warning.assert_called_once_with("Could not release migration lock: connection lost")

@@ -8,13 +8,13 @@ import pytest
 
 from dblift.config import DbliftConfig
 from dblift.core.migration.clean_summary import CleanExecutionSummary
-from dblift.db.plugins.db2.provider import DB2_LOCK_STALE_SECONDS, Db2Provider
+from dblift.db.plugins.db2.provider import DB2_LOCK_STALE_SECONDS, Db2Provider, _is_lock_conflict
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 from tests.unit.db.plugins.lease_support import route_lease_to
 
 
 class DummyDb2Provider(Db2Provider):
-    def __init__(self) -> None:
+    def __init__(self, *_args) -> None:
         self.calls = []
         self.config = SimpleNamespace(database=SimpleNamespace(type="db2"))
         self.log = SimpleNamespace(
@@ -244,6 +244,186 @@ def test_acquire_migration_lock_honors_timeout_when_row_is_held(monkeypatch) -> 
     provider.execute_statement = fail_insert
 
     assert provider.acquire_migration_lock("APP", wait_timeout_seconds=0.1) is False
+
+
+@pytest.mark.parametrize(
+    ("timeout", "error", "busy"),
+    [
+        (2, "SQL0911N reason code 68: lock timeout", True),
+        (0.1, "SQL0911N reason code 68: lock timeout", True),
+        (0, "SQL0911N reason code 68: lock timeout", True),
+        (2, "SQL0204N undefined name", False),
+    ],
+)
+def test_caller_owned_lock_preparation_bounds_db2_catalog_wait(
+    monkeypatch, timeout, error, busy
+) -> None:
+    """An unrelated uncommitted CREATE TABLE must not hang lock preparation."""
+    from dblift.db.plugins import sql_lease_store
+
+    engine = SimpleNamespace(pool=object())
+    calls = []
+    helper_connection = SimpleNamespace(
+        invalidate=lambda: calls.append("helper_invalidated"),
+    )
+
+    class FakeManager:
+        def __init__(self, *_args, **_kwargs):
+            self.engine = engine
+
+        def close(self):
+            calls.append("helper_closed")
+
+    def query(self, sql, params=None):
+        calls.append(sql)
+        if busy and timeout >= 1 and "SYSCAT.SCHEMATA" in sql:
+            raise Exception(error)
+        if "SYSCAT.TABLES" in sql:
+            assert any("SET CURRENT LOCK TIMEOUT" in call for call in calls)
+            raise Exception(error)
+        return [{"SCHEMANAME": "APP"}]
+
+    def statement(self, sql, schema=None, params=None):
+        calls.append(sql)
+        self._connection = helper_connection
+        return 1
+
+    monkeypatch.setattr(sql_lease_store, "NativeConnectionManager", FakeManager)
+    monkeypatch.setattr(DummyDb2Provider, "execute_query", query)
+    monkeypatch.setattr(DummyDb2Provider, "execute_statement", statement)
+    monkeypatch.setattr(DummyDb2Provider, "close", lambda self: self._conn_mgr.close())
+    provider = DummyDb2Provider()
+    provider._conn_mgr = FakeManager()
+    provider._external_connection = True
+
+    if busy:
+        assert provider.acquire_migration_lock("APP", wait_timeout_seconds=timeout) is False
+    else:
+        with pytest.raises(Exception, match="SQL0204N"):
+            provider.acquire_migration_lock("APP", wait_timeout_seconds=timeout)
+    assert "SET CURRENT LOCK TIMEOUT 0" in calls
+    assert "helper_closed" in calls
+    assert "helper_invalidated" in calls
+    if busy:
+        if timeout >= 1:
+            assert sum("SYSCAT.SCHEMATA" in call for call in calls) == 1
+            assert not any("SYSCAT.TABLES" in call for call in calls)
+        else:
+            assert sum("SYSCAT.SCHEMATA" in call for call in calls) == 1
+            assert sum("SYSCAT.TABLES" in call for call in calls) == 1
+    assert not any("CREATE TABLE" in call for call in calls)
+
+
+@pytest.mark.parametrize("link", ("__cause__", "__context__"))
+def test_db2_lock_conflict_uses_immediate_fetch_error_cause(link) -> None:
+    fetch_error = SystemError("ibm_db.fetchone failed")
+    driver_error = Exception("SQL0911N reason code 68 SQLSTATE=40001")
+    setattr(fetch_error, link, driver_error)
+    provider = DummyDb2Provider()
+    helper = DummyDb2Provider()
+    calls = []
+    helper._connection = SimpleNamespace(invalidate=lambda: calls.append("invalidated"))
+    helper.execute_statement = lambda sql, schema=None, params=None: calls.append(sql)
+
+    def fail_preparation(schema):
+        raise fetch_error
+
+    helper.create_migration_lock_table_if_not_exists = fail_preparation
+
+    assert _is_lock_conflict(fetch_error) is True
+    assert provider._prepare_external_migration_lock_table(helper, "APP", 2) is False
+    assert calls == ["SET CURRENT LOCK TIMEOUT 0", "invalidated"]
+
+
+def test_db2_unrelated_fetch_system_error_propagates() -> None:
+    fetch_error = SystemError("ibm_db.fetchone failed")
+    fetch_error.__cause__ = Exception("SQL0204N undefined table")
+    fetch_error.__context__ = fetch_error
+    provider = DummyDb2Provider()
+    helper = DummyDb2Provider()
+    helper.execute_statement = lambda sql, schema=None, params=None: None
+    helper._connection = SimpleNamespace(invalidate=lambda: None)
+    helper.create_migration_lock_table_if_not_exists = lambda schema: (_ for _ in ()).throw(
+        fetch_error
+    )
+
+    assert _is_lock_conflict(fetch_error) is False
+    with pytest.raises(SystemError, match="ibm_db.fetchone failed"):
+        provider._prepare_external_migration_lock_table(helper, "APP", 2)
+
+
+def test_db2_unrelated_explicit_cause_does_not_use_hidden_lock_context() -> None:
+    fetch_error = SystemError("ibm_db.fetchone failed")
+    fetch_error.__cause__ = Exception("SQL0204N undefined table")
+    fetch_error.__context__ = Exception("SQL0911N earlier lock timeout")
+    fetch_error.__suppress_context__ = True
+
+    assert _is_lock_conflict(fetch_error) is False
+
+
+def test_db2_suppressed_lock_context_is_not_a_current_conflict() -> None:
+    fetch_error = SystemError("ibm_db.fetchone failed")
+    fetch_error.__context__ = Exception("SQL0911N earlier lock timeout")
+    fetch_error.__suppress_context__ = True
+
+    assert _is_lock_conflict(fetch_error) is False
+
+
+def test_db2_lock_preparation_discards_helper_after_success() -> None:
+    provider = DummyDb2Provider()
+    helper = DummyDb2Provider()
+    calls = []
+    helper.execute_statement = lambda sql, schema=None, params=None: calls.append(sql)
+    helper.create_migration_lock_table_if_not_exists = lambda schema: calls.append("prepared")
+    helper._connection = SimpleNamespace(invalidate=lambda: calls.append("invalidated"))
+
+    assert provider._prepare_external_migration_lock_table(helper, "APP", 2) is True
+    assert calls == ["SET CURRENT LOCK TIMEOUT 0", "prepared", "invalidated"]
+
+
+def test_db2_lock_preparation_does_not_return_modified_session_to_pool() -> None:
+    provider = DummyDb2Provider()
+    helper = DummyDb2Provider()
+    pooled_registers = []
+    register = [None]  # Db2 uses the database default while this register is NULL.
+    invalidated = [False]
+
+    def statement(sql, schema=None, params=None):
+        if sql.startswith("SET CURRENT LOCK TIMEOUT "):
+            register[0] = int(sql.rsplit(" ", 1)[1])
+        return 1
+
+    helper.execute_query = lambda sql, params=None: [{"LOCK_TIMEOUT": 5}]
+    helper.execute_statement = statement
+    helper.create_migration_lock_table_if_not_exists = lambda schema: None
+    helper._connection = SimpleNamespace(invalidate=lambda: invalidated.__setitem__(0, True))
+    helper._conn_mgr = SimpleNamespace(
+        close=lambda: pooled_registers.append(register[0]) if not invalidated[0] else None
+    )
+    helper.close = lambda: helper._conn_mgr.close()
+
+    assert provider._prepare_external_migration_lock_table(helper, "APP", 2) is True
+    helper.close()
+
+    assert pooled_registers == []
+
+
+def test_db2_lock_preparation_discards_helper_if_setting_timeout_fails() -> None:
+    provider = DummyDb2Provider()
+    helper = DummyDb2Provider()
+    calls = []
+    connection = SimpleNamespace(invalidate=lambda: calls.append("invalidated"))
+    helper._connection = connection
+
+    def statement(sql, schema=None, params=None):
+        calls.append(sql)
+        raise Exception("setting timeout failed")
+
+    helper.execute_statement = statement
+
+    with pytest.raises(Exception, match="setting timeout failed"):
+        provider._prepare_external_migration_lock_table(helper, "APP", 2)
+    assert "invalidated" in calls
 
 
 def test_release_migration_lock_deletes_own_row_and_keeps_table() -> None:

@@ -896,7 +896,9 @@ class BaseCommand:
                     else:
                         self.log.debug("Migration lock released successfully")
                 except Exception as release_e:
-                    self.log.warning(f"Could not release migration lock: {release_e}")
+                    self.log.warning(
+                        f"Could not release migration lock: {engine_error_message(release_e)}"
+                    )
 
     def _migration_lock_lost(self) -> bool:
         """Whether the provider reports the migration lock it holds as lost."""

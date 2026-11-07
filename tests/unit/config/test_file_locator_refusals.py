@@ -168,8 +168,6 @@ class TestUnresolvedReferenceScheme:
             {"url": "sqlite:///aws-ssm://p/db"},
             {"type": "sqlite", "path": "file:rel.db?mode=ro"},
             {"type": "sqlite", "path": "file:///abs/rel.db"},
-            {"type": "duckdb", "path": "secret://x/db"},
-            {"type": "duckdb", "database": "s3://bucket/db"},
             {"type": "duckdb", "path": "md:my_db"},
         ],
     )
@@ -356,9 +354,13 @@ class TestBareSchemeUrl:
     def test_a_registered_scheme_is_left_alone(self):
         DbliftConfig.from_dict({"database": {"type": "sqlite", "url": "aws-ssm://p/db"}})
 
-    def test_duckdb_keeps_any_name_locator_as_its_locator_rule_says(self):
-        # the DuckDB locator pattern accepts ``secret:``-shaped values (see the cases above)
-        DbliftConfig.from_dict({"database": {"type": "duckdb", "url": "secret://x/db"}})
+    @pytest.mark.parametrize("key", ["path", "database"])
+    @pytest.mark.parametrize("value", ["secret://x/db", "bogus://x/db"])
+    def test_duckdb_refuses_unhandled_reference_as_file(self, tmp_path, key, value):
+        with pytest.raises(ConfigurationError, match=rf"database\.{key}: unresolved reference"):
+            _load(tmp_path, {"type": "duckdb", key: value})
+        with pytest.raises(ConfigurationError, match=rf"database\.{key}: unresolved reference"):
+            DbliftConfig.from_dict({"database": {"type": "duckdb", key: value}})
 
 
 class TestEmptyLocatorWithAnOverride:
