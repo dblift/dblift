@@ -2,6 +2,7 @@
 
 import os
 import socket
+import time
 from typing import Any, Dict, List, Optional, cast
 
 from dblift.config import DbliftConfig
@@ -324,16 +325,37 @@ class Db2Provider(SqlLeaseLockingProvider):
         self, provider: SqlLeaseLockingProvider, schema: str, wait_timeout_seconds: float
     ) -> bool:
         """Bound catalog reads without changing the caller's Db2 connection."""
+        deadline = time.monotonic() + wait_timeout_seconds
+        rows = provider.execute_query(
+            "SELECT CURRENT LOCK TIMEOUT AS LOCK_TIMEOUT FROM SYSIBM.SYSDUMMY1"
+        )
+        previous_timeout = int(_row_value(rows[0], "LOCK_TIMEOUT"))
         try:
-            provider.execute_statement(
-                f"SET CURRENT LOCK TIMEOUT {max(0, int(wait_timeout_seconds))}"
-            )
-            provider.create_migration_lock_table_if_not_exists(schema)
-        except Exception as exc:
-            if _is_lock_conflict(exc):
-                return False
-            raise
-        return True
+            provider.execute_statement("SET CURRENT LOCK TIMEOUT 0")
+            while True:
+                try:
+                    provider.create_migration_lock_table_if_not_exists(schema)
+                    return True
+                except Exception as exc:
+                    if not _is_lock_conflict(exc):
+                        raise
+                    provider._ensure_connection().rollback()
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        return False
+                    time.sleep(min(0.1, remaining))
+                    if time.monotonic() >= deadline:
+                        return False
+        finally:
+            try:
+                # Db2 exposes the effective integer even when the register is NULL.
+                # Restore it so a pooled host connection keeps its prior behavior.
+                provider.execute_statement(f"SET CURRENT LOCK TIMEOUT {previous_timeout}")
+            except Exception:
+                connection = provider.connection
+                if connection is not None:
+                    connection.invalidate()
+                raise
 
     def _migration_lease_dialect(self, schema: str) -> SqlLeaseDialect:
         """Describe the DB2 lock table; rows before the lease used local ``CURRENT TIMESTAMP``."""

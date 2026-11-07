@@ -400,7 +400,7 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
         return True
 
     def _ensure_migration_lock_table_for_external_connection(
-        self, schema: str, wait_timeout_seconds: float
+        self, schema: str, deadline: float
     ) -> bool:
         """Prepare the lock table without committing the caller's transaction."""
         if isinstance(self.engine.pool, (StaticPool, SingletonThreadPool)):
@@ -414,7 +414,7 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
         )
         try:
             return self._prepare_external_migration_lock_table(
-                provider, schema, wait_timeout_seconds
+                provider, schema, max(0.0, deadline - time.monotonic())
             )
         finally:
             provider.close()
@@ -445,7 +445,7 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
         deadline = time.monotonic() + wait_timeout_seconds
         if self.is_caller_owned() and not self._migration_lease_is_private():
             if not self._ensure_migration_lock_table_for_external_connection(
-                schema, wait_timeout_seconds
+                schema, deadline
             ):
                 return False
         else:
