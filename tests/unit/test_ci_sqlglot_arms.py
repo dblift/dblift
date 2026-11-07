@@ -85,9 +85,9 @@ def test_only_fresh_resolve_reuses_the_publish_sqlglot_install() -> None:
     publish_jobs = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "publish-pypi.yml").read_text(encoding="utf-8")
     )["jobs"]
-    assert _install_step(others["fresh-resolve"])["run"] == _install_step(
-        publish_jobs["test"]
-    )["run"]
+    assert (
+        _install_step(others["fresh-resolve"])["run"] == _install_step(publish_jobs["test"])["run"]
+    )
 
 
 def test_the_main_job_runs_the_corpus_on_the_arm_the_constraints_pin() -> None:
