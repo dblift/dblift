@@ -75,13 +75,19 @@ def test_the_newest_job_runs_the_corpus_tests() -> None:
     assert CORPUS_TESTS in tests[0]
 
 
-def test_there_is_no_second_job_installing_a_sqlglot_release() -> None:
+def test_only_fresh_resolve_reuses_the_publish_sqlglot_install() -> None:
     others = {
         name: job
         for name, job in _jobs().items()
         if name != "sqlglot-newest" and re.search(r"sqlglot==", _run_text(job))
     }
-    assert others == {}
+    assert set(others) == {"fresh-resolve"}
+    publish_jobs = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "publish-pypi.yml").read_text(encoding="utf-8")
+    )["jobs"]
+    assert _install_step(others["fresh-resolve"])["run"] == _install_step(
+        publish_jobs["test"]
+    )["run"]
 
 
 def test_the_main_job_runs_the_corpus_on_the_arm_the_constraints_pin() -> None:
