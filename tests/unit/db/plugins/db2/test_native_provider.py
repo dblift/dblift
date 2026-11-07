@@ -251,6 +251,7 @@ def test_acquire_migration_lock_honors_timeout_when_row_is_held(monkeypatch) -> 
     [
         (2, "SQL0911N reason code 68: lock timeout", True),
         (0.1, "SQL0911N reason code 68: lock timeout", True),
+        (0, "SQL0911N reason code 68: lock timeout", True),
         (2, "SQL0204N undefined name", False),
     ],
 )
@@ -300,7 +301,7 @@ def test_caller_owned_lock_preparation_bounds_db2_catalog_wait(
     else:
         with pytest.raises(Exception, match="SQL0204N"):
             provider.acquire_migration_lock("APP", wait_timeout_seconds=timeout)
-    assert "SET CURRENT LOCK TIMEOUT 1" in calls
+    assert "SET CURRENT LOCK TIMEOUT 0" in calls
     assert "helper_closed" in calls
     assert "helper_invalidated" in calls
     if busy:
@@ -322,7 +323,7 @@ def test_db2_lock_preparation_discards_helper_after_success() -> None:
     helper._connection = SimpleNamespace(invalidate=lambda: calls.append("invalidated"))
 
     assert provider._prepare_external_migration_lock_table(helper, "APP", 2) is True
-    assert calls == ["SET CURRENT LOCK TIMEOUT 1", "prepared", "invalidated"]
+    assert calls == ["SET CURRENT LOCK TIMEOUT 0", "prepared", "invalidated"]
 
 
 def test_db2_lock_preparation_does_not_return_modified_session_to_pool() -> None:

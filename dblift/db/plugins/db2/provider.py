@@ -325,9 +325,7 @@ class Db2Provider(SqlLeaseLockingProvider):
     ) -> bool:
         """Bound catalog waits, then discard the modified helper connection."""
         try:
-            # Db2's driver can raise SystemError while fetching a locked catalog
-            # row with timeout 0; one second returns SQL0911N/68 instead.
-            provider.execute_statement("SET CURRENT LOCK TIMEOUT 1")
+            provider.execute_statement("SET CURRENT LOCK TIMEOUT 0")
             try:
                 provider.create_migration_lock_table_if_not_exists(schema)
             except Exception as exc:
