@@ -1,4 +1,4 @@
-"""The statement-facts corpus is recorded on two sqlglot releases; CI runs it on both.
+"""CI runs the statement-facts corpus on its recorded sqlglot floor and newest arms.
 
 ``constraints-ci.txt`` pins sqlglot at the declared minimum, so the main unit-test job runs
 the corpus on that arm. The ``sqlglot-newest`` job installs the extras without the constraints
@@ -85,9 +85,18 @@ def test_only_fresh_resolve_reuses_the_publish_sqlglot_install() -> None:
     publish_jobs = yaml.safe_load(
         (ROOT / ".github" / "workflows" / "publish-pypi.yml").read_text(encoding="utf-8")
     )["jobs"]
-    assert (
-        _install_step(others["fresh-resolve"])["run"] == _install_step(publish_jobs["test"])["run"]
+    fresh = others["fresh-resolve"]
+    publish = publish_jobs["test"]
+    assert "PIP_CONSTRAINT" not in json.dumps(fresh)
+    assert fresh.get("env") == publish.get("env")
+    fresh_python = next(
+        step for step in _steps(fresh) if step.get("uses", "").startswith("actions/setup-python@")
     )
+    publish_python = next(
+        step for step in _steps(publish) if step.get("uses", "").startswith("actions/setup-python@")
+    )
+    assert fresh_python["with"] == publish_python["with"]
+    assert _install_step(fresh)["run"] == _install_step(publish)["run"]
 
 
 def test_the_main_job_runs_the_corpus_on_the_arm_the_constraints_pin() -> None:
