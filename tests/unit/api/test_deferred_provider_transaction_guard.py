@@ -1,4 +1,4 @@
-"""The transaction guard reads the provider inside the public operation context."""
+"""Operations without caller connections do not need a transaction guard lookup."""
 
 import threading
 
@@ -9,25 +9,20 @@ from dblift.api.events import EventEmitter
 class _DeferredProviderClient(DBLiftClient):
     @property
     def provider(self):
-        if not self._thread_state.stack:
-            raise AssertionError("provider resolved before the operation context was set")
-        return self._provider
+        raise AssertionError("operation resolved its deferred provider")
 
-    @provider.setter
-    def provider(self, value):
-        self._provider = value
-
-    @_with_client_emitter
+    @_with_client_emitter(mutating=False)
     def operation(self):
+        assert self._thread_state.stack
         return "completed"
 
 
-def test_provider_is_resolved_after_operation_context_is_set():
+def test_operation_without_caller_connection_does_not_resolve_provider_for_guard():
     client = object.__new__(_DeferredProviderClient)
     client.events = EventEmitter()
     client._operation_lock = threading.RLock()
     client._thread_state = threading.local()
     client._thread_state.stack = []
-    client._provider = object()
+    client._caller_transaction_provider = None
 
     assert client.operation() == "completed"

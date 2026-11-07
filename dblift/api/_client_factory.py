@@ -19,6 +19,7 @@ from dblift.config.path_anchoring import anchor_config_paths, is_derived_log_dir
 from dblift.core.logger import DbliftLogger, Log, LogFormat, LogLevel, NullLog
 from dblift.core.migration.executor.migration_executor import require_analysis_support
 from dblift.db.native_connection_manager import NativeConnectionManager
+from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.provider_registry import ProviderRegistry
 
 
@@ -485,7 +486,7 @@ def client_from_sqlalchemy(
         setattr(provider, "_external_connection", True)
 
     ctor = client_cls or __import__("dblift.api.client", fromlist=["DBLiftClient"]).DBLiftClient
-    return ctor(
+    client = ctor(
         provider=provider,
         migrations_dir=migrations_dir or getattr(derived.migrations, "directory", None),
         config=derived,
@@ -493,3 +494,6 @@ def client_from_sqlalchemy(
         analysis_mode=analysis_mode,
         **kwargs,
     )
+    if connection is not None and isinstance(provider, TransactionalProvider):
+        client._caller_transaction_provider = provider
+    return client

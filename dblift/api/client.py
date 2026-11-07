@@ -147,8 +147,8 @@ def _with_client_emitter(
             with lock:
                 thread_state.stack = stack + [(inner.__name__, wrapper)]
                 try:
-                    if not stack:
-                        _raise_if_caller_transaction_open(self.provider)
+                    if not stack and self._caller_transaction_provider is not None:
+                        _raise_if_caller_transaction_open(self._caller_transaction_provider)
                     with use_client_emitter(emitter):
                         return inner(self, *args, **kwargs)
                 finally:
@@ -161,7 +161,7 @@ def _with_client_emitter(
     return decorator
 
 
-def _raise_if_caller_transaction_open(provider: BaseProvider) -> None:
+def _raise_if_caller_transaction_open(provider: TransactionalProvider) -> None:
     """Refuse operations on a caller-supplied SQLAlchemy connection with pending work."""
     if isinstance(provider, TransactionalProvider) and provider.caller_transaction_active() is True:
         raise CallerTransactionError(
@@ -259,6 +259,8 @@ class DBLiftClient:
         the "Thread Safety" section of the API reference for the full
         contract.
     """
+
+    _caller_transaction_provider: Optional[TransactionalProvider] = None
 
     def __init__(
         self,
@@ -1387,20 +1389,20 @@ class DBLiftClient:
             # Preserve a caller-owned connection unless DBLift has an explicit transaction.
             self.logger.warning(f"Exception in DBLiftClient context: {exc_val}")
 
-            caller_tx_state = (
-                self.provider.caller_transaction_active()
-                if isinstance(self.provider, TransactionalProvider)
-                else None
-            )
-            if caller_tx_state is None or (
-                isinstance(self.provider, TransactionalProvider)
-                and self.provider.has_explicit_transaction() is True
-            ):
-                try:
-                    if isinstance(self.provider, TransactionalProvider):
-                        self.provider.rollback_transaction()
-                except Exception as rollback_error:
-                    self.logger.error(f"Error during rollback in __exit__: {rollback_error}")
+            caller_provider = self._caller_transaction_provider
+            if caller_provider is not None:
+                rollback_provider = (
+                    caller_provider if caller_provider.has_explicit_transaction() is True else None
+                )
+            else:
+                rollback_provider = (
+                    self.provider if isinstance(self.provider, TransactionalProvider) else None
+                )
+            try:
+                if rollback_provider is not None:
+                    rollback_provider.rollback_transaction()
+            except Exception as rollback_error:
+                self.logger.error(f"Error during rollback in __exit__: {rollback_error}")
 
         # Close the provider connection
         try:
