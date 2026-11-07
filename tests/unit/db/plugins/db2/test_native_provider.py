@@ -352,6 +352,23 @@ def test_db2_unrelated_fetch_system_error_propagates() -> None:
         provider._prepare_external_migration_lock_table(helper, "APP", 2)
 
 
+def test_db2_unrelated_explicit_cause_does_not_use_hidden_lock_context() -> None:
+    fetch_error = SystemError("ibm_db.fetchone failed")
+    fetch_error.__cause__ = Exception("SQL0204N undefined table")
+    fetch_error.__context__ = Exception("SQL0911N earlier lock timeout")
+    fetch_error.__suppress_context__ = True
+
+    assert _is_lock_conflict(fetch_error) is False
+
+
+def test_db2_suppressed_lock_context_is_not_a_current_conflict() -> None:
+    fetch_error = SystemError("ibm_db.fetchone failed")
+    fetch_error.__context__ = Exception("SQL0911N earlier lock timeout")
+    fetch_error.__suppress_context__ = True
+
+    assert _is_lock_conflict(fetch_error) is False
+
+
 def test_db2_lock_preparation_discards_helper_after_success() -> None:
     provider = DummyDb2Provider()
     helper = DummyDb2Provider()
