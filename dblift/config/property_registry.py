@@ -114,6 +114,7 @@ PROPERTY_REGISTRY: List[PropertySpec] = [
     PropertySpec("database.host", "str", None, cli_exempt=True),
     PropertySpec("database.port", "int", None, coerce=int, cli_exempt=True),
     PropertySpec("database.database", "str", None, cli_exempt=True),
+    PropertySpec("database.path", "str", None, cli_exempt=True),
     PropertySpec("database.connection_timeout", "int", 30, coerce=int, cli_exempt=True),
 ]
 
