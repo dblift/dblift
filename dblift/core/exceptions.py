@@ -71,6 +71,10 @@ class TransactionAbortedError(ExecutionError):
     """Raised when a database transaction is in an aborted state."""
 
 
+class CallerTransactionError(DbliftError, RuntimeError):
+    """Raised when a client operation receives a connection with an open caller transaction."""
+
+
 class CallbackExecutionError(ExecutionError):
     """Raised when a migration callback fails."""
 

@@ -32,7 +32,7 @@ from dblift.api._client_factory import (
 )
 from dblift.api.events import EventEmitter, EventType, use_client_emitter
 from dblift.config import DbliftConfig
-from dblift.core.exceptions import InvalidTargetVersionError
+from dblift.core.exceptions import CallerTransactionError, InvalidTargetVersionError
 from dblift.core.logger.results import (
     BaselineResult,
     CleanResult,
@@ -145,6 +145,8 @@ def _with_client_emitter(
             if mutating:
                 _raise_if_reentrant(stack, inner.__name__, wrapper)
             with lock:
+                if not stack:
+                    _raise_if_caller_transaction_open(self.provider)
                 thread_state.stack = stack + [(inner.__name__, wrapper)]
                 try:
                     with use_client_emitter(emitter):
@@ -157,6 +159,15 @@ def _with_client_emitter(
     if method is not None:
         return decorator(method)
     return decorator
+
+
+def _raise_if_caller_transaction_open(provider: BaseProvider) -> None:
+    """Refuse operations on a caller-supplied SQLAlchemy connection with pending work."""
+    if isinstance(provider, TransactionalProvider) and provider.caller_transaction_active() is True:
+        raise CallerTransactionError(
+            "The caller's connection has an active transaction. Commit or roll back "
+            "the caller transaction before starting a DBLift operation."
+        )
 
 
 def _preflight_connection_failure(exc: BaseException) -> Optional[PreflightConnectionError]:
@@ -1373,14 +1384,23 @@ class DBLiftClient:
         exc_tb: Optional[TracebackType],
     ) -> None:
         if exc_type is not None:
-            # Exception occurred, rollback any pending transaction
+            # Preserve a caller-owned connection unless DBLift has an explicit transaction.
             self.logger.warning(f"Exception in DBLiftClient context: {exc_val}")
 
-            try:
-                if isinstance(self.provider, TransactionalProvider):
-                    self.provider.rollback_transaction()
-            except Exception as rollback_error:
-                self.logger.error(f"Error during rollback in __exit__: {rollback_error}")
+            caller_tx_state = (
+                self.provider.caller_transaction_active()
+                if isinstance(self.provider, TransactionalProvider)
+                else None
+            )
+            if caller_tx_state is None or (
+                isinstance(self.provider, TransactionalProvider)
+                and self.provider.has_explicit_transaction() is True
+            ):
+                try:
+                    if isinstance(self.provider, TransactionalProvider):
+                        self.provider.rollback_transaction()
+                except Exception as rollback_error:
+                    self.logger.error(f"Error during rollback in __exit__: {rollback_error}")
 
         # Close the provider connection
         try:

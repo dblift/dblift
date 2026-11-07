@@ -398,6 +398,15 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
         """Return True when bound to a connection passed to ``from_sqlalchemy``."""
         return bool(getattr(self, "_external_connection", False))
 
+    def caller_transaction_active(self) -> Optional[bool]:
+        """Return whether the explicitly supplied SQLAlchemy connection has an open tx."""
+        connection = self._connection if self.is_caller_owned() else None
+        return connection.in_transaction() if connection is not None else None
+
+    def has_explicit_transaction(self) -> bool:
+        """Return whether DBLift opened an explicit SQLAlchemy transaction."""
+        return self.__dict__.get("_tx") is not None
+
     def note_caller_work(self) -> None:
         """Remember the caller's open transaction as holding dblift's writes."""
         with self._lock:

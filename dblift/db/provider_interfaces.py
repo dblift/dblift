@@ -278,6 +278,14 @@ class TransactionalProvider(ABC):
         """Return True if the caller supplied the connection and owns its transactions."""
         return False
 
+    def caller_transaction_active(self) -> Optional[bool]:
+        """Return transaction state for an explicitly supplied connection, else None."""
+        return None
+
+    def has_explicit_transaction(self) -> bool:
+        """Return True when DBLift owns an explicitly opened transaction."""
+        return False
+
     def note_caller_work(self) -> None:
         """Record that dblift wrote inside the caller's open transaction."""
 
