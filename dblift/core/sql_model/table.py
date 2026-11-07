@@ -755,11 +755,11 @@ class Table(SqlObject):
             for key, value in opts.items():
                 table.set_dialect_option(plugin, key, value)
 
-        # Restore explicit properties
-        if data.get("explicit_properties"):
-            for prop, is_explicit in data["explicit_properties"].items():
-                if is_explicit:
-                    table.mark_property_explicit(prop)
+        # Restore the serialized explicit-property state when present. An
+        # empty mapping is meaningful and must clear flags inferred while
+        # constructing the table from legacy flat fields.
+        if "explicit_properties" in data:
+            table.explicit_properties = dict(data.get("explicit_properties") or {})
 
         return table
 

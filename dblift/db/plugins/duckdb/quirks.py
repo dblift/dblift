@@ -30,6 +30,9 @@ class DuckDBQuirks(BaseQuirks):
     statement_facts_class = DuckDBStatementFactsReader
     default_schema_name = "main"
     boolean_false_literal = "FALSE"  # native BOOLEAN, not 0/1
+    schema_history_race_markers = BaseQuirks.schema_history_race_markers + (
+        "catalog write-write conflict",
+    )
     drop_supports_if_exists = True
     # Wave B hooks — embedded, file-based, no credentials (mirrors SQLite).
     native_driver_display = "duckdb"

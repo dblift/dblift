@@ -225,3 +225,19 @@ class TestDialectOptionsSerializationContract:
         assert restored.get_dialect_option("sqlserver", "filegroup") == "FG1"
         assert restored.get_dialect_option("oracle", "pctfree") == 20
         assert restored.get_dialect_option("postgresql", "row_security") is True
+
+    def test_empty_explicit_properties_clears_legacy_inferred_flags(self):
+        legacy = {
+            "name": "t",
+            "schema": "app",
+            "dialect": "sqlserver",
+            "object_type": "TABLE",
+            "columns": [],
+            "constraints": [],
+            "filegroup": "PRIMARY",
+            "explicit_properties": {},
+        }
+
+        restored = Table.from_dict(legacy)
+
+        assert not restored.is_property_explicit("filegroup")

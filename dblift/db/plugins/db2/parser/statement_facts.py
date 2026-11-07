@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from typing import FrozenSet, Iterator, List, Optional, Tuple
 
@@ -10,6 +11,7 @@ from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
 from dblift.core.sql_parser.tokens import Token, TokenType
+from dblift.db.plugins.db2.parser.data_change_cte import holds_data_change, read_data_change_cte
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_RULES, DB2_SPEC
 
 COLUMNS_UNAVAILABLE = "db2 column-level facts are unavailable: declared columns, constraints and indexed columns are not read"
@@ -23,12 +25,12 @@ NAME_NOT_READ = "db2 {operation} {type}: name not read"
 DATA_CHANGE_QUERY = "db2 data-change query: target not named"
 SET_INTEGRITY = "db2 SET INTEGRITY: tables not named"
 CALL_EFFECTS_UNAVAILABLE = "db2 CALL: procedure effects are not read"
+SOURCE_REFERENCES_UNAVAILABLE = "db2 {operation}: source table references are not enumerated"
 
 _DDL = frozenset("CREATE ALTER DROP RENAME COMMENT DECLARE GRANT REVOKE TRUNCATE".split())
 _DML = frozenset("INSERT UPDATE DELETE MERGE".split())
 _QUERY = frozenset("SELECT WITH VALUES".split())
 _TRANSACTION = frozenset("COMMIT ROLLBACK SAVEPOINT RELEASE".split())
-_DATA_CHANGE = frozenset("FINAL NEW OLD".split())
 _QUERY_RESERVED = frozenset(
     """SELECT WITH VALUES FROM WHERE AS INTO FOR UPDATE DELETE INSERT MERGE FINAL NEW OLD
     TABLE JOIN INNER LEFT RIGHT FULL CROSS ON UNION EXCEPT INTERSECT GROUP ORDER HAVING
@@ -320,8 +322,8 @@ def _name_run(words: List[Token], at: int) -> Tuple[List[Token], int]:
 
 def _read_name(
     words: List[Token], at: int, max_parts: int, stop: FrozenSet[str] = STOP_WORDS
-) -> Optional[Tuple[Tuple[str, ...], int, int]]:
-    """The folded parts of the name at ``at``, its source offset and the index after it."""
+) -> Optional[Tuple[Tuple[str, ...], int, int, Tuple[bool, ...]]]:
+    """The folded name parts, source offset, end index and quoted-part flags."""
     run, i = _name_run(words, at)
     if not run or len(run) > max_parts or (i < len(words) and _is_symbol(words[i], ".")):
         return None
@@ -329,7 +331,12 @@ def _read_name(
         return None
     if any(t.type is TokenType.KEYWORD and t.text.upper() in stop for t in run):
         return None
-    return tuple(fold_name(t.text) for t in run), run[0].pos, i
+    return (
+        tuple(fold_name(t.text) for t in run),
+        run[0].pos,
+        i,
+        tuple(t.type is TokenType.IDENTIFIER and t.text.startswith('"') for t in run),
+    )
 
 
 def _skip_group(words: List[Token], at: int) -> int:
@@ -341,8 +348,17 @@ def _skip_group(words: List[Token], at: int) -> int:
     return at
 
 
-def _object(parts: Tuple[str, ...], otype: SqlObjectType, role: str) -> NamedObject:
-    return NamedObject(parts[-1], otype, role, parts[-2] if len(parts) > 1 else None)
+def _object(
+    parts: Tuple[str, ...], otype: SqlObjectType, role: str, quoted: Tuple[bool, ...] = ()
+) -> NamedObject:
+    return NamedObject(
+        parts[-1],
+        otype,
+        role,
+        parts[-2] if len(parts) > 1 else None,
+        name_quoted=quoted[-1] if quoted else None,
+        schema_quoted=quoted[-2] if len(quoted) > 1 else None,
+    )
 
 
 def _head_facts(
@@ -368,13 +384,14 @@ def _head_facts(
             name = relaxed
     if name is None:
         return None, at
-    parts, _, end = name
+    parts, _, end, quoted = name
     if head.operation in ("CREATE", "ALTER", "DROP") and _second_word_taken(words, ups, at, end):
         return None, end
     if not _may_follow(words, ups, head, end):
         return None, end
     if head.words[-1] == "COLUMN":
         parts = parts[:-1]
+        quoted = quoted[:-1]
     if not parts:
         return None, end
     if grants and ups[end : end + 1] not in (["TO"], ["FROM"]):
@@ -382,7 +399,7 @@ def _head_facts(
     after = _skip_group(words, end)
     if head.follow and ups[after : after + 1] != list(head.follow):
         return None, end
-    objects = [_object(parts, otype, head.role)]
+    objects = [_object(parts, otype, head.role, quoted)]
     indexed_table = None
     if head.words == ("CREATE", "INDEX"):
         if ups[end : end + 1] != ["ON"]:
@@ -392,7 +409,7 @@ def _head_facts(
             return None, end + 1
         end = table[2]
         indexed_table = ".".join(table[0])
-        objects.append(_object(table[0], SqlObjectType.TABLE, "referenced"))
+        objects.append(_object(table[0], SqlObjectType.TABLE, "referenced", table[3]))
     diagnostic = (
         CALL_EFFECTS_UNAVAILABLE
         if head.operation == "CALL"
@@ -535,7 +552,7 @@ def _read_dml(sql: str, words: List[Token], ups: List[str], first: str) -> State
     name = _read_name(words, len(prefix), 2) if tuple(ups[: len(prefix)]) == prefix else None
     if name is None:
         return unread
-    parts, start, after = name
+    parts, start, after, quoted = name
     n = len(words)
     name_end = words[after - 1]
     if first != "INSERT":
@@ -560,7 +577,7 @@ def _read_dml(sql: str, words: List[Token], ups: List[str], first: str) -> State
     return StatementFacts(
         first,
         "DML",
-        (_object(parts, SqlObjectType.TABLE, "altered"),),
+        (_object(parts, SqlObjectType.TABLE, "altered", quoted),),
         target=".".join(parts),
         predicate=_predicate(sql, words, where) if where is not None else None,
         affected_columns=(
@@ -569,6 +586,11 @@ def _read_dml(sql: str, words: List[Token], ups: List[str], first: str) -> State
             else _merge_columns(words, after) if first == "MERGE" else ()
         ),
         events=_merge_events(words, after) if first == "MERGE" else frozenset({first}),
+        diagnostic=(
+            SOURCE_REFERENCES_UNAVAILABLE.format(operation=first)
+            if first == "MERGE" or any(keyword in ups[after:] for keyword in ("FROM", "JOIN"))
+            else None
+        ),
         target_sql=sql[start : name_end.pos + len(name_end.text)],
     )
 
@@ -594,11 +616,6 @@ def _head_end(words: List[Token], at: int) -> int:
         if token.type is TokenType.SYMBOL and token.text == "(":
             return i + 1
     return end
-
-
-def _holds_data_change(ups: List[str]) -> bool:
-    """Whether the tokens hold FINAL TABLE, NEW TABLE or OLD TABLE."""
-    return any(a in _DATA_CHANGE and b == "TABLE" for a, b in zip(ups, ups[1:]))
 
 
 def _query_name(words: List[Token], at: int, max_parts: int = 2) -> int:
@@ -734,7 +751,11 @@ class Db2StatementFactsReader:
                 return StatementFacts(first, "UNKNOWN", events=frozenset())
             return StatementFacts(first, "UNKNOWN")
         if first in _QUERY:
-            if _holds_data_change(ups):
+            if holds_data_change(ups):
+                if first == "WITH":
+                    facts = read_data_change_cte(sql, words, ups, sys.modules[__name__])
+                    if facts is not None:
+                        return facts
                 return _opaque(first, kind, DATA_CHANGE_QUERY)
             if all(
                 t.type is not TokenType.COMMENT
@@ -770,7 +791,7 @@ class Db2StatementFactsReader:
             char = _unread_character(sql, words, window)
             if char is not None:
                 return _opaque(first, kind, UNREAD_NAME.format(code=ord(sql[char])))
-            if _holds_data_change(ups):
+            if holds_data_change(ups):
                 return _opaque(first, kind, DATA_CHANGE_QUERY)
             return _read_dml(sql, words, ups, first)
         return _opaque(first, kind, NOT_CLASSIFIED.format(word=first))

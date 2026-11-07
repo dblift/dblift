@@ -10,7 +10,9 @@ driver and always run.
 from __future__ import annotations
 
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Barrier
 from typing import Any
 
 import pytest
@@ -168,6 +170,52 @@ class TestDuckDBRoundTrip:
 
 @pytest.mark.unit
 class TestDuckDBMigrationLock:
+    @pytest.mark.parametrize(
+        ("message", "failures", "expected_calls", "expected_rollbacks"),
+        [
+            ("Catalog write-write conflict", 1, 3, 1),
+            ("Catalog write-write conflict", 3, 3, 2),
+            ("permission denied", 1, 1, 0),
+        ],
+    )
+    def test_lock_table_bootstrap_retries_only_schema_races(
+        self,
+        duckdb_provider,
+        monkeypatch: pytest.MonkeyPatch,
+        message: str,
+        failures: int,
+        expected_calls: int,
+        expected_rollbacks: int,
+    ) -> None:
+        from sqlalchemy.exc import OperationalError
+
+        provider, _ = duckdb_provider
+        calls: list[str] = []
+        rollbacks: list[None] = []
+        delays: list[float] = []
+        error = OperationalError("CREATE TABLE", {}, Exception(message))
+
+        def execute(sql: str) -> int:
+            calls.append(sql)
+            if len(calls) <= failures:
+                raise error
+            return -1
+
+        monkeypatch.setattr(provider, "create_schema_if_not_exists", lambda schema: None)
+        monkeypatch.setattr(provider, "execute_statement", execute)
+        monkeypatch.setattr(provider, "rollback_transaction", lambda: rollbacks.append(None))
+        monkeypatch.setattr("time.sleep", delays.append)
+
+        if failures == 3 or message == "permission denied":
+            with pytest.raises(OperationalError, match=message):
+                provider.create_migration_lock_table_if_not_exists("main")
+        else:
+            provider.create_migration_lock_table_if_not_exists("main")
+
+        assert len(calls) == expected_calls
+        assert len(rollbacks) == expected_rollbacks
+        assert delays == [0.1 * (2**attempt) for attempt in range(expected_rollbacks)]
+
     def test_contended_lock_times_out_with_false(self, duckdb_provider) -> None:
         from dblift.db.plugins.duckdb.provider import DuckDBProvider
 
@@ -186,6 +234,107 @@ class TestDuckDBMigrationLock:
             assert contender.release_migration_lock("main") is True
         finally:
             contender.close()
+
+
+@pytest.mark.unit
+class TestDuckDBConcurrentBootstrap:
+    def _race_migrations(self, dbfile: Path, migrations: Path) -> list[object]:
+        from dblift.api.client import DBLiftClient
+        from dblift.config import DatabaseConfig, DbliftConfig
+        from dblift.db.plugins.duckdb.provider import DuckDBProvider
+
+        config = DbliftConfig(
+            database=DatabaseConfig(type="duckdb", url=f"duckdb:///{dbfile}", schema="main")
+        )
+        clients = [
+            DBLiftClient(
+                provider=DuckDBProvider(config), migrations_dir=str(migrations), config=config
+            )
+            for _ in range(2)
+        ]
+        barrier = Barrier(2)
+
+        def migrate(client):
+            barrier.wait()
+            return client.migrate()
+
+        try:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                return list(executor.map(migrate, clients))
+        finally:
+            for client in clients:
+                client.provider.close()
+
+    def test_cold_concurrent_migrations_converge(self, tmp_path: Path) -> None:
+        migrations = tmp_path / "cold_migrations"
+        migrations.mkdir()
+        (migrations / "V1__create.sql").write_text("CREATE TABLE cold_fixture (id INTEGER);")
+
+        results = self._race_migrations(tmp_path / "cold.duckdb", migrations)
+
+        assert all(result.success for result in results), [
+            result.error_message for result in results
+        ]
+        import duckdb
+
+        conn = duckdb.connect(str(tmp_path / "cold.duckdb"))
+        try:
+            assert (
+                conn.execute("SELECT count(*) FROM main.dblift_schema_history").fetchone()[0] == 1
+            )
+            assert conn.execute("SELECT count(*) FROM main.cold_fixture").fetchone()[0] == 0
+        finally:
+            conn.close()
+
+    def test_concurrent_missing_lock_table_bootstrap_converges(self, tmp_path: Path) -> None:
+        import duckdb
+
+        dbfile = tmp_path / "partial.duckdb"
+        # Seed only the history table so both clients race to bootstrap the lock table.
+        from dblift.config import DatabaseConfig, DbliftConfig
+        from dblift.db.plugins.duckdb.provider import DuckDBProvider
+
+        config = DbliftConfig(
+            database=DatabaseConfig(type="duckdb", url=f"duckdb:///{dbfile}", schema="main")
+        )
+        seed_provider = DuckDBProvider(config)
+        seed_provider.create_migration_history_table_if_not_exists("main")
+        seed_provider.close()
+        conn = duckdb.connect(str(dbfile))
+        try:
+            assert (
+                conn.execute(
+                    "SELECT count(*) FROM information_schema.tables WHERE table_schema='main' "
+                    "AND table_name='dblift_migration_lock'"
+                ).fetchone()[0]
+                == 0
+            )
+        finally:
+            conn.close()
+        migrations = tmp_path / "partial_migrations"
+        migrations.mkdir()
+        (migrations / "V2__create.sql").write_text("CREATE TABLE partial_fixture (id INTEGER);")
+
+        results = self._race_migrations(dbfile, migrations)
+
+        assert all(result.success for result in results), [
+            result.error_message for result in results
+        ]
+        conn = duckdb.connect(str(dbfile))
+        try:
+            assert (
+                conn.execute("SELECT count(*) FROM main.dblift_schema_history").fetchone()[0] == 1
+            )
+            assert conn.execute("SELECT count(*) FROM main.partial_fixture").fetchone()[0] == 0
+            assert (
+                conn.execute(
+                    "SELECT count(*) FROM information_schema.tables WHERE table_schema='main' "
+                    "AND table_name='dblift_migration_lock'"
+                ).fetchone()[0]
+                == 1
+            )
+        finally:
+            conn.close()
 
 
 @pytest.mark.unit
@@ -212,6 +361,47 @@ class TestDuckDBDmlRowcount:
         assert rc == 1, f"expected rowcount 1, got {rc}"
         rc0 = provider.execute_statement("UPDATE t SET v = 'y' WHERE id = 99")
         assert rc0 == 0, f"expected rowcount 0, got {rc0}"
+
+    @pytest.mark.parametrize("params", [None, [1, 1]])
+    def test_duckdb_2_uses_native_dml_rowcount(self, tmp_path: Path, monkeypatch, params) -> None:
+        from dblift.db.plugins.duckdb.provider import DuckDBProvider
+
+        provider = self._provider(tmp_path)
+        monkeypatch.setattr(duckdb, "__version__", "2.0.0")
+        calls = []
+
+        class Result:
+            def scalar_one(self):
+                return 1
+
+            def fetchall(self):
+                return [(1,)]
+
+        class Connection:
+            def exec_driver_sql(self, sql, execution_options=None):
+                calls.append(("exec_driver_sql", sql, execution_options))
+                return Result()
+
+            def execute(self, statement, bound_params):
+                calls.append(("execute", str(statement), bound_params))
+                return Result()
+
+            def commit(self):
+                calls.append(("commit",))
+
+        connection = Connection()
+        monkeypatch.setattr(provider, "_ensure_connection", lambda: connection)
+        monkeypatch.setattr(provider, "is_caller_owned", lambda: False)
+        sql = (
+            "UPDATE t SET v = 1 WHERE id = 1"
+            if params is None
+            else "UPDATE t SET v = ? WHERE id = ?"
+        )
+
+        assert provider.execute_statement(sql, params=params) == 1
+        assert calls[0][0] == ("exec_driver_sql" if params is None else "execute")
+        assert "RETURNING" not in calls[0][1].upper()
+        assert calls[-1] == ("commit",)
 
     def test_update_with_leading_directive_comments(self, tmp_path: Path) -> None:
         provider = self._provider(tmp_path)
@@ -266,7 +456,9 @@ class TestDuckDBDmlRowcount:
         provider.execute_statement("INSERT INTO t VALUES (1, true), (2, false)")
         assert provider.execute_statement("DELETE FROM t WHERE x") == 1
 
-    def test_returning_rewrite_runs_unbound_sql_through_exec_unbound(self, tmp_path: Path) -> None:
+    def test_returning_rewrite_runs_unbound_sql_through_exec_unbound(
+        self, tmp_path: Path, monkeypatch
+    ) -> None:
         """The RETURNING rewrite sends unbound SQL with no parameter argument."""
         from unittest.mock import patch
 
@@ -275,6 +467,7 @@ class TestDuckDBDmlRowcount:
         provider = self._provider(tmp_path)
         provider.execute_statement("CREATE TABLE t (id INTEGER PRIMARY KEY, v VARCHAR)")
         provider.execute_statement("INSERT INTO t VALUES (1, 'a')")
+        monkeypatch.setattr(duckdb, "__version__", "1.4.3")
         real = SqlAlchemyProvider.__dict__["_exec_unbound"].__func__
         sent: list = []
 
@@ -382,6 +575,24 @@ class TestDuckDBDmlRowcount:
         cleaned = blank("UPDATE t SET v = 1  -- returning\nWHERE id = 1")
         assert "returning" not in cleaned.lower()
         assert has(cleaned, "RETURNING") is False
+
+    @pytest.mark.parametrize(
+        ("sql", "expected"),
+        [
+            ('UPDATE t SET "returning" = 1', False),
+            ('UPDATE t SET "a""returning" = 1', False),
+            ("UPDATE t SET v = 'it''s returning'", False),
+            ("UPDATE t SET v = 1 RETURNING_col", False),
+            ("UPDATE t SET v = 1 col_RETURNING", False),
+            ("UPDATE t SET v = 1 RETURNING id", True),
+        ],
+    )
+    def test_returning_keyword_respects_quoted_text_and_identifier_boundaries(
+        self, sql: str, expected: bool
+    ) -> None:
+        from dblift.db.plugins.duckdb.provider import DuckDBProvider
+
+        assert DuckDBProvider._has_top_level_keyword(sql, "RETURNING") is expected
 
     def test_schema_kwarg_path_with_dml_rowcount(self, tmp_path: Path) -> None:
         provider = self._provider(tmp_path)
