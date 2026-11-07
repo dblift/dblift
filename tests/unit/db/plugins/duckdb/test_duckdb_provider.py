@@ -170,6 +170,34 @@ class TestDuckDBRoundTrip:
 
 @pytest.mark.unit
 class TestDuckDBMigrationLock:
+    def test_external_preparation_uses_part_of_wait_budget(
+        self, duckdb_provider, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from types import SimpleNamespace
+
+        from dblift.db.plugins import sql_lease_store
+
+        provider, _ = duckdb_provider
+        remaining = []
+        clock = iter((10.0, 11.25))
+        monkeypatch.setattr(sql_lease_store, "time", SimpleNamespace(monotonic=lambda: next(clock)))
+        monkeypatch.setattr(provider, "_external_connection", True, raising=False)
+        monkeypatch.setattr(
+            provider,
+            "_ensure_migration_lock_table_for_external_connection",
+            lambda schema, timeout: True,
+        )
+
+        def acquire(schema, session, timeout):
+            remaining.append(timeout)
+            session.close()
+            return True
+
+        monkeypatch.setattr(provider, "_acquire_migration_lease", acquire)
+
+        assert provider.acquire_migration_lock("main", wait_timeout_seconds=2) is True
+        assert remaining == [0.75]
+
     @pytest.mark.parametrize(
         ("message", "failures", "expected_calls", "expected_rollbacks"),
         [

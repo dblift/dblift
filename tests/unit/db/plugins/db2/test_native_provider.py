@@ -14,7 +14,7 @@ from tests.unit.db.plugins.lease_support import route_lease_to
 
 
 class DummyDb2Provider(Db2Provider):
-    def __init__(self) -> None:
+    def __init__(self, *_args) -> None:
         self.calls = []
         self.config = SimpleNamespace(database=SimpleNamespace(type="db2"))
         self.log = SimpleNamespace(
@@ -244,6 +244,59 @@ def test_acquire_migration_lock_honors_timeout_when_row_is_held(monkeypatch) -> 
     provider.execute_statement = fail_insert
 
     assert provider.acquire_migration_lock("APP", wait_timeout_seconds=0.1) is False
+
+
+@pytest.mark.parametrize(
+    ("timeout", "error", "busy"),
+    [
+        (2, "SQL0911N reason code 68: lock timeout", True),
+        (0.1, "SQL0911N reason code 68: lock timeout", True),
+        (2, "SQL0204N undefined name", False),
+    ],
+)
+def test_caller_owned_lock_preparation_bounds_db2_catalog_wait(
+    monkeypatch, timeout, error, busy
+) -> None:
+    """An unrelated uncommitted CREATE TABLE must not hang lock preparation."""
+    from dblift.db.plugins import sql_lease_store
+
+    engine = SimpleNamespace(pool=object())
+    calls = []
+
+    class FakeManager:
+        def __init__(self, *_args, **_kwargs):
+            self.engine = engine
+
+        def close(self):
+            calls.append("helper_closed")
+
+    def query(self, sql, params=None):
+        calls.append(sql)
+        if "SYSCAT.TABLES" in sql:
+            assert any("SET CURRENT LOCK TIMEOUT" in call for call in calls)
+            raise Exception(error)
+        return [{"SCHEMANAME": "APP"}]
+
+    def statement(self, sql, schema=None, params=None):
+        calls.append(sql)
+        return 1
+
+    monkeypatch.setattr(sql_lease_store, "NativeConnectionManager", FakeManager)
+    monkeypatch.setattr(DummyDb2Provider, "execute_query", query)
+    monkeypatch.setattr(DummyDb2Provider, "execute_statement", statement)
+    monkeypatch.setattr(DummyDb2Provider, "close", lambda self: self._conn_mgr.close())
+    provider = DummyDb2Provider()
+    provider._conn_mgr = FakeManager()
+    provider._external_connection = True
+
+    if busy:
+        assert provider.acquire_migration_lock("APP", wait_timeout_seconds=timeout) is False
+    else:
+        with pytest.raises(Exception, match="SQL0204N"):
+            provider.acquire_migration_lock("APP", wait_timeout_seconds=timeout)
+    assert f"SET CURRENT LOCK TIMEOUT {int(timeout)}" in calls
+    assert "helper_closed" in calls
+    assert not any("CREATE TABLE" in call for call in calls)
 
 
 def test_release_migration_lock_deletes_own_row_and_keeps_table() -> None:

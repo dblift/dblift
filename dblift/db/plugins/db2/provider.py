@@ -320,6 +320,21 @@ class Db2Provider(SqlLeaseLockingProvider):
             )
             """)
 
+    def _prepare_external_migration_lock_table(
+        self, provider: SqlLeaseLockingProvider, schema: str, wait_timeout_seconds: float
+    ) -> bool:
+        """Bound catalog reads without changing the caller's Db2 connection."""
+        try:
+            provider.execute_statement(
+                f"SET CURRENT LOCK TIMEOUT {max(0, int(wait_timeout_seconds))}"
+            )
+            provider.create_migration_lock_table_if_not_exists(schema)
+        except Exception as exc:
+            if _is_lock_conflict(exc):
+                return False
+            raise
+        return True
+
     def _migration_lease_dialect(self, schema: str) -> SqlLeaseDialect:
         """Describe the DB2 lock table; rows before the lease used local ``CURRENT TIMESTAMP``."""
         lock_identity = (
