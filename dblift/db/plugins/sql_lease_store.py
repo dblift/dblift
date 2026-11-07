@@ -444,9 +444,7 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
             return True
         deadline = time.monotonic() + wait_timeout_seconds
         if self.is_caller_owned() and not self._migration_lease_is_private():
-            if not self._ensure_migration_lock_table_for_external_connection(
-                schema, deadline
-            ):
+            if not self._ensure_migration_lock_table_for_external_connection(schema, deadline):
                 return False
         else:
             self.create_migration_lock_table_if_not_exists(schema)

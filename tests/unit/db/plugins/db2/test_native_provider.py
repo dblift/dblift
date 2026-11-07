@@ -414,6 +414,7 @@ def test_db2_lock_preparation_discards_helper_if_setting_timeout_fails() -> None
     calls = []
     connection = SimpleNamespace(invalidate=lambda: calls.append("invalidated"))
     helper._connection = connection
+
     def statement(sql, schema=None, params=None):
         calls.append(sql)
         raise Exception("setting timeout failed")
