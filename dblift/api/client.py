@@ -145,10 +145,10 @@ def _with_client_emitter(
             if mutating:
                 _raise_if_reentrant(stack, inner.__name__, wrapper)
             with lock:
-                if not stack:
-                    _raise_if_caller_transaction_open(self.provider)
                 thread_state.stack = stack + [(inner.__name__, wrapper)]
                 try:
+                    if not stack:
+                        _raise_if_caller_transaction_open(self.provider)
                     with use_client_emitter(emitter):
                         return inner(self, *args, **kwargs)
                 finally:
