@@ -8,7 +8,7 @@ import pytest
 
 from dblift.config import DbliftConfig
 from dblift.core.migration.clean_summary import CleanExecutionSummary
-from dblift.db.plugins.db2.provider import DB2_LOCK_STALE_SECONDS, Db2Provider
+from dblift.db.plugins.db2.provider import DB2_LOCK_STALE_SECONDS, Db2Provider, _is_lock_conflict
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 from tests.unit.db.plugins.lease_support import route_lease_to
 
@@ -312,6 +312,44 @@ def test_caller_owned_lock_preparation_bounds_db2_catalog_wait(
             assert sum("SYSCAT.SCHEMATA" in call for call in calls) == 1
             assert sum("SYSCAT.TABLES" in call for call in calls) == 1
     assert not any("CREATE TABLE" in call for call in calls)
+
+
+@pytest.mark.parametrize("link", ("__cause__", "__context__"))
+def test_db2_lock_conflict_uses_immediate_fetch_error_cause(link) -> None:
+    fetch_error = SystemError("ibm_db.fetchone failed")
+    driver_error = Exception("SQL0911N reason code 68 SQLSTATE=40001")
+    setattr(fetch_error, link, driver_error)
+    provider = DummyDb2Provider()
+    helper = DummyDb2Provider()
+    calls = []
+    helper._connection = SimpleNamespace(invalidate=lambda: calls.append("invalidated"))
+    helper.execute_statement = lambda sql, schema=None, params=None: calls.append(sql)
+
+    def fail_preparation(schema):
+        raise fetch_error
+
+    helper.create_migration_lock_table_if_not_exists = fail_preparation
+
+    assert _is_lock_conflict(fetch_error) is True
+    assert provider._prepare_external_migration_lock_table(helper, "APP", 2) is False
+    assert calls == ["SET CURRENT LOCK TIMEOUT 0", "invalidated"]
+
+
+def test_db2_unrelated_fetch_system_error_propagates() -> None:
+    fetch_error = SystemError("ibm_db.fetchone failed")
+    fetch_error.__cause__ = Exception("SQL0204N undefined table")
+    fetch_error.__context__ = fetch_error
+    provider = DummyDb2Provider()
+    helper = DummyDb2Provider()
+    helper.execute_statement = lambda sql, schema=None, params=None: None
+    helper._connection = SimpleNamespace(invalidate=lambda: None)
+    helper.create_migration_lock_table_if_not_exists = lambda schema: (_ for _ in ()).throw(
+        fetch_error
+    )
+
+    assert _is_lock_conflict(fetch_error) is False
+    with pytest.raises(SystemError, match="ibm_db.fetchone failed"):
+        provider._prepare_external_migration_lock_table(helper, "APP", 2)
 
 
 def test_db2_lock_preparation_discards_helper_after_success() -> None:

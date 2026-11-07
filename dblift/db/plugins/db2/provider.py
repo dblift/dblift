@@ -40,8 +40,12 @@ def _seconds_before(clock: str, seconds: str) -> str:
 
 def _is_lock_conflict(error: BaseException) -> bool:
     """A deadlock or lock timeout (SQL0911N/SQL0913N): another writer is active."""
-    message = str(error).lower()
-    return any(marker in message for marker in ("sql0911n", "sql0913n", "57033"))
+    return any(
+        marker in str(candidate).lower()
+        for candidate in (error, error.__cause__, error.__context__)
+        if candidate is not None
+        for marker in ("sql0911n", "sql0913n", "57033")
+    )
 
 
 def _q(name: str) -> str:
