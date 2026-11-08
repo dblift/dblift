@@ -392,6 +392,19 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
         """The lock's second connection waits on DDL the caller's transaction left uncommitted."""
         return self.is_caller_owned() and self.supports_transactional_ddl()
 
+    def _new_external_provider(self) -> "SqlLeaseLockingProvider":
+        """Create a provider on an independent connection from this engine."""
+        if isinstance(self.engine.pool, (StaticPool, SingletonThreadPool)):
+            raise RuntimeError(
+                "Migration lease requires an independent connection; "
+                "the caller's SQLAlchemy pool reuses one DBAPI connection"
+            )
+        provider = type(self)(self.config, self.log)
+        provider._conn_mgr = NativeConnectionManager(
+            self.config, self.log, engine=self.engine, owns_engine=False
+        )
+        return provider
+
     def _prepare_external_migration_lock_table(
         self, provider: "SqlLeaseLockingProvider", schema: str, wait_timeout_seconds: float
     ) -> bool:
@@ -403,15 +416,7 @@ class SqlLeaseLockingProvider(SqlAlchemyProvider):
         self, schema: str, deadline: float
     ) -> bool:
         """Prepare the lock table without committing the caller's transaction."""
-        if isinstance(self.engine.pool, (StaticPool, SingletonThreadPool)):
-            raise RuntimeError(
-                "Migration lease requires an independent connection; "
-                "the caller's SQLAlchemy pool reuses one DBAPI connection"
-            )
-        provider = type(self)(self.config, self.log)
-        provider._conn_mgr = NativeConnectionManager(
-            self.config, self.log, engine=self.engine, owns_engine=False
-        )
+        provider = self._new_external_provider()
         try:
             return self._prepare_external_migration_lock_table(
                 provider, schema, max(0.0, deadline - time.monotonic())

@@ -314,6 +314,163 @@ def test_caller_owned_lock_preparation_bounds_db2_catalog_wait(
     assert not any("CREATE TABLE" in call for call in calls)
 
 
+def test_caller_owned_history_lookup_bounds_db2_catalog_wait(monkeypatch) -> None:
+    """A pending caller DDL statement must not stall history discovery."""
+    from dblift.db.plugins import sql_lease_store
+
+    engine = SimpleNamespace(pool=object())
+    caller_calls = []
+    helper_calls = []
+    helper_connection = SimpleNamespace(
+        invalidate=lambda: helper_calls.append("helper_invalidated"),
+    )
+
+    class FakeManager:
+        def __init__(self, *_args, **_kwargs):
+            self.engine = engine
+
+        def close(self):
+            helper_calls.append("helper_closed")
+
+    def query(self, sql, params=None):
+        if self is provider:
+            caller_calls.append(("query", sql))
+            return []
+        helper_calls.append(("query", sql))
+        if "SYSCAT.TABLES" in sql:
+            raise RuntimeError("SQL0911N reason code 68: lock timeout")
+        return []
+
+    def statement(self, sql, schema=None, params=None):
+        if self is provider:
+            caller_calls.append(("statement", sql))
+            return 1
+        helper_calls.append(("statement", sql))
+        self._connection = helper_connection
+        return 1
+
+    monkeypatch.setattr(sql_lease_store, "NativeConnectionManager", FakeManager)
+    monkeypatch.setattr(DummyDb2Provider, "execute_query", query)
+    monkeypatch.setattr(DummyDb2Provider, "execute_statement", statement)
+    monkeypatch.setattr(DummyDb2Provider, "close", lambda self: self._conn_mgr.close())
+    provider = DummyDb2Provider()
+    provider._conn_mgr = FakeManager()
+    provider._external_connection = True
+    provider._connection = SimpleNamespace(
+        current_schema="APP",
+        transaction_open=True,
+    )
+
+    with pytest.raises(RuntimeError, match="SQL0911N reason code 68"):
+        provider.get_applied_migrations("APP")
+    assert caller_calls == []
+    assert "SET CURRENT LOCK TIMEOUT 0" in [
+        call[1] for call in helper_calls if call[0] == "statement"
+    ]
+    assert "helper_invalidated" in helper_calls
+    assert "helper_closed" in helper_calls
+    assert provider._connection.current_schema == "APP"
+    assert provider._connection.transaction_open is True
+
+
+def test_caller_owned_history_lookup_keeps_transaction_visibility() -> None:
+    """A DBLift-owned transaction reads uncommitted history on its connection."""
+    provider = DummyDb2Provider()
+    provider._external_connection = True
+    provider._tx = object()
+
+    def query(sql, params=None):
+        provider.calls.append(("query", sql, params))
+        if "SYSCAT.TABLES" in sql:
+            return [{"tabname": "DBLIFT_SCHEMA_HISTORY"}]
+        return [
+            {
+                "script": "V1__initial.sql",
+                "installed_rank": 1,
+                "version": "1",
+                "description": "initial",
+                "type": "SQL",
+                "checksum": 1,
+                "installed_by": "dblift",
+                "installed_on": None,
+                "execution_time": 1,
+                "success": 1,
+            }
+        ]
+
+    provider.execute_query = query
+
+    rows = provider.get_applied_migrations("APP")
+    assert rows[0]["script"] == "V1__initial.sql"
+    assert len([call for call in provider.calls if call[0] == "query"]) == 2
+    assert any("SYSCAT.TABLES" in call[1] for call in provider.calls if call[0] == "query")
+
+
+@pytest.mark.parametrize(
+    ("driver_message", "expected_error", "expected_message"),
+    [
+        (
+            "SQL0911N reason code 68 SQLSTATE=40001",
+            RuntimeError,
+            "Could not read DB2 migration history for schema APP because it is locked",
+        ),
+        ("SQL0204N undefined table", SystemError, "ibm_db.fetchone failed"),
+    ],
+)
+def test_caller_owned_history_rows_bound_db2_lock_wait(
+    monkeypatch, driver_message, expected_error, expected_message
+) -> None:
+    """The bounded row read reports lock conflicts and preserves other errors."""
+    from dblift.db.plugins import sql_lease_store
+
+    engine = SimpleNamespace(pool=object())
+    caller_calls = []
+    helper_calls = []
+    helper_connection = SimpleNamespace(invalidate=lambda: helper_calls.append("invalidated"))
+
+    class FakeManager:
+        def __init__(self, *_args, **_kwargs):
+            self.engine = engine
+
+        def close(self):
+            helper_calls.append("closed")
+
+    def query(self, sql, params=None):
+        if self is provider:
+            caller_calls.append(sql)
+            return []
+        helper_calls.append(sql)
+        if "SYSCAT.TABLES" in sql:
+            return [{"tabname": "DBLIFT_SCHEMA_HISTORY"}]
+        if 'FROM "APP"."DBLIFT_SCHEMA_HISTORY"' in sql:
+            fetch_error = SystemError("ibm_db.fetchone failed")
+            fetch_error.__cause__ = Exception(driver_message)
+            raise fetch_error
+        return []
+
+    def statement(self, sql, schema=None, params=None):
+        helper_calls.append(sql)
+        self._connection = helper_connection
+        return 1
+
+    monkeypatch.setattr(sql_lease_store, "NativeConnectionManager", FakeManager)
+    monkeypatch.setattr(DummyDb2Provider, "execute_query", query)
+    monkeypatch.setattr(DummyDb2Provider, "execute_statement", statement)
+    monkeypatch.setattr(DummyDb2Provider, "close", lambda self: self._conn_mgr.close())
+    provider = DummyDb2Provider()
+    provider._conn_mgr = FakeManager()
+    provider._external_connection = True
+
+    with pytest.raises(expected_error, match=expected_message):
+        provider.get_applied_migrations("APP")
+    assert caller_calls == []
+    assert any("SYSCAT.TABLES" in sql for sql in helper_calls)
+    assert any('FROM "APP"."DBLIFT_SCHEMA_HISTORY"' in sql for sql in helper_calls)
+    assert "SET CURRENT LOCK TIMEOUT 0" in helper_calls
+    assert "invalidated" in helper_calls
+    assert "closed" in helper_calls
+
+
 @pytest.mark.parametrize("link", ("__cause__", "__context__"))
 def test_db2_lock_conflict_uses_immediate_fetch_error_cause(link) -> None:
     fetch_error = SystemError("ibm_db.fetchone failed")
