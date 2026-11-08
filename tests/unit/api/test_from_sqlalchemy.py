@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from dblift.api import DBLiftClient
 from dblift.config import DbliftConfig
 from dblift.config.errors import ConfigurationError
+from dblift.core.exceptions import CallerTransactionError
 from dblift.core.logger import NullLog
 
 
@@ -86,6 +87,22 @@ def test_from_sqlalchemy_in_memory_connection_shares_database(tmp_path):
     # Caller's connection is untouched by client.close()
     assert conn.exec_driver_sql("SELECT 1").scalar() == 1
     conn.close()
+
+
+def test_from_sqlalchemy_refuses_operations_during_caller_transaction(tmp_path):
+    engine = create_engine("sqlite:///:memory:")
+    connection = engine.connect()
+    client = DBLiftClient.from_sqlalchemy(connection=connection, migrations_dir=tmp_path)
+    transaction = connection.begin()
+    try:
+        with pytest.raises(CallerTransactionError, match="active transaction"):
+            client.info()
+        assert transaction.is_active
+    finally:
+        transaction.rollback()
+        client.close()
+        connection.close()
+        engine.dispose()
 
 
 def test_silent_client_exception_keeps_injected_connection_and_logger(tmp_path):
