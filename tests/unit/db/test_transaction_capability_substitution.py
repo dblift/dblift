@@ -123,6 +123,12 @@ def test_policy_uses_interface_even_if_legacy_method_disagrees():
     provider.supports_transactions.assert_not_called()
 
 
+def test_transactional_provider_defaults_preserve_caller_ownership_contract():
+    provider = MagicMock(spec=TransactionalProvider)
+    assert TransactionalProvider.caller_transaction_active(provider) is None
+    assert TransactionalProvider.has_explicit_transaction(provider) is False
+
+
 def test_baseline_records_without_transaction_methods():
     provider = NonTransactionalProvider()
     cmd = command(BaselineCommand, provider)

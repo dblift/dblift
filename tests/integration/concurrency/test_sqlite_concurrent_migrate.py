@@ -433,13 +433,7 @@ class TestSqliteConcurrentMigrate:
             assert "database is locked" not in contents.lower(), (log_file, contents)
 
     def test_caller_pending_work_on_shared_connection_survives_migrate(self, tmp_path):
-        """`from_sqlalchemy(connection=...)` runs migrate() on the caller's
-        own live, uncommitted transaction. Lock acquisition must not roll
-        back work the caller has not committed yet -- single process, no
-        contention -- or blindly rolling back at loop entry (to clear a
-        *different* connection's leftover transaction) would also discard
-        whatever the caller was doing on this one.
-        """
+        """Migrate refuses a caller connection with pending uncommitted work."""
         from sqlalchemy import create_engine, text
 
         from dblift.api import DBLiftClient
@@ -458,16 +452,94 @@ class TestSqliteConcurrentMigrate:
             client = DBLiftClient.from_sqlalchemy(
                 connection=conn, migrations_dir=str(migrations_dir), log_level="WARN"
             )
-            result = client.migrate()
-            client.close()
+            with pytest.raises(RuntimeError, match="caller.*transaction"):
+                with client:
+                    client.migrate()
+            assert conn.in_transaction()
+            assert conn.execute(text("SELECT COUNT(*) FROM mine")).scalar() == 1
         elapsed = time.time() - start
 
-        assert result.success, result.error_message
         assert elapsed < 20, elapsed
         with engine.connect() as check_conn:
             count = check_conn.execute(text("SELECT COUNT(*) FROM mine")).scalar()
         assert count == 1, "caller's own pending insert was discarded"
         engine.dispose()
+
+    def test_autocommit_connection_requires_settlement_after_sqlalchemy_select(self, tmp_path):
+        """SQLAlchemy transaction state is honored when the DBAPI autocommits."""
+        from sqlalchemy import create_engine, text
+
+        from dblift.api import DBLiftClient
+
+        migrations_dir = tmp_path / "migrations"
+        _write_migrations(migrations_dir, count=1)
+        engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}", isolation_level="AUTOCOMMIT")
+        try:
+            with engine.connect() as conn:
+                client = DBLiftClient.from_sqlalchemy(
+                    connection=conn, migrations_dir=str(migrations_dir), log_level="WARN"
+                )
+                assert client.migrate().success
+                conn.commit()
+                conn.execute(text("SELECT 1"))
+                assert conn.in_transaction()
+                assert conn.connection.dbapi_connection.isolation_level is None
+                with pytest.raises(RuntimeError, match="caller.*transaction"):
+                    client.migrate()
+                conn.rollback()
+                assert client.info().success
+        finally:
+            engine.dispose()
+
+    def test_explicit_sqlite_transaction_is_refused_on_autocommit_connection(self, tmp_path):
+        """An explicit BEGIN remains visible even when the DBAPI defaults to autocommit."""
+        from sqlalchemy import create_engine, text
+
+        from dblift.api import DBLiftClient
+
+        migrations_dir = tmp_path / "migrations"
+        _write_migrations(migrations_dir, count=1)
+        engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}", isolation_level="AUTOCOMMIT")
+        with engine.begin() as setup_conn:
+            setup_conn.execute(text("CREATE TABLE mine (id INTEGER PRIMARY KEY)"))
+        try:
+            with engine.connect() as conn:
+                conn.exec_driver_sql("BEGIN")
+                conn.execute(text("INSERT INTO mine (id) VALUES (1)"))
+                client = DBLiftClient.from_sqlalchemy(
+                    connection=conn, migrations_dir=str(migrations_dir), log_level="WARN"
+                )
+                with pytest.raises(RuntimeError, match="caller.*transaction"):
+                    client.migrate()
+                assert conn.execute(text("SELECT COUNT(*) FROM mine")).scalar() == 1
+                conn.rollback()
+        finally:
+            engine.dispose()
+
+    def test_context_exception_does_not_rollback_caller_work(self, tmp_path):
+        """Exiting a client context preserves the caller's transaction on any error."""
+        from sqlalchemy import create_engine, text
+
+        from dblift.api import DBLiftClient
+
+        migrations_dir = tmp_path / "migrations"
+        _write_migrations(migrations_dir, count=1)
+        engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
+        with engine.begin() as setup_conn:
+            setup_conn.execute(text("CREATE TABLE mine (id INTEGER PRIMARY KEY)"))
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("INSERT INTO mine (id) VALUES (1)"))
+                client = DBLiftClient.from_sqlalchemy(
+                    connection=conn, migrations_dir=str(migrations_dir), log_level="WARN"
+                )
+                with pytest.raises(ValueError, match="caller exception"):
+                    with client:
+                        raise ValueError("caller exception")
+                assert conn.in_transaction()
+                assert conn.execute(text("SELECT COUNT(*) FROM mine")).scalar() == 1
+        finally:
+            engine.dispose()
 
     def test_migrate_does_not_lower_a_wider_caller_busy_timeout(self, tmp_path):
         """A caller's own busy_timeout already wider than migrate()'s 60s

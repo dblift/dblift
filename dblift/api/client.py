@@ -32,7 +32,7 @@ from dblift.api._client_factory import (
 )
 from dblift.api.events import EventEmitter, EventType, use_client_emitter
 from dblift.config import DbliftConfig
-from dblift.core.exceptions import InvalidTargetVersionError
+from dblift.core.exceptions import CallerTransactionError, InvalidTargetVersionError
 from dblift.core.logger.results import (
     BaselineResult,
     CleanResult,
@@ -147,6 +147,8 @@ def _with_client_emitter(
             with lock:
                 thread_state.stack = stack + [(inner.__name__, wrapper)]
                 try:
+                    if not stack and self._caller_transaction_provider is not None:
+                        _raise_if_caller_transaction_open(self._caller_transaction_provider)
                     with use_client_emitter(emitter):
                         return inner(self, *args, **kwargs)
                 finally:
@@ -157,6 +159,15 @@ def _with_client_emitter(
     if method is not None:
         return decorator(method)
     return decorator
+
+
+def _raise_if_caller_transaction_open(provider: TransactionalProvider) -> None:
+    """Refuse operations on a caller-supplied SQLAlchemy connection with pending work."""
+    if isinstance(provider, TransactionalProvider) and provider.caller_transaction_active() is True:
+        raise CallerTransactionError(
+            "The caller's connection has an active transaction. Commit or roll back "
+            "the caller transaction before starting a DBLift operation."
+        )
 
 
 def _preflight_connection_failure(exc: BaseException) -> Optional[PreflightConnectionError]:
@@ -248,6 +259,8 @@ class DBLiftClient:
         the "Thread Safety" section of the API reference for the full
         contract.
     """
+
+    _caller_transaction_provider: Optional[TransactionalProvider] = None
 
     def __init__(
         self,
@@ -1373,12 +1386,21 @@ class DBLiftClient:
         exc_tb: Optional[TracebackType],
     ) -> None:
         if exc_type is not None:
-            # Exception occurred, rollback any pending transaction
+            # Preserve a caller-owned connection unless DBLift has an explicit transaction.
             self.logger.warning(f"Exception in DBLiftClient context: {exc_val}")
 
+            caller_provider = self._caller_transaction_provider
+            if caller_provider is not None:
+                rollback_provider = (
+                    caller_provider if caller_provider.has_explicit_transaction() is True else None
+                )
+            else:
+                rollback_provider = (
+                    self.provider if isinstance(self.provider, TransactionalProvider) else None
+                )
             try:
-                if isinstance(self.provider, TransactionalProvider):
-                    self.provider.rollback_transaction()
+                if rollback_provider is not None:
+                    rollback_provider.rollback_transaction()
             except Exception as rollback_error:
                 self.logger.error(f"Error during rollback in __exit__: {rollback_error}")
 
