@@ -11,17 +11,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+### Fixed
+
+### Removed
+
+## [5.1.7] - 2026-11-09
+
+### Added
+
+### Changed
+
 - The logo at the top of the README (also shown on PyPI) uses the new flat DBLift blue identity:
   a single-blue mark and a plain white wordmark, matching dblift.com. Same file path, now at 2x
   resolution, with its SVG source in `logo/dblift_logo.svg`.
+- `from_sqlalchemy(connection=...)` now refuses client operations while the supplied SQLAlchemy
+  connection has an active transaction. Callers must commit or roll back first, including after
+  SQLAlchemy autobegins a transaction for a read. Client contexts preserve caller-owned pending
+  work on exceptions and roll back only transactions DBLift opened.
+- The analysis extra is constrained to the recorded SQLGlot 30.23 line to keep statement facts
+  stable.
 
 ### Fixed
+
+- Db2 migration history discovery on a caller-owned connection uses a separate, zero-wait catalog
+  read when DBLift has no active transaction, so another session's uncommitted catalog DDL cannot
+  stall migration setup.
+- Db2 data-changing CTE facts are bounded, and quoted object names are retained for policy checks.
 
 - `validate-sql --dialect <name>` on a project whose configuration file names another database
   type (for example `type: sqlite` with `--dialect postgresql`) was refused since 5.1.6 with
   `database.url: unresolved reference`. The dialect given on the command line now decides the
   lint-only database section, and the file's section for the other database is not mixed into
   it; without `--dialect` the file's own type is still used.
+- CLI and MCP command gating now keeps file-only commands from reaching a database connection.
+- Restored explicit table-property state after deserialization; corrected DuckDB row counts and
+  lease setup retries.
+- `DBLIFT_DB_PATH` is honored across configuration sources. Unresolved DuckDB locators now fail
+  clearly, and lock-release warnings are no longer emitted for configuration failures.
+- Db2 lock-table preparation is bounded when concurrent catalog DDL holds a lock.
+- Logger output refuses pre-existing symlinks for both custom log-file paths and files registered
+  through `LogFactory`.
 
 ### Removed
 
@@ -5755,7 +5784,9 @@ All additions are backward compatible (MINOR): two new modules, two new
 - Cross-platform distributions (Windows, Linux, macOS).
 - Modular provider architecture for easy database support extension.
 
-[Unreleased]: https://github.com/dblift/dblift/compare/v5.1.5...develop
+[Unreleased]: https://github.com/dblift/dblift/compare/v5.1.7...develop
+[5.1.7]: https://github.com/dblift/dblift/compare/v5.1.6...v5.1.7
+[5.1.6]: https://github.com/dblift/dblift/compare/v5.1.5...v5.1.6
 [5.1.5]: https://github.com/dblift/dblift/compare/v5.1.4...v5.1.5
 [5.1.4]: https://github.com/dblift/dblift/compare/v5.1.3...v5.1.4
 [5.1.3]: https://github.com/dblift/dblift/compare/v5.1.2...v5.1.3
