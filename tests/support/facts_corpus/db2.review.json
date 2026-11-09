@@ -6516,5 +6516,21 @@
   "path": "analyzer",
   "reason": "DROP TABLE: the extraction named `default_schema.t_keep` from inside a nested comment (`/* ... /* ... */ ... */`); the reader skips the whole comment, names `T_AFTER` as created and states column facts unavailable",
   "sql": "/* a /* b */ DROP TABLE t_keep; */ CREATE TABLE t_after (x INT) /* tail */"
+ },
+ "6e46fc27b60686e4": {
+  "sql": "INSERT OVERWRITE INTO target SELECT * FROM source",
+  "path": "both",
+  "class": "no-old",
+  "reason": "Input harvested after this family's extraction was frozen (the Snowflake INSERT OVERWRITE form): no extraction can be recomputed for it, so there is nothing to compare. The Db2 head classifier leaves the INSERT unclassified (diagnostic `db2 INSERT statement: not classified`).",
+  "issue": "",
+  "old": {
+   "hybrid": null,
+   "analyzer": null
+  },
+  "facts": {
+   "diagnostic": "db2 INSERT statement: not classified",
+   "kind": "DML",
+   "operation": "INSERT"
+  }
  }
 }

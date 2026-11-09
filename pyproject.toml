@@ -156,7 +156,7 @@ dev = [
 # Command line: terminal rendering, report templates and full SQL analysis.
 cli = ["rich>=13.3.0", "Jinja2>=3.1.0", "dblift[analysis]"]
 # Full SQL analysis: statement facts and lint read SQLGlot.
-analysis = ["sqlglot>=30.23.0,<30.24"]
+analysis = ["sqlglot>=30.23.0,<30.31"]
 postgresql = ["psycopg[binary]>=3.1"]
 mysql = ["PyMySQL>=1.1"]
 mariadb = ["PyMySQL>=1.1"]

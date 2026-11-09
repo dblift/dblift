@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from typing import Optional, Tuple, TypeVar
+from typing import AbstractSet, Optional, Tuple, TypeVar
 
 from sqlglot import exp, parse_one
 from sqlglot.dialects import Dialect
@@ -116,6 +116,11 @@ _ORACLE_MV_LOG = re.compile(
     r"\s*(?:CREATE|DROP|ALTER)\s+MATERIALIZED\s+VIEW\s+LOG(?![\w$#])", re.IGNORECASE
 )
 _ORACLE_TRUNCATE_TABLE = re.compile(r"\s*TRUNCATE\s+TABLE\b", re.IGNORECASE)
+# DuckDB has no triggers: CREATE, ALTER and DROP TRIGGER are syntax errors (docs/sql-parsing/
+# duckdb.md section 5), so none of them creates, alters or drops anything.
+_TRIGGER_HEAD = re.compile(
+    r"^\s*(CREATE|ALTER|DROP)\s+(?:(?:OR\s+REPLACE|TEMP|TEMPORARY)\s+)*TRIGGER\b", re.IGNORECASE
+)
 _DML_HEAD = re.compile(
     rf"^\s*(INSERT|REPLACE|UPDATE|DELETE)\s+(?:OR\s+\w+\s+)?(?:(?:INTO|FROM)\s+)?"
     rf"({_NAME})(?:\s*\.\s*({_NAME}))?",
@@ -1753,6 +1758,33 @@ def _oracle_index_table(sql: str, head: str, created: "re.Match[str]") -> Option
     )
 
 
+def _head_pattern(dialect: str) -> "re.Pattern[str]":
+    """The head regex that names a dialect's kinds and skips its creation modifiers."""
+    if dialect == "oracle":  # lint: allow-dialect-string: Oracle head kinds
+        return _ORACLE_HEAD
+    if dialect == "postgres":  # lint: allow-dialect-string: PostgreSQL head kinds
+        return _POSTGRES_HEAD
+    if dialect == "mysql":  # lint: allow-dialect-string: MySQL head kinds
+        return _MYSQL_HEAD
+    return _HEAD
+
+
+def _drop_trigger_on_clause(head: str, dialect: str) -> bool:
+    """Whether a ``DROP TRIGGER`` names the trigger's table with ``ON``, PostgreSQL's form.
+
+    SQL Server scopes a DDL trigger with ``ON DATABASE`` or ``ON ALL SERVER``; that is not it.
+    """
+    match = _head_pattern(dialect).match(head)
+    if match is None or (match.group(1).upper(), match.group(2).upper()) != ("DROP", "TRIGGER"):
+        return False
+    scope = (
+        r"(?!DATABASE\b|ALL\s+SERVER\b)"
+        if dialect == "tsql"  # lint: allow-dialect-string: T-SQL DDL trigger scopes
+        else ""
+    )
+    return re.match(rf"\s+ON\s+{scope}", head[match.end() :], re.IGNORECASE) is not None
+
+
 def _head_facts(
     sql: str, diagnostic: str, *, dialect: str = "", parsed: bool = False
 ) -> StatementFacts:
@@ -1790,9 +1822,7 @@ def _head_facts(
     oracle = dialect == "oracle"  # lint: allow-dialect-string: Oracle head kinds and folding
     folds = oracle or dialect == "snowflake"  # lint: allow-dialect-string: upper-case names
     mysql = dialect == "mysql"  # lint: allow-dialect-string: MySQL head kinds
-    match = (
-        _ORACLE_HEAD if oracle else _POSTGRES_HEAD if postgres else _MYSQL_HEAD if mysql else _HEAD
-    ).match(head)
+    match = _head_pattern(dialect).match(head)
     if match is None and first is None:
         # Stray characters (a NUL, a lone ``/``) ahead of the statement; the engine reads past them.
         scan = _POSTGRES_HEAD_SCAN if postgres else _HEAD_SCAN
@@ -1856,11 +1886,7 @@ def _head_facts(
         target = f"{schema}.{name}" if schema else name
         where = _top_level_where(head)
         predicate = head[where:].strip() if where is not None else None
-        if (
-            dialect == "mysql"  # lint: allow-dialect-string: MySQL single-target text
-            and operation in {"UPDATE", "DELETE"}
-            and predicate
-        ):
+        if operation in {"UPDATE", "DELETE"} and predicate:
             predicate = predicate[len("WHERE") :].strip()
         events = None if operation == "REPLACE" else frozenset({operation})
         return StatementFacts(
@@ -1887,8 +1913,25 @@ _CREATE_MODIFIERS = frozenset(
 )
 
 
-def _postgres_tablespace_clause(sql: str) -> bool:
-    """Whether a CREATE TABLE, INDEX or MATERIALIZED VIEW carries a ``TABLESPACE`` clause.
+# The dialects whose CREATE INDEX has no TABLESPACE clause: MySQL and MariaDB (error 1064), SQL
+# Server (ON names a filegroup), SQLite, DuckDB and Snowflake reject it, so nothing is created.
+_NO_INDEX_TABLESPACE = frozenset(
+    {"mysql", "tsql", "sqlite", "duckdb", "snowflake"}  # lint: allow-dialect-string: index grammar
+)
+_TABLESPACE_KINDS = frozenset({"TABLE", "INDEX", "VIEW"})
+
+
+def _index_tablespace_clause(ast: Optional[exp.Expr], sql: str) -> bool:
+    """Whether a CREATE INDEX carries a ``TABLESPACE`` clause, parsed or held as a command."""
+    if isinstance(ast, exp.Create) and isinstance(ast.this, exp.Index):
+        params = ast.this.args.get("params")
+        return isinstance(params, exp.IndexParameters) and params.args.get("tablespace") is not None
+    return isinstance(ast, exp.Command) and _postgres_tablespace_clause(sql, kinds={"INDEX"})
+
+
+def _postgres_tablespace_clause(sql: str, kinds: AbstractSet[str] = _TABLESPACE_KINDS) -> bool:
+    """Whether a CREATE TABLE, INDEX or MATERIALIZED VIEW (``kinds``) carries a ``TABLESPACE``
+    clause.
 
     The clause is a ``TABLESPACE`` outside any parenthesis after the object's name: ``CREATE
     TABLESPACE`` names the kind of object, and a table named ``tablespace`` follows the kind word.
@@ -1904,7 +1947,7 @@ def _postgres_tablespace_clause(sql: str) -> bool:
     kind = 1
     while kind < len(words) and words[kind] in _CREATE_MODIFIERS:
         kind += 1
-    if kind >= len(words) or words[kind] not in {"TABLE", "INDEX", "VIEW"}:
+    if kind >= len(words) or words[kind] not in kinds:
         return False
     name = kind + 1
     if words[name : name + 1] == ["CONCURRENTLY"]:
@@ -2544,18 +2587,20 @@ def read_statement_facts(
         return _head_facts(sql, "tsql OR DML modifier is not modelled", dialect=dialect)
     if dialect == "mysql":  # lint: allow-dialect-string: MySQL DML modifiers
         sql = _without_mysql_dml_modifiers(sql)
-        blanked_head = _blanked(sql, dialect)
-        trigger = _MYSQL_HEAD.match(blanked_head)
-        if (
-            trigger is not None
-            and trigger.group(1).upper() == "DROP"
-            and trigger.group(2).upper() == "TRIGGER"
-            and re.match(r"\s+ON\b", blanked_head[trigger.end() :], re.I)
-        ):
-            facts = _head_facts(
-                sql, "mysql DROP TRIGGER ON clause is not supported", dialect=dialect
+    if dialect == "duckdb":  # lint: allow-dialect-string: DuckDB has no triggers
+        trigger = _TRIGGER_HEAD.match(_blanked(sql, dialect))
+        if trigger is not None:
+            return StatementFacts(
+                trigger.group(1).upper(), "DDL", diagnostic="duckdb does not support triggers"
             )
-            return StatementFacts(facts.operation, facts.kind, diagnostic=facts.diagnostic)
+    if (
+        dialect != "postgres"  # lint: allow-dialect-string: PostgreSQL names the trigger's table
+        and _drop_trigger_on_clause(_blanked(sql, dialect), dialect)
+    ):
+        facts = _head_facts(
+            sql, f"{dialect} DROP TRIGGER ON clause is not supported", dialect=dialect
+        )
+        return StatementFacts(facts.operation, facts.kind, diagnostic=facts.diagnostic)
     if dialect == "redshift":  # lint: allow-dialect-string: Redshift bracketed names
         bracketed = _redshift_bracketed_name(sql, dialect)
         if bracketed is not None:
@@ -2609,13 +2654,11 @@ def read_statement_facts(
         ):
             return program
         return _head_facts(sql, reason, dialect=dialect)
+    if dialect in _NO_INDEX_TABLESPACE and _index_tablespace_clause(ast, sql):
+        head = _head_facts(sql, f"{dialect} TABLESPACE clause is not supported", dialect=dialect)
+        return StatementFacts(head.operation, head.kind, diagnostic=head.diagnostic)
     if dialect == "redshift":  # lint: allow-dialect-string: PostgreSQL-only table clauses
         properties = ast.args.get("properties") if isinstance(ast, exp.Create) else None
-        index_params = (
-            ast.this.args.get("params")
-            if isinstance(ast, exp.Create) and isinstance(ast.this, exp.Index)
-            else None
-        )
         unlogged = (
             isinstance(ast, exp.Create)
             and ast.args.get("kind") == "TABLE"
@@ -2627,10 +2670,7 @@ def read_statement_facts(
                 isinstance(properties, exp.Properties)
                 and any(isinstance(prop, exp.TableSpaceProperty) for prop in properties.expressions)
             )
-            or (
-                isinstance(index_params, exp.IndexParameters)
-                and index_params.args.get("tablespace") is not None
-            )
+            or _index_tablespace_clause(ast, sql)
             or (isinstance(ast, exp.Command) and _postgres_tablespace_clause(sql))
         )
         if unlogged or tablespace:

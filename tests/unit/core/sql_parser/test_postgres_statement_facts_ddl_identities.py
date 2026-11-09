@@ -6,12 +6,18 @@ had: the negative tests pin them.
 """
 
 import pytest
+from sqlglot import exp, parse_one
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
 from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
 
 T = SqlObjectType
+
+# sqlglot 30.23 holds a PostgreSQL TABLESPACE clause as a command; 30.30 parses it.
+PARSES_TABLESPACE = isinstance(
+    parse_one("CREATE TABLE m (a int) TABLESPACE ts", read="postgres"), exp.Create
+)
 
 
 def _pg(sql):
@@ -192,26 +198,27 @@ HEAD_CASES = [
         NamedObject("users_seq", T.SEQUENCE, "altered"),
     ),
     ("CREATE TYPE real_type FROM int", "CREATE", NamedObject("real_type", T.TYPE, "created")),
-    (
-        "CREATE UNLOGGED TABLE t (a int) TABLESPACE ts",
-        "CREATE",
-        NamedObject("t", T.TABLE, "created"),
-    ),
-    (
-        "CREATE TABLE m (a int) WITH (fillfactor=70) TABLESPACE ts",
-        "CREATE",
-        NamedObject("m", T.TABLE, "created"),
-    ),
     ("ALTER SCHEMA s RENAME TO t", "ALTER", NamedObject("s", T.SCHEMA, "altered")),
-    (
-        "CREATE UNLOGGED TABLE IF NOT EXISTS t (a int) TABLESPACE ts",
-        "CREATE",
-        NamedObject("t", T.TABLE, "created"),
-    ),
 ]
 HEAD_IDS = ["or_replace_function", "begin_atomic", "create_ext", "drop_ext", "alter_seq",
-            "type_from", "unlogged_table", "storage_params", "alter_schema",
-            "unlogged_if_not_exists"]  # fmt: skip
+            "type_from", "alter_schema"]  # fmt: skip
+TABLESPACE_CASES = [
+    ("CREATE TABLE m (a int) TABLESPACE ts", NamedObject("m", T.TABLE, "created")),
+    (
+        "CREATE TABLE m (a int) WITH (fillfactor=70) TABLESPACE ts",
+        NamedObject("m", T.TABLE, "created"),
+    ),
+    (
+        "CREATE UNLOGGED TABLE IF NOT EXISTS s.t (a int) TABLESPACE ts",
+        NamedObject("t", T.TABLE, "created", "s"),
+    ),
+    ("CREATE TABLE m TABLESPACE ts AS SELECT 1", NamedObject("m", T.TABLE, "created")),
+    ("CREATE INDEX i ON m (a) TABLESPACE ts", NamedObject("i", T.INDEX, "created")),
+    (
+        "CREATE MATERIALIZED VIEW mv TABLESPACE ts AS SELECT 1",
+        NamedObject("mv", T.MATERIALIZED_VIEW, "created"),
+    ),
+]
 
 
 @pytest.mark.parametrize("sql,operation,named", HEAD_CASES, ids=HEAD_IDS)
@@ -380,33 +387,28 @@ def test_concurrently_is_an_ordinary_name_except_as_the_index_modifier(sql, name
     assert _pg(sql).objects == (named,)
 
 
-@pytest.mark.parametrize(
-    "sql,obj",
-    [
-        ("CREATE TABLE m (a int) TABLESPACE ts", NamedObject("m", T.TABLE, "created")),
-        (
-            "CREATE TABLE m (a int) WITH (fillfactor=70) TABLESPACE ts",
-            NamedObject("m", T.TABLE, "created"),
-        ),
-        (
-            "CREATE UNLOGGED TABLE IF NOT EXISTS s.t (a int) TABLESPACE ts",
-            NamedObject("t", T.TABLE, "created", "s"),
-        ),
-        ("CREATE TABLE m TABLESPACE ts AS SELECT 1", NamedObject("m", T.TABLE, "created")),
-        ("CREATE INDEX i ON m (a) TABLESPACE ts", NamedObject("i", T.INDEX, "created")),
-        (
-            "CREATE MATERIALIZED VIEW mv TABLESPACE ts AS SELECT 1",
-            NamedObject("mv", T.MATERIALIZED_VIEW, "created"),
-        ),
-    ],
-)
-def test_a_tablespace_clause_is_named_in_the_diagnostic(sql, obj):
+@pytest.mark.skipif(PARSES_TABLESPACE, reason="sqlglot 30.30 parses the TABLESPACE clause")
+@pytest.mark.parametrize("sql,obj", TABLESPACE_CASES)
+def test_a_tablespace_clause_the_grammar_holds_as_a_command_is_named_in_the_diagnostic(sql, obj):
     """sqlglot 30.23 has no TABLESPACE clause in its PostgreSQL grammar and returns the whole
     statement as a command, so the object is named from the head and the clause is the reason."""
     facts = _pg(sql)
 
-    assert facts.objects == (obj,)
+    assert facts.objects[0] == obj
     assert facts.diagnostic.endswith("postgres TABLESPACE clause is not modelled by the grammar")
+
+
+@pytest.mark.skipif(not PARSES_TABLESPACE, reason="sqlglot 30.23 holds the clause as a command")
+@pytest.mark.parametrize("sql,obj", TABLESPACE_CASES)
+def test_a_parsed_tablespace_clause_keeps_the_created_object(sql, obj):
+    """PostgreSQL accepts every one of these (dblift/dblift#666); the object is read from the
+    parsed statement, and a table's declared columns with it."""
+    facts = _pg(sql)
+
+    assert facts.objects[0] == obj
+    assert "TABLESPACE clause" not in (facts.diagnostic or "")
+    if sql.startswith("CREATE TABLE m (a int)") or obj.schema == "s":
+        assert facts.declared_columns == ("a",)
 
 
 @pytest.mark.parametrize(

@@ -7099,7 +7099,10 @@
   "sql": "CREATE INDEX idx1 ON t (col1)"
  },
  "78fceffe915fca5c/analyzer": {
-  "class": "opaque-reader-gap",
+  "class": {
+   "floor": "opaque-reader-gap",
+   "newest": "disagree"
+  },
   "facts": {
    "diagnostic": "index: oracle Command is opaque to statement facts",
    "indexed_table": "EMPLOYEES",
@@ -7130,7 +7133,7 @@
    ]
   },
   "path": "analyzer",
-  "reason": "[gap made explicit] oracle 23.26.3 accepts the statement (it parses; ORA-00942 is raised afterwards); the reader leaves it unread (index: oracle Command is opaque to statement facts) and names only index idx_name (created), table employees (referenced), where the extraction named index idx_name. Unquoted names are held upper-cased, as Oracle stores them; the extraction kept the spelling written.",
+  "reason": "[gap made explicit] oracle 23.26.3 accepts the statement (it parses; ORA-00942 is raised afterwards); the reader leaves it unread (index: oracle Command is opaque to statement facts) and names only index idx_name (created), table employees (referenced), where the extraction named index idx_name. Unquoted names are held upper-cased, as Oracle stores them; the extraction kept the spelling written. On sqlglot 30.30 the TABLESPACE clause is parsed (Oracle accepts it): the index, its table and the indexed column are read with no diagnostic; the extraction's `idx_name` and the reader's `IDX_NAME` differ by Oracle's folding only (disagree, since the reader also names the table).",
   "sql": "CREATE INDEX idx_name ON employees(name) TABLESPACE users"
  },
  "7950a208d273b4a4/analyzer": {
@@ -15419,5 +15422,120 @@
    "oracle 23.26.3": "ORA-00901"
   },
   "sql": "CREATE FULLTEXT INDEX idx_description ON products(description)"
+ },
+ "6e46fc27b60686e4": {
+  "sql": "INSERT OVERWRITE INTO target SELECT * FROM source",
+  "path": "both",
+  "class": "no-old",
+  "reason": "Input harvested after this family's extraction was frozen (the Snowflake INSERT OVERWRITE form): no extraction can be recomputed for it, so there is nothing to compare. The reader reads it as INSERT \u2026 SELECT: `TARGET` altered, `SOURCE` referenced, folded as Oracle stores them.",
+  "issue": "",
+  "old": {
+   "hybrid": null,
+   "analyzer": null
+  },
+  "facts": {
+   "events": [
+    "INSERT"
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "TARGET",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "SOURCE",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "operation": "INSERT",
+   "target": "TARGET",
+   "target_sql": "target"
+  }
+ },
+ "3924c2ff839ce47d": {
+  "sql": "DROP TRIGGER users_bi ON users",
+  "path": "both",
+  "class": "opaque-reader-gap",
+  "reason": "Oracle's DROP TRIGGER takes [schema.]trigger and nothing after it; ON <table> is PostgreSQL's form and Oracle rejects it (the IF EXISTS variants afa844944baef2cf and faae6108307176c5 were measured: ORA-03048 on 23.26.3). The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TRIGGER",
+     "users_bi",
+     null
+    ]
+   ],
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.users_bi"
+    ]
+   ]
+  },
+  "facts": {
+   "diagnostic": "trigger: oracle DROP TRIGGER ON clause is not supported",
+   "kind": "DDL",
+   "operation": "DROP"
+  }
+ },
+ "3bb4e2c5b872f698": {
+  "sql": "DROP TRIGGER my_trigger ON my_table",
+  "path": "both",
+  "class": "opaque-reader-gap",
+  "reason": "Oracle's DROP TRIGGER takes [schema.]trigger and nothing after it; ON <table> is PostgreSQL's form and Oracle rejects it (the IF EXISTS variants afa844944baef2cf and faae6108307176c5 were measured: ORA-03048 on 23.26.3). The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TRIGGER",
+     "my_trigger",
+     null
+    ]
+   ],
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.my_trigger"
+    ]
+   ]
+  },
+  "facts": {
+   "diagnostic": "trigger: oracle DROP TRIGGER ON clause is not supported",
+   "kind": "DDL",
+   "operation": "DROP"
+  }
+ },
+ "8c71d100a80a073e": {
+  "sql": "DROP TRIGGER \"my trigger\" ON my_table",
+  "path": "both",
+  "class": "opaque-reader-gap",
+  "reason": "Oracle's DROP TRIGGER takes [schema.]trigger and nothing after it; ON <table> is PostgreSQL's form and Oracle rejects it (the IF EXISTS variants afa844944baef2cf and faae6108307176c5 were measured: ORA-03048 on 23.26.3). The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TRIGGER",
+     "my trigger",
+     null
+    ]
+   ],
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.my trigger"
+    ]
+   ]
+  },
+  "facts": {
+   "diagnostic": "trigger: oracle DROP TRIGGER ON clause is not supported",
+   "kind": "DDL",
+   "operation": "DROP"
+  }
  }
 }

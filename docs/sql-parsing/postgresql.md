@@ -231,7 +231,8 @@ the word `CLASS` of `CREATE OPERATOR CLASS`, are not carried over. sqlglot 30.23
 clause in its PostgreSQL grammar and returns `CREATE TABLE … TABLESPACE ts`, the same on an index
 and a materialized view, as a command: the object is named from the head and the diagnostic says
 `postgres TABLESPACE clause is not modelled by the grammar` (storage parameters alone,
-`WITH (fillfactor=70)`, parse normally).
+`WITH (fillfactor=70)`, parse normally). sqlglot 30.30 parses the clause: a table's declared
+columns and an index's table and columns are read, and no diagnostic is set (dblift/dblift#666).
 
 `GRANT` and `REVOKE` are DDL that only reference what they name: the securable is a `referenced`
 object and nothing is created, altered or dropped. `ON t`, `ON TABLE t` and `ON s.t` name a table

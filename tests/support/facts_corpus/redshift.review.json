@@ -130,7 +130,7 @@
    "kind": "DDL",
    "operation": "CREATE"
   },
-  "issue": "https://github.com/dblift/dblift/issues/775",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "analyzer": [
     [
@@ -2904,7 +2904,7 @@
    "kind": "DDL",
    "operation": "CREATE"
   },
-  "issue": "https://github.com/dblift/dblift/issues/775",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "analyzer": [
     [
@@ -3516,7 +3516,7 @@
    "kind": "DDL",
    "operation": "CREATE"
   },
-  "issue": "https://github.com/dblift/dblift/issues/775",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "analyzer": [
     [
@@ -4594,7 +4594,7 @@
    "kind": "DDL",
    "operation": "CREATE"
   },
-  "issue": "https://github.com/dblift/dblift/issues/775",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "analyzer": [
     [
@@ -6363,7 +6363,7 @@
    "kind": "DDL",
    "operation": "CREATE"
   },
-  "issue": "https://github.com/dblift/dblift/issues/775",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "analyzer": [
     [
@@ -7053,7 +7053,7 @@
    "kind": "DDL",
    "operation": "CREATE"
   },
-  "issue": "https://github.com/dblift/dblift/issues/775",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "analyzer": [
     [
@@ -7190,7 +7190,7 @@
    "kind": "DDL",
    "operation": "CREATE"
   },
-  "issue": "https://github.com/dblift/dblift/issues/775",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "analyzer": [
     [
@@ -7298,7 +7298,7 @@
    "kind": "DDL",
    "operation": "CREATE"
   },
-  "issue": "https://github.com/dblift/dblift/issues/775",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "analyzer": [
     [
@@ -9985,5 +9985,174 @@
    "redshift 1.0.485645": "42601"
   },
   "sql": "CREATE FULLTEXT INDEX idx_description ON products(description)"
+ },
+ "6e46fc27b60686e4": {
+  "sql": "INSERT OVERWRITE INTO target SELECT * FROM source",
+  "path": "both",
+  "class": "no-old",
+  "reason": "Input harvested after this family's extraction was frozen (the Snowflake INSERT OVERWRITE form): no extraction can be recomputed for it, so there is nothing to compare. The reader reads it as INSERT \u2026 SELECT: `target` altered, `source` referenced.",
+  "issue": "",
+  "old": {
+   "hybrid": null,
+   "analyzer": null
+  },
+  "facts": {
+   "events": [
+    "INSERT"
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "target",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "source",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "operation": "INSERT",
+   "target": "target",
+   "target_sql": "target"
+  }
+ },
+ "3924c2ff839ce47d": {
+  "sql": "DROP TRIGGER users_bi ON users",
+  "path": "both",
+  "class": "opaque-reader-gap",
+  "reason": "Amazon Redshift has no triggers (CREATE TRIGGER is rejected with 42601, docs/sql-parsing/redshift.md) and DROP TRIGGER \u2026 ON <table> is PostgreSQL's form. The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TRIGGER",
+     "users_bi",
+     "public"
+    ]
+   ],
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.users_bi"
+    ]
+   ]
+  },
+  "facts": {
+   "diagnostic": "trigger: redshift DROP TRIGGER ON clause is not supported",
+   "kind": "DDL",
+   "operation": "DROP"
+  }
+ },
+ "3bb4e2c5b872f698": {
+  "sql": "DROP TRIGGER my_trigger ON my_table",
+  "path": "both",
+  "class": "opaque-reader-gap",
+  "reason": "Amazon Redshift has no triggers (CREATE TRIGGER is rejected with 42601, docs/sql-parsing/redshift.md) and DROP TRIGGER \u2026 ON <table> is PostgreSQL's form. The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TRIGGER",
+     "my_trigger",
+     "public"
+    ]
+   ],
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.my_trigger"
+    ]
+   ]
+  },
+  "facts": {
+   "diagnostic": "trigger: redshift DROP TRIGGER ON clause is not supported",
+   "kind": "DDL",
+   "operation": "DROP"
+  }
+ },
+ "8c71d100a80a073e": {
+  "sql": "DROP TRIGGER \"my trigger\" ON my_table",
+  "path": "both",
+  "class": "opaque-reader-gap",
+  "reason": "Amazon Redshift has no triggers (CREATE TRIGGER is rejected with 42601, docs/sql-parsing/redshift.md) and DROP TRIGGER \u2026 ON <table> is PostgreSQL's form. The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TRIGGER",
+     "my trigger",
+     "public"
+    ]
+   ],
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.my trigger"
+    ]
+   ]
+  },
+  "facts": {
+   "diagnostic": "trigger: redshift DROP TRIGGER ON clause is not supported",
+   "kind": "DDL",
+   "operation": "DROP"
+  }
+ },
+ "afa844944baef2cf": {
+  "sql": "DROP TRIGGER IF EXISTS trg_items_touch ON public.items",
+  "path": "both",
+  "class": "opaque-reader-gap",
+  "reason": "Amazon Redshift has no triggers (CREATE TRIGGER is rejected with 42601, docs/sql-parsing/redshift.md) and DROP TRIGGER \u2026 ON <table> is PostgreSQL's form. The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TRIGGER",
+     "trg_items_touch",
+     "public"
+    ]
+   ],
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.trg_items_touch"
+    ]
+   ]
+  },
+  "facts": {
+   "diagnostic": "trigger: redshift DROP TRIGGER ON clause is not supported",
+   "kind": "DDL",
+   "operation": "DROP"
+  }
+ },
+ "faae6108307176c5": {
+  "sql": "DROP TRIGGER IF EXISTS my_trigger ON myschema.my_table",
+  "path": "both",
+  "class": "opaque-reader-gap",
+  "reason": "Amazon Redshift has no triggers (CREATE TRIGGER is rejected with 42601, docs/sql-parsing/redshift.md) and DROP TRIGGER \u2026 ON <table> is PostgreSQL's form. The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TRIGGER",
+     "my_trigger",
+     "public"
+    ]
+   ],
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.my_trigger"
+    ]
+   ]
+  },
+  "facts": {
+   "diagnostic": "trigger: redshift DROP TRIGGER ON clause is not supported",
+   "kind": "DDL",
+   "operation": "DROP"
+  }
  }
 }

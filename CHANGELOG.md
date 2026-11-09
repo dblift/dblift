@@ -14,6 +14,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The logo at the top of the README (also shown on PyPI) uses the new flat DBLift blue identity:
   a single-blue mark and a plain white wordmark, matching dblift.com. Same file path, now at 2x
   resolution, with its SVG source in `logo/dblift_logo.svg`.
+- The analysis extra accepts SQLGlot 30.23 through 30.30. The statement-facts corpus is recorded
+  on both ends of that range and CI runs it on each.
+- A `CREATE INDEX … TABLESPACE` clause on MySQL, MariaDB, SQL Server, SQLite, DuckDB or Snowflake,
+  and a `DROP TRIGGER … ON table` clause outside PostgreSQL, name no object: the engine rejects the
+  clause. DuckDB `CREATE`, `ALTER` and `DROP TRIGGER` are reported the same way (DuckDB has no
+  triggers).
+- A DML statement read from its head reports its predicate without the leading `WHERE` on every
+  dialect, as the parsed path and MySQL already did.
 
 ### Fixed
 
@@ -22,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `database.url: unresolved reference`. The dialect given on the command line now decides the
   lint-only database section, and the file's section for the other database is not mixed into
   it; without `--dialect` the file's own type is still used.
+- PostgreSQL `CREATE TABLE … TABLESPACE` and `CREATE INDEX … TABLESPACE` read their declared
+  columns, indexed table and indexed columns on SQLGlot 30.30. On 30.23 the statement stays
+  opaque with the object named from its head.
 
 ### Removed
 

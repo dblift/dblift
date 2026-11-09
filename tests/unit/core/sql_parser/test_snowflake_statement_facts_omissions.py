@@ -65,7 +65,8 @@ def test_common_table_expression_that_writes_is_opaque(sql):
 
     assert facts.opaque
     assert facts.error is None
-    assert "cte" in facts.diagnostic.lower()
+    # sqlglot 30.23 parses RETURNING (the CTE body is the reason); 30.30 does not (the grammar is)
+    assert "cte" in facts.diagnostic.lower() or "grammar is not modelled" in facts.diagnostic
 
 
 def test_query_common_table_expression_is_still_read():

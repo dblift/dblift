@@ -19,6 +19,7 @@ from tests.support.facts_corpus import differential, family_file, read_rows
 from tests.support.facts_corpus.classes import (
     DEFAULT_SCHEMA,
     DIALECTS,
+    MECHANICAL,
     NO_OLD_FAMILIES,
     ORDER,
     REVIEW,
@@ -88,8 +89,9 @@ def test_every_family_has_a_review_file_of_entries_that_say_why() -> None:
             assert entry["path"] in ("hybrid", "analyzer", "both")
             if isinstance(entry["class"], dict):
                 assert set(entry["class"]) <= {"floor", "newest"}, key
-                assert all(c in REVIEW + ("same",) for c in entry["class"].values()), key
-                assert set(entry["class"].values()) != {"same"}, key
+                allowed = REVIEW + ("same",) + MECHANICAL  # an arm that needs no reason
+                assert all(c in allowed for c in entry["class"].values()), key
+                assert set(entry["class"].values()) & set(REVIEW), key
             else:
                 assert entry["class"] in REVIEW, key
 

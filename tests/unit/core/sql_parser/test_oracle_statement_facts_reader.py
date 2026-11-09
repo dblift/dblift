@@ -308,7 +308,8 @@ def test_an_index_read_from_its_head_names_the_table_it_is_built_on(sql, expecte
 
     assert _objects(sql) == expected
     assert facts.indexed_table == table
-    assert facts.opaque
+    # sqlglot 30.23 holds an Oracle TABLESPACE clause as a command; 30.30 parses it.
+    assert facts.opaque or facts.indexed_columns == ("a",)
 
 
 @pytest.mark.parametrize(
