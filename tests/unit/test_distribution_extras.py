@@ -49,10 +49,14 @@ def test_cli_extra_carries_presentation_and_analysis():
 def test_analysis_extra_carries_sqlglot_with_its_bounds():
     (requirement,) = [Requirement(spec) for spec in _EXTRAS["analysis"]]
     assert canonicalize_name(requirement.name) == "sqlglot"
-    assert {(s.operator, s.version.split(".")[0]) for s in requirement.specifier} == {
-        (">=", "30"),
-        ("<", "31"),
-    }
+    assert str(requirement.specifier) == "<30.24,>=30.23.0"
+    requirements = [
+        Requirement(line)
+        for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()
+        if line.startswith("sqlglot")
+    ]
+    assert len(requirements) == 1
+    assert requirements[0].specifier == requirement.specifier
 
 
 @pytest.mark.parametrize("extra", ["all", "dev", "mcp", "django", "flask", "fastapi"])

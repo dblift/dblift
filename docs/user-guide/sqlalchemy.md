@@ -50,10 +50,16 @@ Calling `client.close()` releases DBLift resources but does not dispose your
 engine or close your externally supplied connection. Your application remains
 responsible for its normal SQLAlchemy lifecycle.
 
-On Db2 (and CockroachDB, unverified), whose DDL is transactional, DBLift commits the transaction of a connection you pass in
-right after it creates a missing schema or schema-history table, so the migration lock, which
-uses a second connection, never waits on them. Anything you left uncommitted on that connection
-is committed with them, so commit or roll back your own work before the first call.
+When you pass `connection=`, finish any active transaction before calling a
+DBLift operation. DBLift raises `CallerTransactionError` at operation entry
+while that connection is in a transaction, so it cannot commit or roll back
+work that was already pending. This applies to reads such as `info()` and
+`validate()` as well as migration commands. SQLAlchemy can autobegin a
+transaction while DBLift reads; commit or roll back the connection before the
+next DBLift operation. This also applies when the underlying DBAPI uses
+autocommit because DBLift cannot infer whether the caller has added work since
+the SQLAlchemy transaction began. Catch `CallerTransactionError` from
+`dblift.core.exceptions` when handling this refusal explicitly.
 
 ## MySQL and MariaDB Engines
 

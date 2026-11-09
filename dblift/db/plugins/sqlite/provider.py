@@ -64,6 +64,7 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
 
         # Store connection reference
         self.connection: Optional[sqlite3.Connection] = None
+        self._in_transaction = False
 
         # Set when a caller-owned SQLAlchemy engine/connection is injected via
         # DBLiftClient.from_sqlalchemy. The provider then re-uses the caller's
@@ -79,6 +80,24 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
     def is_caller_owned(self) -> bool:
         """Return True once ``from_sqlalchemy`` has attached the caller's connection."""
         return self._external_connection
+
+    def caller_transaction_active(self) -> Optional[bool]:
+        """Return whether the explicitly supplied SQLAlchemy connection has an open tx."""
+        connection = self._external_sa_connection
+        if connection is None:
+            return None
+        if connection.in_transaction():
+            return True
+        if self.connection is None:
+            return False
+        try:
+            return self.connection.in_transaction
+        except sqlite3.ProgrammingError:
+            return False
+
+    def has_explicit_transaction(self) -> bool:
+        """Return whether DBLift opened an explicit SQLite transaction."""
+        return self._in_transaction
 
     def attach_external_sqlalchemy(self, engine: Any, connection: Any) -> None:
         """Bind a caller-owned SQLAlchemy engine/connection (from_sqlalchemy).

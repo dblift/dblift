@@ -30,12 +30,15 @@ class DuckDBQuirks(BaseQuirks):
     statement_facts_class = DuckDBStatementFactsReader
     default_schema_name = "main"
     boolean_false_literal = "FALSE"  # native BOOLEAN, not 0/1
+    schema_history_race_markers = BaseQuirks.schema_history_race_markers + (
+        "catalog write-write conflict",
+    )
     drop_supports_if_exists = True
     # Wave B hooks — embedded, file-based, no credentials (mirrors SQLite).
     native_driver_display = "duckdb"
     requires_credentials = False
     url_optional_when_file_path_given = True
-    file_url_locator_pattern = r"^[A-Za-z][A-Za-z0-9_]*:"  # md:, sqlite:, ducklake: ...: extensions
+    file_url_locator_pattern = r"^[A-Za-z][A-Za-z0-9_]*:(?!//)"  # md:, sqlite:, ducklake: ...
     file_path_opened_through_url = True
     connection_identifier_attrs = ("url", "path", "database")
     # In-memory DB: never touches disk, safe as a validate-sql offline placeholder.

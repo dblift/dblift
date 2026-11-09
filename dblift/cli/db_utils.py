@@ -319,7 +319,8 @@ def check_connection(args: argparse.Namespace) -> int:
 
                 results["connection_info"]["config_source"] = "Created from provided parameters"
             except Exception as e:
-                out.error(f"Error creating configuration: {str(e)}")
+                error_message = f"Error creating configuration: {str(e)}"
+                logger.error(error_message)
                 results["error"] = str(e)
                 print_connection_results(results, out)
                 return 1

@@ -178,6 +178,11 @@ def _validate_sql_effective_dialect(args: Any, config_data: Dict[str, Any]) -> O
     if isinstance(cli_dialect, str) and cli_dialect.strip():
         return cli_dialect.strip().lower()
 
+    return _database_section_dialect(config_data)
+
+
+def _database_section_dialect(config_data: Dict[str, object]) -> Optional[str]:
+    """Canonical dialect named by the ``database`` section (``type`` or URL scheme), if any."""
     database_config = config_data.get("database")
     if isinstance(database_config, dict):
         from dblift.db.provider_registry import ProviderRegistry
@@ -312,7 +317,7 @@ def apply_environment(config_data: Dict[str, Any], environment: Optional[str]) -
             f"environments.{environment} must be a mapping of config sections, "
             f"got {type(block).__name__}"
         )
-    return deep_merge_dicts(effective, block)
+    return DbliftConfig.merge_config_data(effective, block)
 
 
 def _refuse_empty_target_version(data: Mapping[str, object]) -> None:
@@ -567,7 +572,12 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
             )
         filler = _validate_sql_lint_filler(dialect)
         if filler:
-            config_data = DbliftConfig.merge_config_data(filler, config_data)
+            # A section naming another database is not this run's: drop it whole, so its
+            # type, locators and schema cannot mix with the lint section built for the dialect.
+            section_dialect = _database_section_dialect(config_data)
+            if section_dialect and section_dialect != filler["database"]["type"]:
+                config_data = {k: v for k, v in config_data.items() if k != "database"}
+            config_data = deep_merge_dicts(filler, config_data)
 
     if not config_data:
         raise ConfigurationError(
@@ -1038,7 +1048,20 @@ class DbliftConfig:
     @staticmethod
     def merge_config_data(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
         """Merge raw config dictionaries before constructing typed config objects."""
-        return deep_merge_dicts(base or {}, override or {})
+        merged = deep_merge_dicts(base or {}, override or {})
+        base_db = base.get("database") if base else None
+        override_db = override.get("database") if override else None
+        if (
+            isinstance(base_db, dict)
+            and isinstance(override_db, dict)
+            and override_db.get("path")
+            and not override_db.get("url")
+        ):
+            dialect = _database_section_dialect(override) or _database_section_dialect(base)
+            if dialect and _file_dialect(dialect):
+                merged["database"].pop("url", None)
+                merged["database"].setdefault("type", dialect)
+        return merged
 
     @classmethod
     def validate_complete_data(cls, data: Dict[str, Any]) -> None:
@@ -1144,6 +1167,7 @@ class DbliftConfig:
                 "PASSWORD",
                 "SCHEMA",
                 "HOST",
+                "PATH",
                 "DATABASE",
                 "TYPE",
                 "INSTANCE",

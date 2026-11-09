@@ -40,8 +40,15 @@ def _seconds_before(clock: str, seconds: str) -> str:
 
 def _is_lock_conflict(error: BaseException) -> bool:
     """A deadlock or lock timeout (SQL0911N/SQL0913N): another writer is active."""
-    message = str(error).lower()
-    return any(marker in message for marker in ("sql0911n", "sql0913n", "57033"))
+    linked = error.__cause__
+    if linked is None and not error.__suppress_context__:
+        linked = error.__context__
+    return any(
+        marker in str(candidate).lower()
+        for candidate in (error, linked)
+        if candidate is not None
+        for marker in ("sql0911n", "sql0913n", "57033")
+    )
 
 
 def _q(name: str) -> str:
@@ -320,6 +327,24 @@ class Db2Provider(SqlLeaseLockingProvider):
             )
             """)
 
+    def _prepare_external_migration_lock_table(
+        self, provider: SqlLeaseLockingProvider, schema: str, wait_timeout_seconds: float
+    ) -> bool:
+        """Bound catalog waits, then discard the modified helper connection."""
+        try:
+            provider.execute_statement("SET CURRENT LOCK TIMEOUT 0")
+            try:
+                provider.create_migration_lock_table_if_not_exists(schema)
+            except Exception as exc:
+                if _is_lock_conflict(exc):
+                    return False
+                raise
+            return True
+        finally:
+            connection = provider.connection
+            if connection is not None:
+                connection.invalidate()
+
     def _migration_lease_dialect(self, schema: str) -> SqlLeaseDialect:
         """Describe the DB2 lock table; rows before the lease used local ``CURRENT TIMESTAMP``."""
         lock_identity = (
@@ -392,6 +417,24 @@ class Db2Provider(SqlLeaseLockingProvider):
     ) -> List[Dict[str, Any]]:
         """Return applied migration rows from the DB2 history table."""
         table_name = _db2_object_name(table_name)
+        if self.is_caller_owned() and not self.has_explicit_transaction():
+            provider = self._new_external_provider()
+            try:
+                provider.execute_statement("SET CURRENT LOCK TIMEOUT 0")
+                try:
+                    return provider.get_applied_migrations(schema, table_name)
+                except SystemError as exc:
+                    if _is_lock_conflict(exc):
+                        raise RuntimeError(
+                            "Could not read DB2 migration history "
+                            f"for schema {schema} because it is locked"
+                        ) from exc
+                    raise
+            finally:
+                connection = provider.connection
+                if connection is not None:
+                    connection.invalidate()
+                provider.close()
         if not self.table_exists(schema, table_name):
             return []
         rows = self.execute_query(f"""

@@ -88,15 +88,6 @@ READ = Db2StatementFactsReader(None).read
             ("a", "b"),
         ),
         (
-            "UPDATE t SET v = (SELECT 1 FROM x WHERE a = 1) WHERE id = 2",
-            "UPDATE",
-            "T",
-            "t",
-            {"UPDATE"},
-            "id = 2",
-            ("v",),
-        ),
-        (
             "UPDATE app.orders SET v = 1 WHERE CURRENT OF c1",
             "UPDATE",
             "APP.ORDERS",
@@ -165,11 +156,98 @@ READ = Db2StatementFactsReader(None).read
 )
 def test_dml_targets(sql, operation, target, target_sql, events, predicate, columns):
     facts = READ(sql)
-    assert (facts.operation, facts.kind, facts.opaque) == (operation, "DML", False)
+    source_unenumerated = (
+        operation == "MERGE" or sql == "insert into app.orders select * from app.orders2"
+    )
+    assert (facts.operation, facts.kind, facts.opaque) == (
+        operation,
+        "DML",
+        source_unenumerated,
+    )
+    if source_unenumerated:
+        assert facts.diagnostic == (f"db2 {operation}: source table references are not enumerated")
+    else:
+        assert facts.diagnostic is None
     assert (facts.target, facts.target_sql, facts.predicate) == (target, target_sql, predicate)
     assert facts.events == frozenset(events)
     assert facts.affected_columns == columns
     assert [(o.type.value, o.role) for o in facts.objects] == [("TABLE", "altered")]
+
+
+@pytest.mark.parametrize(
+    ("sql", "operation"),
+    [
+        (
+            "UPDATE app.target SET v = 1 WHERE EXISTS (SELECT 1 FROM app.source)",
+            "UPDATE",
+        ),
+        (
+            "DELETE FROM app.target WHERE EXISTS (SELECT 1 FROM app.source)",
+            "DELETE",
+        ),
+        (
+            "INSERT INTO app.target (id) SELECT id FROM app.source",
+            "INSERT",
+        ),
+        (
+            "MERGE INTO app.target t USING app.source s ON t.id=s.id "
+            "WHEN MATCHED THEN UPDATE SET v=s.v",
+            "MERGE",
+        ),
+    ],
+)
+def test_dml_with_unenumerated_source_tables_is_opaque(sql, operation):
+    facts = READ(sql)
+
+    assert facts.operation == operation
+    assert facts.target == "APP.TARGET"
+    assert [(obj.schema, obj.name, obj.role) for obj in facts.objects] == [
+        ("APP", "TARGET", "altered")
+    ]
+    assert facts.opaque
+    assert facts.diagnostic is not None
+    assert "source" in facts.diagnostic.lower() or "reference" in facts.diagnostic.lower()
+
+
+def test_update_with_scalar_subquery_source_is_opaque():
+    facts = READ("UPDATE t SET v = (SELECT 1 FROM x WHERE a = 1) WHERE id = 2")
+
+    assert facts.target == "T"
+    assert facts.opaque
+    assert facts.diagnostic == "db2 UPDATE: source table references are not enumerated"
+
+
+def test_update_from_source_is_opaque_when_target_is_named():
+    facts = READ("UPDATE t SET v = s.v FROM s WHERE t.id = s.id")
+
+    assert facts.target == "T"
+    assert facts.opaque
+    assert facts.diagnostic == "db2 UPDATE: source table references are not enumerated"
+
+
+def test_delete_with_constant_scalar_subquery_remains_readable():
+    facts = READ("DELETE FROM t WHERE id = (SELECT 1)")
+
+    assert (facts.target, facts.opaque, facts.diagnostic) == ("T", False, None)
+
+
+def test_simple_dml_without_source_tables_remains_readable():
+    facts = READ("UPDATE app.target SET v = 1 WHERE id = 1")
+
+    assert (facts.target, facts.opaque, facts.diagnostic) == ("APP.TARGET", False, None)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "UPDATE app.target SET note = 'SELECT 1 FROM app.source' WHERE id = 1",
+        "UPDATE app.target SET v = 1 /* SELECT 1 FROM app.source */ WHERE id = 1",
+    ],
+)
+def test_select_text_in_literal_or_comment_does_not_hide_unread_references(sql):
+    facts = READ(sql)
+
+    assert (facts.target, facts.opaque, facts.diagnostic) == ("APP.TARGET", False, None)
 
 
 @pytest.mark.parametrize(
@@ -252,7 +330,75 @@ def test_a_dml_holding_a_data_change_table_is_opaque(sql):
     assert (facts.objects, facts.target, facts.diagnostic) == ((), None, DATA_CHANGE_QUERY)
 
 
-def test_a_plain_insert_select_still_names_its_target():
+def test_insert_select_names_its_target_but_marks_source_unenumerated():
     facts = READ("INSERT INTO t SELECT * FROM u")
     assert facts.target == "T"
-    assert facts.diagnostic is None
+    assert facts.opaque
+    assert facts.diagnostic == "db2 INSERT: source table references are not enumerated"
+
+
+def test_insert_select_without_from_remains_readable():
+    facts = READ("INSERT INTO t SELECT 1, 'a' || chr(10) || '-- b'")
+
+    assert (facts.target, facts.opaque, facts.diagnostic) == ("T", False, None)
+
+
+def test_supported_data_change_cte_records_the_inner_update():
+    facts = READ(
+        "WITH changed_rows AS ("
+        "SELECT id FROM FINAL TABLE ("
+        "UPDATE app.orders SET status = 'done' WHERE id = 1"
+        ")) SELECT id FROM changed_rows"
+    )
+
+    assert facts.operation == "SELECT"
+    assert facts.kind == "DML"
+    assert not facts.opaque
+    assert [(obj.schema, obj.name, obj.role) for obj in facts.objects] == [
+        ("APP", "ORDERS", "altered")
+    ]
+    assert len(facts.cte_writes) == 1
+    assert (facts.cte_writes[0].operation, facts.cte_writes[0].target) == (
+        "UPDATE",
+        "APP.ORDERS",
+    )
+
+
+def test_data_change_cte_accepts_matching_declared_column():
+    facts = READ(
+        "WITH changed_rows (id) AS ("
+        "SELECT id FROM FINAL TABLE (UPDATE app.orders SET status = 'done' WHERE id = 1)"
+        ") SELECT id FROM changed_rows"
+    )
+
+    assert not facts.opaque
+    assert [(write.operation, write.target) for write in facts.cte_writes] == [
+        ("UPDATE", "APP.ORDERS")
+    ]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "WITH AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1)) SELECT id FROM c",
+        "WITH c (id, status) AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1)) SELECT id FROM c",
+        "WITH c (SELECT) AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1)) SELECT id FROM c",
+        "WITH c (id) AS (SELECT status FROM FINAL TABLE (UPDATE t SET id = 1)) SELECT status FROM c",
+        "WITH c AS SELECT id FROM FINAL TABLE (UPDATE t SET id = 1) SELECT id FROM c",
+        "WITH c AS () SELECT id FROM FINAL TABLE (UPDATE t SET id = 1)",
+        "WITH c AS (SELECT * FROM FINAL TABLE (UPDATE t SET id = 1)) SELECT id FROM c",
+        "WITH c AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1) WHERE id = 1) SELECT id FROM c",
+        "WITH c AS (SELECT id FROM FINAL TABLE (INSERT INTO t VALUES (1))) SELECT id FROM c",
+        "WITH c AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1 FROM u)) SELECT id FROM c",
+        "WITH c AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1 JOIN u ON t.id = u.id)) SELECT id FROM c",
+        "WITH c AS (SELECT id FROM FINAL TABLE (UPDATE SET id = 1)) SELECT id FROM c",
+        "WITH c AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1)) SELECT id FROM other_c",
+        "WITH c AS (SELECT id FROM FINAL TABLE (UPDATE t SET id = 1)) SELECT status FROM c",
+    ],
+)
+def test_unsupported_data_change_cte_stays_opaque(sql):
+    facts = READ(sql)
+
+    assert facts.opaque
+    assert facts.cte_writes == ()
+    assert facts.diagnostic == DATA_CHANGE_QUERY

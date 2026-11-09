@@ -669,6 +669,25 @@ class TestCheckConnection:
 class TestCheckConnectionLogFile:
     """BUG-02: db check-connection must honour --log-file."""
 
+    @patch("dblift.cli.db_utils.load_config")
+    def test_config_refusal_is_written_to_log(self, mock_load_config, tmp_path, capsys):
+        from dblift.config.errors import ConfigurationError
+
+        mock_load_config.side_effect = ConfigurationError("database.path: unresolved reference")
+        log_file = tmp_path / "check.log"
+        args = argparse.Namespace(
+            config=None,
+            format="text",
+            log_dir=str(tmp_path),
+            log_file=str(log_file),
+            log_format="text",
+            log_level="info",
+        )
+
+        assert check_connection(args) == 1
+        assert "database.path: unresolved reference" in log_file.read_text()
+        assert capsys.readouterr().err.count("database.path: unresolved reference") == 1
+
     @patch("dblift.cli.db_utils.ProviderRegistry.create_provider")
     @patch("dblift.cli.db_utils.load_config")
     @patch("dblift.cli.db_utils.DbliftLogger")

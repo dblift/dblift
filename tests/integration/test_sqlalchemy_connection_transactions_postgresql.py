@@ -37,7 +37,6 @@ def run_callback_scenario(callback: str, url: str, tmp_path) -> None:
         conn.execute(text(f'CREATE SCHEMA "{schema}"'))
     try:
         with create_engine(url).connect() as conn:
-            conn.execute(text("SELECT 1"))  # the connection has autobegun
             client = DBLiftClient.from_sqlalchemy(
                 connection=conn, schema=schema, migrations_dir=migrations, logger=NullLog()
             )
@@ -62,7 +61,7 @@ def run_callback_scenario(callback: str, url: str, tmp_path) -> None:
 
 
 def run_failed_read_scenario(url: str, tmp_path) -> None:
-    """A role that cannot read the history gets the real cause every time, keeping its own work."""
+    """A role that cannot read the history gets the real cause on a clean connection."""
     uid = uuid.uuid4().hex[:8]
     schema, role, password = f"q_a_{uid}", f"q_a_reader_{uid}", f"Qa{uid}x1"
     migrations = tmp_path / "failed_read"
@@ -83,7 +82,6 @@ def run_failed_read_scenario(url: str, tmp_path) -> None:
             conn.execute(text(f'GRANT INSERT, SELECT ON "{schema}".mine TO {role}'))
         config = _config_of(url)
         with create_engine(_url(config, role, password)).connect() as conn:
-            conn.execute(text(f'INSERT INTO "{schema}".mine VALUES (1)'))
             client = DBLiftClient.from_sqlalchemy(
                 connection=conn, schema=schema, migrations_dir=migrations, logger=NullLog()
             )
@@ -91,8 +89,8 @@ def run_failed_read_scenario(url: str, tmp_path) -> None:
                 message = client.info().error_message
                 assert "permission denied" in message, message
                 assert "aborted" not in message, message
-            assert conn.execute(text(f'SELECT count(*) FROM "{schema}".mine')).scalar() == 1
-            conn.rollback()
+                conn.rollback()
+                assert not conn.in_transaction()
     finally:
         with admin.connect() as conn:
             conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
@@ -119,7 +117,7 @@ def _client(conn, schema, migrations):
 
 
 def run_pending_row_scenario(url: str, tmp_path) -> None:
-    """A ``beforeMigrate`` callback's writes are committed, and so is what the caller left pending."""
+    """A pending caller transaction prevents callbacks and migration work."""
     schema = f"q_a_{uuid.uuid4().hex[:8]}"
     migrations = tmp_path / "pending_row"
     migrations.mkdir()
@@ -132,12 +130,48 @@ def run_pending_row_scenario(url: str, tmp_path) -> None:
     try:
         with create_engine(url).connect() as conn:
             conn.execute(text(f'INSERT INTO "{schema}".mine VALUES (1)'))
-            result = _client(conn, schema, migrations).migrate()
-            conn.rollback()
-        assert result.success, getattr(result, "error", None)
-        assert "cb" in _tables(admin, schema)
-        with admin.connect() as conn:
+            client = _client(conn, schema, migrations)
+            with pytest.raises(RuntimeError, match="caller.*transaction"):
+                with client:
+                    client.migrate()
+            assert conn.in_transaction()
             assert conn.execute(text(f'SELECT count(*) FROM "{schema}".mine')).scalar() == 1
+            conn.rollback()
+        assert "cb" not in _tables(admin, schema)
+        assert "t" not in _tables(admin, schema)
+        with admin.connect() as conn:
+            assert conn.execute(text(f'SELECT count(*) FROM "{schema}".mine')).scalar() == 0
+    finally:
+        with admin.connect() as conn:
+            conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()
+
+
+def run_migrate_refuses_pending_row_scenario(url: str, tmp_path) -> None:
+    """Migrate refuses to run while the caller has an open transaction."""
+    schema = f"q_a_{uuid.uuid4().hex[:8]}"
+    migrations = tmp_path / "migrate_pending_row"
+    migrations.mkdir()
+    (migrations / "V1__t.sql").write_text("CREATE TABLE t (id integer);")
+    admin = create_engine(url, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        assert not conn.execute(
+            text("SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = :schema)"),
+            {"schema": schema},
+        ).scalar()
+        conn.execute(text(f'CREATE SCHEMA "{schema}"'))
+        conn.execute(text(f'CREATE TABLE "{schema}".mine (id integer)'))
+    try:
+        with create_engine(url).connect() as conn:
+            conn.execute(text(f'INSERT INTO "{schema}".mine VALUES (1)'))
+            with pytest.raises(RuntimeError, match="caller.*transaction"):
+                with _client(conn, schema, migrations) as client:
+                    client.migrate()
+            assert conn.in_transaction()
+            assert conn.execute(text(f'SELECT count(*) FROM "{schema}".mine')).scalar() == 1
+            conn.rollback()
+        with admin.connect() as conn:
+            assert conn.execute(text(f'SELECT count(*) FROM "{schema}".mine')).scalar() == 0
     finally:
         with admin.connect() as conn:
             conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
@@ -170,7 +204,7 @@ def run_after_clean_scenario(url: str, tmp_path) -> None:
 
 
 def run_validate_callback_scenario(url: str, tmp_path) -> None:
-    """``validate`` with a ``beforeValidate`` callback keeps the caller's pending row."""
+    """Validate refuses to run with caller work pending on the connection."""
     schema = f"q_a_{uuid.uuid4().hex[:8]}"
     migrations = tmp_path / "validate_cb"
     migrations.mkdir()
@@ -186,10 +220,11 @@ def run_validate_callback_scenario(url: str, tmp_path) -> None:
         (migrations / "beforeValidate__cb.sql").write_text("SELECT 1;")
         with create_engine(url).connect() as conn:
             conn.execute(text(f'INSERT INTO "{schema}".mine VALUES (1)'))
-            result = _client(conn, schema, migrations).validate()
+            client = _client(conn, schema, migrations)
+            with pytest.raises(RuntimeError, match="caller.*transaction"):
+                client.validate()
             pending = conn.execute(text(f'SELECT count(*) FROM "{schema}".mine')).scalar()
             conn.rollback()
-        assert result.success, getattr(result, "error", None)
         assert pending == 1
     finally:
         with admin.connect() as conn:
@@ -212,12 +247,33 @@ def run_autocommit_scenario(url: str, tmp_path) -> None:
             for name in ("migrate", "info", "validate"):
                 result = getattr(client, name)()
                 assert result.success, (name, getattr(result, "error_message", None))
+                conn.commit()
         tables = _tables(admin, schema)
         assert "t" in tables and "dblift_schema_history" in tables, tables
     finally:
         with admin.connect() as conn:
             conn.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+def run_read_then_migrate_scenario(url: str, tmp_path) -> None:
+    """A read may autobegin; the caller must settle it before the next operation."""
+    schema = f"q_a_{uuid.uuid4().hex[:8]}"
+    migrations = tmp_path / "read_then_migrate"
+    migrations.mkdir()
+    (migrations / "V1__t.sql").write_text("CREATE TABLE t (id integer);")
+    try:
+        with create_engine(url).connect() as conn:
+            client = _client(conn, schema, migrations)
+            assert client.info().success
+            assert conn.in_transaction()
+            with pytest.raises(RuntimeError, match="caller.*transaction"):
+                client.migrate()
+            conn.rollback()
+            assert client.migrate().success
+    finally:
+        with create_engine(url, isolation_level="AUTOCOMMIT").connect() as conn:
+            conn.execute(text(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE'))
 
 
 def run_concurrent_index_scenario(url: str, tmp_path) -> None:
@@ -277,7 +333,7 @@ def test_after_clean_callback_does_not_undo_clean(postgresql_container, tmp_path
     run_after_clean_scenario(_url(postgresql_container), tmp_path)
 
 
-def test_validate_callback_keeps_the_callers_pending_work(postgresql_container, tmp_path):
+def test_validate_refuses_the_callers_pending_work(postgresql_container, tmp_path):
     run_validate_callback_scenario(_url(postgresql_container), tmp_path)
 
 
@@ -289,7 +345,17 @@ def test_concurrent_index_migration_on_a_caller_owned_connection(postgresql_cont
     run_concurrent_index_scenario(_url(postgresql_container), tmp_path)
 
 
-def test_before_migrate_callback_is_committed_with_the_callers_pending_work(
+def test_before_migrate_callback_does_not_run_with_pending_caller_work(
     postgresql_container, tmp_path
 ):
     run_pending_row_scenario(_url(postgresql_container), tmp_path)
+
+
+def test_migrate_does_not_silently_rollback_the_callers_pending_work(
+    postgresql_container, tmp_path
+):
+    run_migrate_refuses_pending_row_scenario(_url(postgresql_container), tmp_path)
+
+
+def test_read_then_migrate_requires_caller_to_settle_transaction(postgresql_container, tmp_path):
+    run_read_then_migrate_scenario(_url(postgresql_container), tmp_path)

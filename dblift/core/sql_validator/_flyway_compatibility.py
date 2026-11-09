@@ -93,7 +93,7 @@ def validate_flyway_compatibility(snapshot: FlywayCompatibilitySnapshot) -> Dict
             if flyway_migration.get("version") != Dblift_migration.get("version"):
                 result["compatible"] = False
                 result["error_message"] = (
-                    f"Migration version mismatch at position {i+1}: "
+                    f"Migration version mismatch at position {i + 1}: "
                     f"Flyway version '{flyway_migration.get('version')}' vs "
                     f"Dblift version '{Dblift_migration.get('version')}'."
                 )
@@ -107,7 +107,7 @@ def validate_flyway_compatibility(snapshot: FlywayCompatibilitySnapshot) -> Dict
             if expected_type is None:
                 result["compatible"] = False
                 result["error_message"] = (
-                    f"Unsupported migration type at position {i+1}: "
+                    f"Unsupported migration type at position {i + 1}: "
                     f"Flyway type '{flyway_type}'."
                 )
                 break
@@ -120,7 +120,7 @@ def validate_flyway_compatibility(snapshot: FlywayCompatibilitySnapshot) -> Dict
             if Dblift_type not in accepted_types:
                 result["compatible"] = False
                 result["error_message"] = (
-                    f"Migration type mismatch at position {i+1}: "
+                    f"Migration type mismatch at position {i + 1}: "
                     f"Flyway type '{flyway_type}' (Dblift '{expected_type}') vs "
                     f"Dblift type '{Dblift_type}'."
                 )
@@ -129,7 +129,7 @@ def validate_flyway_compatibility(snapshot: FlywayCompatibilitySnapshot) -> Dict
             if flyway_migration.get("script") != Dblift_migration.get("script"):
                 result["compatible"] = False
                 result["error_message"] = (
-                    f"Migration script name mismatch at position {i+1}: "
+                    f"Migration script name mismatch at position {i + 1}: "
                     f"Flyway script '{flyway_migration.get('script')}' vs "
                     f"Dblift script '{Dblift_migration.get('script')}'."
                 )
@@ -140,7 +140,7 @@ def validate_flyway_compatibility(snapshot: FlywayCompatibilitySnapshot) -> Dict
             if flyway_checksum != dblift_checksum:
                 result["compatible"] = False
                 result["error_message"] = (
-                    f"Migration checksum mismatch at position {i+1}: "
+                    f"Migration checksum mismatch at position {i + 1}: "
                     f"Flyway checksum '{flyway_migration.get('checksum')}' vs "
                     f"Dblift checksum '{Dblift_migration.get('checksum')}'."
                 )

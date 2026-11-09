@@ -646,7 +646,7 @@ class ExecutionEngine:
 
         for i, statement in enumerate(statements):
             self.log.debug(
-                f"Executing statement {i+1}/{len(statements)} from {migration.script_name}"
+                f"Executing statement {i + 1}/{len(statements)} from {migration.script_name}"
             )
 
             # Positional error-handling directive (Oracle WHENEVER SQLERROR) — update
@@ -677,7 +677,7 @@ class ExecutionEngine:
                         self.provider.check_transaction_state()
                     except TransactionAbortedError as health_error:
                         raise TransactionAbortedError(
-                            f"Transaction is aborted before executing statement {i+1}: {health_error}"
+                            f"Transaction is aborted before executing statement {i + 1}: {health_error}"
                         ) from (health_error.__cause__ or health_error)
 
                 if self.sql_execution_service:
@@ -800,11 +800,11 @@ class ExecutionEngine:
             )
         )
         self.log.error(
-            f"Failed to execute statement {stmt_index+1} from {migration.script_name}: {error_msg}"
+            f"Failed to execute statement {stmt_index + 1} from {migration.script_name}: {error_msg}"
         )
 
         result.set_error(
-            f"Failed to execute statement {stmt_index+1} in {migration.script_name}: {error_msg}"
+            f"Failed to execute statement {stmt_index + 1} in {migration.script_name}: {error_msg}"
         )
 
         # Record failed migration info to result

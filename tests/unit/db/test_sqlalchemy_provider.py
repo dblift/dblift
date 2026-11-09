@@ -145,6 +145,19 @@ def test_transaction_probe_query_preserves_native_send(provider: _Concrete) -> N
         event.remove(engine, "before_cursor_execute", record_send)
 
 
+def test_caller_and_explicit_transaction_probes(provider: _Concrete) -> None:
+    assert provider.caller_transaction_active() is None
+    assert provider.has_explicit_transaction() is False
+
+    provider._external_connection = True
+    assert provider.caller_transaction_active() is False
+    provider.begin_transaction()
+    assert provider.caller_transaction_active() is True
+    assert provider.has_explicit_transaction() is True
+    provider.rollback_transaction()
+    assert provider.has_explicit_transaction() is False
+
+
 def test_transaction_health_uses_one_native_query(provider: _Concrete) -> None:
     from sqlalchemy import event
 

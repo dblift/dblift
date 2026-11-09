@@ -1,9 +1,12 @@
 """SQLite transaction probes retain their native query path."""
 
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
+from sqlalchemy import create_engine, text
 
+from dblift.api import DBLiftClient
 from dblift.config import DbliftConfig
 from dblift.core.exceptions import TransactionAbortedError
 from dblift.db.plugins.sqlite.provider import SQLiteProvider
@@ -73,3 +76,78 @@ def test_health_hook_maps_only_aborted_query_errors(monkeypatch) -> None:
     with pytest.raises(sqlite3.OperationalError) as exc:
         provider.check_transaction_state()
     assert exc.value is other
+
+
+@pytest.mark.unit
+@pytest.mark.sqlite
+def test_caller_transaction_state_tolerates_an_invalidated_connection() -> None:
+    config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
+    provider = SQLiteProvider(config)
+    engine = create_engine("sqlite:///:memory:")
+    connection = engine.connect()
+    provider.attach_external_sqlalchemy(engine, connection)
+    connection.invalidate()
+    try:
+        assert provider.caller_transaction_active() is False
+    finally:
+        engine.dispose()
+
+
+def test_caller_transaction_state_reports_external_and_unbound_states() -> None:
+    config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
+    provider = SQLiteProvider(config)
+    assert provider.caller_transaction_active() is None
+
+    engine = create_engine("sqlite:///:memory:")
+    connection = engine.connect()
+    try:
+        provider.attach_external_sqlalchemy(engine, connection)
+        assert provider.caller_transaction_active() is False
+        connection.begin()
+        assert provider.caller_transaction_active() is True
+    finally:
+        connection.close()
+        engine.dispose()
+
+
+def test_caller_transaction_state_is_false_before_external_binding() -> None:
+    config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
+    provider = SQLiteProvider(config)
+    provider._external_sa_connection = SimpleNamespace(in_transaction=lambda: False)
+    assert provider.caller_transaction_active() is False
+
+
+@pytest.mark.unit
+@pytest.mark.sqlite
+def test_context_exit_rolls_back_an_explicit_provider_transaction(tmp_path) -> None:
+    engine = create_engine("sqlite:///:memory:")
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("CREATE TABLE mine (id INTEGER)"))
+            connection.commit()
+            client = DBLiftClient.from_sqlalchemy(connection=connection, migrations_dir=tmp_path)
+            client.provider.begin_transaction()
+            client.provider.execute_statement("INSERT INTO mine VALUES (1)")
+            with pytest.raises(ValueError, match="caller exception"):
+                with client:
+                    raise ValueError("caller exception")
+            assert connection.execute(text("SELECT COUNT(*) FROM mine")).scalar() == 0
+    finally:
+        engine.dispose()
+
+
+def test_context_exit_rolls_back_the_provider_transaction(tmp_path) -> None:
+    database = tmp_path / "provider.db"
+    config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": str(database)}})
+    provider = SQLiteProvider(config)
+    client = DBLiftClient(provider, migrations_dir=tmp_path, config=config)
+    provider.execute_statement("CREATE TABLE items (id INTEGER)")
+    provider.begin_transaction()
+    provider.execute_statement("INSERT INTO items VALUES (1)")
+
+    with pytest.raises(ValueError, match="caller exception"):
+        with client:
+            raise ValueError("caller exception")
+
+    with sqlite3.connect(database) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM items").fetchone() == (0,)

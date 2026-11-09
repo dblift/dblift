@@ -620,20 +620,33 @@ def _command_handler_attr(command: Optional[str], attr_name: str, default: Any =
     return getattr(handler, attr_name, default)
 
 
-def _connect_if_needed(client: Any, log: Any, command: str, args: Any) -> None:
+def _connect_if_needed(
+    client: object,
+    log: object,
+    command: str,
+    args: Any,
+    *,
+    raise_on_license_denial: bool = False,
+) -> None:
     """Connect before ``command`` unless its handler opts out for these ``args``.
 
     A handler may declare ``_dblift_pre_connection_check(args, license_tier)``,
     run first so a refusal (``CapabilityDeniedError``) happens before any
-    credential is used, and ``_dblift_needs_connection(args) -> bool``, which
-    returning False skips the connection for an invocation that runs from files.
+    credential is used, and ``_dblift_needs_connection(args) -> bool`` or
+    ``_dblift_needs_connection_with_client(args, client) -> bool``. Returning
+    False skips the connection for an invocation that runs from files.
     """
     check = _command_handler_attr(command, "_dblift_pre_connection_check")
     if callable(check):
         try:
             check(args, resolve_tier(args))
         except CapabilityDeniedError as e:
+            if raise_on_license_denial:
+                raise
             exit_license_required(e, log)
+    needs_connection = _command_handler_attr(command, "_dblift_needs_connection_with_client")
+    if callable(needs_connection) and not needs_connection(args, client):
+        return
     needs_connection = _command_handler_attr(command, "_dblift_needs_connection")
     if callable(needs_connection) and not needs_connection(args):
         return
