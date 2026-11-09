@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The logo at the top of the README (also shown on PyPI) uses the new flat DBLift blue identity:
+  a single-blue mark and a plain white wordmark, matching dblift.com. Same file path, now at 2x
+  resolution, with its SVG source in `logo/dblift_logo.svg`.
+
 ### Fixed
 
 - `validate-sql --dialect <name>` on a project whose configuration file names another database
