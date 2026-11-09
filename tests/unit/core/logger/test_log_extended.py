@@ -632,6 +632,36 @@ class TestFileLog:
         log = FileLog("test_log", tmp_path, LogFormat.HTML)
         assert log.log_format == LogFormat.HTML
 
+    @pytest.mark.parametrize("log_format", [LogFormat.TEXT, LogFormat.JSON, LogFormat.HTML])
+    def test_custom_log_file_refuses_symlink_leaf(self, tmp_path, log_format):
+        sentinel = tmp_path / "sentinel.txt"
+        sentinel.write_text("preserve this file", encoding="utf-8")
+        output = tmp_path / f"report.{log_format.value}"
+        output.symlink_to(sentinel)
+
+        with pytest.raises(OSError, match="symlinked output path"):
+            log = FileLog("test_log", tmp_path, log_format, log_file_pattern=str(output))
+            log.info("this must not be written through the symlink")
+            log.close()
+
+        assert output.is_symlink()
+        assert sentinel.read_text(encoding="utf-8") == "preserve this file"
+
+    def test_custom_log_file_allows_symlinked_parent_directory(self, tmp_path):
+        target_dir = tmp_path / "target"
+        target_dir.mkdir()
+        linked_dir = tmp_path / "linked"
+        linked_dir.symlink_to(target_dir, target_is_directory=True)
+        output = linked_dir / "report.log"
+
+        log = FileLog("test_log", tmp_path, LogFormat.TEXT, log_file_pattern=str(output))
+        log.info("written through the directory symlink")
+        log.close()
+
+        assert output.exists()
+        assert not output.is_symlink()
+        assert "written through the directory symlink" in output.read_text(encoding="utf-8")
+
     def test_init_with_schema_and_database(self, tmp_path):
         """Test FileLog initialization with schema and database."""
         log = FileLog(
@@ -1296,6 +1326,34 @@ class TestLogFactory:
         log_file = tmp_path / "nonexistent.log"
         with pytest.raises(ValueError):
             LogFactory.use_existing_log_file(log_file)
+
+    @pytest.mark.parametrize("log_format", [LogFormat.TEXT, LogFormat.JSON, LogFormat.HTML])
+    @pytest.mark.parametrize("configure_log_file", [False, True], ids=["use-existing", "configure"])
+    def test_get_log_refuses_symlinked_existing_log_file(
+        self, tmp_path, log_format, configure_log_file
+    ):
+        sentinel = tmp_path / "sentinel.txt"
+        sentinel.write_text("preserve this file", encoding="utf-8")
+        output = tmp_path / f"existing.{log_format.value}"
+        output.symlink_to(sentinel)
+
+        LogFactory.reset()
+        try:
+            if configure_log_file:
+                LogFactory.configure(tmp_path, log_format, use_console=False, log_file=str(output))
+            else:
+                LogFactory.configure(tmp_path, log_format, use_console=False)
+                LogFactory.use_existing_log_file(output)
+
+            with pytest.raises(OSError, match="symlinked output path"):
+                log = LogFactory.get_log(TestLogFactory)
+                log.info("this must not be written through the symlink")
+                log.close()
+        finally:
+            LogFactory.reset()
+
+        assert output.is_symlink()
+        assert sentinel.read_text(encoding="utf-8") == "preserve this file"
 
     def test_configure_basic(self, tmp_path):
         """Test configure with basic parameters."""

@@ -46,6 +46,7 @@ from dblift.core.logger._levels import (  # noqa: F401  re-export
 from dblift.core.logger._multi import MultiLog  # noqa: F401  re-export
 from dblift.core.logger._null import NullLog  # noqa: F401  re-export
 from dblift.core.utils.module_check import module_available
+from dblift.core.utils.output_paths import refuse_symlink_output
 
 if TYPE_CHECKING:
     from rich.console import Console
@@ -481,6 +482,7 @@ class FileLog(AbstractLog):
 
         # Get initial log file path
         self.log_file = self._get_log_file()
+        refuse_symlink_output(self.log_file)
         # Defense-in-depth: a custom pattern may legitimately nest directories;
         # ensure the file's parent exists so the header write never crashes.
         self.log_file.parent.mkdir(parents=True, exist_ok=True)
