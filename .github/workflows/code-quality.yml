@@ -41,19 +41,16 @@ jobs:
         run: flake8 --config=.flake8 dblift/
 
       - name: Type check
-        run: mypy dblift/ tests/typing/lightweight_extension.py --config-file pyproject.toml --show-error-codes
+        run: python -m mypy dblift/ tests/typing/lightweight_extension.py --config-file pyproject.toml --show-error-codes
 
       - name: Check internal layering
         run: lint-imports --config .importlinter
 
-      - name: AST lint patterns (ratchet)
+      - name: AST lint patterns
         run: python scripts/lint_patterns.py
 
-      - name: Public-API docstrings (ratchet)
-        run: python scripts/check_api_docstrings.py --paths dblift/api dblift/cli dblift/core dblift/db --ratchet .docstring-ratchet.json
-
-      - name: Line-length (ratchet)
-        run: python scripts/check_line_length.py
+      - name: Public-API docstrings
+        run: python scripts/check_api_docstrings.py
 
       - name: Structural debt (ratchet)
         run: python scripts/check_debt_ratchet.py

@@ -51,7 +51,7 @@ Integration tests under `tests/integration/` run against real databases in conta
 ./scripts/check_code_quality.sh
 ```
 
-It runs the same black, isort, flake8 and mypy checks as CI. Line length is 100.
+It runs the same checks as CI. Line length is 100, and flake8 (including line length and import position), the AST lint patterns and the public docstring check run at zero tolerance over all of `dblift/`: there are no caps to stay under, so a new violation fails. Run it from the repository root; a script that cannot find `dblift/` fails rather than passing on an empty scan.
 
 ## Pull requests
 

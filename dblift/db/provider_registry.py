@@ -732,7 +732,8 @@ class ProviderRegistry:
                 supported_types = []
             raise ValueError(
                 f"Unsupported database type: {db_type}. "
-                f"Supported types: {', '.join(supported_types) if supported_types else 'none available'}"
+                "Supported types: "
+                f"{', '.join(supported_types) if supported_types else 'none available'}"
             )
 
         return provider_class(config, log)

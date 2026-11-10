@@ -118,14 +118,16 @@ class CosmosDbSchemaOperations(BaseSchemaOperations):
                     container_id = container.get("id")
                     if container_id == container_name:
                         self.log.debug(
-                            f"Container {container_name} found via list (read error: {str(read_error)})"
+                            f"Container {container_name} found via list "
+                            f"(read error: {str(read_error)})"
                         )
                         return True
                 return False
             except Exception as list_error:
                 # If listing also fails, log and return False
                 self.log.debug(
-                    f"Error checking container existence (read: {str(read_error)}, list: {str(list_error)})"
+                    f"Error checking container existence (read: {str(read_error)}, "
+                    f"list: {str(list_error)})"
                 )
                 return False
 

@@ -124,8 +124,10 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
         summary = CleanExecutionSummary()
 
         try:
-            # 1. Drop all extensions first (they own functions that can't be dropped individually)
-            # NOTE: Only drops extensions installed in this specific schema, not database-wide extensions
+            # 1. Drop all extensions first (they own functions that can't be dropped
+            # individually)
+            # NOTE: Only drops extensions installed in this specific schema, not
+            # database-wide extensions
             self.log.debug("Dropping schema-specific extensions...")
 
             extensions_query = """
@@ -227,13 +229,15 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
                 type_name = type_row.get("type_name", type_row.get("TYPE_NAME"))
                 if type_name:
                     # Check if this type is used by any preserved tables
-                    # Use prefix matching to cover type name variants (e.g. dblift_migration_lock_status)
+                    # Use prefix matching to cover type name variants
+                    # (e.g. dblift_migration_lock_status)
                     type_used_by_preserved = False
                     for preserved_table in preserved_tables:
                         if type_name.lower().startswith(preserved_table.lower()):
                             type_used_by_preserved = True
                             self.log.debug(
-                                f"Preserving type {type_name} (used by preserved table {preserved_table})"
+                                f"Preserving type {type_name} "
+                                f"(used by preserved table {preserved_table})"
                             )
                             break
 
@@ -273,7 +277,8 @@ class PostgreSqlSchemaOperations(BaseSchemaOperations):
                 for failure in type_drop_failures:
                     # Check if this is a dependency issue that should be handled differently
                     if "cannot drop type" in failure.lower() and "requires it" in failure.lower():
-                        # This is a dependency issue - we should have dropped the dependent objects first
+                        # This is a dependency issue - we should have dropped the dependent
+                        # objects first
                         critical_failures.append(failure)
 
                 if critical_failures:

@@ -51,7 +51,8 @@ def has_code(positions: Sequence[int], first: int, last: int) -> bool:
 _WORDS: RulesCache["re.Pattern[str]"] = RulesCache(
     lambda rules: re.compile(f"[{rules.word_start}][{rules.word_part}]*|;")
 )
-#: Division reads ``str.strip()`` whitespace before a head word, as the previous heuristic did, not ``blanks``.
+#: Division reads ``str.strip()`` whitespace before a head word, as the previous heuristic did, not
+#: ``blanks``.
 _NOT_BLANK = re.compile(r"\S")
 
 

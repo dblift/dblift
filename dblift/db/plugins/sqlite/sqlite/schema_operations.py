@@ -125,7 +125,10 @@ class SQLiteSchemaOperations:
     def get_clean_preview(
         self, connection: sqlite3.Connection, schema: str
     ) -> CleanExecutionSummary:
-        """Return a CleanExecutionSummary listing what a clean would drop, without executing anything."""
+        """Return a CleanExecutionSummary listing what a clean would drop.
+
+        Nothing is executed.
+        """
         summary = CleanExecutionSummary()
         for object_type, name, drop_sql in self.enumerate_clean_candidates(connection, schema):
             summary.add_object(object_type=object_type, name=name, schema=None)

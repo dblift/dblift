@@ -30,7 +30,8 @@ def refuse_edges_the_driver_strips(
     """Raise ``UnsafeStatementSplitError`` for such a character before or after the code.
 
     ``tokens`` are those of one statement, comments included; ``comments`` are the source spans of
-    every comment of the script; ``terminator`` is the token that ends it and is not part of its text. The leading edge is read from ``floor`` (where the previous
+    every comment of the script; ``terminator`` is the token that ends it and is not part of its
+    text. The leading edge is read from ``floor`` (where the previous
     record ended) to the first code token, the trailing edge from the last code token to the next
     comment, the terminator or ``end``.
     """

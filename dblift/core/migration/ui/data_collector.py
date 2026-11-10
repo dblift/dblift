@@ -249,7 +249,8 @@ class MigrationDataCollector:
             )
 
         # Process pending migrations at the end (in execution order)
-        # Execution order: versioned first (sorted by version), then repeatable (sorted by script name)
+        # Execution order: versioned first (sorted by version), then repeatable (sorted by script
+        # name)
         sorted_pending = sorted(
             pending_migrations,
             key=functools.cmp_to_key(self._compare_pending_migrations),

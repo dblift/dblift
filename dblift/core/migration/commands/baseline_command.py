@@ -62,7 +62,8 @@ class BaselineCommand(BaseCommand):
                             _existing_history_message(result.target_schema, len(existing))
                         )
 
-                # Create baseline migration record without script_path since baseline doesn't have a file
+                # Create baseline migration record without script_path since baseline doesn't have a
+                # file
                 baseline_migration = self.script_manager.baseline_marker(
                     baseline_version, baseline_description
                 )

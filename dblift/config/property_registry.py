@@ -32,6 +32,8 @@ def cli_flag(name: str) -> str:
 
 @dataclass(frozen=True)
 class PropertySpec:
+    """One configuration property and the surfaces (config, env, CLI) that expose it."""
+
     name: str  # dotted config key; "database.<field>" for nested db config
     type: str  # "str" | "int" | "float" | "bool" | "dict" | "list"
     default: object = None
@@ -43,10 +45,12 @@ class PropertySpec:
 
     @property
     def env(self) -> str:
+        """The environment variable name for this property."""
         return env_name(self.name)
 
     @property
     def cli(self) -> str:
+        """The command-line flag for this property."""
         return cli_flag(self.name)
 
 

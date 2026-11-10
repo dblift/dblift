@@ -320,7 +320,6 @@ disable_error_code = ["unreachable"]
 # ---------------------------------------------------------------------------
 [[tool.mypy.overrides]]
 module = [
-    "dblift.api.__init__",
     "dblift.api._client_factory",
     "dblift.api.events",
 ]
@@ -649,32 +648,18 @@ strict_equality = true
 module = [
     "dblift.db.plugins.neon",
     "dblift.db.plugins.neon.plugin",
-    "dblift.db.plugins.neon.provider",
-    "dblift.db.plugins.neon.quirks",
     "dblift.db.plugins.supabase",
     "dblift.db.plugins.supabase.plugin",
-    "dblift.db.plugins.supabase.provider",
-    "dblift.db.plugins.supabase.quirks",
     "dblift.db.plugins.aurora_postgresql",
     "dblift.db.plugins.aurora_postgresql.plugin",
-    "dblift.db.plugins.aurora_postgresql.provider",
-    "dblift.db.plugins.aurora_postgresql.quirks",
     "dblift.db.plugins.alloydb",
     "dblift.db.plugins.alloydb.plugin",
-    "dblift.db.plugins.alloydb.provider",
-    "dblift.db.plugins.alloydb.quirks",
     "dblift.db.plugins.yugabytedb",
     "dblift.db.plugins.yugabytedb.plugin",
-    "dblift.db.plugins.yugabytedb.provider",
-    "dblift.db.plugins.yugabytedb.quirks",
     "dblift.db.plugins.timescaledb",
     "dblift.db.plugins.timescaledb.plugin",
-    "dblift.db.plugins.timescaledb.provider",
-    "dblift.db.plugins.timescaledb.quirks",
     "dblift.db.plugins.citus",
     "dblift.db.plugins.citus.plugin",
-    "dblift.db.plugins.citus.provider",
-    "dblift.db.plugins.citus.quirks",
     "dblift.db.plugins.cockroachdb",
     "dblift.db.plugins.cockroachdb.plugin",
     "dblift.db.plugins.cockroachdb.provider",
@@ -710,8 +695,6 @@ module = [
     "dblift.db.plugins.postgresql.postgresql",
     "dblift.db.plugins.postgresql.postgresql.schema_operations",
     "dblift.db.plugins.postgresql.postgresql._lock_key",
-    "dblift.db.plugins.postgresql.parser.postgresql_statement_parser",
-    "dblift.db.plugins.postgresql.parser.postgresql_tokenizer",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -737,7 +720,6 @@ module = [
     "dblift.db.plugins.mysql.quirks",
     "dblift.db.plugins.mysql.mysql",
     "dblift.db.plugins.mysql.mysql.schema_operations",
-    "dblift.db.plugins.mysql.parser.mysql_statement_parser",
     "dblift.db.plugins.mysql.parser.mysql_tokenizer",
 ]
 disallow_any_generics = true
@@ -768,9 +750,7 @@ module = [
     "dblift.db.plugins.oracle.parser",
     "dblift.db.plugins.oracle.parser.sqlplus_context",
     "dblift.db.plugins.oracle.parser._comments",
-    "dblift.db.plugins.oracle.parser._plsql_block",
     "dblift.db.plugins.oracle.parser._sqlplus",
-    "dblift.db.plugins.oracle.parser._statement_splitter",
 ]
 disallow_any_generics = true
 disallow_subclassing_any = true
@@ -797,7 +777,6 @@ module = [
     "dblift.db.plugins.sqlserver.quirks",
     "dblift.db.plugins.sqlserver.sqlserver",
     "dblift.db.plugins.sqlserver.sqlserver.schema_operations",
-    "dblift.db.plugins.sqlserver.parser.sqlserver_statement_parser",
     "dblift.db.plugins.sqlserver.parser.sqlserver_tokenizer",
     "dblift.db.plugins.sqlserver.parser.tsql_batch_separator",
 ]

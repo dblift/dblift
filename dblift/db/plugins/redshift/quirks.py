@@ -34,6 +34,7 @@ class RedshiftQuirks(PostgresqlQuirks):
     feature_gates = {}
 
     def __init__(self, dialect_name: str = "redshift") -> None:
+        """Create the Redshift quirks under ``dialect_name``."""
         super().__init__(dialect_name=dialect_name)
 
     def lexical_spec(self) -> "LexicalSpec":

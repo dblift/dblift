@@ -17,6 +17,7 @@ _REFERENCE = re.compile(rf"^{_SCHEME}://|\$\{{")
 
 
 def anchorer(base_dir: Path) -> Callable[[object], str]:
+    """Return a function that anchors relative paths to ``base_dir``."""
     base = Path(base_dir).expanduser().resolve()
 
     def anchor(value: object) -> str:

@@ -328,7 +328,8 @@ class LexicalTokenizer(BaseTokenizer):
         """Lexemes of a terminator script, read from the text with its terminators blanked.
 
         An unterminated string, identifier or comment runs to the end of the script: the assembly
-        decides what that means. The depth at each consumed terminator that falls inside a comment is marked.
+        decides what that means. The depth at each consumed terminator that falls inside a comment
+        is marked.
         """
         sql = self.sql
         assert self.terminator_script is not None
@@ -1188,7 +1189,8 @@ class LexicalTokenizer(BaseTokenizer):
         )
 
     def _enter_segment(self) -> None:
-        """Start a code segment at the cursor: refuse a lone carriage return in the blanks before it."""
+        """Start a code segment at the cursor: refuse a lone carriage return in the blanks before
+        it."""
         assert self._batches is not None
         if self.pos > self._line_end:
             newline = self.sql.find("\n", self.pos)
@@ -1202,7 +1204,8 @@ class LexicalTokenizer(BaseTokenizer):
         self._seg_lone_cr = found is not None
 
     def _check_segment(self) -> None:
-        """Refuse a lone carriage return, then a variable reference, in the segment at the cursor."""
+        """Refuse a lone carriage return, then a variable reference, in the segment at
+        the cursor."""
         assert self._batches is not None
         self._seg_checked = True
         if self._seg_lone_cr:
@@ -1310,7 +1313,8 @@ class LexicalTokenizer(BaseTokenizer):
         )
 
     def _handle_unknown_char(self, char: str) -> Optional[Token]:
-        """An unclaimed character is a symbol; it only warns when the spec has not declared it silent."""
+        """An unclaimed character is a symbol; it only warns when the spec has not declared it
+        silent."""
         if not self.spec.silent_unclaimed:
             return super()._handle_unknown_char(char)
         start_pos, start_line, start_col = self.pos, self.line, self.col

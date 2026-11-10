@@ -289,7 +289,8 @@ class MigrateCommand(BaseCommand):
                     break
                 sink.describe(migration.script_name)
                 self.log.debug(
-                    f"About to execute migration: {migration.script_name} (version: {migration.version})"
+                    f"About to execute migration: {migration.script_name} (version: "
+                    f"{migration.version})"
                 )
                 if result.show_sql:
                     self._collect_visible_sql([migration], result)
@@ -532,7 +533,8 @@ class MigrateCommand(BaseCommand):
             self.log.info(f"Found {len(pending_migrations)} pending migration(s)")
             for pending_migration in pending_migrations:
                 self.log.debug(
-                    f"  - Pending migration: {pending_migration.script_name} (version: {pending_migration.version}, type: {pending_migration.type})"
+                    f"  - Pending migration: {pending_migration.script_name} (version: "
+                    f"{pending_migration.version}, type: {pending_migration.type})"
                 )
 
             if dry_run:
@@ -642,7 +644,8 @@ class MigrateCommand(BaseCommand):
                 result.set_error(reason)
             except Exception as e:
                 # Handle any exception during lock acquisition or migration execution
-                # Only log if error_message is not already set (migration execution already logged it)
+                # Only log if error_message is not already set (migration execution already logged
+                # it)
                 if not result.error_message:
                     reason = redact_driver_error_text(engine_error_message(e))
                     self.log.error(f"Exception during migration execution: {reason}")

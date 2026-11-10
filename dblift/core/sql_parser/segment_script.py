@@ -42,7 +42,8 @@ class SegmentScript:
 
         A segment runs from just after a ``;`` to the next one (or the end). It is a record when it
         holds a token that is not a comment.
-        The text is the segment without the blanks the engine reads at both ends; comments stay in it.
+        The text is the segment without the blanks the engine reads at both ends; comments stay in
+        it.
         """
         found: List[Statement] = []
         start, line, code = self.origin, 1, False
@@ -109,7 +110,8 @@ class SegmentScript:
         )
 
     def _strip_replaced(self, lo: int, hi: int) -> Tuple[int, int]:
-        """``lo`` and ``hi`` moved in past the blanks the engine replaces; one it keeps is a character."""
+        """``lo`` and ``hi`` moved in past the blanks the engine replaces; one it keeps is a
+        character."""
         while lo < hi and self._is_blank(lo):
             lo += 1
         while hi > lo and self._is_blank(hi - 1):

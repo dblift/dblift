@@ -89,7 +89,8 @@ class MigrationScriptManager(MigrationMarkerMixin):
     """Resolves on-disk migration scripts, computes checksums, and orders them by version."""
 
     def __init__(self, logger: Log, script_encoding: str = "utf-8", detect_encoding: bool = False):
-        """Configure script encoding and (optional) auto-detection used when reading migration files."""
+        """Configure script encoding and (optional) auto-detection used when reading migration
+        files."""
         self.logger = logger
         self.script_encoding = script_encoding
         self.detect_encoding = detect_encoding
@@ -182,7 +183,8 @@ class MigrationScriptManager(MigrationMarkerMixin):
         return migration_type == MigrationType.SQL and bool(version)
 
     def compare_versions(self, version1: Optional[str], version2: Optional[str]) -> int:
-        """Compare two version strings (e.g. '1.0.0' vs '1.0.1', '1_2_3' vs '1_2_4', '3.2A' vs '3.2B'). Handles None as empty string."""
+        """Compare two version strings (e.g. '1.0.0' vs '1.0.1', '1_2_3' vs '1_2_4', '3.2A' vs
+        '3.2B'). Handles None as empty string."""
         return _compare_versions_shared(version1, version2)
 
     @staticmethod
@@ -353,7 +355,8 @@ class MigrationScriptManager(MigrationMarkerMixin):
         is_changed: bool = current_checksum != applied_checksum
         if is_changed:
             self.logger.debug(
-                f"Script {script_name} has changed. Database checksum: {applied_checksum}, Filesystem checksum: {current_checksum}"
+                f"Script {script_name} has changed. Database checksum: {applied_checksum}, "
+                f"Filesystem checksum: {current_checksum}"
             )
         else:
             self.logger.debug(f"Script {script_name} has not changed")
@@ -628,7 +631,8 @@ class MigrationScriptManager(MigrationMarkerMixin):
                 if resolved_path in seen_files:
                     # Skip this file as we've already processed it
                     self.logger.debug(
-                        f"Skipping duplicate file {script_path} (already processed as {resolved_path})"
+                        f"Skipping duplicate file {script_path} (already processed as "
+                        f"{resolved_path})"
                     )
                     continue
                 seen_files.add(resolved_path)
@@ -645,7 +649,8 @@ class MigrationScriptManager(MigrationMarkerMixin):
                 if parsed_metadata is None:
                     parsed_metadata = self.parse_filename(script_name)
                 migration_type = parsed_metadata[0]
-                # Exclude files that are classified as BASELINE but do not match the naming convention
+                # Exclude files that are classified as BASELINE but do not match the naming
+                # convention
                 if migration_type == MigrationType.BASELINE and not any(
                     script_name.startswith(prefix) for prefix in _CALLBACK_PREFIXES
                 ):
@@ -693,13 +698,15 @@ class MigrationScriptManager(MigrationMarkerMixin):
         # Log excluded files
         if excluded_files:
             self.logger.info(
-                f"Found {len(excluded_files)} script(s) not following Dblift naming convention. These will be excluded from migration: {excluded_files}"
+                f"Found {len(excluded_files)} script(s) not following Dblift naming convention. "
+                f"These will be excluded from migration: {excluded_files}"
             )
 
         return migrations
 
     def is_valid_script_name(self, filename: str) -> bool:
-        """Return True if the filename is a valid migration or callback script name, False otherwise."""
+        """Return True if the filename is a valid migration or callback script name, False
+        otherwise."""
         migration_type, _, _, _ = self.parse_filename(filename)
         # Accept versioned, repeatable, undo, and callback scripts
         return migration_type in (

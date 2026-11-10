@@ -450,7 +450,8 @@ class BaseCommand:
                     )
                     if isinstance(e, SqlPreflightError) and "Error" not in event_prefix:
                         raise
-                    # Error callbacks (afterMigrateError, afterCleanError, afterUndoError) should only log warnings
+                    # Error callbacks (afterMigrateError, afterCleanError, afterUndoError) should
+                    # only log warnings
                     # Regular callbacks should fail the entire operation
                     if "Error" in event_prefix:
                         self.log.warning(f"Error callback {callback.script_name} failed: {reason}")
@@ -1241,7 +1242,8 @@ class BaseCommand:
         read_snapshot: Optional[MigrationReadSnapshot] = None,
         **kwargs: Any,
     ) -> None:
-        """Update command header with schema version and connection info after connection is established.
+        """Update command header with schema version and connection info after connection is
+        established.
 
         Orchestrates five focused helpers:
         1. :meth:`_build_filters_list` — CLI filter flags

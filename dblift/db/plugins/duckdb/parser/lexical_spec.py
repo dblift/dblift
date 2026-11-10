@@ -9,10 +9,12 @@ _NON_BLANK = (
     r"\x80-\x9f\xa1-\u1fff\u200c-\u202e\u2030-\u205e\u2061-\u2fff\u3001-\ufefe\uff00-\U0010ffff"
 )
 
-#: Every code point from U+0080 on: after a dollar sign not followed by a digit, the engine's blanks continue the word.
+#: Every code point from U+0080 on: after a dollar sign not followed by a digit, the engine's
+#: blanks continue the word.
 _NON_ASCII = r"\x80-\U0010ffff"
 
-#: Digits with single underscore separators; what follows a number or a positional parameter is the next lexeme.
+#: Digits with single underscore separators; what follows a number or a positional parameter
+#: is the next lexeme.
 _DIGITS = r"[0-9](?:_?[0-9])*"
 
 DUCKDB_RULES = SegmentScriptRules(
@@ -21,8 +23,8 @@ DUCKDB_RULES = SegmentScriptRules(
         " \t\n\f\r\u00a0\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u200b"
         "\u202f\u205f\u2060\u3000\ufeff"
     ),
-    # A dollar sign inside a word continues it. The 18 non-ASCII blanks continue it too where the engine's
-    # pass over the script kept them (``blank_pass``).
+    # A dollar sign inside a word continues it. The 18 non-ASCII blanks continue it too where
+    # the engine's pass over the script kept them (``blank_pass``).
     word=rf"[A-Za-z_{_NON_BLANK}][A-Za-z0-9_${_NON_BLANK}]*",
     number=rf"{_DIGITS}(?:\.(?:{_DIGITS})?)?(?:[Ee][+-]?{_DIGITS})?",
     escape_letters="Ee",
@@ -50,7 +52,8 @@ DUCKDB_SPEC = LexicalSpec(
     segment_script=DUCKDB_RULES,
     refused_character="\x00",
     refused_character_name="NUL",
-    # After a NUL, 1.5.5 drops the rest of the script or reads an unterminated string; 2.0.0 reports a
-    # syntax error outside literals and comments and accepts the NUL inside them. Refused on both.
+    # After a NUL, 1.5.5 drops the rest of the script or reads an unterminated string; 2.0.0
+    # reports a syntax error outside literals and comments and accepts the NUL inside them.
+    # Refused on both.
     refused_reason="the engine reads the script up to it and silently drops the rest",
 )

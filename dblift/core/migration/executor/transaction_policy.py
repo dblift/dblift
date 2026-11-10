@@ -11,7 +11,8 @@ from dblift.db.provider_interfaces import TransactionalProvider
 
 @dataclass(frozen=True)
 class TransactionPolicyDecision:
-    """Outcome of policy evaluation: whether to wrap statements in a transaction or run autocommit."""
+    """Outcome of policy evaluation: whether to wrap statements in a transaction or
+    run autocommit."""
 
     transactional: bool
     autocommit_required: bool = False
@@ -27,7 +28,8 @@ class TransactionPolicy:
         statements: Iterable[ExecutionStatement],
         provider: Any,
     ) -> TransactionPolicyDecision:
-        """Return the transaction/autocommit decision for ``statements`` on the given ``provider``."""
+        """Return the transaction/autocommit decision for ``statements`` on the
+        given ``provider``."""
         execution_statements: Tuple[ExecutionStatement, ...] = tuple(statements)
         provider_supports_transactions = isinstance(provider, TransactionalProvider)
         if not provider_supports_transactions:

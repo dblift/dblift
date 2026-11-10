@@ -19,8 +19,6 @@ import logging
 import re
 import sys
 import traceback
-
-_logger = logging.getLogger(__name__)
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
@@ -54,6 +52,8 @@ if TYPE_CHECKING:
     from dblift.core.logger.formatters.jsonformatter import JsonFormatter  # noqa: F401
 
     JINJA_AVAILABLE: bool
+
+_logger = logging.getLogger(__name__)
 
 JSON_AVAILABLE = True
 
@@ -331,7 +331,8 @@ class ConsoleLog(AbstractLog):
         command_type = normalized_command_type
 
         # Don't log completion messages here - they're already logged by _log_command_completion
-        # in migration_operations.py. This method is only for storing the result for HTML/JSON reports.
+        # in migration_operations.py. This method is only for storing the result for HTML/JSON
+        # reports.
         # If message is provided, it's already been logged, so we skip logging here.
         # Only log if no message is provided (for backward compatibility with other callers)
         if not message:
@@ -414,7 +415,8 @@ class ConsoleLog(AbstractLog):
                         # Continue capturing unless we hit two consecutive empty lines
                         performance_lines.append(line)
 
-                        # If we have enough content and hit an empty line followed by non-performance content, stop
+                        # If we have enough content and hit an empty line followed by non-
+                        # performance content, stop
                         if (
                             len(performance_lines) > 10
                             and line.strip() == ""
@@ -502,7 +504,8 @@ class FileLog(AbstractLog):
         else:
             self.formatter = TextFormatter()
 
-        # Write header if this is a new file (skip for JSON format - will write complete JSON on close)
+        # Write header if this is a new file (skip for JSON format - will write complete JSON on
+        # close)
         if self.log_format != LogFormat.JSON:
             if not self.log_file.exists() or self.log_file.stat().st_size == 0:
                 self._write_header()
@@ -802,18 +805,21 @@ class FileLog(AbstractLog):
         self.set_command_type(normalized_command_type)
         command_type = normalized_command_type
 
-        # Don't log completion messages to TEXT file logs - the footer is already logged by _log_command_completion
+        # Don't log completion messages to TEXT file logs - the footer is already logged by
+        # _log_command_completion
         # via _log_text_block. This method is only for storing the result for HTML/JSON reports.
         # For TEXT format, skip logging the message to avoid duplicate footers
         if self.log_format == LogFormat.TEXT:
-            # For TEXT format, don't log completion messages - footer is handled by _log_command_completion
+            # For TEXT format, don't log completion messages - footer is handled by
+            # _log_command_completion
             # via _log_text_block which writes the footer directly
             pass
         elif message:
             # For HTML/JSON formats, log the message if provided
             self.info(message)
         else:
-            # Fallback: generate message without execution time if not provided (only for non-TEXT formats)
+            # Fallback: generate message without execution time if not provided (only for non-TEXT
+            # formats)
             command_label = command_type.lower() if isinstance(command_type, str) else "command"
             if success:
                 self.info(f"Command {command_label} completed successfully")

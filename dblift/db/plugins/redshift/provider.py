@@ -94,7 +94,10 @@ class RedshiftProvider(PostgreSqlProvider):
                 # DROP FUNCTION / DROP PROCEDURE have no IF EXISTS and need the
                 # argument types to tell overloads apart. No CASCADE: it would
                 # also drop views of other schemas that call the function.
-                drop_sql = f"DROP {kind.upper()} {qualified_name(schema, name)}({row.get('argument_type') or ''})"
+                drop_sql = (
+                    f"DROP {kind.upper()} {qualified_name(schema, name)}"
+                    f"({row.get('argument_type') or ''})"
+                )
                 summary.record_drop(
                     drop_sql,
                     object_type=kind,

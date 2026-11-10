@@ -19,7 +19,7 @@ from dblift.core.migration.migration_types import (  # noqa: F401 - public compa
     VERSIONED_SCRIPT_TYPES,
     MigrationType,
 )
-from dblift.core.migration.scripting.filename_parser import (  # noqa: F401 - compatibility for existing callback imports
+from dblift.core.migration.scripting.filename_parser import (  # noqa: F401 - callback re-exports
     _CALLBACK_PREFIXES,
     strip_migration_tags,
 )
@@ -148,7 +148,8 @@ class AppliedMigration:
 
     @classmethod
     def from_history_row(cls, row: Dict[str, Any]) -> "AppliedMigration":
-        """Construct an :class:`AppliedMigration` from a history-table row (case-insensitive keys)."""
+        """Construct an :class:`AppliedMigration` from a history-table row
+        (case-insensitive keys)."""
         normalized = {k.lower() if isinstance(k, str) else k: v for k, v in row.items()}
         type_str = normalized.get("type")
         type_enum = (
@@ -183,7 +184,8 @@ class AppliedMigration:
         tags: Optional[List[str]] = None,
         _filename_metadata: Optional[Tuple[MigrationType, Optional[str], str, List[str]]] = None,
     ) -> "Migration":
-        """Build a mutable :class:`Migration` from this applied record (empty content, raw fields copied)."""
+        """Build a mutable :class:`Migration` from this applied record (empty content, raw fields
+        copied)."""
         migration = Migration(
             script_name=self.script_name,
             content="",
@@ -535,7 +537,10 @@ class Migration:
         from dblift.core.migration._type_match import migration_type_name
 
         type_str = migration_type_name(self.type)
-        return f"<Migration script_name='{self.script_name}' type='{type_str}' version='{self.version}'>"
+        return (
+            f"<Migration script_name='{self.script_name}' type='{type_str}' "
+            f"version='{self.version}'>"
+        )
 
     def __str__(self) -> str:
         from dblift.core.migration._type_match import migration_type_name

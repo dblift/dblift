@@ -311,7 +311,10 @@ def _add_diff_and_target_options(
         "--mark-as-executed",
         action="store_true",
         default=None,
-        help="Mark migrations as executed without running them (for migration applied outside dblift)",
+        help=(
+            "Mark migrations as executed without running them "
+            "(for migration applied outside dblift)"
+        ),
     )
     migrate_parser.add_argument(
         "--show-sql",

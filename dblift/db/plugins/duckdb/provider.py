@@ -113,7 +113,8 @@ class DuckDBProvider(SqlLeaseLockingProvider):
         if not words or words[0].upper() not in ("INSERT", "UPDATE", "DELETE"):
             return None
 
-        # The engine keeps a U+00A0 in the last two bytes of a script; after RETURNING it replaces it
+        # The engine keeps a U+00A0 in the last two bytes of a script; after RETURNING it
+        # replaces it
         if units[0].text.endswith("\xa0"):
             return None
         import duckdb
@@ -477,10 +478,14 @@ class DuckDBProvider(SqlLeaseLockingProvider):
         ]
         if installed_on is not None:
             params.append(installed_on)
+        insert_columns = (
+            "(version, description, type, script, checksum, installed_by, execution_time, "
+            f"success{installed_on_column})"
+        )
         self.execute_statement(
             f"""
             INSERT INTO {self.get_schema_qualified_name(schema, table_name)}
-                (version, description, type, script, checksum, installed_by, execution_time, success{installed_on_column})
+                {insert_columns}
             VALUES (?, ?, ?, ?, ?, ?, ?, ?{installed_on_value})
             """,
             params=params,

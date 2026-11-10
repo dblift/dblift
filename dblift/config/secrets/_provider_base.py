@@ -16,6 +16,7 @@ class AbstractSecretsProvider(ABC):
     scheme: str
 
     def __init__(self, config: Optional[SecretsConfig] = None) -> None:
+        """Store the secrets configuration, using the defaults when none is given."""
         self._config = config or SecretsConfig()
 
     @abstractmethod

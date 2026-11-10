@@ -438,12 +438,14 @@ def _validate_db_config(
 
         if not getattr(config.database, "username", None) and not url_username:
             parser.error(
-                "Database username is required. Specify it in the config file, environment variables, or command line."
+                "Database username is required. Specify it in the config file, "
+                "environment variables, or command line."
             )
 
         if not getattr(config.database, "password", None) and not url_password:
             parser.error(
-                "Database password is required. Specify it in the config file, environment variables, or command line."
+                "Database password is required. Specify it in the config file, "
+                "environment variables, or command line."
             )
 
         apply_derived_schema(config.database)

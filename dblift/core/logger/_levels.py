@@ -106,7 +106,8 @@ class LogEvent:
         timestamp: Optional[datetime] = None,
         context: Optional[Dict[str, Any]] = None,
     ):
-        """Construct an event with the given level/message/component and optional timestamp/context."""
+        """Construct an event with the given level/message/component and
+        optional timestamp/context."""
         self.level = level
         self.message = message
         self.component = component

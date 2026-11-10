@@ -322,7 +322,8 @@ class SqlExecutionService:
 
         if objects_affected:
             # Convert SqlObject instances to dictionaries for JSON serialization
-            # Deduplicate objects by (object_name, object_type, schema) to avoid counting the same object multiple times
+            # Deduplicate objects by (object_name, object_type, schema) to avoid counting the same
+            # object multiple times
             seen_objects = set()
             for obj in objects_affected:
                 if hasattr(obj, "__dict__"):
@@ -413,7 +414,8 @@ class SqlExecutionService:
         """
         if not identifier:
             return identifier
-        # Match the last component: bracket notation, double-quoted, backtick-quoted, or plain identifier
+        # Match the last component: bracket notation, double-quoted, backtick-quoted, or plain
+        # identifier
         pattern = r'(?:\[([^\]]+)\]|"([^"]+)"|`([^`]+)`|([^\.\[\]"`\s]+))$'
         match = re.search(pattern, identifier.strip())
         if match:
