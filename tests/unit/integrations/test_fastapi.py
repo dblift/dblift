@@ -339,3 +339,26 @@ def test_fastapi_lifespan_ignore_allows_pending_startup(tmp_path: Path) -> None:
         r = tc.get("/health")
         assert r.status_code == 200
         assert r.json()["current"] is False
+
+
+def test_importing_fastapi_integration_does_not_load_the_cli() -> None:
+    """The integration sits on the API layer; the CLI stays the top of the stack."""
+    import subprocess
+    import sys
+
+    probe = (
+        "import sys, dblift.integrations.fastapi; "
+        "print(sorted(m for m in sys.modules if m.startswith('dblift.cli')))"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    assert out == "[]"
+
+
+def test_cli_keeps_the_preflight_reraise_helper() -> None:
+    """CLI handlers and existing importers keep the same helper object."""
+    from dblift.api._preflight import reraise_preflight_failure
+    from dblift.cli.handlers._shared import _reraise_preflight_failure
+
+    assert _reraise_preflight_failure is reraise_preflight_failure

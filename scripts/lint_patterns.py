@@ -28,8 +28,10 @@ Rules
     Dialect-name string literals (``"postgresql"``, ``"oracle"``,
     ``"mysql"``, ``"sqlserver"``, ``"db2"``, ``"sqlite"``,
     ``"cosmosdb"``, ``"mariadb"``, …) appearing in ``api/``, ``cli/``,
-    ``config/``, ``core/`` or ``db/`` couple framework code to specific
-    dialects and prevent the plug-and-play architecture of dialect plugins.
+    ``config/``, ``core/``, ``db/``, ``extensions/`` or ``integrations/``
+    couple framework code to specific dialects and prevent the plug-and-play
+    architecture of dialect plugins. ``integrations/django/_engine.py`` is
+    exempt: it maps Django ``ENGINE`` names to SQLAlchemy driver URLs.
     ``db/`` is scanned in full, including the shared base modules
     directly under ``db/plugins/`` (``db/plugins/*.py``, e.g.
     ``base_snapshot_manager.py``) — they are framework code. Only a
@@ -115,11 +117,24 @@ DIALECT_NAMES: frozenset = frozenset(
 # under ``db/plugins/`` (``db/plugins/*.py``). Only per-dialect plugin
 # packages ``db/plugins/<X>/**`` (handled positionally in
 # ``_is_under_dialect_rule_roots``) are exempt.
-DIALECT_RULE_ROOTS: Tuple[str, ...] = ("api", "cli", "config", "core", "db")
+DIALECT_RULE_ROOTS: Tuple[str, ...] = (
+    "api",
+    "cli",
+    "config",
+    "core",
+    "db",
+    "extensions",
+    "integrations",
+)
 
 # Path prefixes that are otherwise inside ``DIALECT_RULE_ROOTS`` but
 # exempted because the dialect-string literal is inherent to the
-# module's purpose. Currently empty.
+# module's purpose. A prefix may name a single file.
+#
+# ``integrations/django/_engine.py`` is the one exemption: it maps Django
+# ``ENGINE`` backend names to SQLAlchemy driver URLs, so naming those
+# backends is its purpose, not a missing provider hook. The rest of
+# ``integrations/django/`` is scanned.
 #
 # ``db/`` is scanned in full, *including* the shared base modules that
 # sit directly under ``db/plugins/`` (``db/plugins/*.py``, e.g.
@@ -128,10 +143,7 @@ DIALECT_RULE_ROOTS: Tuple[str, ...] = ("api", "cli", "config", "core", "db")
 # that exemption is handled positionally in
 # ``_is_under_dialect_rule_roots`` (not via a simple prefix), because a
 # plugin package legitimately names its own dialect.
-#
-# ``_is_under_dialect_rule_roots`` still iterates this tuple, so it
-# stays defined (empty).
-DIALECT_RULE_EXEMPT_PREFIXES: Tuple[str, ...] = ()
+DIALECT_RULE_EXEMPT_PREFIXES: Tuple[str, ...] = ("integrations/django/_engine.py",)
 
 
 class Violation:
@@ -271,7 +283,7 @@ def _check_enum_str_conversion(path: Path, tree: ast.AST, source: List[str]) -> 
 
 
 def _is_under_dialect_rule_roots(path: Path) -> bool:
-    """True when the file lives under api/, cli/, config/, core/, or db/
+    """True when the file lives under one of ``DIALECT_RULE_ROOTS``
     *and* is not under a documented exempt prefix.
 
     ``db/`` is scanned in full, including the shared base modules that sit
