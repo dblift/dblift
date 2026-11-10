@@ -40,12 +40,13 @@ source_modules =
     dblift.core
     dblift.db
     dblift.extensions
+    dblift.integrations
 forbidden_modules =
     dblift.cli
 # The complement of the contract above: keeping cli out of db is only
 # meaningful if the lower layers also stay out of cli. api/ is the documented
 # programmatic surface and must stay importable without dragging in the
-# command-line entry points. Currently at zero across all five roots.
+# command-line entry points. Currently at zero across all six roots.
 
 [importlinter:contract:execution-contracts-are-light]
 name = execution contracts do not depend on rendering or schema models

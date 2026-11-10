@@ -397,6 +397,7 @@ module = [
     "dblift.db.plugins.mariadb.lexical_spec",
     "dblift.core.normalization",
     "dblift.core.sql_model.view_options",
+    "dblift.api._preflight",
     "dblift.cli.handlers._shared",
     "dblift.cli.handlers.info",
     "dblift.cli._command_handlers",

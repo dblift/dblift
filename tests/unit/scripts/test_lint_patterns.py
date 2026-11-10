@@ -72,3 +72,24 @@ def test_existing_core_root_still_flagged() -> None:
 
 def test_non_dialect_string_in_db_not_flagged() -> None:
     assert run_rule("db/foo.py", 'X = "hello"') == []
+
+
+@pytest.mark.parametrize(
+    "rel_path",
+    ["integrations/fastapi.py", "integrations/flask.py", "extensions/lint.py"],
+)
+def test_integrations_and_extensions_are_scanned(rel_path: str) -> None:
+    violations = run_rule(rel_path, 'X = "oracle"')
+    assert len(violations) == 1
+    assert violations[0].rule == "dialect-string-literal"
+
+
+def test_django_engine_name_map_is_exempt() -> None:
+    # The module translates Django ENGINE names into SQLAlchemy URLs; naming
+    # those backends is its whole purpose, not a missing provider hook.
+    assert run_rule("integrations/django/_engine.py", 'X = "postgresql"') == []
+
+
+def test_rest_of_django_integration_is_scanned() -> None:
+    violations = run_rule("integrations/django/commands.py", 'X = "postgresql"')
+    assert len(violations) == 1
