@@ -1,3 +1,5 @@
+"""Database connection configuration and its per-dialect resolution."""
+
 import logging
 import re
 import urllib.parse
@@ -520,6 +522,7 @@ class BaseDatabaseConfig(UrlBuilderMixin, ABC):
 
     @classmethod
     def create(cls, data: Dict[str, Any]) -> "BaseDatabaseConfig":
+        """Build the dialect-specific database config from a dictionary."""
         # NOTE: the config subclass for a dialect is resolved in
         # ``_resolve_config_class`` — first via the eager ``_registry`` (only the
         # non-dialect ``dummy`` config eager-imports here now), then via plugin
@@ -540,7 +543,8 @@ class BaseDatabaseConfig(UrlBuilderMixin, ABC):
         db_type = (data.get("type") or "").lower()
         config_class = _resolve_config_or_stub(cls, data, db_type)
         if not isinstance(config_class, type):
-            return config_class  # type: ignore[no-any-return]  # already a fully-built stub instance
+            # Already a fully-built stub instance.
+            return config_class  # type: ignore[no-any-return]
 
         # Phase 5: coerce port to int once a config class is in scope.
         _coerce_port_to_int(data)
@@ -688,10 +692,12 @@ class DatabaseConfig:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> BaseDatabaseConfig:
+        """Build the dialect-specific database config from a dictionary."""
         return BaseDatabaseConfig.create(data)
 
     @classmethod
     def from_url(cls, url: str) -> BaseDatabaseConfig:
+        """Build the dialect-specific database config from a connection URL."""
         return BaseDatabaseConfig.from_url(url)
 
 

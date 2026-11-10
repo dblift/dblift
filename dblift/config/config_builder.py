@@ -149,7 +149,7 @@ class ConfigBuilder:
     def _apply_overrides_to_copy(
         base_config: "BaseDatabaseConfig", overrides: Dict[str, Any]
     ) -> "BaseDatabaseConfig":
-        """Shallow-copy base_config, apply all overrides, then enforce sqlite type if the URL demands it.
+        """Shallow-copy base_config, apply all overrides, then enforce sqlite type if URL needs it.
 
         The sqlite type fix is applied *after* the setattr loop so that an
         accidental ``type`` key in overrides cannot silently win over the URL.

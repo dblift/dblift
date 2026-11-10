@@ -44,23 +44,20 @@ Rules
 Running
 =======
 
-    python scripts/lint_patterns.py                  # full tree
-    python scripts/lint_patterns.py api cli core     # targeted
+    python scripts/lint_patterns.py                  # whole dblift/ package
+    python scripts/lint_patterns.py dblift/cli       # targeted
     python scripts/lint_patterns.py --help
 
-Zero-baseline policy
-====================
+Zero-tolerance policy
+=====================
 
-Project policy is that ``.lint-patterns-baseline.txt`` contains zero
-non-comment entries. Every deferred violation lives as an inline
-``# lint: allow-*`` annotation next to the offending line, never as a
-pre-recorded entry. The script enforces this: a baseline file with
-any non-comment line makes the script exit 1 with a policy-violation
-message. The ``--write-baseline`` capability has been removed (PR-A4)
-to keep that surface closed.
+Every deferred violation lives as an inline ``# lint: allow-*``
+annotation next to the offending line, with the reason beside the code.
+There is no baseline file and no way to pre-record an entry.
 
-Exit code 1 on any unannotated violation OR a non-empty baseline file.
-Exit code 0 otherwise.
+Exit code 1 on any unannotated violation, 2 when a scanned root does not
+exist (so running from the wrong directory cannot pass on an empty scan),
+0 otherwise.
 """
 
 from __future__ import annotations
@@ -72,13 +69,7 @@ from pathlib import Path
 from typing import Iterator, List, Optional, Tuple
 
 # Roots scanned by default when the user passes no positional argument.
-DEFAULT_ROOTS: Tuple[str, ...] = (
-    "dblift/api",
-    "dblift/cli",
-    "dblift/config",
-    "dblift/core",
-    "dblift/db",
-)
+DEFAULT_ROOTS: Tuple[str, ...] = ("dblift",)
 
 # Annotations a maintainer adds to the offending line (or the line just
 # above) to declare the occurrence as intentional / deferred.
@@ -459,35 +450,6 @@ def _lint_file(path: Path) -> List[Violation]:
     return out
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_BASELINE = REPO_ROOT / ".lint-patterns-baseline.txt"
-
-
-def _check_baseline_is_empty(path: Path) -> Optional[str]:
-    """Return an error message if the baseline file has any non-comment entries.
-
-    The lint-patterns gate is a zero-baseline policy: any deferred
-    violation must be expressed as an inline ``# lint: allow-*``
-    annotation (which carries the reason next to the code), never as a
-    pre-recorded entry here. Re-grandfathering a violation through this
-    file would erode the gate.
-    """
-    if not path.is_file():
-        return None
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        return (
-            f"{path.name} contains a grandfathered entry: {line!r}. The "
-            "project's lint-patterns policy is zero baseline — annotate "
-            "the offending line with '# lint: allow-print' / "
-            "'# lint: allow-enum-str' / '# lint: allow-dialect-string' "
-            "instead."
-        )
-    return None
-
-
 def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -496,22 +458,16 @@ def main(argv: List[str] | None = None) -> int:
         default=list(DEFAULT_ROOTS),
         help=f"Files or directories to scan (default: {' '.join(DEFAULT_ROOTS)}).",
     )
-    parser.add_argument(
-        "--baseline",
-        type=Path,
-        default=DEFAULT_BASELINE,
-        help=f"Baseline file to consult (default: {DEFAULT_BASELINE.name}).",
-    )
     args = parser.parse_args(argv)
 
-    # Zero-baseline policy: the file may only contain comment / blank
-    # lines. Re-grandfathering a violation by hand-editing this file
-    # is rejected. Use an inline ``# lint: allow-*`` annotation
-    # instead, so the reason lives next to the code.
-    policy_error = _check_baseline_is_empty(args.baseline)
-    if policy_error:
-        print(policy_error, file=sys.stderr)
-        return 1
+    missing = [r for r in args.roots if not Path(r).exists()]
+    if missing:
+        print(
+            f"error: scan root(s) {', '.join(missing)} not found "
+            f"(cwd: {Path.cwd()}). Run from the repository root.",
+            file=sys.stderr,
+        )
+        return 2
 
     root_paths = [Path(r) for r in args.roots]
     violations: List[Violation] = []
@@ -519,9 +475,7 @@ def main(argv: List[str] | None = None) -> int:
         violations.extend(_lint_file(py))
     violations.sort(key=lambda v: (str(v.path), v.line, v.col))
 
-    # Zero-baseline policy (PR-A4): every reported violation must either
-    # be fixed or annotated inline. Nothing is grandfathered through the
-    # baseline file — that's enforced above by ``_check_baseline_is_empty``.
+    # Every reported violation must either be fixed or annotated inline.
     for v in violations:
         print(v.render())
     if violations:

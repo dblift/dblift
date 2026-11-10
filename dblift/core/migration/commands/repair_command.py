@@ -51,7 +51,8 @@ class RepairCommand(BaseCommand):
 
                 if not plan.actions:
                     self.log.info(
-                        "Repair check completed: no checksum, failed migration, or history issues detected."
+                        "Repair check completed: no checksum, failed migration, or history issues "
+                        "detected."
                     )
                     return
 
@@ -264,7 +265,8 @@ class RepairCommand(BaseCommand):
                                 )
 
                                 self.log.debug(
-                                    f"Creating DELETE entry for missing migration: {script_name} (version: {version})"
+                                    f"Creating DELETE entry for missing migration: {script_name} "
+                                    f"(version: {version})"
                                 )
 
                                 # Record the DELETE entry in the history table
@@ -280,7 +282,8 @@ class RepairCommand(BaseCommand):
                                 )
                             except Exception as delete_err:
                                 self.log.error(
-                                    f"Failed to mark migration as deleted {script_name}: {delete_err}"
+                                    f"Failed to mark migration as deleted {script_name}: "
+                                    f"{delete_err}"
                                 )
                                 raise
 

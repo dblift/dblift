@@ -234,10 +234,9 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
                 if type_name:
                     candidates.append(
                         _CleanCandidate(
-                            sql=(
-                                "DROP TYPE "
-                                f"{self.query_executor.get_schema_qualified_name(schema, type_name)}"
-                            ),
+                            sql=f"""DROP TYPE {self.query_executor.get_schema_qualified_name(
+                                schema, type_name
+                            )}""",
                             object_type="type",
                             name=type_name,
                         )

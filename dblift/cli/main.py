@@ -9,28 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, List, Optional, Set
 
-# Add project root to Python path when running as a script
-# This allows imports to work when running: python3 cli/main.py
-# Get the project root (parent of cli directory)
-_script_dir = Path(__file__).parent.absolute()
-_project_root = _script_dir.parent.absolute()
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
-
-from dblift.core.exceptions import InvalidTargetVersionError
-from dblift.core.logger import LogFactory
-from dblift.core.logger.console import (
-    PresentationUnavailableError,
-    get_stderr_console,
-    install_rich_traceback,
-    module_available,
-    require_presentation_extras,
-    rich_available,
-)
-from dblift.core.utils.url_masking import mask_database_url
-
-# Backward compatibility alias (used by tests and re-exports)
-_mask_database_url = mask_database_url
 from dblift.cli._command_handlers import (  # noqa: F401
     _AVAILABLE_COMMANDS,
     _COMMAND_HANDLERS,
@@ -63,10 +41,32 @@ from dblift.cli.extensions import load_terminal_commands
 from dblift.cli.handlers._shared import reported_exception_name
 from dblift.cli.premium_manifest import render_upsell
 from dblift.config.property_registry import PROPERTY_REGISTRY
+from dblift.core.exceptions import InvalidTargetVersionError
+from dblift.core.logger import LogFactory
+from dblift.core.logger.console import (
+    PresentationUnavailableError,
+    get_stderr_console,
+    install_rich_traceback,
+    module_available,
+    require_presentation_extras,
+    rich_available,
+)
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.feature_loading import load_feature_extensions
 from dblift.core.seams.license_info import get_license_info
 from dblift.core.seams.tier_resolver import resolve_tier
+from dblift.core.utils.url_masking import mask_database_url
+
+# Backward compatibility alias (used by tests and re-exports)
+_mask_database_url = mask_database_url
+
+# Add project root to Python path when running as a script
+# This allows imports to work when running: python3 cli/main.py
+# Get the project root (parent of cli directory)
+_script_dir = Path(__file__).parent.absolute()
+_project_root = _script_dir.parent.absolute()
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 # Module-level placeholder; main() uses a local 'log' variable (no global declaration)
 log = None

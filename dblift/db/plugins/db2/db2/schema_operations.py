@@ -223,11 +223,9 @@ class Db2SchemaOperations(BaseSchemaOperations):
                 "SELECT CONSTNAME AS object_name, TABNAME AS table_name FROM SYSCAT.TABCONST "
                 "WHERE UPPER(TABSCHEMA) = UPPER(?) AND TYPE = 'F'",
                 ("object_name", "CONSTNAME"),
-                lambda name, row: (
-                    "ALTER TABLE "
-                    f"{self.query_executor.get_schema_qualified_name(schema, str(_row_value(row, 'table_name', 'TABNAME')))} "
-                    f"DROP CONSTRAINT {_quote_identifier(name)}"
-                ),
+                lambda name, row: (f"""ALTER TABLE {self.query_executor.get_schema_qualified_name(
+                        schema, str(_row_value(row, 'table_name', 'TABNAME'))
+                    )} DROP CONSTRAINT {_quote_identifier(name)}"""),
                 lambda row: {"table": str(_row_value(row, "table_name", "TABNAME"))},
             ),
             (
@@ -297,8 +295,9 @@ class Db2SchemaOperations(BaseSchemaOperations):
                 "WHERE UPPER(FUNCSCHEMA) = UPPER(?) AND ORIGIN IN ('U', 'Q')",
                 ("object_name", "FUNCNAME"),
                 lambda name, row: (
-                    "DROP SPECIFIC FUNCTION "
-                    f"{self.query_executor.get_schema_qualified_name(schema, str(_row_value(row, 'SPECIFICNAME')))}"
+                    f"""DROP SPECIFIC FUNCTION {self.query_executor.get_schema_qualified_name(
+                        schema, str(_row_value(row, 'SPECIFICNAME'))
+                    )}"""
                 ),
                 None,
             ),
@@ -308,8 +307,9 @@ class Db2SchemaOperations(BaseSchemaOperations):
                 "WHERE UPPER(PROCSCHEMA) = UPPER(?)",
                 ("object_name", "PROCNAME"),
                 lambda name, row: (
-                    "DROP SPECIFIC PROCEDURE "
-                    f"{self.query_executor.get_schema_qualified_name(schema, str(_row_value(row, 'SPECIFICNAME')))}"
+                    f"""DROP SPECIFIC PROCEDURE {self.query_executor.get_schema_qualified_name(
+                        schema, str(_row_value(row, 'SPECIFICNAME'))
+                    )}"""
                 ),
                 None,
             ),

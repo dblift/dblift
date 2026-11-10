@@ -277,7 +277,8 @@ def _position(
     content: str,
     records: Optional[List[Statement]] = None,
 ) -> str:
-    """``line N`` of ``statements[index]``, from the splitter's own records; else ``statement N``."""
+    """``line N`` of ``statements[index]``, from the splitter's own records; else
+    ``statement N``."""
     if records is None:
         try:
             records = _script_parser(dialect.lower()).split(content)

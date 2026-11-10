@@ -27,7 +27,8 @@ class Partition(SqlObject):
             table: Table name this partition belongs to
             partition_method: Partition method (RANGE, LIST, HASH, KEY)
             partition_expression: Expression used for partitioning
-            partition_description: Partition boundary description (VALUES LESS THAN, VALUES IN, etc.)
+            partition_description: Partition boundary description (VALUES LESS THAN, VALUES IN,
+                etc.)
             subpartitions: List of subpartitions (for composite partitioning)
             schema: Schema name (optional)
             dialect: SQL dialect

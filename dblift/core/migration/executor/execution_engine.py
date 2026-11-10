@@ -185,7 +185,8 @@ class ExecutionEngine:
         policy = self._plan_sql_execution(statements)
         if policy.unsupported_mixed_mode:
             result.set_error(
-                f"Migration {migration.script_name} mixes transactional and autocommit-only statements: {policy.reason}"
+                f"Migration {migration.script_name} mixes transactional and autocommit-only "
+                f"statements: {policy.reason}"
             )
             return
 
@@ -234,7 +235,8 @@ class ExecutionEngine:
                 try:
                     self.provider.rollback_transaction()
                     self.log.debug(
-                        f"Rolled back transaction due to unexpected error in {migration.script_name}"
+                        "Rolled back transaction due to unexpected error in "
+                        f"{migration.script_name}"
                     )
                 except Exception as rollback_e:
                     # Best-effort rollback: log and continue so the original error
@@ -308,7 +310,8 @@ class ExecutionEngine:
         policy = self.transaction_policy.decide(execution_statements, self.provider)
         if policy.unsupported_mixed_mode:
             result.set_error(
-                f"Migration {migration.script_name} mixes transactional and autocommit-only statements: {policy.reason}"
+                f"Migration {migration.script_name} mixes transactional and autocommit-only "
+                f"statements: {policy.reason}"
             )
             return []
         return executable
@@ -532,7 +535,8 @@ class ExecutionEngine:
                                 self._reset_provider_schema_cache()
                         except Exception as rollback_e:
                             self.log.debug(
-                                f"Could not rollback pre-migration transaction (may be no active transaction): {rollback_e}"
+                                "Could not rollback pre-migration transaction (may be no active "
+                                f"transaction): {rollback_e}"
                             )
                 except Exception as e:
                     self.log.debug(
@@ -677,7 +681,8 @@ class ExecutionEngine:
                         self.provider.check_transaction_state()
                     except TransactionAbortedError as health_error:
                         raise TransactionAbortedError(
-                            f"Transaction is aborted before executing statement {i + 1}: {health_error}"
+                            f"Transaction is aborted before executing statement {i + 1}: "
+                            f"{health_error}"
                         ) from (health_error.__cause__ or health_error)
 
                 if self.sql_execution_service:
@@ -800,7 +805,8 @@ class ExecutionEngine:
             )
         )
         self.log.error(
-            f"Failed to execute statement {stmt_index + 1} from {migration.script_name}: {error_msg}"
+            f"Failed to execute statement {stmt_index + 1} from {migration.script_name}: "
+            f"{error_msg}"
         )
 
         result.set_error(
@@ -877,14 +883,16 @@ class ExecutionEngine:
                         f"Failed migration was not persisted to history: {history_e}"
                     )
                 self.log.warning(
-                    f"Could not record failed migration {migration.script_name} in history: {history_e}"
+                    f"Could not record failed migration {migration.script_name} in history: "
+                    f"{history_e}"
                 )
                 try:
                     if isinstance(self.provider, TransactionalProvider):
                         self.provider.rollback_transaction()
                 except Exception as rollback_history_e:
                     self.log.debug(
-                        f"Could not rollback history record transaction for {migration.script_name}: {rollback_history_e}"
+                        "Could not rollback history record transaction for "
+                        f"{migration.script_name}: {rollback_history_e}"
                     )
 
     def _record_autocommit_migration_history(
@@ -913,7 +921,8 @@ class ExecutionEngine:
                     self.provider.rollback_transaction()
                 except Exception as rollback_e:
                     self.log.warning(
-                        f"Could not rollback history transaction for {migration.script_name}: {rollback_e}"
+                        f"Could not rollback history transaction for {migration.script_name}: "
+                        f"{rollback_e}"
                     )
             raise history_error
 
@@ -938,7 +947,8 @@ class ExecutionEngine:
                 if isinstance(self.provider, TransactionalProvider):
                     self.provider.rollback_transaction()
                 self.log.debug(
-                    f"Rolled back transaction due to history recording failure for {migration.script_name}"
+                    "Rolled back transaction due to history recording failure for "
+                    f"{migration.script_name}"
                 )
             except Exception as rollback_e:
                 self.log.warning(
@@ -1014,7 +1024,8 @@ class ExecutionEngine:
                             f"{engine_error_message(history_error)}"
                         )
                         result.set_error(
-                            f"Failed to record migration history: {engine_error_message(history_error)}"
+                            "Failed to record migration history: "
+                            f"{engine_error_message(history_error)}"
                         )
                         _rollback_best_effort()
                         return
@@ -1086,7 +1097,8 @@ class ExecutionEngine:
                                 f"Failed migration was not persisted to history: {history_e}"
                             )
                         self.log.warning(
-                            f"Could not record failed migration {migration.script_name} in history: {history_e}"
+                            f"Could not record failed migration {migration.script_name} in "
+                            f"history: {history_e}"
                         )
                         if isinstance(self.provider, TransactionalProvider):
                             try:
@@ -1128,7 +1140,8 @@ class ExecutionEngine:
         self._reset_provider_schema_cache()
         self._apply_configured_schema()
 
-        # Route non-SQL callbacks to the executor factory (mirrors execute_migration routing — B5 fix)
+        # Route non-SQL callbacks to the executor factory (mirrors execute_migration routing — B5
+        # fix)
         if callback.format != MigrationFormat.SQL:
             exec_result = self.executor_factory.execute(callback)
             if not exec_result.success:
@@ -1208,7 +1221,9 @@ class ExecutionEngine:
                     or "SELECT" in statement.upper()
                 ):
                     self.log.debug(
-                        f"Callback statement classification: '{statement_type}' for statement: {statement[:LOG_STATEMENT_PREVIEW_LENGTH]}{'...' if len(statement) > LOG_STATEMENT_PREVIEW_LENGTH else ''}"
+                        f"Callback statement classification: '{statement_type}' for statement: "
+                        f"{statement[:LOG_STATEMENT_PREVIEW_LENGTH]}"
+                        f"{'...' if len(statement) > LOG_STATEMENT_PREVIEW_LENGTH else ''}"
                     )
 
                 # Execute statement using provider
@@ -1223,7 +1238,8 @@ class ExecutionEngine:
                         if is_query:
                             if not isinstance(result_data, list):
                                 raise TypeError(
-                                    f"Expected list for query result, got {type(result_data).__name__}"
+                                    "Expected list for query result, got "
+                                    f"{type(result_data).__name__}"
                                 )
                             row_count = len(result_data)
                             self.log.info(f"Query executed successfully, {row_count} rows returned")
@@ -1256,7 +1272,8 @@ class ExecutionEngine:
                                 self.log.info("Statement executed successfully")
                             elif rows_affected is not None and rows_affected >= 0:
                                 self.log.info(
-                                    f"Statement executed successfully, {rows_affected} rows affected"
+                                    f"Statement executed successfully, {rows_affected} rows "
+                                    "affected"
                                 )
                             else:
                                 self.log.info("Statement executed successfully")
@@ -1346,7 +1363,8 @@ class ExecutionEngine:
                     )
                 except Exception as rollback_e:
                     self.log.warning(
-                        f"Could not rollback transaction for callback {callback.script_name}: {rollback_e}"
+                        f"Could not rollback transaction for callback {callback.script_name}: "
+                        f"{rollback_e}"
                     )
             # Re-raise the original exception
             raise

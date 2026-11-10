@@ -472,10 +472,14 @@ class Db2Provider(SqlLeaseLockingProvider):
         ]
         if installed_on is not None:
             params.append(installed_on)
+        insert_columns = (
+            "(VERSION, DESCRIPTION, TYPE, SCRIPT, CHECKSUM, INSTALLED_BY, EXECUTION_TIME, "
+            f"SUCCESS{installed_on_column})"
+        )
         self.execute_statement(
             f"""
             INSERT INTO {_schema_object(schema, table_name)}
-                (VERSION, DESCRIPTION, TYPE, SCRIPT, CHECKSUM, INSTALLED_BY, EXECUTION_TIME, SUCCESS{installed_on_column})
+                {insert_columns}
             VALUES (?, ?, ?, ?, ?, ?, ?, ?{installed_on_value})
             """,
             params=params,

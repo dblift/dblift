@@ -114,7 +114,8 @@ class DataTypeNormalizer:
         dialect_mappings = self.type_equivalents.get(dialect, {})
         normalized_type = dialect_mappings.get(base_type, base_type)
 
-        # Add precision/scale back if present, except for date/time families where we ignore precision
+        # Add precision/scale back if present, except for date/time families where we ignore
+        # precision
         if precision is not None:
             base_for_precision = self._extract_base_type(normalized_type).upper()
             if base_for_precision not in {

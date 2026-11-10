@@ -184,7 +184,8 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
                                     database.get_container_client(container_name)
                                 )
                                 self.log.debug(
-                                    f"History container {container_name} found via list after creation error"
+                                    f"History container {container_name} found via list "
+                                    "after creation error"
                                 )
                                 return
                     except Exception as e:
@@ -290,7 +291,8 @@ class CosmosDbHistoryManager(DocumentHistoryManager):
             if max_rank_raw is None:
                 max_rank = None
             elif isinstance(max_rank_raw, dict):
-                # If it's a dict, extract the value (shouldn't happen with SELECT VALUE, but handle it)
+                # If it's a dict, extract the value (shouldn't happen with SELECT VALUE,
+                # but handle it)
                 max_rank = max_rank_raw.get("installed_rank") or max_rank_raw.get("value")
             else:
                 max_rank = max_rank_raw

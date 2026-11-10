@@ -133,7 +133,8 @@ class MigrationExecutor:
             table_name=custom_table,
         )
         self.log.debug(
-            f"[DEBUG] MigrationExecutor: history_manager.history_table = {self.history_manager.history_table}"
+            "[DEBUG] MigrationExecutor: history_manager.history_table = "
+            f"{self.history_manager.history_table}"
         )
 
         # Link components together
@@ -175,7 +176,8 @@ class MigrationExecutor:
             schema=config.database.schema,
         )
 
-        # Pass SqlExecutionService and history manager to ExecutionEngine for journal tracking and transaction management
+        # Pass SqlExecutionService and history manager to ExecutionEngine for journal tracking and
+        # transaction management
         self.execution_engine = ExecutionEngine(
             self.provider,
             self.sql_analyzer,
@@ -352,7 +354,8 @@ class MigrationExecutor:
 
         command = CleanCommand(self._make_command_context())
 
-        # Explicit clean() parameters win over duplicate keys in kwargs (e.g. client forwards **kwargs).
+        # Explicit clean() parameters win over duplicate keys in kwargs (e.g. client forwards
+        # **kwargs).
         _clean_explicit_keys = frozenset(
             {
                 "dry_run",

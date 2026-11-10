@@ -3,14 +3,14 @@
 import logging
 import re
 from datetime import datetime
-
-_logger = logging.getLogger(__name__)
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from dblift.core.logger._formatters import _safe_name, resolve_dblift_package_version
 from dblift.core.logger.console import require_presentation_extras
 from dblift.core.logger.results import MigrationSqlInfo, OperationResult
+
+_logger = logging.getLogger(__name__)
 
 
 class HtmlFormatter:
@@ -95,7 +95,8 @@ class HtmlFormatter:
 </head>
 <body>
     <h1>Dblift Migration Log</h1>
-    <p>This is a temporary file that will be replaced with a complete HTML report when the operation completes.</p>
+    <p>This is a temporary file that will be replaced with a complete HTML report \
+when the operation completes.</p>
     <pre>
 """
 
@@ -637,7 +638,8 @@ class HtmlFormatter:
             elif hasattr(migration, "__dict__") and "status" in migration.__dict__:
                 status = str(migration.__dict__["status"]).upper()
 
-            # For mock objects and special cases, try safe __getattribute__ access in a try/except block
+            # For mock objects and special cases, try safe __getattribute__ access in a try/except
+            # block
             if status is None:
                 try:
                     status = str(getattr(migration, "status", "")).upper()

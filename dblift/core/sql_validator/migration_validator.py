@@ -419,7 +419,8 @@ class MigrationValidator:
                     continue
                 if result.success:
                     self.log.debug(
-                        f"[DEBUG] _validate_duplicate_versions: setting success=False for duplicate version {script.version}"
+                        "[DEBUG] _validate_duplicate_versions: setting success=False for "
+                        f"duplicate version {script.version}"
                     )
                     result.success = False
                     result.error_message = "Found migration scripts with duplicate versions"
@@ -452,7 +453,8 @@ class MigrationValidator:
             if callback_migration_count > 0:
                 self.log.info(f"Found {callback_migration_count} callback migrations.")
         self.log.debug(
-            f"[DEBUG] _validate_duplicate_versions END: success={result.success}, error='{result.error_message}'"
+            f"[DEBUG] _validate_duplicate_versions END: success={result.success}, "
+            f"error='{result.error_message}'"
         )
         return result.success
 
@@ -588,10 +590,16 @@ class MigrationValidator:
         if reappeared_scripts:
             result.success = False
             script_list = ", ".join([f"{s['script']}" for s in reappeared_scripts])
-            error_message = f"Found {len(reappeared_scripts)} previously deleted migration script(s) that have reappeared: {script_list}"
+            error_message = (
+                f"Found {len(reappeared_scripts)} previously deleted migration script(s) "
+                f"that have reappeared: {script_list}"
+            )
             repair_message = (
-                "To resolve this issue, manually remove the DELETE entries from the history table:\n"
-                f"DELETE FROM {self._history_schema}.{self._history_table} WHERE type = 'DELETE' AND script_name IN ({', '.join([repr(s['script']) for s in reappeared_scripts])});"
+                "To resolve this issue, manually remove the DELETE entries from the history "
+                "table:\n"
+                f"DELETE FROM {self._history_schema}.{self._history_table} WHERE type = 'DELETE' "
+                "AND script_name IN "
+                f"({', '.join([repr(s['script']) for s in reappeared_scripts])});"
             )
             issues.append(error_message)
             issues.append(repair_message)
@@ -629,28 +637,26 @@ class MigrationValidator:
                 if scheduled:
                     continue
                 specific_repeatable_errors.append(
-                    f"Repeatable migration {getattr(m, 'script_name', None)} previously failed and has not changed. Please fix the script before retrying."
+                    f"Repeatable migration {getattr(m, 'script_name', None)} previously failed and "
+                    "has not changed. Please fix the script before retrying."
                 )
             filtered_failed.append(m)
         if not filtered_failed:
             return
+        failed_info = [
+            (getattr(m, "script_name", None), getattr(m, "version", "unknown"))
+            for m in filtered_failed
+        ]
         if specific_repeatable_errors and len(filtered_failed) == len(specific_repeatable_errors):
             error_message = "\n".join(specific_repeatable_errors)
         else:
-            script_list = ", ".join(
-                [
-                    f"{getattr(m, 'script_name', None)} (version: {getattr(m, 'version', 'unknown')})"
-                    for m in filtered_failed
-                ]
-            )
+            script_list = ", ".join([f"{name} (version: {ver})" for name, ver in failed_info])
             error_message = f"Found {len(filtered_failed)} failed migration(s): {script_list}"
         repair_message = "Run 'repair' command to update the status in the history table."
         issues.append(error_message)
         issues.append(repair_message)
         result.error_message = f"{error_message}\n{repair_message}"
-        for m in filtered_failed:
-            result.add_failed_script(getattr(m, "script_name", None))
-            self.log.debug(
-                f"Failed migration: {getattr(m, 'script_name', None)} (version: {getattr(m, 'version', 'unknown')})"
-            )
+        for name, ver in failed_info:
+            result.add_failed_script(name)
+            self.log.debug(f"Failed migration: {name} (version: {ver})")
         result.success = False

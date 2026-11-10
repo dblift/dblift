@@ -59,8 +59,8 @@ SEVERITY: Dict[str, str] = {
 }
 
 _MESSAGES: Dict[str, str] = {
-    "add-not-null-no-default": "adds a NOT NULL column without a DEFAULT: existing rows need a value"
-    + SIZE_NOTE,
+    "add-not-null-no-default": "adds a NOT NULL column without a DEFAULT: "
+    "existing rows need a value" + SIZE_NOTE,
     "drop-unread-object": "drops an object whose kind or name could not be read: check by hand "
     "that it holds no rows",
     "rename-column": "renames a column: the application already deployed still uses the old name",

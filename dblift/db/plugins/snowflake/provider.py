@@ -191,6 +191,7 @@ class SnowflakeProvider(SqlLeaseLockingProvider):
         config: DbliftConfig,
         log: Optional[Log] = None,
     ) -> None:
+        """Create the Snowflake provider for ``config``."""
         super().__init__(config, log)
         self._schema_applied_for = None
 

@@ -100,7 +100,8 @@ class SqlConstraint:
             is_validated: Whether constraint is validated (Oracle) - Diff-relevant
             is_deferrable: Whether constraint is deferrable (PostgreSQL, Oracle) - Diff-relevant
             initially_deferred: Whether constraint is initially deferred - Diff-relevant
-            rely: Whether the optimizer may rely on the constraint (Snowflake, Oracle) - Diff-relevant
+            rely: Whether the optimizer may rely on the constraint (Snowflake, Oracle) -
+                Diff-relevant
             comment: Constraint comment/description - SQL-generation-only
         """
         # Handle both enum and string constraint types
@@ -171,7 +172,8 @@ class SqlConstraint:
         if str(self.check_expression or "").strip() != str(other.check_expression or "").strip():
             return False
         # Constraint state (diff-relevant)
-        # is_enabled/is_validated: None = default = True (constraints are enabled/validated by default)
+        # is_enabled/is_validated: None = default = True (constraints are enabled/validated by
+        # default)
         if _norm_constraint_enabled(self.is_enabled) != _norm_constraint_enabled(other.is_enabled):
             return False
         if _norm_constraint_enabled(self.is_validated) != _norm_constraint_enabled(
@@ -197,7 +199,8 @@ class SqlConstraint:
         cols = self.column_names or []
         ref_cols = self.reference_columns or []
         # Normalize for hash (must match __eq__)
-        # is_enabled/is_validated: None -> True; is_deferrable/initially_deferred/rely: None -> False
+        # is_enabled/is_validated: None -> True; is_deferrable/initially_deferred/rely: None ->
+        # False
         return hash(
             (
                 self.constraint_type,

@@ -8,8 +8,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-_logger = logging.getLogger(__name__)
-
 from dblift.core.logger._formatters import _safe_name
 from dblift.core.logger.results import (
     CleanResult,
@@ -17,6 +15,8 @@ from dblift.core.logger.results import (
     OperationResult,
     ValidateResult,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 class JsonFormatter:

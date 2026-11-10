@@ -91,29 +91,16 @@ echo -e "\n===== import-linter (internal layering) ====="
 # imported at runtime.
 lint-imports --config .importlinter || { echo "❌ Import-linter: layering contract broken."; exit_code=1; }
 
-echo -e "\n===== AST lint patterns (ratchet) ====="
-# Also enforced by .github/workflows/code-quality.yml. Fails only on NEW
-# entries vs .lint-patterns-baseline.txt — pre-existing legacy hits
-# are baseline-listed; new ones must either gain a `# lint: allow-*`
-# annotation or be added to the baseline with a justifying PR.
-"$PYTHON_BIN" scripts/lint_patterns.py || { echo "❌ AST lint patterns: new violation(s) detected."; exit_code=1; }
+echo -e "\n===== AST lint patterns (zero tolerance, all of dblift/) ====="
+# Also enforced by .github/workflows/code-quality.yml. Any unannotated
+# violation fails; a deliberate use needs an inline `# lint: allow-*` comment.
+"$PYTHON_BIN" scripts/lint_patterns.py || { echo "❌ AST lint patterns: violation(s) detected."; exit_code=1; }
 
-echo -e "\n===== Public-API docstring linter (ratchet) ====="
-# Also enforced by .github/workflows/code-quality.yml. api/, cli/ and core/ are
-# all pinned at zero in .docstring-ratchet.json; db/ is capped at its
-# measured count. New missing-docstring sites push a count above its
-# cap and fail.
+echo -e "\n===== Public-API docstrings (zero tolerance, all of dblift/) ====="
+# Also enforced by .github/workflows/code-quality.yml. Every public module,
+# class, function and method in dblift/ needs a docstring; there are no caps.
 "$PYTHON_BIN" scripts/check_api_docstrings.py \
-    --paths dblift/api dblift/cli dblift/core dblift/db \
-    --ratchet .docstring-ratchet.json \
-    || { echo "❌ Public-API docstrings: ratchet exceeded."; exit_code=1; }
-
-echo -e "\n===== Line-length ratchet (flake8 E501) ====="
-# E501 is globally ignored in .flake8 (legacy debt). This per-root
-# count-based ratchet from .flake8-e501-ratchet.json runs the check
-# in isolation and fails only on NET growth. When a refactor lowers a
-# count, the script prints the new cap to commit in the same PR.
-"$PYTHON_BIN" scripts/check_line_length.py || { echo "❌ Line-length ratchet exceeded."; exit_code=1; }
+    || { echo "❌ Public-API docstrings: missing docstring(s)."; exit_code=1; }
 
 echo -e "\n===== Structural-debt ratchet ====="
 "$PYTHON_BIN" scripts/check_debt_ratchet.py || { echo "❌ Structural-debt ratchet exceeded."; exit_code=1; }

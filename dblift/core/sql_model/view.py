@@ -72,7 +72,8 @@ class View(SqlObject):
             algorithm: View algorithm - MERGE, TEMPTABLE, UNDEFINED (MySQL grammar-based)
             sql_security: SQL security - DEFINER, INVOKER (MySQL grammar-based)
             definer: Definer user - user@host (MySQL grammar-based)
-            force: Whether view is created with FORCE (True) or NOFORCE (False) (Oracle grammar-based)
+            force: Whether view is created with FORCE (True) or NOFORCE (False) (Oracle
+                grammar-based)
             security_definer: Whether view uses SECURITY DEFINER (PostgreSQL) - Diff-relevant
             security_invoker: Whether view uses SECURITY INVOKER (PostgreSQL) - Diff-relevant
             dependencies: List of tables/views this view depends on - SQL-generation-only

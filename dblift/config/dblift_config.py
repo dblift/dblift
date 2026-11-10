@@ -1,3 +1,5 @@
+"""Top-level DBLift configuration: loading, merging and validation."""
+
 import fnmatch
 import functools
 import json
@@ -240,6 +242,7 @@ def _resolve_env_placeholders(data: Any) -> Any:
     if isinstance(data, str):
 
         def replace(match: re.Match[str]) -> str:
+            """Return the environment value for a placeholder, or its default."""
             var_name = match.group(1)
             default = match.group(2)
             env_value = os.environ.get(var_name)
@@ -568,7 +571,8 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
         dialect = _validate_sql_effective_dialect(args, config_data)
         if not dialect:
             raise ConfigurationError(
-                "validate-sql requires --dialect for offline validation when no database type is configured."
+                "validate-sql requires --dialect for offline validation "
+                "when no database type is configured."
             )
         filler = _validate_sql_lint_filler(dialect)
         if filler:
@@ -607,7 +611,10 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
 
 
 def deep_merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    """Recursively merge two dictionaries, with override taking precedence for non-empty, non-None values."""
+    """Recursively merge two dictionaries.
+
+    The override takes precedence for non-empty, non-None values.
+    """
     result = base.copy()
     for k, v in override.items():
         if isinstance(v, dict) and k in result and isinstance(result[k], dict):
@@ -671,7 +678,8 @@ class MigrationsConfig:
             directory: Main migrations directory (deprecated, use directories)
             directories: Migration directories (can be strings or DirectoryConfig objects)
             table: Schema history table name
-            recursive: Global recursive setting (used as default for directories without explicit recursive)
+            recursive: Global recursive setting (used as default for directories without
+                explicit recursive)
             script_encoding: Encoding for reading migration script files
             detect_encoding: Detect migration script encoding before reading
         """
@@ -808,7 +816,8 @@ class DbliftConfig:
                 )
 
                 # Update directories if provided
-                # Support both old format (list of strings) and new format (list of dicts with path/recursive)
+                # Support both old format (list of strings) and new format
+                # (list of dicts with path/recursive)
                 if "directories" in migrations:
                     dirs = migrations.get("directories", [])
                     normalized_dirs: List[Union[str, DirectoryConfig]] = []
@@ -1102,7 +1111,8 @@ class DbliftConfig:
             )
             if not use_managed_identity and not database.get("account_key"):
                 raise ConfigurationError(
-                    "Cosmos DB configuration requires account_key unless use_managed_identity is true"
+                    "Cosmos DB configuration requires account_key "
+                    "unless use_managed_identity is true"
                 )
             if not (database.get("database_name") or database.get("database")):
                 raise ConfigurationError(
@@ -1328,7 +1338,10 @@ class DbliftConfig:
 
     @classmethod
     def from_all_sources(cls, cli_args: Dict[str, Any]) -> "DbliftConfig":
-        """Load config from file, env, and CLI args, with correct precedence (args > env > file > defaults)."""
+        """Load config from file, env, and CLI args.
+
+        Precedence is args > env > file > defaults.
+        """
         # Load from file if specified
         config_file = cli_args.get("config_file")
         file_config = {}
@@ -1390,6 +1403,7 @@ class DbliftConfig:
         return resolved
 
     def to_dict(self) -> Dict[str, Any]:
+        """Return the configuration as a plain dictionary."""
         result = {
             "database": self.database.to_dict(),
             "migrations": {

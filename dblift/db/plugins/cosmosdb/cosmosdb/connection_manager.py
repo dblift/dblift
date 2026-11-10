@@ -185,7 +185,10 @@ class CosmosDbConnectionManager:
                         continue
                     else:
                         # Not a retryable error or out of retries
-                        error_msg = f"Failed to create or access Cosmos DB database '{database_name}': {str(e)}"
+                        error_msg = (
+                            f"Failed to create or access Cosmos DB database '{database_name}': "
+                            f"{str(e)}"
+                        )
                         self.log.error(error_msg)
                         raise RuntimeError(error_msg) from e
 

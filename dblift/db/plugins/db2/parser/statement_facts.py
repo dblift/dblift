@@ -14,8 +14,10 @@ from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.db.plugins.db2.parser.data_change_cte import holds_data_change, read_data_change_cte
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_RULES, DB2_SPEC
 
-COLUMNS_UNAVAILABLE = "db2 column-level facts are unavailable: declared columns, constraints and indexed columns are not read"
-UNREAD_NAME = "db2 statement holds U+{code:04X}, which the engine may read as part of a name; its objects are not named"
+COLUMNS_UNAVAILABLE = "db2 column-level facts are unavailable: declared columns, constraints \
+and indexed columns are not read"
+UNREAD_NAME = "db2 statement holds U+{code:04X}, which the engine may read as part of a name; \
+its objects are not named"
 NOT_CLASSIFIED = "db2 {word} statement: not classified"
 CLIENT_COMMAND = "db2 client command: not an SQL statement"
 UNTERMINATED_IDENTIFIER = (
@@ -307,7 +309,7 @@ def _is_part(token: Token) -> bool:
 
 
 def _name_run(words: List[Token], at: int) -> Tuple[List[Token], int]:
-    """The word and quoted-identifier tokens joined by dots from ``at``, and the index after them."""
+    """Word and quoted-identifier tokens joined by dots from ``at``, and the index after them."""
     i = at
     run: List[Token] = []
     while i < len(words) and _is_part(words[i]):
@@ -458,7 +460,7 @@ def _is_symbol(token: Token, text: str) -> bool:
 
 
 def _walk(words: List[Token], start: int) -> Iterator[Tuple[int, Token, int]]:
-    """Each token from ``start`` with the parenthesis depth it sits at (a group's own parentheses sit outside it)."""
+    """Each token from ``start`` with its parenthesis depth (a group's own ones sit outside it)."""
     depth = 0
     for i in range(start, len(words)):
         if _is_symbol(words[i], ")"):
@@ -482,7 +484,7 @@ def _predicate(sql: str, words: List[Token], where: int) -> str:
 
 
 def _value_end(words: List[Token], start: int) -> int:
-    """Index of the depth-0 comma, WHERE or WHEN (outside CASE ... END) that ends the value at ``start``."""
+    """Index of depth-0 comma, WHERE or WHEN (outside CASE ... END) ending the ``start`` value."""
     cases = 0
     for i, token, depth in _walk(words, start):
         up = token.text.upper() if token.type is TokenType.KEYWORD else ""

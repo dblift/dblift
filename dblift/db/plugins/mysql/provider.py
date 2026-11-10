@@ -251,8 +251,9 @@ class MySqlProvider(SqlAlchemyProvider, CleanTargetProvider):
     def create_migration_lock_table_if_not_exists(self, schema: str) -> None:
         """Create the MySQL migration lock table if it is missing."""
         self.create_schema_if_not_exists(schema)
+        lock_table = self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)
         self.execute_statement(f"""
-            CREATE TABLE IF NOT EXISTS {self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)} (
+            CREATE TABLE IF NOT EXISTS {lock_table} (
                 lock_name VARCHAR(128) NOT NULL,
                 acquired_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 acquired_by VARCHAR(128) NOT NULL,
@@ -359,10 +360,14 @@ class MySqlProvider(SqlAlchemyProvider, CleanTargetProvider):
         ]
         if installed_on is not None:
             params.append(installed_on)
+        insert_columns = (
+            "(version, description, type, script, checksum, installed_by, execution_time, "
+            f"success{installed_on_column})"
+        )
         self.execute_statement(
             f"""
             INSERT INTO {self.get_schema_qualified_name(schema, table_name)}
-                (version, description, type, script, checksum, installed_by, execution_time, success{installed_on_column})
+                {insert_columns}
             VALUES (?, ?, ?, ?, ?, ?, ?, ?{installed_on_value})
             """,
             params=params,

@@ -199,3 +199,33 @@ class TestMissingSdkMessage(unittest.TestCase):
 
         self.assertIsInstance(exc.__cause__, ImportError)
         self.assertIn("azure.cosmos", str(exc.__cause__))
+
+
+class TestCosmosDbDatabaseCreationFailure(unittest.TestCase):
+    """A non-retryable database creation error names the database and keeps its cause."""
+
+    def test_error_names_the_database_and_keeps_the_cause(self):
+        from dblift.db.plugins.cosmosdb.config import CosmosDbConfig
+        from dblift.db.plugins.cosmosdb.cosmosdb.connection_manager import CosmosDbConnectionManager
+
+        config = MagicMock()
+        config.database = CosmosDbConfig(
+            type="cosmosdb",
+            account_endpoint="https://acct.documents.azure.com:443/",
+            account_key="k",
+            database_name="mydb",
+        )
+        mgr = CosmosDbConnectionManager(config=config, log=MagicMock())
+        cause = ValueError("forbidden")
+        client = MagicMock()
+        client.create_database_if_not_exists.side_effect = cause
+
+        with patch("azure.cosmos.CosmosClient", return_value=client):
+            with self.assertRaises(RuntimeError) as caught:
+                mgr.create_connection()
+
+        self.assertEqual(
+            str(caught.exception),
+            "Failed to create or access Cosmos DB database 'mydb': forbidden",
+        )
+        self.assertIs(caught.exception.__cause__, cause)

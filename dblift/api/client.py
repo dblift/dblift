@@ -444,7 +444,8 @@ class DBLiftClient:
         config_dialect = getattr(database, "type", None) if database else None
         if config_dialect == "":
             raise ValueError(
-                "Database type is configured but empty. Please set config.database.type to a valid dialect."
+                "Database type is configured but empty. "
+                "Please set config.database.type to a valid dialect."
             )
         if config_dialect:
             return str(config_dialect).lower()

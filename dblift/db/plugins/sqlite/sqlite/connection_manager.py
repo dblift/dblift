@@ -93,7 +93,8 @@ class SQLiteConnectionManager:
             connection = sqlite3.connect(
                 db_file,
                 detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
-                isolation_level=None,  # Autocommit Python mode; transactions controlled via explicit BEGIN/COMMIT SQL
+                # Autocommit Python mode; transactions controlled via explicit BEGIN/COMMIT SQL
+                isolation_level=None,
                 check_same_thread=False,  # Allow multi-threaded access
                 timeout=DEFAULT_BUSY_TIMEOUT_SECONDS,
             )

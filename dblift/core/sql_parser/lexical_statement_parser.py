@@ -256,7 +256,8 @@ class LexicalStatementParser(BaseStatementParser):
                 command = token.text.split(None, 1)[0]
                 if command not in self.spec.safe_meta_commands:
                     raise UnsupportedMetaCommandError(
-                        f"Unsupported {self.spec.client_name} meta-command {command!r} at line {token.line}; "
+                        f"Unsupported {self.spec.client_name} meta-command {command!r} at line "
+                        f"{token.line}; "
                         f"dblift does not run it (column {token.col})"
                     )
                 records.append(

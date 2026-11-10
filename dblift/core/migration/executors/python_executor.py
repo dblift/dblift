@@ -349,7 +349,8 @@ class PythonMigrationExecutor(BaseMigrationExecutor):
             migrate_fn = getattr(mod, "migrate", None)
             if not callable(migrate_fn):
                 raise RuntimeError(
-                    f"Python migration {migration.script_name}: no callable `migrate` function found."
+                    f"Python migration {migration.script_name}: no callable `migrate` function "
+                    "found."
                 )
             try:
                 sig = inspect.signature(migrate_fn)

@@ -10,10 +10,13 @@ from dblift.integrations.django._client import get_client
 
 
 class Command(BaseCommand):
+    """Management command behind ``manage.py dblift_info``."""
+
     help = "Show dblift migration status."
     requires_system_checks: list[str] = []
 
     def handle(self, *args: Any, **options: Any) -> None:
+        """Print the pending and failed migrations."""
         client = get_client()
         try:
             info = client.info()

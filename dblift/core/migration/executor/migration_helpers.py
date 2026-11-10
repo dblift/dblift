@@ -69,7 +69,8 @@ class MigrationHelpers:
         if hasattr(self.log, "set_command_type"):
             self.log.set_command_type("MIGRATE")
 
-        # Use the recursive and additional_dirs parameters if provided, otherwise use config defaults
+        # Use the recursive and additional_dirs parameters if provided, otherwise use config
+        # defaults
         use_recursive = (
             recursive
             if recursive is not None
@@ -106,7 +107,8 @@ class MigrationHelpers:
             # Continue with migration instead of stopping, to show the actual migration errors
             # We'll display validation errors after migration fails
             self.log.debug(f"Migration validation found issues: {error_message_str}")
-            # Only stop if it's not a checksum error (those will be shown in proper order after migration fails)
+            # Only stop if it's not a checksum error (those will be shown in proper order after
+            # migration fails)
             if "modified migration scripts" not in lowered_error_message:
                 # Log all validation issues
                 issues = getattr(validation_result, "issues", None)

@@ -461,7 +461,8 @@ class OutputFormatter:
 
             for migration in result.repaired_migrations:
                 output.append(
-                    f"{migration.version or 'n/a':<15}{migration.description:<40}{migration.type:<15}"
+                    f"{migration.version or 'n/a':<15}{migration.description:<40}"
+                    f"{migration.type:<15}"
                 )
 
             output.append("-" * 80)
@@ -474,7 +475,8 @@ class OutputFormatter:
 
             for migration in result.removed_migrations:
                 output.append(
-                    f"{migration.version or 'n/a':<15}{migration.description:<40}{migration.type:<15}"
+                    f"{migration.version or 'n/a':<15}{migration.description:<40}"
+                    f"{migration.type:<15}"
                 )
 
             output.append("-" * 80)
@@ -487,7 +489,8 @@ class OutputFormatter:
 
             for migration in result.aligned_migrations:
                 output.append(
-                    f"{migration.version or 'n/a':<15}{migration.description:<40}{migration.type:<15}"
+                    f"{migration.version or 'n/a':<15}{migration.description:<40}"
+                    f"{migration.type:<15}"
                 )
 
             output.append("-" * 80)

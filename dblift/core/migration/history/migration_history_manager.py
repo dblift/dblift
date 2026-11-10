@@ -1,4 +1,5 @@
-"""Migration history manager — persists applied migrations and validates checksums against the DB."""
+"""Migration history manager — persists applied migrations and validates checksums against
+the DB."""
 
 import logging
 from dataclasses import dataclass
@@ -171,7 +172,8 @@ class MigrationHistoryManager:
 
         if self.logger:
             self.logger.debug(
-                f"[DEBUG] MigrationHistoryManager __init__: schema={self.schema}, table={self.history_table}"
+                f"[DEBUG] MigrationHistoryManager __init__: schema={self.schema}, "
+                f"table={self.history_table}"
             )
 
     @property
@@ -224,7 +226,8 @@ class MigrationHistoryManager:
 
         if hasattr(self, "logger") and self.logger:
             self.logger.debug(
-                f"Recording migration {migration.script_name} with success={success_flag}, type={migration.type.name}"
+                f"Recording migration {migration.script_name} with success={success_flag}, "
+                f"type={migration.type.name}"
             )
 
         # Log specific details for repeatable migrations to help diagnose issues
@@ -233,7 +236,8 @@ class MigrationHistoryManager:
                 self.logger.debug(f"Recording REPEATABLE migration: {migration.script_name}")
                 self.logger.debug(f"  - checksum: {migration.checksum}")
                 self.logger.debug(
-                    f"  - content length: {len(migration.sql_content) if hasattr(migration, 'sql_content') else 'N/A'}"
+                    "  - content length: "
+                    f"{len(migration.sql_content) if hasattr(migration, 'sql_content') else 'N/A'}"
                 )
 
         migration_info = {
@@ -255,7 +259,8 @@ class MigrationHistoryManager:
         # Log the actual values we're passing to the provider
         if hasattr(self, "logger") and self.logger:
             self.logger.debug(
-                f"Recorded migration info: script={migration_info['script']}, type={migration_info['type']}"
+                f"Recorded migration info: script={migration_info['script']}, "
+                f"type={migration_info['type']}"
             )
 
         self.provider.record_migration(self.schema, migration_info, self.history_table)
@@ -375,7 +380,8 @@ class MigrationHistoryManager:
             bool: True if the record was updated, False otherwise
         """
         try:
-            # Mark the migration as successful so it won't be flagged as failed after the checksum update
+            # Mark the migration as successful so it won't be flagged as failed after the checksum
+            # update
             updated = self.provider.repair_migration_history(
                 self.schema,
                 script_name,
@@ -385,7 +391,8 @@ class MigrationHistoryManager:
             )
             if not updated and self.logger:
                 self.logger.warning(
-                    f"No migration history entry updated for {script_name}; checksum remains unchanged"
+                    f"No migration history entry updated for {script_name}; checksum remains "
+                    "unchanged"
                 )
             return bool(updated)
         except Exception as e:

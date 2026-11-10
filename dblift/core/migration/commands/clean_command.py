@@ -212,12 +212,14 @@ class CleanCommand(BaseCommand):
             if result.success:
                 if result.warnings:
                     self.log.info(
-                        f"Schema cleaned successfully (executed {len(executed_statements)} statements, "
+                        f"Schema cleaned successfully (executed {len(executed_statements)} "
+                        "statements, "
                         f"{len(result.warnings)} warning(s))"
                     )
                 else:
                     self.log.info(
-                        f"Schema cleaned successfully (executed {len(executed_statements)} statements)"
+                        f"Schema cleaned successfully (executed {len(executed_statements)} "
+                        "statements)"
                     )
             else:
                 error_count = len(result.warnings) if result.warnings else 0

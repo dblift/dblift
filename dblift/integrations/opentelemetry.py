@@ -134,6 +134,7 @@ class OtelHandle:
     """Tracks active spans for one instrumented client; supports teardown."""
 
     def __init__(self, client: "DBLiftClient", tracer: trace.Tracer) -> None:
+        """Bind the handle to a client and the tracer that creates its spans."""
         self._client = client
         self._tracer = tracer
         self._stack: List[Tuple[Span, Token[Context], str]] = []  # span, token, name
@@ -185,6 +186,7 @@ class OtelHandle:
             _log.debug("dblift otel listener error: %s", exc)
 
     def uninstrument(self) -> None:
+        """Remove every event listener this handle registered."""
         for event_str, cb in self._registered:
             self._client.events.off(event_str, cb)
         self._registered.clear()

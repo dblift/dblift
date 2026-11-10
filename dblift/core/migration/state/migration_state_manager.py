@@ -994,7 +994,8 @@ class MigrationStateManager:
         dir_recursive_map: Optional[Dict[Path, bool]],
         read_snapshot: Optional[MigrationReadSnapshot] = None,
     ) -> RepairPlan:
-        """Decide what ``repair`` fixes; raises ``RepairSafetyError`` when it would mark everything missing."""
+        """Decide what ``repair`` fixes; raises ``RepairSafetyError`` when it would mark everything
+        missing."""
         return _plan_repairs(
             self,
             scripts_dir,

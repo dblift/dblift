@@ -998,7 +998,8 @@ class OracleProvider(SqlLeaseLockingProvider):
             (
                 "materialized_view",
                 "DROP MATERIALIZED VIEW",
-                "SELECT MVIEW_NAME AS object_name FROM ALL_MVIEWS WHERE OWNER = ? ORDER BY MVIEW_NAME",
+                "SELECT MVIEW_NAME AS object_name FROM ALL_MVIEWS "
+                "WHERE OWNER = ? ORDER BY MVIEW_NAME",
                 "",
             ),
             (
