@@ -58,6 +58,14 @@ An opaque result with no objects is a statement about the reader's evidence,
 not a claim that a database accepts or rejects the SQL or that execution has
 no effect.
 
+A clause that only another engine's grammar has is not read as proof either, whether
+sqlglot holds the statement as a command or parses it: `CREATE INDEX … TABLESPACE` outside
+PostgreSQL and Oracle, `DROP TRIGGER … ON table` outside PostgreSQL (SQL Server's `ON DATABASE`
+and `ON ALL SERVER` scopes are not that clause), `UNLOGGED` and `TABLESPACE` on Redshift, and
+every `CREATE`, `ALTER` or `DROP TRIGGER` on DuckDB, which has no triggers. The engine that
+would run such a statement rejects it, so the reader reports the operation and kind with a
+diagnostic and names nothing.
+
 ## Rules every specification follows
 
 - **Facts cite the vendor.** A string, comment, terminator or block rule is

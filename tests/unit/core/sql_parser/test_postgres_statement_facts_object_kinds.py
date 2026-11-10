@@ -9,6 +9,7 @@ duplicate object, 42883 undefined function); 42601 is a syntax error.
 """
 
 import pytest
+from sqlglot import exp, parse_one
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
@@ -258,7 +259,12 @@ def test_a_table_named_tablespace_still_carries_its_clause():
     facts = _pg("CREATE TABLE tablespace (a int) TABLESPACE ts")
 
     assert facts.objects == (NamedObject("tablespace", T.TABLE, "created"),)
-    assert facts.diagnostic.endswith("postgres TABLESPACE clause is not modelled by the grammar")
+    if isinstance(parse_one("CREATE TABLE m (a int) TABLESPACE ts", read="postgres"), exp.Create):
+        assert facts.declared_columns == ("a",) and not facts.opaque  # sqlglot 30.30 parses it
+    else:
+        assert facts.diagnostic.endswith(
+            "postgres TABLESPACE clause is not modelled by the grammar"
+        )
 
 
 @pytest.mark.parametrize(
