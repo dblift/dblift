@@ -88,7 +88,16 @@ def test_execute_statement_filters_nothing():
 # caught here, not only by the parity matrix.
 ANALYSIS_LOOPS = [
     ("core/migration/sql/script_analysis.py", {"_analyse"}),
-    ("core/migration/sql/lint_rules.py", {"_mixed_transaction_modes", "issues_and_created_tables"}),
+    (
+        "core/migration/sql/lint_rules.py",
+        {
+            "_mixed_transaction_modes",
+            "issues_and_created_tables",
+            "_scan_statement",
+            "_acts_on_new_tables",
+            "_check_lock_timeout",
+        },
+    ),
     ("core/sql_parser/statement_facts_parser.py", {"parse_sql"}),
 ]
 

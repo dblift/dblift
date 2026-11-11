@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Tuple
 
 from dblift.core.logger import Log, NullLog
 from dblift.core.logger.console import get_stdout_console, rich_available
@@ -125,20 +125,54 @@ def _render_command_completion(
     if isinstance(context.log, NullLog):
         return
 
-    execution_time_ms = result.execution_time()
-
-    # Format execution time appropriately
-    if execution_time_ms < 1000:
-        time_str = f"{execution_time_ms} ms"
-    elif execution_time_ms < 60000:
-        time_seconds = execution_time_ms / 1000.0
-        time_str = f"{time_seconds:.2f} s"
-    else:
-        time_minutes = execution_time_ms / 60000.0
-        time_str = f"{time_minutes:.2f} min"
+    time_str = _format_execution_time(result.execution_time())
 
     # Format and log footer (only for text-based console output)
-    # Check if we should print to console
+    should_print_footer, has_console_log, has_file_log = _log_sinks(context)
+
+    # Don't log completion message to console - the footer already shows it
+    # But still log to file logs (HTML/JSON) for record keeping
+    status = "SUCCESS" if result.success else "FAILED"
+    _log_completion_to_files(context, command_name, status, time_str, has_console_log, has_file_log)
+
+    post_op_schema_version = _post_operation_schema_version(context)
+    applied_scripts = _footer_note(command_name, result)
+
+    # Print footer to console if applicable
+    footer_args: Dict[str, Any] = dict(
+        command_name=command_name,
+        success=result.success,
+        execution_time=time_str,
+        error_message=getattr(result, "error_message", None),
+        schema_version=post_op_schema_version,
+        applied_scripts=applied_scripts,
+    )
+    if should_print_footer and not context._has_own_console_footer:
+        if rich_available():
+            get_stdout_console().print(context._build_footer_panel(**footer_args))
+        else:
+            sys.stdout.write(context._format_command_footer(**footer_args) + "\n")
+    context._log_text_block(context._format_command_footer(**footer_args))
+
+
+def _format_execution_time(execution_time_ms: int) -> str:
+    """Return the execution time as ``"<n> ms"`` under a second, ``"<s.ss> s"`` under a
+    minute, and ``"<m.mm> min"`` from a minute on."""
+    if execution_time_ms < 1000:
+        return f"{execution_time_ms} ms"
+    if execution_time_ms < 60000:
+        time_seconds = execution_time_ms / 1000.0
+        return f"{time_seconds:.2f} s"
+    time_minutes = execution_time_ms / 60000.0
+    return f"{time_minutes:.2f} min"
+
+
+def _log_sinks(context: "BaseCommand") -> Tuple[bool, bool, bool]:
+    """Return ``(should_print_footer, has_console_log, has_file_log)`` for ``context.log``.
+
+    A console log (alone, or among the logs of a MultiLog) makes the first two True; a file log
+    that is not also a console log makes the third True. Every other log returns all False.
+    """
     should_print_footer = False
     has_console_log = False
     has_file_log = False
@@ -157,10 +191,23 @@ def _render_command_completion(
     elif isinstance(context.log, FileLog):
         # File log only
         has_file_log = True
+    return should_print_footer, has_console_log, has_file_log
 
-    # Don't log completion message to console - the footer already shows it
-    # But still log to file logs (HTML/JSON) for record keeping
-    status = "SUCCESS" if result.success else "FAILED"
+
+def _log_completion_to_files(
+    context: "BaseCommand",
+    command_name: str,
+    status: str,
+    time_str: str,
+    has_console_log: bool,
+    has_file_log: bool,
+) -> None:
+    """Log the completion message to the file logs whose format is not TEXT.
+
+    Returns None. For a MultiLog with a file log, each sub-log that is a file log and not a
+    console log gets the message unless its format is TEXT; for a log with a file log and no
+    console log, ``context.log`` gets it unless its format is TEXT. Nothing is logged otherwise.
+    """
     if has_file_log and isinstance(context.log, MultiLog):
         # MultiLog with file log - log only to file logs, not console
         for log in context.log.logs:
@@ -173,6 +220,13 @@ def _render_command_completion(
         if getattr(context.log, "log_format", None) != LogFormat.TEXT:
             context.log.info(f"Command {command_name} completed with status {status} in {time_str}")
 
+
+def _post_operation_schema_version(context: "BaseCommand") -> Optional[str]:
+    """Return the schema version resolved after the operation, or None.
+
+    None when the command has no history manager, or when resolving it raises; the failure is
+    logged at debug level, and a failure of that debug log is ignored.
+    """
     # Resolve the schema version *after* the operation has run
     # so the footer reflects the post-state (undo rolling back V3 now
     # shows "Schema Version: 3" in the footer, not the pre-op "4" that
@@ -192,7 +246,17 @@ def _render_command_completion(
                 context.log.debug(f"Could not resolve post-operation schema version: {e}")
             except Exception:
                 pass
+    return post_op_schema_version
 
+
+def _footer_note(command_name: str, result: OperationResult) -> Optional[List[str]]:
+    """Return the footer's note for a successful migrate run that applied nothing, else None.
+
+    The note is a one-item list: the dry-run count when ``result.dry_run_count`` is truthy,
+    otherwise "No pending migrations found". None for any other command, a failed run, a
+    result without ``migrations`` (or with None), or a run with a migration whose status is
+    "SUCCESS" or "Success".
+    """
     # Only collect applied script names for the migrate command.
     # Other commands (info, clean, repair, baseline, …) may also have a
     # `migrations` attribute but those entries are historical records, not
@@ -213,22 +277,7 @@ def _render_command_completion(
                     applied_scripts = [f"Dry run — {dry_run_count} migration(s) would be applied"]
                 else:
                     applied_scripts = ["No pending migrations found"]
-
-    # Print footer to console if applicable
-    footer_args: Dict[str, Any] = dict(
-        command_name=command_name,
-        success=result.success,
-        execution_time=time_str,
-        error_message=getattr(result, "error_message", None),
-        schema_version=post_op_schema_version,
-        applied_scripts=applied_scripts,
-    )
-    if should_print_footer and not context._has_own_console_footer:
-        if rich_available():
-            get_stdout_console().print(context._build_footer_panel(**footer_args))
-        else:
-            sys.stdout.write(context._format_command_footer(**footer_args) + "\n")
-    context._log_text_block(context._format_command_footer(**footer_args))
+    return applied_scripts
 
 
 class CommandPresentation:

@@ -11,7 +11,7 @@ nothing deployed uses it yet, so the findings about that table alone are not rep
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import AbstractSet, Any, Dict, FrozenSet, Iterable, List, Optional, Set, Tuple
 
 import sqlglot
@@ -245,56 +245,125 @@ def issues_and_created_tables(
         for c in analysis.cautions
         if c.code
     ]
-    new: Set[_TableKey] = {_key_from_text(name) for name in created_before}
-    existing = {_key_from_text(name) for name in existing_tables or ()}
-    created: Set[_TableKey] = set()
-    on_new_tables: Set[int] = set()
-    lock_timeout_set = False
-    lock_timeout_reported = not pg_locks
+    scan = _Scan(
+        new={_key_from_text(name) for name in created_before},
+        existing={_key_from_text(name) for name in existing_tables or ()},
+        case=case,
+        pg_locks=pg_locks,
+        lock_timeout_reported=not pg_locks,
+    )
     for stmt in analysis.statements:
-        body = strip_leading_sql_comments(stmt.sql)
-        tree = _parse(body, sqlglot_dialect)
-        targets = _targets(tree)
-        if (
-            targets
-            and not stmt.names_unread
-            and all(_matches(target, new, case) for target in targets)
-        ):
-            on_new_tables.add(stmt.index)
-        elif tree is None:
-            text_targets = _text_targets(body)
-            if text_targets and all(_matches(target, new, case) for target in text_targets):
-                on_new_tables.add(stmt.index)
-        for code in _statement_codes(body, tree, pg_locks=pg_locks):
-            findings.append(_finding(code, stmt))
-        if stmt.operation == "ALTER" and tree is None:
-            findings.append(_finding("statement-not-analysed", stmt))
-        if _LOCK_TIMEOUT.match(body):
-            lock_timeout_set = True
-        elif (
-            not (lock_timeout_set or lock_timeout_reported)
-            and stmt.index not in on_new_tables
-            and (_locks_table(tree) or _locks_table_by_text(body))
-        ):
-            findings.append(_finding("pg-missing-lock-timeout", stmt))
-            lock_timeout_reported = True
-        if stmt.unread and not any(f.statement == stmt.index for f in findings):
-            # The facts reader left it unread and nothing else speaks for it: silence is not safety.
-            findings.append(_finding("statement-not-analysed", stmt, stmt.unread))
-        table = _created_table(tree)
-        if table and not stmt.names_unread and not _matches(table, existing, None):
-            created.add(table)
-            new.add(table)
+        _scan_statement(stmt, sqlglot_dialect, scan, findings)
     findings = [
-        f for f in findings if not (f.code in _TABLE_CODES and f.statement in on_new_tables)
+        f for f in findings if not (f.code in _TABLE_CODES and f.statement in scan.on_new_tables)
     ]
     # A failed scan is already reported by analysis.errors. Do not scan the refused
     # script again for transaction modes and turn its parse error into an exception.
     if not analysis.errors:
         findings.extend(_mixed_transaction_modes(analysis.statements, dialect, text))
     return sorted(findings, key=lambda f: (f.statement, f.code)), frozenset(
-        _text_of(key) for key in created
+        _text_of(key) for key in scan.created
     )
+
+
+@dataclass
+class _Scan:
+    """What the statements of one script read so far establish for the statements after them."""
+
+    # The new tables: named in created_before, or created by an earlier statement.
+    new: Set[_TableKey]
+    # The tables known to exist: a CREATE TABLE of one of them creates nothing new.
+    existing: Set[_TableKey]
+    # The dialect's unquoted_identifier_case and postgresql_lock_rules.
+    case: Optional[str]
+    pg_locks: bool
+    # True once pg-missing-lock-timeout is reported, and from the start without pg_locks.
+    lock_timeout_reported: bool
+    # The tables the script creates.
+    created: Set[_TableKey] = field(default_factory=set)
+    # The statements whose target tables are all new.
+    on_new_tables: Set[int] = field(default_factory=set)
+    # True once a statement has set lock_timeout.
+    lock_timeout_set: bool = False
+
+
+def _scan_statement(
+    stmt: AnalysedStatement,
+    sqlglot_dialect: Optional[str],
+    scan: _Scan,
+    findings: List[Finding],
+) -> None:
+    """Append one statement's findings to *findings* and record in *scan* what it establishes.
+
+    Returns None. The statement joins ``scan.on_new_tables`` when it acts on new tables only,
+    and the table it creates, if any, joins ``scan.created`` and ``scan.new`` unless the
+    statement has unread names or the table is among ``scan.existing``.
+    """
+    body = strip_leading_sql_comments(stmt.sql)
+    tree = _parse(body, sqlglot_dialect)
+    if _acts_on_new_tables(stmt, body, tree, scan):
+        scan.on_new_tables.add(stmt.index)
+    for code in _statement_codes(body, tree, pg_locks=scan.pg_locks):
+        findings.append(_finding(code, stmt))
+    if stmt.operation == "ALTER" and tree is None:
+        findings.append(_finding("statement-not-analysed", stmt))
+    _check_lock_timeout(stmt, body, tree, scan, findings)
+    if stmt.unread and not any(f.statement == stmt.index for f in findings):
+        # The facts reader left it unread and nothing else speaks for it: silence is not safety.
+        findings.append(_finding("statement-not-analysed", stmt, stmt.unread))
+    table = _created_table(tree)
+    if table and not stmt.names_unread and not _matches(table, scan.existing, None):
+        scan.created.add(table)
+        scan.new.add(table)
+
+
+def _acts_on_new_tables(
+    stmt: AnalysedStatement, body: str, tree: Optional[exp.Expression], scan: _Scan
+) -> bool:
+    """Whether every table the statement acts on is new.
+
+    Returns True when the sqlglot tree names targets, the statement's names were read and every
+    target is new; otherwise, for a statement sqlglot could not structure, True when the text of
+    a LOCK or VACUUM names tables and every one is new; False in every other case.
+    """
+    targets = _targets(tree)
+    if (
+        targets
+        and not stmt.names_unread
+        and all(_matches(target, scan.new, scan.case) for target in targets)
+    ):
+        return True
+    if tree is None:
+        text_targets = _text_targets(body)
+        return bool(text_targets) and all(
+            _matches(target, scan.new, scan.case) for target in text_targets
+        )
+    return False
+
+
+def _check_lock_timeout(
+    stmt: AnalysedStatement,
+    body: str,
+    tree: Optional[exp.Expression],
+    scan: _Scan,
+    findings: List[Finding],
+) -> None:
+    """Record a statement setting lock_timeout, or report the first table lock taken without one.
+
+    Returns None. A statement setting lock_timeout sets ``scan.lock_timeout_set``. Otherwise,
+    while neither ``scan.lock_timeout_set`` nor ``scan.lock_timeout_reported`` is set, a
+    statement not on new tables that takes a table lock appends ``pg-missing-lock-timeout`` to
+    *findings* and sets ``scan.lock_timeout_reported``.
+    """
+    if _LOCK_TIMEOUT.match(body):
+        scan.lock_timeout_set = True
+    elif (
+        not (scan.lock_timeout_set or scan.lock_timeout_reported)
+        and stmt.index not in scan.on_new_tables
+        and (_locks_table(tree) or _locks_table_by_text(body))
+    ):
+        findings.append(_finding("pg-missing-lock-timeout", stmt))
+        scan.lock_timeout_reported = True
 
 
 def _finding(code: str, stmt: AnalysedStatement, message: Optional[str] = None) -> Finding:
