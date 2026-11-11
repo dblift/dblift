@@ -41,6 +41,40 @@ def read_data_change_cte(
     if name is None:
         return None
     cte_name, _, at, _ = name
+    declared = _read_declared_column(words, at, helpers)
+    if declared is None:
+        return None
+    declared_column, at = declared
+    body_end = _read_body_end(words, ups, at, helpers)
+    if body_end is None:
+        return None
+    body_words = words[at + 2 : body_end - 1]
+    body_ups = ups[at + 2 : body_end - 1]
+    read = _read_final_table_update(sql, body_words, body_ups, declared_column, helpers)
+    if read is None:
+        return None
+    changed_column, write = read
+    if not _outer_select_reads(words[body_end:], ups[body_end:], cte_name, changed_column, helpers):
+        return None
+    effect = DmlEffect(
+        write.operation,
+        # _read_inner_update returns only a write with a target
+        cast(str, write.target),
+        write.target_sql or "",
+        write.predicate,
+        write.events or frozenset(),
+        write.affected_columns,
+    )
+    return StatementFacts("SELECT", "DML", write.objects, cte_writes=(effect,))
+
+
+def _read_declared_column(
+    words: List[Token], at: int, helpers: _ReaderHelpers
+) -> Optional[Tuple[Optional[str], int]]:
+    """The one declared column after the CTE name (or ``None``) and the index after it.
+
+    Returns ``None`` when a column list is present but is not exactly one plain name.
+    """
     declared_column = None
     if at < len(words) and helpers._is_symbol(words[at], "("):
         columns_end = helpers._skip_group(words, at)
@@ -51,6 +85,13 @@ def read_data_change_cte(
             return None
         declared_column = column[0][0]
         at = columns_end
+    return declared_column, at
+
+
+def _read_body_end(
+    words: List[Token], ups: List[str], at: int, helpers: _ReaderHelpers
+) -> Optional[int]:
+    """The index after the parenthesised ``AS ( ... )`` body at ``at``, or ``None``."""
     if (
         ups[at : at + 1] != ["AS"]
         or at + 1 >= len(words)
@@ -60,8 +101,21 @@ def read_data_change_cte(
     body_end = helpers._skip_group(words, at + 1)
     if body_end <= at + 2:
         return None
-    body_words = words[at + 2 : body_end - 1]
-    body_ups = ups[at + 2 : body_end - 1]
+    return body_end
+
+
+def _read_final_table_update(
+    sql: str,
+    body_words: List[Token],
+    body_ups: List[str],
+    declared_column: Optional[str],
+    helpers: _ReaderHelpers,
+) -> Optional[Tuple[str, StatementFacts]]:
+    """The selected column and the inner UPDATE of ``SELECT col FROM FINAL TABLE (UPDATE ...)``.
+
+    Returns ``None`` for any other body shape, a column other than the declared one, or an
+    inner UPDATE that is not read.
+    """
     # This bounded shape reads only the DML target; any other source remains opaque.
     if (
         len(body_words) < 7
@@ -77,8 +131,18 @@ def read_data_change_cte(
     data_end = helpers._skip_group(body_words, 5)
     if data_end != len(body_words):
         return None
-    inner_words = body_words[6 : data_end - 1]
-    inner_ups = body_ups[6 : data_end - 1]
+    write = _read_inner_update(
+        sql, body_words[6 : data_end - 1], body_ups[6 : data_end - 1], helpers
+    )
+    if write is None:
+        return None
+    return changed_column, write
+
+
+def _read_inner_update(
+    sql: str, inner_words: List[Token], inner_ups: List[str], helpers: _ReaderHelpers
+) -> Optional[StatementFacts]:
+    """The facts of a single-table UPDATE with a readable target, or ``None``."""
     if not inner_ups or inner_ups[0] != "UPDATE":
         return None
     if any(word in ("FROM", "JOIN") for word in inner_ups):
@@ -86,8 +150,17 @@ def read_data_change_cte(
     write = helpers._read_dml(sql, inner_words, inner_ups, "UPDATE")
     if write.opaque or not write.target or not write.objects:
         return None
-    outer = words[body_end:]
-    outer_ups = ups[body_end:]
+    return write
+
+
+def _outer_select_reads(
+    outer: List[Token],
+    outer_ups: List[str],
+    cte_name: Tuple[str, ...],
+    changed_column: str,
+    helpers: _ReaderHelpers,
+) -> bool:
+    """Whether the outer query is exactly ``SELECT <changed column> FROM <cte name>``."""
     if (
         len(outer) != 4
         or outer_ups[:1] != ["SELECT"]
@@ -95,16 +168,8 @@ def read_data_change_cte(
         or helpers.fold_name(outer[3].text) != cte_name[0]
         or helpers.fold_name(outer[1].text) != changed_column
     ):
-        return None
-    effect = DmlEffect(
-        write.operation,
-        write.target,
-        write.target_sql or "",
-        write.predicate,
-        write.events or frozenset(),
-        write.affected_columns,
-    )
-    return StatementFacts("SELECT", "DML", write.objects, cte_writes=(effect,))
+        return False
+    return True
 
 
 def holds_data_change(ups: List[str]) -> bool:

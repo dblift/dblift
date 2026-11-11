@@ -4,7 +4,7 @@ This module provides token-based statement parsing that splits SQL
 into individual statements based on delimiters and block depth.
 """
 
-from typing import Iterable, List, Optional, Sequence, cast
+from typing import Callable, Iterable, List, Optional, Sequence, Tuple, cast
 
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.tokens import Token, TokenType
@@ -243,6 +243,8 @@ class BaseStatementParser:
     def _needs_space_between(self, prev_token: Token, current_token: Token) -> bool:
         """Check if space is needed between tokens.
 
+        The rules are tried in order; the first one that decides wins.
+
         Args:
             prev_token: Previous token
             current_token: Current token
@@ -250,111 +252,11 @@ class BaseStatementParser:
         Returns:
             True if space should be inserted
         """
-        # Special cases where no space is needed
-
-        # Space before opening parenthesis after certain keywords (WHEN, IF, WHILE, etc.)
-        # No space for function/procedure calls
-        if current_token.text == "(":
-            if prev_token.type == TokenType.KEYWORD:
-                # Add space after control flow keywords
-                if prev_token.text.upper() in ("WHEN", "IF", "WHILE", "FOR", "WITH"):
-                    return True
-                # No space for other keywords (function names treated as identifiers)
-                return False
-            elif prev_token.type == TokenType.IDENTIFIER:
-                # No space for function calls
-                return False
-
-        # No space after opening parenthesis
-        if prev_token.text == "(":
-            return False
-
-        # No space before closing parenthesis, comma, semicolon
-        if current_token.text in (")", ",", ";"):
-            return False
-
-        # After ')', require a space before the next token unless it is another
-        # closer/delimiter or a dot (e.g. VARCHAR2(100) PRIMARY, foo(x) TABLESPACE).
-        # PRIMARY/TABLESPACE are often IDENTIFIER tokens, not KEYWORD, so the
-        # keyword/identifier pairing rules alone do not insert a space.
-        if prev_token.text == ")" and current_token.text not in (")", ",", ";", "."):
-            return True
-
-        # Space after comma
-        if prev_token.text == ",":
-            return True
-
-        # No space before or after period (for schema.table)
-        if prev_token.text == "." or current_token.text == ".":
-            return False
-
-        # No space before or after slash delimiters or path separators, but
-        # preserve original whitespace before ordinary slash symbols such as
-        # SQL*Plus paths: SPOOL /tmp/out.log.
-        if prev_token.text == "/" or current_token.text == "/":
-            if (prev_token.type == TokenType.DELIMITER and prev_token.text == "/") or (
-                current_token.type == TokenType.DELIMITER and current_token.text == "/"
-            ):
-                return False
-            if current_token.text == "/":
-                return current_token.pos > prev_token.pos + len(prev_token.text)
-            return False
-
-        # No space around equals (for ENGINE=InnoDB, CHARSET=utf8, etc.)
-        if current_token.text == "=" or prev_token.text == "=":
-            return False
-
-        # String-literal prefixes must stay adjacent to the opening quote:
-        # T-SQL / standard N'str', PostgreSQL E'escape', etc. (not N 'str').
-        if current_token.type == TokenType.STRING and prev_token.text.upper() in (
-            "N",
-            "E",
-            "X",
-            "B",
-        ):
-            return False
-
-        # Whenever a symbol is involved, reproduce the author's spacing exactly.
-        #
-        # Engines lex operators greedily out of runs of operator characters, so
-        # both directions change meaning. Dropping a space merges two operators
-        # into one: ``a - -b`` rendered as ``a --b`` makes the rest of the line
-        # a comment. Adding one splits a single operator in two: ``j @> x``
-        # rendered as ``j @ > x`` is a different expression. Neither is a syntax
-        # error the database will reject on the user's behalf.
-        if TokenType.SYMBOL in (prev_token.type, current_token.type):
-            return current_token.pos > prev_token.pos + len(prev_token.text)
-
-        # Need space between keywords/identifiers
-        if prev_token.type in (TokenType.KEYWORD, TokenType.IDENTIFIER):
-            if current_token.type in (TokenType.KEYWORD, TokenType.IDENTIFIER):
-                return True
-
-        # Need space between keyword and string
-        if prev_token.type == TokenType.KEYWORD and current_token.type == TokenType.STRING:
-            return True
-
-        # Need space between identifier and string
-        if prev_token.type == TokenType.IDENTIFIER and current_token.type == TokenType.STRING:
-            return True
-
-        # Need space between string and keyword
-        if prev_token.type == TokenType.STRING and current_token.type == TokenType.KEYWORD:
-            return True
-
-        # Need space between string and identifier
-        if prev_token.type == TokenType.STRING and current_token.type == TokenType.IDENTIFIER:
-            return True
-
-        # Need space between numbers/symbols and keywords
-        if current_token.type == TokenType.KEYWORD:
-            return True
-
-        # Default: add space if prev was keyword or identifier
-        if prev_token.type in (TokenType.KEYWORD, TokenType.IDENTIFIER):
-            return True
-
-        return False
+        for rule in _SPACING_RULES:
+            decided = rule(prev_token, current_token)
+            if decided is not None:
+                return decided
+        return _space_between_words(prev_token, current_token)
 
     def _last_token_is(self, keyword: str, parens_depth: Optional[int] = None) -> bool:
         """Check if the last token matches the given keyword.
@@ -421,3 +323,147 @@ class BaseStatementParser:
                     break
 
         return result
+
+
+def _space_before_open_paren(prev_token: Token, current_token: Token) -> Optional[bool]:
+    """Decide the space before ``(``: kept after control-flow keywords, else dropped after
+    keywords and identifiers.
+
+    Returns ``None`` when the rule does not apply.
+    """
+    # Space before opening parenthesis after certain keywords (WHEN, IF, WHILE, etc.)
+    # No space for function/procedure calls
+    if current_token.text == "(":
+        if prev_token.type == TokenType.KEYWORD:
+            # Add space after control flow keywords
+            if prev_token.text.upper() in ("WHEN", "IF", "WHILE", "FOR", "WITH"):
+                return True
+            # No space for other keywords (function names treated as identifiers)
+            return False
+        elif prev_token.type == TokenType.IDENTIFIER:
+            # No space for function calls
+            return False
+    return None
+
+
+def _space_around_punctuation(prev_token: Token, current_token: Token) -> Optional[bool]:
+    """Decide the space around parentheses, commas, semicolons and periods.
+
+    Returns ``None`` when the rule does not apply.
+    """
+    # No space after opening parenthesis
+    if prev_token.text == "(":
+        return False
+
+    # No space before closing parenthesis, comma, semicolon
+    if current_token.text in (")", ",", ";"):
+        return False
+
+    # After ')', require a space before the next token unless it is another
+    # closer/delimiter or a dot (e.g. VARCHAR2(100) PRIMARY, foo(x) TABLESPACE).
+    # PRIMARY/TABLESPACE are often IDENTIFIER tokens, not KEYWORD, so the
+    # keyword/identifier pairing rules alone do not insert a space.
+    if prev_token.text == ")" and current_token.text not in (")", ",", ";", "."):
+        return True
+
+    # Space after comma
+    if prev_token.text == ",":
+        return True
+
+    # No space before or after period (for schema.table)
+    if prev_token.text == "." or current_token.text == ".":
+        return False
+    return None
+
+
+def _space_around_slash(prev_token: Token, current_token: Token) -> Optional[bool]:
+    """Decide the space around ``/``.
+
+    No space before or after slash delimiters or path separators, but preserve original
+    whitespace before ordinary slash symbols such as SQL*Plus paths: SPOOL /tmp/out.log.
+    Returns ``None`` when neither token is a slash.
+    """
+    if prev_token.text == "/" or current_token.text == "/":
+        if (prev_token.type == TokenType.DELIMITER and prev_token.text == "/") or (
+            current_token.type == TokenType.DELIMITER and current_token.text == "/"
+        ):
+            return False
+        if current_token.text == "/":
+            return current_token.pos > prev_token.pos + len(prev_token.text)
+        return False
+    return None
+
+
+def _space_around_operators(prev_token: Token, current_token: Token) -> Optional[bool]:
+    """Decide the space around ``=``, string-literal prefixes and symbols.
+
+    Returns ``None`` when the rule does not apply.
+    """
+    # No space around equals (for ENGINE=InnoDB, CHARSET=utf8, etc.)
+    if current_token.text == "=" or prev_token.text == "=":
+        return False
+
+    # String-literal prefixes must stay adjacent to the opening quote:
+    # T-SQL / standard N'str', PostgreSQL E'escape', etc. (not N 'str').
+    if current_token.type == TokenType.STRING and prev_token.text.upper() in (
+        "N",
+        "E",
+        "X",
+        "B",
+    ):
+        return False
+
+    # Whenever a symbol is involved, reproduce the author's spacing exactly.
+    #
+    # Engines lex operators greedily out of runs of operator characters, so
+    # both directions change meaning. Dropping a space merges two operators
+    # into one: ``a - -b`` rendered as ``a --b`` makes the rest of the line
+    # a comment. Adding one splits a single operator in two: ``j @> x``
+    # rendered as ``j @ > x`` is a different expression. Neither is a syntax
+    # error the database will reject on the user's behalf.
+    if TokenType.SYMBOL in (prev_token.type, current_token.type):
+        return current_token.pos > prev_token.pos + len(prev_token.text)
+    return None
+
+
+def _space_between_words(prev_token: Token, current_token: Token) -> bool:
+    """Decide the space between keywords, identifiers and strings once no other rule applied."""
+    # Need space between keywords/identifiers
+    if prev_token.type in (TokenType.KEYWORD, TokenType.IDENTIFIER):
+        if current_token.type in (TokenType.KEYWORD, TokenType.IDENTIFIER):
+            return True
+
+    # Need space between keyword and string
+    if prev_token.type == TokenType.KEYWORD and current_token.type == TokenType.STRING:
+        return True
+
+    # Need space between identifier and string
+    if prev_token.type == TokenType.IDENTIFIER and current_token.type == TokenType.STRING:
+        return True
+
+    # Need space between string and keyword
+    if prev_token.type == TokenType.STRING and current_token.type == TokenType.KEYWORD:
+        return True
+
+    # Need space between string and identifier
+    if prev_token.type == TokenType.STRING and current_token.type == TokenType.IDENTIFIER:
+        return True
+
+    # Need space between numbers/symbols and keywords
+    if current_token.type == TokenType.KEYWORD:
+        return True
+
+    # Default: add space if prev was keyword or identifier
+    if prev_token.type in (TokenType.KEYWORD, TokenType.IDENTIFIER):
+        return True
+
+    return False
+
+
+# The spacing rules ``_needs_space_between`` tries in order before the word rule.
+_SPACING_RULES: Tuple[Callable[[Token, Token], Optional[bool]], ...] = (
+    _space_before_open_paren,
+    _space_around_punctuation,
+    _space_around_slash,
+    _space_around_operators,
+)
