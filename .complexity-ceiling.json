@@ -76,7 +76,6 @@
     "core/sql_parser/sqlglot_statement_facts.py::_redshift_facts": 46,
     "core/sql_parser/sqlglot_statement_facts.py::_table_name_matches_source": 29,
     "core/sql_parser/sqlglot_statement_facts.py::_unread_names": 25,
-    "core/sql_parser/sqlglot_statement_facts.py::read_statement_facts": 569,
     "core/sql_validator/_checksum_validator.py::validate_checksums": 35,
     "db/plugins/cosmosdb/cosmosdb/connection_manager.py::CosmosDbConnectionManager.create_connection": 31,
     "db/plugins/cosmosdb/cosmosdb/history_manager.py::CosmosDbHistoryManager.create_history_container_if_not_exists": 26,

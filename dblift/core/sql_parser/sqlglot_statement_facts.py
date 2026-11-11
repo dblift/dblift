@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import replace
-from typing import AbstractSet, Optional, Tuple, TypeVar
+from typing import AbstractSet, Callable, Optional, Tuple, TypeVar, Union
 
 from sqlglot import exp, parse_one
 from sqlglot.dialects import Dialect
@@ -2539,6 +2539,1659 @@ def _mysql_metadata_table(ast: exp.Show | exp.Describe, sql: str) -> Optional[ex
     return table
 
 
+_ParsedRule = Callable[[exp.Expr, str, str], Optional[StatementFacts]]
+
+
+def _unread_text_facts(sql: str, dialect: str) -> Optional[StatementFacts]:
+    """Facts of a statement whose names or modifiers the grammar would misread."""
+    unread = unread_name_character(sql, dialect=dialect)
+    if unread is not None:
+        return _unread_name_facts(sql, dialect, unread)
+    wide = (
+        _supplementary_name_character(sql)
+        if dialect == "mysql"  # lint: allow-dialect-string: MySQL name characters
+        else None
+    )
+    if wide:
+        head = _head_facts(sql, "", dialect=dialect)
+        return StatementFacts(
+            head.operation,
+            head.kind,
+            diagnostic=(
+                f"mysql statement holds U+{ord(wide):04X} in a name, which MySQL stores as ? "
+                "and MariaDB rejects; its objects are not named"
+            ),
+        )
+    if dialect == "tsql" and re.match(  # lint: allow-dialect-string: foreign OR DML modifiers
+        r"^\s*(?:INSERT|UPDATE|DELETE)\s+OR\s+(?:IGNORE|REPLACE)\b", _blanked(sql, dialect), re.I
+    ):
+        return _head_facts(sql, "tsql OR DML modifier is not modelled", dialect=dialect)
+    return None
+
+
+def _unparsed_form_facts(sql: str, dialect: str) -> Optional[StatementFacts]:
+    """Facts of a statement form refused before it is parsed."""
+    if dialect == "duckdb":  # lint: allow-dialect-string: DuckDB has no triggers
+        trigger = _TRIGGER_HEAD.match(_blanked(sql, dialect))
+        if trigger is not None:
+            return StatementFacts(
+                trigger.group(1).upper(), "DDL", diagnostic="duckdb does not support triggers"
+            )
+    if (
+        dialect != "postgres"  # lint: allow-dialect-string: PostgreSQL names the trigger's table
+        and _drop_trigger_on_clause(_blanked(sql, dialect), dialect)
+    ):
+        facts = _head_facts(
+            sql, f"{dialect} DROP TRIGGER ON clause is not supported", dialect=dialect
+        )
+        return StatementFacts(facts.operation, facts.kind, diagnostic=facts.diagnostic)
+    if dialect == "redshift":  # lint: allow-dialect-string: Redshift bracketed names
+        bracketed = _redshift_bracketed_name(sql, dialect)
+        if bracketed is not None:
+            return bracketed
+    return None
+
+
+def _folded_name_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """Facts of an Oracle or Snowflake statement whose unquoted names do not fold as stored."""
+    if dialect == "oracle" and ast is not None:  # lint: allow-dialect-string: Oracle folding
+        unread_reason = (
+            "oracle name holds a letter whose upper-case form is not one character"
+            if _fold_unquoted_names(ast)
+            else (
+                "oracle statement names an object through a database link"
+                if _oracle_names_a_remote_object(sql)
+                else None
+            )
+        )
+        if unread_reason is not None:
+            head = _head_facts(sql, "", dialect=dialect)
+            return StatementFacts(head.operation, head.kind, diagnostic=unread_reason)
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: Snowflake stores upper case
+        and ast is not None
+        and _fold_unquoted_names(ast, ascii_only=True)
+    ):
+        head = _head_facts(sql, "", dialect=dialect)
+        return StatementFacts(
+            head.operation,
+            head.kind,
+            diagnostic="snowflake unquoted name holds a non-ASCII letter (rejected natively)",
+        )
+    return None
+
+
+def _unparsed_facts(exc: ParseError | TokenError, sql: str, dialect: str) -> StatementFacts:
+    """Facts of a statement the grammar does not tokenize or parse."""
+    if not isinstance(exc, TokenError) and not _blanked(sql, dialect).strip():
+        return StatementFacts("UNKNOWN", "UNKNOWN")
+    if isinstance(exc, TokenError):
+        facts = _head_facts(sql, "", dialect=dialect)
+        return replace(
+            facts,
+            diagnostic=None,
+            error=f"{dialect} statement could not be tokenized (unterminated quote or comment)",
+        )
+    reason = f"{dialect} grammar is not modelled for this statement"
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: unread names
+        and _snowflake_tokens_hold_dynamic_name(sql)
+    ):
+        head = _head_facts(sql, "", dialect=dialect)
+        return StatementFacts(head.operation, head.kind, diagnostic=_SNOWFLAKE_DYNAMIC_NAMES)
+    if (
+        dialect == "mysql"  # lint: allow-dialect-string: MySQL stored programs and events
+        and (program := _mysql_program_facts(sql, reason)) is not None
+    ):
+        return program
+    return _head_facts(sql, reason, dialect=dialect)
+
+
+def _index_tablespace_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """An index ``TABLESPACE`` clause the dialect does not support."""
+    if dialect in _NO_INDEX_TABLESPACE and _index_tablespace_clause(ast, sql):
+        head = _head_facts(sql, f"{dialect} TABLESPACE clause is not supported", dialect=dialect)
+        return StatementFacts(head.operation, head.kind, diagnostic=head.diagnostic)
+    return None
+
+
+def _redshift_table_clause_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """PostgreSQL-only table clauses Redshift does not support."""
+    if dialect == "redshift":  # lint: allow-dialect-string: PostgreSQL-only table clauses
+        properties = ast.args.get("properties") if isinstance(ast, exp.Create) else None
+        unlogged = (
+            isinstance(ast, exp.Create)
+            and ast.args.get("kind") == "TABLE"
+            and isinstance(properties, exp.Properties)
+            and any(isinstance(prop, exp.UnloggedProperty) for prop in properties.expressions)
+        )
+        tablespace = (
+            (
+                isinstance(properties, exp.Properties)
+                and any(isinstance(prop, exp.TableSpaceProperty) for prop in properties.expressions)
+            )
+            or _index_tablespace_clause(ast, sql)
+            or (isinstance(ast, exp.Command) and _postgres_tablespace_clause(sql))
+        )
+        if unlogged or tablespace:
+            head = _head_facts(
+                sql, "redshift UNLOGGED or TABLESPACE clause is not supported", dialect=dialect
+            )
+            return StatementFacts(head.operation, head.kind, diagnostic=head.diagnostic)
+    return None
+
+
+def _mysql_parsed_command_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """MySQL forms sqlglot reads as a ``Command``."""
+    if (
+        dialect == "mysql"  # lint: allow-dialect-string: sqlglot reads these MySQL forms as Command
+        and isinstance(ast, exp.Command)
+        and (command := _mysql_command_facts(sql)) is not None
+    ):
+        return command
+    return None
+
+
+def _tsql_fulltext_index_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """SQL Server ``CREATE FULLTEXT INDEX``, which the grammar does not model."""
+    if (
+        dialect == "tsql"  # lint: allow-dialect-string: SQL Server full-text index grammar
+        and isinstance(ast, exp.Command)
+        and re.match(r"^\s*CREATE\s+FULLTEXT\s+INDEX\b", _blanked(sql, dialect), re.I)
+    ):
+        return _head_facts(
+            sql, "tsql CREATE FULLTEXT INDEX grammar is not modelled", dialect=dialect
+        )
+    return None
+
+
+def _tsql_update_statistics_facts(
+    ast: exp.Expr, sql: str, dialect: str
+) -> Optional[StatementFacts]:
+    """SQL Server ``UPDATE STATISTICS``, read from its argument text."""
+    if (
+        dialect == "tsql"  # lint: allow-dialect-string: SQL Server statistics maintenance
+        and isinstance(ast, exp.Command)
+        and ast.this == "UPDATE STATISTICS"
+    ):
+        match = (
+            _TSQL_STATISTICS_ARGUMENTS.fullmatch(ast.expression.this)
+            if isinstance(ast.expression, exp.Literal)
+            else None
+        )
+        if match:
+            name = match.group("name")
+            if _tsql_statistics_name(match.group("table"), dialect) and (
+                name is None or _tsql_statistics_name(name, dialect)
+            ):
+                return StatementFacts("UPDATE STATISTICS", "DDL")
+        return StatementFacts(
+            "UPDATE STATISTICS", "UNKNOWN", diagnostic="tsql UPDATE STATISTICS tail is opaque"
+        )
+    return None
+
+
+def _snowflake_dynamic_command_facts(
+    ast: exp.Expr, sql: str, dialect: str
+) -> Optional[StatementFacts]:
+    """A Snowflake ``Command`` that names an object dynamically."""
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: unread names in a Command
+        and isinstance(ast, exp.Command)
+        and _snowflake_tokens_hold_dynamic_name(sql)
+    ):
+        head = _head_facts(sql, "", dialect=dialect)
+        return StatementFacts(head.operation, head.kind, diagnostic=_SNOWFLAKE_DYNAMIC_NAMES)
+    return None
+
+
+def _postgres_tablespace_command_facts(
+    ast: exp.Expr, sql: str, dialect: str
+) -> Optional[StatementFacts]:
+    """A PostgreSQL ``TABLESPACE`` clause sqlglot reads as a ``Command``."""
+    if (
+        dialect == "postgres"  # lint: allow-dialect-string: sqlglot has no TABLESPACE clause
+        and isinstance(ast, exp.Command)
+        and _postgres_tablespace_clause(sql)
+    ):
+        return _head_facts(
+            sql, "postgres TABLESPACE clause is not modelled by the grammar", dialect=dialect
+        )
+    return None
+
+
+def _opaque_command_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """An empty statement, a ``Command`` or a ``Block``: classified from its words."""
+    if ast is None or isinstance(ast, (exp.Command, exp.Block)):
+        construct = type(ast).__name__ if ast is not None else "empty statement"
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL stored programs and events
+            and ast is not None
+            and (
+                program := _mysql_program_facts(
+                    sql, f"{dialect} {construct} is opaque to statement facts"
+                )
+            )
+            is not None
+        ):
+            return program
+        return _head_facts(
+            sql, f"{dialect} {construct} is opaque to statement facts", dialect=dialect
+        )
+    return None
+
+
+def _session_setting_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A MySQL ``SET NAMES`` or PostgreSQL ``SET search_path``, which has no effects."""
+    if isinstance(ast, exp.Set) and len(ast.expressions) == 1:
+        item = ast.expressions[0]
+        if isinstance(item, exp.SetItem):
+            if (
+                dialect == "mysql"  # lint: allow-dialect-string: MySQL SET NAMES grammar
+                and item.args.get("kind") == "NAMES"
+                and isinstance(item.this, exp.Var)
+            ):
+                return StatementFacts("SET", "UNKNOWN", events=frozenset())
+            assignment = item.this
+            if (
+                dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL search_path
+                and isinstance(assignment, exp.EQ)
+                and isinstance(assignment.this, exp.Column)
+                and assignment.this.name.lower() == "search_path"
+                and not assignment.this.table
+                and isinstance(assignment.expression, exp.Var)
+            ):
+                return StatementFacts("SET", "UNKNOWN", events=frozenset())
+    return None
+
+
+def _qualified_relation_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A relation named with more parts than the facts represent."""
+    if (
+        dialect != "tsql"  # lint: allow-dialect-string: T-SQL has its own name guard
+        and not (
+            dialect == "oracle"  # lint: allow-dialect-string: Oracle program body is opaque
+            and isinstance(ast, exp.Create)
+            and str(ast.args.get("kind") or "").upper() in {"PROCEDURE", "FUNCTION", "TRIGGER"}
+        )
+        and any(len(table.parts) > 3 for table in ast.find_all(exp.Table))
+    ):
+        head = _head_facts(sql, "", dialect=dialect)
+        return StatementFacts(
+            head.operation,
+            head.kind,
+            diagnostic=f"{dialect} relation qualification is not fully represented",
+        )
+    return None
+
+
+# Checked in order before the names of the statement are read.
+_PARSED_FORM_RULES: Tuple[_ParsedRule, ...] = (
+    _index_tablespace_facts,
+    _redshift_table_clause_facts,
+    _mysql_parsed_command_facts,
+    _tsql_fulltext_index_facts,
+    _tsql_update_statistics_facts,
+    _snowflake_dynamic_command_facts,
+    _postgres_tablespace_command_facts,
+    _opaque_command_facts,
+    _session_setting_facts,
+    _qualified_relation_facts,
+)
+
+
+def _snowflake_unread_effect_facts(
+    ast: exp.Expr, sql: str, dialect: str
+) -> Optional[StatementFacts]:
+    """A Snowflake statement whose effects are not read."""
+    if dialect == "snowflake":  # lint: allow-dialect-string: unread Snowflake effects
+        unread_effect = _snowflake_unread_effect(ast)
+        if unread_effect is not None:
+            return _head_facts(sql, unread_effect, dialect=dialect)
+    return None
+
+
+def _redshift_statement_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """Redshift statement forms."""
+    if dialect == "redshift":  # lint: allow-dialect-string: Redshift statement forms
+        redshift_facts = _redshift_facts(ast, sql, dialect)
+        if redshift_facts is not None:
+            return redshift_facts
+    return None
+
+
+def _tsql_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """T-SQL CTE scopes, temporary and multi-part names and module bodies the facts do not read."""
+    if dialect != "tsql":  # lint: allow-dialect-string: T-SQL multi-part names and modules
+        return None
+    ctes = tuple(ast.find_all(exp.CTE))
+    schema_targets: tuple[exp.Expression, ...] = ()
+    if isinstance(ast, exp.Create) and str(ast.args.get("kind") or "").upper() == "SCHEMA":
+        schema_targets = (ast.this,)
+    elif isinstance(ast, exp.Drop) and str(ast.args.get("kind") or "").upper() == "SCHEMA":
+        schema_targets = tuple(ast.args.get("tables") or ())
+    facts = _tsql_cte_facts(ast, ctes)
+    if facts is None:
+        facts = _tsql_name_facts(ast, sql, dialect, schema_targets)
+    if facts is None:
+        facts = _tsql_module_facts(ast, sql, dialect)
+    return facts
+
+
+def _tsql_cte_facts(ast: exp.Expr, ctes: Tuple[exp.CTE, ...]) -> Optional[StatementFacts]:
+    """A T-SQL CTE whose body is not a query, or that a mutation writes through."""
+    if any(not isinstance(cte.this, exp.Query) for cte in ctes):
+        operation = type(ast).__name__.upper()
+        kind = "DML" if operation in {"INSERT", "UPDATE", "DELETE"} else "QUERY"
+        return StatementFacts(
+            operation,
+            kind,
+            diagnostic="tsql CTE body effects are opaque to statement facts",
+        )
+    cte_target = _dml_target_table(ast) if isinstance(ast, (exp.Update, exp.Delete)) else None
+    if (
+        isinstance(cte_target, exp.Table)
+        and not cte_target.db
+        and not cte_target.catalog
+        and any(cte_target.name.lower() == cte.alias.lower() for cte in ctes)
+    ):
+        return StatementFacts(
+            type(ast).__name__.upper(),
+            "DML",
+            diagnostic="tsql CTE write target is not resolved to a base table",
+        )
+    return None
+
+
+def _tsql_name_facts(
+    ast: exp.Expr, sql: str, dialect: str, schema_targets: tuple[exp.Expression, ...]
+) -> Optional[StatementFacts]:
+    """A T-SQL temporary table or a table name with parts the facts do not model."""
+    if any(
+        isinstance(table.this, exp.Identifier)
+        and (table.this.args.get("temporary") or table.this.args.get("global_"))
+        for table in ast.find_all(exp.Table)
+    ):
+        head = _head_facts(sql, "tsql temporary table identity is opaque", dialect=dialect)
+        if isinstance(ast, exp.Query) and _select_into_table(ast) is not None:
+            return replace(head, kind="DML")
+        return head
+    if any(
+        (
+            not isinstance(table.this, exp.Identifier)
+            and not (
+                any(table is subject for subject in schema_targets)
+                and table.this is None
+                and isinstance(table.args.get("db"), exp.Identifier)
+                and not table.catalog
+            )
+        )
+        or (table.args.get("catalog") is not None and not table.db)
+        for table in ast.find_all(exp.Table)
+    ):
+        return _head_facts(sql, "tsql table identity has unmodelled name parts", dialect=dialect)
+    return None
+
+
+def _tsql_module_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A T-SQL program body, materialized view or temporary ``SELECT INTO``."""
+    if isinstance(ast, exp.Create) and str(ast.args.get("kind") or "").upper() in {
+        "PROCEDURE",
+        "FUNCTION",
+        "TRIGGER",
+    }:
+        return _head_facts(sql, "tsql program body effects are opaque", dialect=dialect)
+    if (
+        isinstance(ast, exp.Create)
+        and str(ast.args.get("kind") or "").upper() == "VIEW"
+        and ast.args.get("properties")
+        and ast.args["properties"].find(exp.MaterializedProperty)
+    ) or (isinstance(ast, exp.Drop) and ast.args.get("materialized")):
+        return _head_facts(sql, "tsql materialized view effects are opaque", dialect=dialect)
+    if (
+        isinstance(ast, exp.Query)
+        and _select_into_table(ast) is not None
+        and any(
+            into.args.get("temporary") or into.args.get("unlogged")
+            for into in ast.find_all(exp.Into)
+        )
+    ):
+        return replace(
+            _head_facts(sql, "tsql SELECT INTO scope is opaque", dialect=dialect),
+            kind="DML",
+        )
+    return None
+
+
+def _postgres_merge_statement_facts(
+    ast: exp.Expr, sql: str, dialect: str
+) -> Optional[StatementFacts]:
+    """A PostgreSQL ``MERGE``."""
+    if (
+        dialect == "postgres"  # lint: allow-dialect-string: qualified PostgreSQL MERGE facts
+        and isinstance(ast, exp.Merge)
+    ):
+        merge_facts = _postgres_merge_facts(ast)
+        if merge_facts is not None:
+            return merge_facts
+        return _head_facts(sql, "postgres MERGE effects are not modelled", dialect=dialect)
+    return None
+
+
+def _postgres_copy_or_cte_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A PostgreSQL ``COPY``, or a CTE whose effects are opaque."""
+    if dialect == "postgres":  # lint: allow-dialect-string: PostgreSQL COPY and CTE boundaries
+        if isinstance(ast, exp.Copy):
+            return _postgres_copy_facts(ast, sql)
+        opaque_cte = _postgresql_opaque_cte(ast, dialect)
+        if opaque_cte is not None:
+            return opaque_cte
+    return None
+
+
+def _duckdb_macro_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A DuckDB macro, which has no fact object type."""
+    if (
+        dialect == "duckdb"  # lint: allow-dialect-string: DuckDB macros lack a fact object type
+        and isinstance(ast, (exp.Create, exp.Drop))
+        and str(ast.args.get("kind") or "").upper() in {"MACRO", "FUNCTION"}
+    ):
+        return StatementFacts(
+            type(ast).__name__.upper(),
+            "DDL",
+            diagnostic="duckdb macro identity and body are opaque to statement facts",
+        )
+    return None
+
+
+def _duckdb_copy_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A DuckDB ``COPY``."""
+    if (
+        dialect == "duckdb"  # lint: allow-dialect-string: COPY facts qualified for DuckDB only
+        and isinstance(ast, exp.Copy)
+    ):
+        return _copy_facts(ast, sql)
+    return None
+
+
+def _postgres_comment_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A PostgreSQL ``COMMENT ON``."""
+    if dialect == "postgres" and isinstance(  # lint: allow-dialect-string: PostgreSQL COMMENT ON
+        ast, exp.Comment
+    ):
+        identity = _postgres_comment_identity(ast)
+        if identity is not None:
+            return StatementFacts("COMMENT", "DDL", (identity,), events=frozenset())
+    return None
+
+
+def _oracle_comment_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """An Oracle ``COMMENT ON TABLE``, ``COLUMN`` or materialized view."""
+    if (
+        dialect == "oracle"  # lint: allow-dialect-string: Oracle COMMENT ON TABLE, COLUMN, MV
+        and isinstance(ast, exp.Comment)
+        and (
+            str(ast.args.get("kind") or "").upper() in {"TABLE", "COLUMN"}
+            or (str(ast.args.get("kind") or "").upper() == "VIEW" and ast.args.get("materialized"))
+        )
+    ):
+        identity = _postgres_comment_identity(ast)
+        if identity is not None:
+            return StatementFacts("COMMENT", "DDL", (identity,), events=frozenset())
+    return None
+
+
+def _oracle_truncate_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """An Oracle ``TRUNCATE TABLE`` of one table."""
+    if (
+        dialect == "oracle"  # lint: allow-dialect-string: Oracle TRUNCATE TABLE takes one table
+        and isinstance(ast, exp.TruncateTable)
+        and len(ast.expressions) == 1
+        and not ast.args.get("option")  # CASCADE also truncates child tables
+        and not ast.args.get("is_database")
+        and _ORACLE_TRUNCATE_TABLE.match(_blanked(sql))  # ``TRUNCATE t`` is ORA-03290
+    ):
+        target = ast.expressions[0]
+        if (
+            isinstance(target, exp.Table)
+            and isinstance(target.this, exp.Identifier)
+            and not any(v for k, v in target.args.items() if k not in {"this", "db"})
+        ):
+            identity = _named(target, SqlObjectType.TABLE, "altered")
+            if identity is not None:
+                return StatementFacts("TRUNCATE", "DDL", (identity,))
+    return None
+
+
+def _duckdb_metadata_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """DuckDB ``COMMENT ON TABLE``, ``SHOW`` and ``DESCRIBE``."""
+    if dialect == "duckdb":  # lint: allow-dialect-string: DuckDB metadata statement mappings
+        if isinstance(ast, exp.Comment) and ast.args.get("kind") == "TABLE":
+            identity = _named(ast.this, SqlObjectType.TABLE, "altered")
+            value = ast.args.get("expression")
+            if identity is None or not isinstance(value, exp.Literal) or not value.is_string:
+                return StatementFacts(
+                    "COMMENT", "DDL", diagnostic="duckdb COMMENT ON TABLE value is not read"
+                )
+            return StatementFacts(
+                "COMMENT", "DDL", (identity,), events=frozenset(), table_comment=value.this
+            )
+        if isinstance(ast, (exp.Show, exp.Describe)):
+            return _metadata_facts(ast, ast)
+    return None
+
+
+def _mysql_metadata_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """MySQL ``DESCRIBE`` and ``SHOW`` of one proven table."""
+    if dialect == "mysql" and isinstance(  # lint: allow-dialect-string: MySQL DESCRIBE and SHOW
+        ast, (exp.Show, exp.Describe)
+    ):
+        metadata_table = _mysql_metadata_table(ast, sql)
+        if metadata_table is not None:
+            return _metadata_facts(ast, metadata_table)
+    return None
+
+
+def _oracle_program_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """Oracle PL/SQL bodies and materialized view logs, which are not read."""
+    if dialect == "oracle" and (  # lint: allow-dialect-string: PL/SQL bodies are not read
+        (
+            isinstance(ast, exp.Create)
+            and str(ast.args.get("kind") or "").upper() in {"PROCEDURE", "FUNCTION", "TRIGGER"}
+        )
+        or _ORACLE_MV_LOG.match(_blanked(sql))  # sqlglot reads the log as a view named LOG
+    ):
+        return _head_facts(
+            sql, "oracle PL/SQL bodies and materialized view logs are not read", dialect=dialect
+        )
+    return None
+
+
+def _snowflake_view_log_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A Snowflake materialized view log, whose identity is not modelled."""
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: unmodelled materialized view logs
+        and _snowflake_materialized_view_log_on(sql, ast)
+    ):
+        return StatementFacts(
+            type(ast).__name__.upper(),
+            "DDL",
+            diagnostic="snowflake materialized view log identity is not modelled",
+        )
+    return None
+
+
+def _create_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """Facts of a ``CREATE`` statement."""
+    if not isinstance(ast, exp.Create):
+        return None
+    object_type = _created_object_type(ast, dialect)
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: unmodelled Snowflake DDL
+        and object_type == SqlObjectType.UNKNOWN
+    ):
+        return StatementFacts(
+            "CREATE",
+            "DDL",
+            diagnostic=f"snowflake {ast.args.get('kind') or 'object'} identity is not modelled",
+        )
+    schema_node = ast.this if isinstance(ast.this, exp.Schema) else None
+    subject = schema_node.this if schema_node is not None else ast.this
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: Snowflake schema source proof
+        and object_type == SqlObjectType.SCHEMA
+        and isinstance(subject, exp.Table)
+        and _snowflake_schema_has_discarded_prefix(sql, subject)
+    ):
+        return StatementFacts(
+            "CREATE", "DDL", diagnostic="snowflake schema qualification is not fully read"
+        )
+    properties = ast.args.get("properties")
+    virtual = bool(properties and properties.find(exp.VirtualProperty))
+    identity = _created_identity(dialect, object_type, subject)
+    identity = _created_dialect_identity(sql, dialect, object_type, subject, identity)
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: Snowflake object not read
+        and identity is None
+        and not isinstance(subject, exp.Index)
+    ):
+        return _head_facts(
+            sql,
+            f"snowflake {ast.args.get('kind') or 'object'} identity is not read",
+            dialect=dialect,
+        )
+    objects: Tuple[NamedObject, ...] = (identity,) if identity else ()
+    indexed_table = None
+    index_items: Optional[list[exp.Expression]] = []
+    if isinstance(subject, exp.Index):
+        index = _created_index(ast, sql, dialect, object_type, subject, objects)
+        if isinstance(index, StatementFacts):
+            return index
+        objects, indexed_table, index_items = index
+    return _created_definitions_facts(
+        ast,
+        sql,
+        dialect,
+        object_type,
+        schema_node=schema_node,
+        subject=subject,
+        objects=objects,
+        indexed_table=indexed_table,
+        index_items=index_items,
+        virtual=virtual,
+    )
+
+
+def _created_identity(
+    dialect: str, object_type: SqlObjectType, subject: Optional[exp.Expression]
+) -> Optional[NamedObject]:
+    """The created object; DuckDB, Snowflake, PostgreSQL and T-SQL read a schema from ``db``."""
+    identity = _named(subject, object_type, "created") if subject is not None else None
+    if (
+        dialect in {"duckdb", "snowflake"}  # lint: allow-dialect-string: schema identity projection
+        and object_type == SqlObjectType.SCHEMA
+        and isinstance(subject, exp.Table)
+        and subject.db
+    ):
+        identity = NamedObject(subject.db, object_type, "created", subject.catalog or None)
+    if (
+        dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL schema identity only
+        and object_type == SqlObjectType.SCHEMA
+        and isinstance(subject, exp.Table)
+        and subject.db
+        and not subject.catalog
+        and not subject.name
+    ):
+        identity = NamedObject(
+            subject.db,
+            object_type,
+            "created",
+            name_quoted=_identifier_quoted(subject.args.get("db")),
+        )
+    if (
+        dialect == "tsql"  # lint: allow-dialect-string: T-SQL schema name is in Table.db
+        and object_type == SqlObjectType.SCHEMA
+        and isinstance(subject, exp.Table)
+        and subject.db
+        and not subject.catalog
+        and not subject.name
+    ):
+        identity = NamedObject(subject.db, object_type, "created")
+    return identity
+
+
+def _created_dialect_identity(
+    sql: str,
+    dialect: str,
+    object_type: SqlObjectType,
+    subject: exp.Expression,
+    identity: Optional[NamedObject],
+) -> Optional[NamedObject]:
+    """A PostgreSQL or MySQL trigger name and a MySQL database name replace ``identity``."""
+    if (
+        dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL trigger name
+        and object_type == SqlObjectType.TRIGGER
+        and isinstance(subject, exp.Identifier)
+        and subject.name
+    ):
+        identity = NamedObject(
+            subject.name, object_type, "created", name_quoted=_identifier_quoted(subject)
+        )
+    if (
+        dialect == "mysql"  # lint: allow-dialect-string: MySQL names a schema as a database
+        and object_type == SqlObjectType.SCHEMA
+        and isinstance(subject, exp.Table)
+        and subject.db
+        and not subject.catalog
+        and not subject.name
+    ):
+        identity = NamedObject(subject.db, object_type, "created")
+    if (
+        dialect == "mysql"  # lint: allow-dialect-string: MySQL names a trigger by its identifier
+        and object_type == SqlObjectType.TRIGGER
+        and _mysql_identifier_is_proven(subject, sql)
+    ):
+        identity = NamedObject(subject.name, object_type, "created")
+    return identity
+
+
+def _created_index(
+    ast: exp.Create,
+    sql: str,
+    dialect: str,
+    object_type: SqlObjectType,
+    subject: exp.Index,
+    objects: Tuple[NamedObject, ...],
+) -> Union[
+    StatementFacts,
+    Tuple[Tuple[NamedObject, ...], Optional[str], Optional[list[exp.Expression]]],
+]:
+    """The objects, indexed table and items of ``CREATE INDEX``, or facts for an opaque relation."""
+    indexed_table = None
+    params = subject.args.get("params")
+    index_items = params.args.get("columns", []) if params else []
+    table = subject.args.get("table")
+    qualified = _qualified_index(subject)
+    if dialect == "tsql":  # lint: allow-dialect-string: T-SQL indexes belong to tables
+        reference = (
+            _named(table, SqlObjectType.TABLE, "referenced")
+            if isinstance(table, exp.Table)
+            else None
+        )
+        if (
+            qualified is not None
+            or not isinstance(subject.this, exp.Identifier)
+            or reference is None
+        ):
+            return _head_facts(sql, "tsql index relation is opaque", dialect=dialect)
+        objects = (
+            NamedObject(subject.this.name, object_type, "created", reference.schema),
+            reference,
+        )
+        indexed_table = ".".join(part for part in (reference.schema, reference.name) if part)
+    elif qualified is not None:
+        schema, index_name, indexed_table, index_items = qualified
+        objects = (
+            NamedObject(index_name, object_type, "created", schema),
+            NamedObject(indexed_table, SqlObjectType.TABLE, "referenced"),
+        )
+    else:
+        if (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL has no CONCURRENTLY
+            and ast.args.get("concurrently")
+            and not subject.this
+        ):
+            # The word is the index name.
+            objects = (NamedObject("CONCURRENTLY", object_type, "created"),)
+        elif (
+            dialect == "mysql"  # lint: allow-dialect-string: MySQL has no CONCURRENTLY
+            and ast.args.get("concurrently")
+        ):
+            # The word is the index name and the engine rejects what follows it.
+            objects = ()
+            index_items = None
+        reference = _named(table, SqlObjectType.TABLE, "referenced") if table else None
+        if reference:
+            objects += (reference,)
+            indexed_table = reference.name
+    return objects, indexed_table, index_items
+
+
+def _created_definitions_facts(
+    ast: exp.Create,
+    sql: str,
+    dialect: str,
+    object_type: SqlObjectType,
+    *,
+    schema_node: Optional[exp.Schema],
+    subject: Optional[exp.Expression],
+    objects: Tuple[NamedObject, ...],
+    indexed_table: Optional[str],
+    index_items: Optional[list[exp.Expression]],
+    virtual: bool,
+) -> StatementFacts:
+    """Facts of a ``CREATE`` from its column and constraint definitions."""
+    definitions = schema_node.expressions if schema_node is not None else []
+    partition_override = ast.args.get("partition_parent") is not None
+    if any(
+        isinstance(definition, exp.ColumnDef)
+        and not partition_override
+        and _unread_column_definition(definition)
+        for definition in definitions
+    ):
+        return _head_facts(
+            sql,
+            f"{dialect} CREATE definitions are not fully represented",
+            dialect=dialect,
+            parsed=True,
+        )
+    columns = tuple(
+        x.name
+        for x in definitions
+        if not partition_override and isinstance(x, (exp.ColumnDef, exp.Identifier))
+    )
+    constraints = tuple(
+        detail
+        for definition in definitions
+        if isinstance(definition, exp.ColumnDef)
+        for detail in _column_constraints(definition)
+    ) + tuple(
+        detail
+        for definition in definitions
+        if not isinstance(definition, exp.ColumnDef)
+        if (detail := _declared_constraint(definition))
+    )
+    objects, indexed_columns = _created_references(
+        ast, dialect, object_type, subject, objects, index_items
+    )
+    return _created_statement_facts(
+        ast,
+        dialect,
+        object_type,
+        schema_node=schema_node,
+        subject=subject,
+        objects=objects,
+        columns=columns,
+        constraints=constraints,
+        indexed_table=indexed_table,
+        indexed_columns=indexed_columns,
+        virtual=virtual,
+    )
+
+
+def _created_references(
+    ast: exp.Create,
+    dialect: str,
+    object_type: SqlObjectType,
+    subject: Optional[exp.Expression],
+    objects: Tuple[NamedObject, ...],
+    index_items: Optional[list[exp.Expression]],
+) -> Tuple[Tuple[NamedObject, ...], Optional[Tuple[str, ...]]]:
+    """The objects with the tables a ``CREATE`` reads, and the plain columns an index names."""
+    indexed_columns = None
+    if isinstance(subject, exp.Index) and index_items is not None:
+        simple = [item.this if isinstance(item, exp.Ordered) else item for item in index_items]
+        if all(isinstance(item, exp.Column) for item in simple):
+            indexed_columns = tuple(item.name for item in simple)
+    if not isinstance(subject, exp.Index) and subject is not None:
+        objects += _referenced(ast, tuple(subject.find_all(exp.Table)))
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: CLONE source has the clone's type
+        and ast.args.get("clone") is not None
+        and object_type != SqlObjectType.TABLE
+    ):
+        objects = tuple(
+            replace(obj, type=object_type) if obj.role == "referenced" else obj for obj in objects
+        )
+    return objects, indexed_columns
+
+
+def _created_statement_facts(
+    ast: exp.Create,
+    dialect: str,
+    object_type: SqlObjectType,
+    *,
+    schema_node: Optional[exp.Schema],
+    subject: Optional[exp.Expression],
+    objects: Tuple[NamedObject, ...],
+    columns: Tuple[str, ...],
+    constraints: Tuple[DeclaredConstraint, ...],
+    indexed_table: Optional[str],
+    indexed_columns: Optional[Tuple[str, ...]],
+    virtual: bool,
+) -> StatementFacts:
+    """The ``CREATE`` facts; a plain new table or column index has no effects beyond itself."""
+    diagnostic = f"{dialect} virtual table module arguments are opaque" if virtual else None
+    if isinstance(subject, exp.Index) and indexed_columns is None:
+        diagnostic = f"{dialect} index expression columns are opaque"
+    index_has_only_columns = (
+        isinstance(subject, exp.Index)
+        and (params := subject.args.get("params")) is not None
+        and not any(value for key, value in params.args.items() if key != "columns")
+    )
+    return StatementFacts(
+        "CREATE",
+        "DDL",
+        objects,
+        declared_columns=columns,
+        declared_constraints=constraints,
+        indexed_table=indexed_table,
+        indexed_columns=indexed_columns,
+        events=(
+            frozenset()
+            if (
+                (object_type == SqlObjectType.TABLE and schema_node is not None)
+                or (
+                    object_type == SqlObjectType.INDEX
+                    and indexed_columns is not None
+                    and index_has_only_columns
+                )
+            )
+            and not ast.args.get("replace")
+            and not ast.args.get("expression")
+            and not ast.args.get("clone")
+            and not diagnostic
+            else None
+        ),
+        diagnostic=diagnostic,
+    )
+
+
+def _drop_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """Facts of a ``DROP`` statement."""
+    if not isinstance(ast, exp.Drop):
+        return None
+    kind = str(ast.args.get("kind") or "").upper()
+    object_type = _ddl_object_type(kind, dialect)
+    if dialect == "snowflake" and (  # lint: allow-dialect-string: unmodelled Snowflake DDL
+        object_type == SqlObjectType.UNKNOWN or kind == "ROLE"
+    ):
+        return StatementFacts(
+            "DROP", "DDL", diagnostic=f"snowflake {kind or 'object'} identity is not modelled"
+        )
+    if (
+        dialect
+        in {
+            "postgres",  # lint: allow-dialect-string: materialized views
+            "oracle",  # lint: allow-dialect-string: materialized views
+            "redshift",
+            "snowflake",  # lint: allow-dialect-string: materialized views
+        }
+        and kind == "VIEW"
+        and ast.args.get("materialized")
+    ):
+        object_type = SqlObjectType.MATERIALIZED_VIEW
+    targets = ast.args.get("tables") or ast.args.get("expressions") or [ast.this]
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: Snowflake schema source proof
+        and object_type == SqlObjectType.SCHEMA
+        and any(
+            isinstance(node, exp.Table) and _snowflake_schema_has_discarded_prefix(sql, node)
+            for node in targets
+        )
+    ):
+        return StatementFacts(
+            "DROP", "DDL", diagnostic="snowflake schema qualification is not fully read"
+        )
+    dropped_objects = _dropped_objects(dialect, object_type, targets)
+    return _drop_index_facts(ast, sql, dialect, object_type, targets, dropped_objects)
+
+
+def _dropped_objects(
+    dialect: str, object_type: SqlObjectType, targets: list[Optional[exp.Expression]]
+) -> Tuple[NamedObject, ...]:
+    """The objects a ``DROP`` names; some dialects keep a schema name in ``Table.db``."""
+    if (
+        dialect
+        in {"duckdb", "postgres", "snowflake"}  # lint: allow-dialect-string: schema identity
+        and object_type == SqlObjectType.SCHEMA
+    ):
+        dropped_objects = tuple(
+            NamedObject(
+                node.db,
+                object_type,
+                "dropped",
+                node.catalog or None,
+                name_quoted=_identifier_quoted(node.args.get("db")),
+            )
+            for node in targets
+            if isinstance(node, exp.Table) and node.db
+        )
+    elif (
+        dialect == "mysql"  # lint: allow-dialect-string: MySQL names a schema as a database
+        and object_type == SqlObjectType.SCHEMA
+    ):
+        dropped_objects = tuple(
+            NamedObject(node.db, object_type, "dropped")
+            for node in targets
+            if isinstance(node, exp.Table) and node.db and not node.catalog and not node.name
+        )
+    else:
+        dropped_objects = _dropped_tsql_schema_or_objects(dialect, object_type, targets)
+    return dropped_objects
+
+
+def _dropped_tsql_schema_or_objects(
+    dialect: str, object_type: SqlObjectType, targets: list[Optional[exp.Expression]]
+) -> Tuple[NamedObject, ...]:
+    """A T-SQL schema named in ``Table.db``, or the objects a ``DROP`` names."""
+    if (
+        dialect == "tsql"  # lint: allow-dialect-string: T-SQL schema name is in Table.db
+        and object_type == SqlObjectType.SCHEMA
+    ):
+        dropped_objects = tuple(
+            NamedObject(node.db, object_type, "dropped")
+            for node in targets
+            if isinstance(node, exp.Table) and node.db and not node.catalog and not node.name
+        )
+    else:
+        dropped_objects = tuple(
+            obj
+            for node in targets
+            if node is not None
+            if (obj := _named(node, object_type, "dropped"))
+        )
+    return dropped_objects
+
+
+def _drop_index_facts(
+    ast: exp.Drop,
+    sql: str,
+    dialect: str,
+    object_type: SqlObjectType,
+    targets: list[Optional[exp.Expression]],
+    dropped_objects: Tuple[NamedObject, ...],
+) -> StatementFacts:
+    """The ``DROP`` facts, with the table of a dropped index where the dialect names it."""
+    on = ast.args.get("cluster")
+    if (
+        dialect == "tsql"  # lint: allow-dialect-string: T-SQL DROP INDEX names owning table
+        and object_type == SqlObjectType.INDEX
+    ):
+        return _tsql_drop_index_facts(sql, dialect, object_type, targets, on)
+    if (
+        object_type == SqlObjectType.INDEX
+        and isinstance(on, exp.OnProperty)
+        and dialect not in {"mysql", "tsql"}  # lint: allow-dialect-string: DROP INDEX ON grammar
+    ):
+        return StatementFacts(
+            "DROP",
+            "DDL",
+            dropped_objects,
+            diagnostic=f"index: {dialect} grammar is not modelled for this statement",
+        )
+    if (
+        dialect == "mysql"  # lint: allow-dialect-string: MySQL DROP INDEX names its table
+        and object_type == SqlObjectType.INDEX
+    ):
+        return _mysql_drop_index_facts(ast, sql, targets, on, dropped_objects)
+    return StatementFacts("DROP", "DDL", dropped_objects)
+
+
+def _tsql_drop_index_facts(
+    sql: str,
+    dialect: str,
+    object_type: SqlObjectType,
+    targets: list[Optional[exp.Expression]],
+    on: Optional[exp.Expression],
+) -> StatementFacts:
+    """T-SQL ``DROP INDEX i ON t``: the index belongs to the table it names."""
+    reference = (
+        _named(on.this, SqlObjectType.TABLE, "referenced")
+        if isinstance(on, exp.OnProperty) and isinstance(on.this, exp.Table)
+        else None
+    )
+    index = targets[0] if len(targets) == 1 else None
+    if (
+        not isinstance(index, exp.Table)
+        or not isinstance(index.this, exp.Identifier)
+        or index.db
+        or index.catalog
+        or reference is None
+    ):
+        return _head_facts(sql, "tsql index relation is opaque", dialect=dialect)
+    return StatementFacts(
+        "DROP",
+        "DDL",
+        (
+            NamedObject(index.name, object_type, "dropped", reference.schema),
+            reference,
+        ),
+        indexed_table=".".join(part for part in (reference.schema, reference.name) if part),
+    )
+
+
+def _mysql_drop_index_facts(
+    ast: exp.Drop,
+    sql: str,
+    targets: list[Optional[exp.Expression]],
+    on: Optional[exp.Expression],
+    dropped_objects: Tuple[NamedObject, ...],
+) -> StatementFacts:
+    """MySQL ``DROP INDEX i ON t``: the index belongs to the one proven table it names."""
+    index = targets[0]
+    if not (
+        isinstance(index, exp.Table)
+        and index.args.get("db") is None
+        and _mysql_identifier_is_proven(index.this, sql)
+        and isinstance(on, exp.OnProperty)
+        and (indexed_table := _mysql_on_table_name(on, sql))
+    ) or any(
+        value
+        for key, value in ast.args.items()
+        if key not in {"tables", "kind", "cluster", "exists"}
+    ):
+        return StatementFacts(
+            "DROP", "DDL", dropped_objects, diagnostic="mysql DROP INDEX relation is opaque"
+        )
+    dropped_objects += (NamedObject(indexed_table, SqlObjectType.TABLE, "referenced"),)
+    return StatementFacts("DROP", "DDL", dropped_objects, indexed_table=indexed_table)
+
+
+def _alter_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """Facts of an ``ALTER`` statement."""
+    if not isinstance(ast, exp.Alter):
+        return None
+    kind = str(ast.args.get("kind") or "").upper()
+    object_type = _ddl_object_type(kind, dialect)
+    identity = _named(ast.this, object_type, "altered") if ast.this is not None else None
+    actions = ast.args.get("actions") or []
+    renamed_to, added_constraint, lifecycle_diagnostic = _postgres_table_lifecycle(
+        ast, sql, dialect, kind, identity, actions
+    )
+    if any(
+        isinstance(action, exp.ColumnDef) and _unread_column_definition(action)
+        for action in actions
+    ):
+        return _head_facts(
+            sql,
+            f"{dialect} ALTER actions are not fully represented",
+            dialect=dialect,
+            parsed=True,
+        )
+    return _alter_statement_facts(
+        ast, dialect, kind, identity, actions, renamed_to, added_constraint, lifecycle_diagnostic
+    )
+
+
+def _postgres_table_lifecycle(
+    ast: exp.Alter,
+    sql: str,
+    dialect: str,
+    kind: str,
+    identity: Optional[NamedObject],
+    actions: list[exp.Expression],
+) -> Tuple[Optional[NamedObject], Optional[DeclaredConstraint], Optional[str]]:
+    """A PostgreSQL ``ALTER TABLE`` rename or primary key: the renamed table, the added
+    constraint, or why the source is not fully read."""
+    if (
+        dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL table lifecycle grammar
+        and kind == "TABLE"
+        and identity
+        and len(actions) == 1
+    ):
+        sole_action = actions[0]
+        if isinstance(sole_action, exp.AlterRename):
+            return _postgres_table_rename(ast, sql, identity, sole_action)
+        if isinstance(sole_action, exp.AddConstraint) and len(sole_action.expressions) == 1:
+            return _postgres_table_primary_key(ast, sql, sole_action)
+    return None, None, None
+
+
+def _postgres_table_rename(
+    ast: exp.Alter, sql: str, identity: NamedObject, sole_action: exp.AlterRename
+) -> Tuple[Optional[NamedObject], Optional[DeclaredConstraint], Optional[str]]:
+    """``ALTER TABLE t RENAME TO u``: the renamed table, or why its source is not fully read."""
+    renamed_to = None
+    lifecycle_diagnostic = None
+    destination = sole_action.this
+    if (
+        isinstance(destination, exp.Table)
+        and isinstance(destination.this, exp.Identifier)
+        and not destination.db
+        and not destination.catalog
+        and not ast.args.get("only")
+        and not ast.args.get("options")
+        and not ast.args.get("not_valid")
+        and _postgres_table_alter_tokens_match(sql, ast, [TokenType.RENAME, "TO", destination.this])
+    ):
+        named = _named(destination, SqlObjectType.TABLE, "created")
+        if named is not None:
+            renamed_to = replace(
+                named,
+                schema=identity.schema,
+                schema_quoted=identity.schema_quoted,
+            )
+    elif isinstance(destination, exp.Table) and isinstance(destination.this, exp.Identifier):
+        lifecycle_diagnostic = "postgres ALTER TABLE rename source is not fully read"
+    return renamed_to, None, lifecycle_diagnostic
+
+
+def _postgres_table_primary_key(
+    ast: exp.Alter, sql: str, sole_action: exp.AddConstraint
+) -> Tuple[Optional[NamedObject], Optional[DeclaredConstraint], Optional[str]]:
+    """``ALTER TABLE t ADD CONSTRAINT c PRIMARY KEY (...)``: the constraint, or why its source is
+    not fully read."""
+    added_constraint = None
+    lifecycle_diagnostic = None
+    declaration = sole_action.expressions[0]
+    if (
+        isinstance(declaration, exp.Constraint)
+        and isinstance(declaration.this, exp.Identifier)
+        and len(declaration.expressions) == 1
+        and isinstance(declaration.expressions[0], exp.PrimaryKey)
+        and declaration.expressions[0].expressions
+        and all(
+            isinstance(column, exp.Identifier) for column in declaration.expressions[0].expressions
+        )
+        and not ast.args.get("not_valid")
+        and not ast.args.get("options")
+    ):
+        primary = declaration.expressions[0]
+        tail: list[TokenType | str | exp.Identifier] = [
+            "ADD",
+            TokenType.CONSTRAINT,
+            declaration.this,
+            TokenType.PRIMARY_KEY,
+            TokenType.L_PAREN,
+        ]
+        for index, column in enumerate(primary.expressions):
+            if index:
+                tail.append(TokenType.COMMA)
+            tail.append(column)
+        tail.append(TokenType.R_PAREN)
+        if _postgres_table_alter_tokens_match(sql, ast, tail):
+            added_constraint = _declared_constraint(declaration)
+        else:
+            lifecycle_diagnostic = "postgres ALTER TABLE constraint source is not fully read"
+    elif isinstance(declaration, exp.Constraint) and any(
+        isinstance(child, exp.PrimaryKey) for child in declaration.expressions
+    ):
+        lifecycle_diagnostic = "postgres ALTER TABLE constraint source is not fully read"
+    return None, added_constraint, lifecycle_diagnostic
+
+
+def _alter_statement_facts(
+    ast: exp.Alter,
+    dialect: str,
+    kind: str,
+    identity: Optional[NamedObject],
+    actions: list[exp.Expression],
+    renamed_to: Optional[NamedObject],
+    added_constraint: Optional[DeclaredConstraint],
+    lifecycle_diagnostic: Optional[str],
+) -> StatementFacts:
+    """The ``ALTER`` facts: the altered object, added columns and their references."""
+    columns = tuple(action.name for action in actions if isinstance(action, exp.ColumnDef))
+    action = "add-column" if columns else None
+    added = [item for item in actions if isinstance(item, exp.ColumnDef)]
+    return StatementFacts(
+        "ALTER",
+        "DDL",
+        ((identity,) if identity else ())
+        + tuple(ref for definition in added for ref in _referenced(definition))
+        + (
+            tuple(
+                ref
+                for item in actions
+                if item.args.get("parent") is not None
+                for ref in _referenced(item)
+            )
+            # lint: allow-dialect-string: PostgreSQL foreign-table parents
+            if dialect == "postgres" and kind == "FOREIGN TABLE"
+            else ()
+        ),
+        declared_columns=columns,
+        declared_constraints=tuple(
+            detail for definition in added for detail in _column_constraints(definition)
+        )
+        + ((added_constraint,) if added_constraint else ()),
+        action=action,
+        diagnostic=(
+            lifecycle_diagnostic if ast.this is not None else f"{dialect} ALTER names no object"
+        ),
+        renamed_to=renamed_to,
+    )
+
+
+def _postgres_truncate_target_is_named(target: exp.Expression) -> bool:
+    """A ``TRUNCATE`` target written as a table name, with at most its schema and ``ONLY``."""
+    return bool(
+        isinstance(target, exp.Table)
+        and isinstance(target.this, exp.Identifier)
+        and target.name
+        and target.args.get("catalog") is None
+        and (target.args.get("db") is None or target.db)
+        and not any(
+            value
+            for key, value in target.args.items()
+            if key not in {"this", "db", "catalog", "only"}
+        )
+    )
+
+
+def _postgres_truncate_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A PostgreSQL ``TRUNCATE`` of explicitly named tables."""
+    if (
+        dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL explicit TRUNCATE targets
+        and isinstance(ast, exp.TruncateTable)
+        and ast.expressions
+        and ast.args.get("identity") in (None, "RESTART", "CONTINUE")
+        and str(ast.args.get("option") or "").upper() in ("", "CASCADE", "RESTRICT")
+        and not any(
+            value
+            for key, value in ast.args.items()
+            if key not in {"expressions", "identity", "option"}
+        )
+        and all(_postgres_truncate_target_is_named(target) for target in ast.expressions)
+    ):
+        # Named targets only: inheritance, CASCADE and identity-sequence effects need a catalogue.
+        identities = tuple(
+            identity
+            for target in ast.expressions
+            if (identity := _named(target, SqlObjectType.TABLE, "altered")) is not None
+        )
+        return StatementFacts("TRUNCATE", "DDL", identities)
+    return None
+
+
+def _snowflake_truncate_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A Snowflake ``TRUNCATE``, which takes one table."""
+    if dialect == "snowflake" and isinstance(  # lint: allow-dialect-string: single-table TRUNCATE
+        ast, exp.TruncateTable
+    ):
+        target = ast.expressions[0] if len(ast.expressions) == 1 else None
+        if (
+            isinstance(target, exp.Table)
+            and isinstance(target.this, exp.Identifier)
+            and all(not v for k, v in ast.args.items() if k not in {"expressions", "exists"})
+            and all(not v for k, v in target.args.items() if k not in {"this", "db", "catalog"})
+            and not _snowflake_schema_has_discarded_prefix(sql, target)
+        ):
+            identity = _named(target, SqlObjectType.TABLE, "altered")
+            if identity is not None:
+                return StatementFacts("TRUNCATE", "DDL", (identity,))
+        return _head_facts(sql, "snowflake TRUNCATE target is not read", dialect=dialect)
+    return None
+
+
+def _snowflake_comment_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A Snowflake ``COMMENT ON`` a relation or column."""
+    if dialect == "snowflake" and isinstance(  # lint: allow-dialect-string: COMMENT ON a relation
+        ast, exp.Comment
+    ):
+        kind = str(ast.args.get("kind") or "").upper()
+        subject = ast.this
+        if (
+            kind in {"TABLE", "VIEW", "SEQUENCE"}
+            and isinstance(subject, exp.Table)
+            and isinstance(subject.this, exp.Identifier)
+            and not _snowflake_schema_has_discarded_prefix(sql, subject)
+        ) or (kind == "COLUMN" and isinstance(subject, exp.Column)):
+            identity = _postgres_comment_identity(ast)
+            if identity is not None:
+                return StatementFacts("COMMENT", "DDL", (identity,))
+        return _head_facts(sql, "snowflake COMMENT ON target is not read", dialect=dialect)
+    return None
+
+
+def _tsql_truncate_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A T-SQL ``TRUNCATE TABLE``, which takes one table."""
+    if dialect == "tsql" and isinstance(  # lint: allow-dialect-string: T-SQL single-table TRUNCATE
+        ast, exp.TruncateTable
+    ):
+        targets = ast.expressions
+        target = targets[0] if len(targets) == 1 else None
+        if (
+            isinstance(target, exp.Table)
+            and isinstance(target.this, exp.Identifier)
+            and all(not value for key, value in ast.args.items() if key != "expressions")
+            and not any(
+                value for key, value in target.args.items() if key not in {"this", "db", "catalog"}
+            )
+        ):
+            identity = _named(target, SqlObjectType.TABLE, "altered")
+            if identity is not None:
+                return StatementFacts("TRUNCATE", "DDL", (identity,))
+        return _head_facts(sql, "tsql TRUNCATE scope is opaque", dialect=dialect)
+    return None
+
+
+def _single_table_truncate_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A DuckDB or MySQL ``TRUNCATE`` of one table."""
+    if dialect in {
+        "duckdb",
+        "mysql",  # lint: allow-dialect-string: MySQL TRUNCATE takes exactly one table
+    } and isinstance(ast, exp.TruncateTable):
+        targets = ast.expressions
+        target = targets[0] if len(targets) == 1 else None
+        if isinstance(target, exp.Table) and isinstance(target.this, exp.Identifier):
+            identity = _named(target, SqlObjectType.TABLE, "altered")
+            if identity is not None:
+                return StatementFacts("TRUNCATE", "DDL", (identity,))
+    return None
+
+
+def _dml_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """Facts of ``INSERT``, ``UPDATE``, ``DELETE`` and, where qualified, ``MERGE``."""
+    if not isinstance(ast, (exp.Insert, exp.Update, exp.Delete)) and not (
+        dialect in {"duckdb", "snowflake"}  # lint: allow-dialect-string: qualified MERGE facts
+        and isinstance(ast, exp.Merge)
+    ):
+        return None
+    operation = type(ast).__name__.upper()
+    oracle_facts = _oracle_mutation_target_facts(ast, operation, dialect)
+    if oracle_facts is not None:
+        return oracle_facts
+    if (
+        dialect == "mysql"  # lint: allow-dialect-string: MySQL permits multi-target mutations
+        and _mysql_unresolved_mutation_target(ast)
+    ):
+        return StatementFacts(
+            operation, "DML", diagnostic="mysql mutation has multiple or unproven targets"
+        )
+    table = _dml_target_table(ast)
+    unread_target = _unread_mutation_target_facts(ast, dialect, operation, table)
+    if unread_target is not None:
+        return unread_target
+    return _mutation_facts(ast, dialect, operation, table)
+
+
+def _oracle_restricted_alias(alias: Optional[exp.Expression]) -> bool:
+    """An alias that carries columns or restricts the target to a partition."""
+    return bool(
+        alias is not None
+        and (
+            alias.args.get("columns")
+            or (
+                alias.name.upper() in {"PARTITION", "SUBPARTITION"}
+                and not alias.this.args.get("quoted")
+            )
+        )
+    )
+
+
+def _oracle_mutation_target_facts(
+    ast: exp.Expr, operation: str, dialect: str
+) -> Optional[StatementFacts]:
+    """An Oracle mutation whose target is not a direct named table."""
+    if dialect != "oracle":  # lint: allow-dialect-string: Oracle expression write targets
+        return None
+    subject = ast.this
+    if isinstance(ast, exp.Insert) and isinstance(subject, exp.Schema):
+        subject = subject.this
+    if isinstance(ast, exp.Delete) and not subject:
+        targets = ast.args.get("tables") or []
+        subject = targets[0] if len(targets) == 1 else None
+    alias = subject.args.get("alias") if isinstance(subject, exp.Table) else None
+    # Older sqlglot reads partition restrictions as aliases (INSERT loses the arguments),
+    # newer versions as a `partition` argument: prove the target by its shape instead.
+    restricted_alias = _oracle_restricted_alias(alias)
+    plain_table = isinstance(subject, exp.Table) and not any(
+        value
+        for key, value in subject.args.items()
+        if key not in {"this", "db", "catalog", "alias"}
+    )
+    # `DELETE t FROM u` names a target list apart from its source.
+    split_delete = isinstance(ast, exp.Delete) and ast.this and ast.args.get("tables")
+    if not (
+        plain_table
+        and isinstance(subject.this, exp.Identifier)
+        and subject.name
+        and not restricted_alias
+        and not split_delete
+    ):
+        return StatementFacts(
+            operation,
+            "DML",
+            diagnostic="oracle mutation target is not a direct named table",
+        )
+    return None
+
+
+def _unread_mutation_target_facts(
+    ast: exp.Expression, dialect: str, operation: str, table: Optional[exp.Table]
+) -> Optional[StatementFacts]:
+    """A Snowflake or MySQL mutation target the grammar did not read as written."""
+    if dialect == "snowflake" and (  # lint: allow-dialect-string: unread target
+        table is None or not table.name
+    ):
+        return StatementFacts(operation, "DML", diagnostic="snowflake mutation target is not read")
+    if (
+        dialect == "snowflake"  # lint: allow-dialect-string: MERGE actions must be read
+        and isinstance(ast, exp.Merge)
+        and (
+            not _sqlglot_events(ast)
+            # A CTE named like the target leaves it unsaid which of the two is written.
+            or any(
+                cte.alias.lower() == table.name.lower()
+                for cte in ast.find_all(exp.CTE)
+                if table is not None and not table.db
+            )
+        )
+    ):
+        return StatementFacts(
+            operation, "DML", diagnostic="snowflake MERGE actions or CTE scopes are not read"
+        )
+    if (
+        dialect == "mysql"  # lint: allow-dialect-string: MySQL modifier words are not tables
+        and not isinstance(ast, exp.Delete)  # DELETE's table follows FROM
+        and table is not None
+        and isinstance(table.this, exp.Identifier)
+        and not table.this.args.get("quoted")
+        and not table.db
+        and table.name.upper() in MYSQL_DML_MODIFIER_WORDS[operation].split("|")
+    ):
+        return StatementFacts(
+            operation, "DML", diagnostic="mysql modifier word read where a table belongs"
+        )
+    return None
+
+
+def _mutation_facts(
+    ast: exp.Expression, dialect: str, operation: str, table: Optional[exp.Table]
+) -> StatementFacts:
+    """The facts of a mutation whose target is read."""
+    identity = _named(table, SqlObjectType.TABLE, "altered") if table else None
+    target = (
+        ".".join(part for part in (table.catalog, table.db, table.name) if part) if table else None
+    )
+    predicate = _mutation_predicate(ast, dialect)
+    events = _sqlglot_events(ast)
+    columns = tuple(_sqlglot_updated_columns(ast))
+    references = _mutation_references(ast, dialect, table)
+    target_table = _mutation_target_as_written(table, dialect)
+    snowflake_overwrite = (
+        dialect == "snowflake"  # lint: allow-dialect-string: INSERT OVERWRITE effect
+        and isinstance(ast, exp.Insert)
+        and ast.args.get("overwrite")
+    )
+    return StatementFacts(
+        operation,
+        "DML",
+        ((identity,) if identity else ()) + references,
+        target,
+        predicate,
+        affected_columns=columns,
+        events=frozenset(events) if events and not snowflake_overwrite else None,
+        diagnostic=(
+            "snowflake INSERT OVERWRITE replaces the target's existing rows"
+            if snowflake_overwrite
+            else None
+        ),
+        target_sql=target_table.sql(dialect=dialect) if target_table is not None else None,
+    )
+
+
+def _mutation_predicate(ast: exp.Expression, dialect: str) -> Optional[str]:
+    """The ``WHERE`` predicate of a mutation, as written."""
+    where = ast.args.get("where")
+    predicate_node = where.this if isinstance(where, exp.Where) else None
+    if predicate_node is not None:
+        if dialect in {"oracle", "snowflake"}:  # lint: allow-dialect-string: as written
+            predicate_node = _oracle_as_written(predicate_node)
+    predicate = predicate_node.sql(dialect=dialect) if predicate_node is not None else None
+    return predicate
+
+
+def _mutation_references(
+    ast: exp.Expression, dialect: str, table: Optional[exp.Table]
+) -> Tuple[NamedObject, ...]:
+    """The tables a mutation reads, apart from its write targets."""
+    skipped_references: Tuple[exp.Expression, ...] = (table,) if table is not None else ()
+    if dialect == "tsql":  # lint: allow-dialect-string: write aliases are not source tables
+        if isinstance(ast, exp.Update) and isinstance(ast.this, exp.Table):
+            skipped_references += (ast.this,)
+        if isinstance(ast, exp.Delete):
+            skipped_references += tuple(ast.args.get("tables") or [])
+    if (
+        dialect == "mysql"  # lint: allow-dialect-string: MySQL DELETE target lists are writes
+        and isinstance(ast, exp.Delete)
+    ):
+        # DELETE's target list names write targets, not additional read sources.
+        skipped_references += tuple(ast.args.get("tables") or [])
+    references = (
+        _merge_referenced(ast, dialect == "snowflake")  # lint: allow-dialect-string: folding
+        if isinstance(ast, exp.Merge)
+        else _referenced(ast, skipped_references)
+    )
+    return references
+
+
+def _mutation_target_as_written(table: Optional[exp.Table], dialect: str) -> Optional[exp.Table]:
+    """The target table without alias, joins or ``ONLY``, spelled as written."""
+    target_table = table
+    if table is not None and (
+        table.args.get("alias") or table.args.get("joins") or table.args.get("only")
+    ):
+        # ``target_sql`` is a table reference a consumer interpolates into raw SQL, so it
+        # never carries the alias, in any dialect.
+        target_table = table.copy()
+        target_table.set("alias", None)
+        target_table.set("joins", None)
+        target_table.set("only", None)
+    if (
+        dialect in {"oracle", "snowflake"}  # lint: allow-dialect-string: spelling
+        and target_table is not None
+    ):
+        target_table = _oracle_as_written(target_table)
+    return target_table
+
+
+def _query_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A query, or a PostgreSQL or T-SQL ``SELECT INTO``."""
+    if isinstance(ast, exp.Query):
+        if dialect in {
+            "postgres",  # lint: allow-dialect-string: PostgreSQL SELECT INTO
+            "tsql",  # lint: allow-dialect-string: T-SQL SELECT INTO
+        }:
+            into = _select_into_table(ast)
+            if into is not None:
+                created = _named(into, SqlObjectType.TABLE, "created")
+                if created is not None:
+                    sources = _referenced(ast, tuple(into.find_all(exp.Table)))
+                    return StatementFacts("SELECT", "DML", (created,) + sources)
+        return StatementFacts("SELECT", "QUERY", _referenced(ast), events=frozenset())
+    return None
+
+
+def _grant_statement_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts]:
+    """A PostgreSQL or MySQL ``GRANT`` or ``REVOKE``."""
+    if dialect in _GRANT_DIALECTS and isinstance(ast, (exp.Grant, exp.Revoke)):
+        return _grant_facts(ast, sql, dialect)
+    return None
+
+
+# Checked in order once the names of the statement are read.
+_STATEMENT_RULES: Tuple[_ParsedRule, ...] = (
+    _snowflake_unread_effect_facts,
+    _redshift_statement_facts,
+    _tsql_facts,
+    _postgres_merge_statement_facts,
+    _postgres_copy_or_cte_facts,
+    _duckdb_macro_facts,
+    _duckdb_copy_facts,
+    _postgres_comment_facts,
+    _oracle_comment_facts,
+    _oracle_truncate_facts,
+    _duckdb_metadata_facts,
+    _mysql_metadata_facts,
+    _oracle_program_facts,
+    _snowflake_view_log_facts,
+    _create_facts,
+    _drop_facts,
+    _alter_facts,
+    _postgres_truncate_facts,
+    _snowflake_truncate_facts,
+    _snowflake_comment_facts,
+    _tsql_truncate_facts,
+    _single_table_truncate_facts,
+    _dml_facts,
+    _query_facts,
+    _grant_statement_facts,
+)
+
+
 def read_statement_facts(
     sql: str,
     *,
@@ -2564,1167 +4217,33 @@ def read_statement_facts(
                 diagnostic="mysql executable comment is opaque to statement facts",
             )
         sql = served
-    unread = unread_name_character(sql, dialect=dialect)
-    if unread is not None:
-        return _unread_name_facts(sql, dialect, unread)
-    wide = (
-        _supplementary_name_character(sql)
-        if dialect == "mysql"  # lint: allow-dialect-string: MySQL name characters
-        else None
-    )
-    if wide:
-        head = _head_facts(sql, "", dialect=dialect)
-        return StatementFacts(
-            head.operation,
-            head.kind,
-            diagnostic=(
-                f"mysql statement holds U+{ord(wide):04X} in a name, which MySQL stores as ? "
-                "and MariaDB rejects; its objects are not named"
-            ),
-        )
-    if dialect == "tsql" and re.match(  # lint: allow-dialect-string: foreign OR DML modifiers
-        r"^\s*(?:INSERT|UPDATE|DELETE)\s+OR\s+(?:IGNORE|REPLACE)\b", _blanked(sql, dialect), re.I
-    ):
-        return _head_facts(sql, "tsql OR DML modifier is not modelled", dialect=dialect)
+    facts = _unread_text_facts(sql, dialect)
+    if facts is not None:
+        return facts
     if dialect == "mysql":  # lint: allow-dialect-string: MySQL DML modifiers
         sql = _without_mysql_dml_modifiers(sql)
-    if dialect == "duckdb":  # lint: allow-dialect-string: DuckDB has no triggers
-        trigger = _TRIGGER_HEAD.match(_blanked(sql, dialect))
-        if trigger is not None:
-            return StatementFacts(
-                trigger.group(1).upper(), "DDL", diagnostic="duckdb does not support triggers"
-            )
-    if (
-        dialect != "postgres"  # lint: allow-dialect-string: PostgreSQL names the trigger's table
-        and _drop_trigger_on_clause(_blanked(sql, dialect), dialect)
-    ):
-        facts = _head_facts(
-            sql, f"{dialect} DROP TRIGGER ON clause is not supported", dialect=dialect
-        )
-        return StatementFacts(facts.operation, facts.kind, diagnostic=facts.diagnostic)
-    if dialect == "redshift":  # lint: allow-dialect-string: Redshift bracketed names
-        bracketed = _redshift_bracketed_name(sql, dialect)
-        if bracketed is not None:
-            return bracketed
+    facts = _unparsed_form_facts(sql, dialect)
+    if facts is not None:
+        return facts
     try:
         ast = parse_one(_UPDATE_OR.sub(r"\1", sql), read=read_dialect or dialect)
-        if dialect == "oracle" and ast is not None:  # lint: allow-dialect-string: Oracle folding
-            unread_reason = (
-                "oracle name holds a letter whose upper-case form is not one character"
-                if _fold_unquoted_names(ast)
-                else (
-                    "oracle statement names an object through a database link"
-                    if _oracle_names_a_remote_object(sql)
-                    else None
-                )
-            )
-            if unread_reason is not None:
-                head = _head_facts(sql, "", dialect=dialect)
-                return StatementFacts(head.operation, head.kind, diagnostic=unread_reason)
-        if (
-            dialect == "snowflake"  # lint: allow-dialect-string: Snowflake stores upper case
-            and ast is not None
-            and _fold_unquoted_names(ast, ascii_only=True)
-        ):
-            head = _head_facts(sql, "", dialect=dialect)
-            return StatementFacts(
-                head.operation,
-                head.kind,
-                diagnostic="snowflake unquoted name holds a non-ASCII letter (rejected natively)",
-            )
+        facts = _folded_name_facts(ast, sql, dialect)
+        if facts is not None:
+            return facts
     except (ParseError, TokenError) as exc:
-        if not isinstance(exc, TokenError) and not _blanked(sql, dialect).strip():
-            return StatementFacts("UNKNOWN", "UNKNOWN")
-        if isinstance(exc, TokenError):
-            facts = _head_facts(sql, "", dialect=dialect)
-            return replace(
-                facts,
-                diagnostic=None,
-                error=f"{dialect} statement could not be tokenized (unterminated quote or comment)",
-            )
-        reason = f"{dialect} grammar is not modelled for this statement"
-        if (
-            dialect == "snowflake"  # lint: allow-dialect-string: unread names
-            and _snowflake_tokens_hold_dynamic_name(sql)
-        ):
-            head = _head_facts(sql, "", dialect=dialect)
-            return StatementFacts(head.operation, head.kind, diagnostic=_SNOWFLAKE_DYNAMIC_NAMES)
-        if (
-            dialect == "mysql"  # lint: allow-dialect-string: MySQL stored programs and events
-            and (program := _mysql_program_facts(sql, reason)) is not None
-        ):
-            return program
-        return _head_facts(sql, reason, dialect=dialect)
-    if dialect in _NO_INDEX_TABLESPACE and _index_tablespace_clause(ast, sql):
-        head = _head_facts(sql, f"{dialect} TABLESPACE clause is not supported", dialect=dialect)
-        return StatementFacts(head.operation, head.kind, diagnostic=head.diagnostic)
-    if dialect == "redshift":  # lint: allow-dialect-string: PostgreSQL-only table clauses
-        properties = ast.args.get("properties") if isinstance(ast, exp.Create) else None
-        unlogged = (
-            isinstance(ast, exp.Create)
-            and ast.args.get("kind") == "TABLE"
-            and isinstance(properties, exp.Properties)
-            and any(isinstance(prop, exp.UnloggedProperty) for prop in properties.expressions)
-        )
-        tablespace = (
-            (
-                isinstance(properties, exp.Properties)
-                and any(isinstance(prop, exp.TableSpaceProperty) for prop in properties.expressions)
-            )
-            or _index_tablespace_clause(ast, sql)
-            or (isinstance(ast, exp.Command) and _postgres_tablespace_clause(sql))
-        )
-        if unlogged or tablespace:
-            head = _head_facts(
-                sql, "redshift UNLOGGED or TABLESPACE clause is not supported", dialect=dialect
-            )
-            return StatementFacts(head.operation, head.kind, diagnostic=head.diagnostic)
-    if (
-        dialect == "mysql"  # lint: allow-dialect-string: sqlglot reads these MySQL forms as Command
-        and isinstance(ast, exp.Command)
-        and (command := _mysql_command_facts(sql)) is not None
-    ):
-        return command
-    if (
-        dialect == "tsql"  # lint: allow-dialect-string: SQL Server full-text index grammar
-        and isinstance(ast, exp.Command)
-        and re.match(r"^\s*CREATE\s+FULLTEXT\s+INDEX\b", _blanked(sql, dialect), re.I)
-    ):
-        return _head_facts(
-            sql, "tsql CREATE FULLTEXT INDEX grammar is not modelled", dialect=dialect
-        )
-    if (
-        dialect == "tsql"  # lint: allow-dialect-string: SQL Server statistics maintenance
-        and isinstance(ast, exp.Command)
-        and ast.this == "UPDATE STATISTICS"
-    ):
-        match = (
-            _TSQL_STATISTICS_ARGUMENTS.fullmatch(ast.expression.this)
-            if isinstance(ast.expression, exp.Literal)
-            else None
-        )
-        if match:
-            name = match.group("name")
-            if _tsql_statistics_name(match.group("table"), dialect) and (
-                name is None or _tsql_statistics_name(name, dialect)
-            ):
-                return StatementFacts("UPDATE STATISTICS", "DDL")
-        return StatementFacts(
-            "UPDATE STATISTICS", "UNKNOWN", diagnostic="tsql UPDATE STATISTICS tail is opaque"
-        )
-    if (
-        dialect == "snowflake"  # lint: allow-dialect-string: unread names in a Command
-        and isinstance(ast, exp.Command)
-        and _snowflake_tokens_hold_dynamic_name(sql)
-    ):
-        head = _head_facts(sql, "", dialect=dialect)
-        return StatementFacts(head.operation, head.kind, diagnostic=_SNOWFLAKE_DYNAMIC_NAMES)
-    if (
-        dialect == "postgres"  # lint: allow-dialect-string: sqlglot has no TABLESPACE clause
-        and isinstance(ast, exp.Command)
-        and _postgres_tablespace_clause(sql)
-    ):
-        return _head_facts(
-            sql, "postgres TABLESPACE clause is not modelled by the grammar", dialect=dialect
-        )
-    if ast is None or isinstance(ast, (exp.Command, exp.Block)):
-        construct = type(ast).__name__ if ast is not None else "empty statement"
-        if (
-            dialect == "mysql"  # lint: allow-dialect-string: MySQL stored programs and events
-            and ast is not None
-            and (
-                program := _mysql_program_facts(
-                    sql, f"{dialect} {construct} is opaque to statement facts"
-                )
-            )
-            is not None
-        ):
-            return program
-        return _head_facts(
-            sql, f"{dialect} {construct} is opaque to statement facts", dialect=dialect
-        )
-
-    if isinstance(ast, exp.Set) and len(ast.expressions) == 1:
-        item = ast.expressions[0]
-        if isinstance(item, exp.SetItem):
-            if (
-                dialect == "mysql"  # lint: allow-dialect-string: MySQL SET NAMES grammar
-                and item.args.get("kind") == "NAMES"
-                and isinstance(item.this, exp.Var)
-            ):
-                return StatementFacts("SET", "UNKNOWN", events=frozenset())
-            assignment = item.this
-            if (
-                dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL search_path
-                and isinstance(assignment, exp.EQ)
-                and isinstance(assignment.this, exp.Column)
-                and assignment.this.name.lower() == "search_path"
-                and not assignment.this.table
-                and isinstance(assignment.expression, exp.Var)
-            ):
-                return StatementFacts("SET", "UNKNOWN", events=frozenset())
-
-    if (
-        dialect != "tsql"  # lint: allow-dialect-string: T-SQL has its own name guard
-        and not (
-            dialect == "oracle"  # lint: allow-dialect-string: Oracle program body is opaque
-            and isinstance(ast, exp.Create)
-            and str(ast.args.get("kind") or "").upper() in {"PROCEDURE", "FUNCTION", "TRIGGER"}
-        )
-        and any(len(table.parts) > 3 for table in ast.find_all(exp.Table))
-    ):
-        head = _head_facts(sql, "", dialect=dialect)
-        return StatementFacts(
-            head.operation,
-            head.kind,
-            diagnostic=f"{dialect} relation qualification is not fully represented",
-        )
-
+        return _unparsed_facts(exc, sql, dialect)
+    for rule in _PARSED_FORM_RULES:
+        facts = rule(ast, sql, dialect)
+        if facts is not None:
+            return facts
     unread_names = _unread_names(ast, dialect, sql, allow_leading_dot)
     if unread_names is not None:
         head = _head_facts(sql, "", dialect=dialect)
         return StatementFacts(head.operation, head.kind, diagnostic=unread_names)
-
-    if dialect == "snowflake":  # lint: allow-dialect-string: unread Snowflake effects
-        unread_effect = _snowflake_unread_effect(ast)
-        if unread_effect is not None:
-            return _head_facts(sql, unread_effect, dialect=dialect)
-
-    if dialect == "redshift":  # lint: allow-dialect-string: Redshift statement forms
-        redshift_facts = _redshift_facts(ast, sql, dialect)
-        if redshift_facts is not None:
-            return redshift_facts
-
-    if dialect == "tsql":  # lint: allow-dialect-string: T-SQL multi-part names and modules
-        ctes = tuple(ast.find_all(exp.CTE))
-        schema_targets: tuple[exp.Expression, ...] = ()
-        if isinstance(ast, exp.Create) and str(ast.args.get("kind") or "").upper() == "SCHEMA":
-            schema_targets = (ast.this,)
-        elif isinstance(ast, exp.Drop) and str(ast.args.get("kind") or "").upper() == "SCHEMA":
-            schema_targets = tuple(ast.args.get("tables") or ())
-        if any(not isinstance(cte.this, exp.Query) for cte in ctes):
-            operation = type(ast).__name__.upper()
-            kind = "DML" if operation in {"INSERT", "UPDATE", "DELETE"} else "QUERY"
-            return StatementFacts(
-                operation,
-                kind,
-                diagnostic="tsql CTE body effects are opaque to statement facts",
-            )
-        cte_target = _dml_target_table(ast) if isinstance(ast, (exp.Update, exp.Delete)) else None
-        if (
-            isinstance(cte_target, exp.Table)
-            and not cte_target.db
-            and not cte_target.catalog
-            and any(cte_target.name.lower() == cte.alias.lower() for cte in ctes)
-        ):
-            return StatementFacts(
-                type(ast).__name__.upper(),
-                "DML",
-                diagnostic="tsql CTE write target is not resolved to a base table",
-            )
-        if any(
-            isinstance(table.this, exp.Identifier)
-            and (table.this.args.get("temporary") or table.this.args.get("global_"))
-            for table in ast.find_all(exp.Table)
-        ):
-            head = _head_facts(sql, "tsql temporary table identity is opaque", dialect=dialect)
-            if isinstance(ast, exp.Query) and _select_into_table(ast) is not None:
-                return replace(head, kind="DML")
-            return head
-        if any(
-            (
-                not isinstance(table.this, exp.Identifier)
-                and not (
-                    any(table is subject for subject in schema_targets)
-                    and table.this is None
-                    and isinstance(table.args.get("db"), exp.Identifier)
-                    and not table.catalog
-                )
-            )
-            or (table.args.get("catalog") is not None and not table.db)
-            for table in ast.find_all(exp.Table)
-        ):
-            return _head_facts(
-                sql, "tsql table identity has unmodelled name parts", dialect=dialect
-            )
-        if isinstance(ast, exp.Create) and str(ast.args.get("kind") or "").upper() in {
-            "PROCEDURE",
-            "FUNCTION",
-            "TRIGGER",
-        }:
-            return _head_facts(sql, "tsql program body effects are opaque", dialect=dialect)
-        if (
-            isinstance(ast, exp.Create)
-            and str(ast.args.get("kind") or "").upper() == "VIEW"
-            and ast.args.get("properties")
-            and ast.args["properties"].find(exp.MaterializedProperty)
-        ) or (isinstance(ast, exp.Drop) and ast.args.get("materialized")):
-            return _head_facts(sql, "tsql materialized view effects are opaque", dialect=dialect)
-        if (
-            isinstance(ast, exp.Query)
-            and _select_into_table(ast) is not None
-            and any(
-                into.args.get("temporary") or into.args.get("unlogged")
-                for into in ast.find_all(exp.Into)
-            )
-        ):
-            return replace(
-                _head_facts(sql, "tsql SELECT INTO scope is opaque", dialect=dialect),
-                kind="DML",
-            )
-
-    if (
-        dialect == "postgres"  # lint: allow-dialect-string: qualified PostgreSQL MERGE facts
-        and isinstance(ast, exp.Merge)
-    ):
-        merge_facts = _postgres_merge_facts(ast)
-        if merge_facts is not None:
-            return merge_facts
-        return _head_facts(sql, "postgres MERGE effects are not modelled", dialect=dialect)
-
-    if dialect == "postgres":  # lint: allow-dialect-string: PostgreSQL COPY and CTE boundaries
-        if isinstance(ast, exp.Copy):
-            return _postgres_copy_facts(ast, sql)
-        opaque_cte = _postgresql_opaque_cte(ast, dialect)
-        if opaque_cte is not None:
-            return opaque_cte
-
-    if (
-        dialect == "duckdb"  # lint: allow-dialect-string: DuckDB macros lack a fact object type
-        and isinstance(ast, (exp.Create, exp.Drop))
-        and str(ast.args.get("kind") or "").upper() in {"MACRO", "FUNCTION"}
-    ):
-        return StatementFacts(
-            type(ast).__name__.upper(),
-            "DDL",
-            diagnostic="duckdb macro identity and body are opaque to statement facts",
-        )
-
-    if (
-        dialect == "duckdb"  # lint: allow-dialect-string: COPY facts qualified for DuckDB only
-        and isinstance(ast, exp.Copy)
-    ):
-        return _copy_facts(ast, sql)
-
-    if dialect == "postgres" and isinstance(  # lint: allow-dialect-string: PostgreSQL COMMENT ON
-        ast, exp.Comment
-    ):
-        identity = _postgres_comment_identity(ast)
-        if identity is not None:
-            return StatementFacts("COMMENT", "DDL", (identity,), events=frozenset())
-
-    if (
-        dialect == "oracle"  # lint: allow-dialect-string: Oracle COMMENT ON TABLE, COLUMN, MV
-        and isinstance(ast, exp.Comment)
-        and (
-            str(ast.args.get("kind") or "").upper() in {"TABLE", "COLUMN"}
-            or (str(ast.args.get("kind") or "").upper() == "VIEW" and ast.args.get("materialized"))
-        )
-    ):
-        identity = _postgres_comment_identity(ast)
-        if identity is not None:
-            return StatementFacts("COMMENT", "DDL", (identity,), events=frozenset())
-
-    if (
-        dialect == "oracle"  # lint: allow-dialect-string: Oracle TRUNCATE TABLE takes one table
-        and isinstance(ast, exp.TruncateTable)
-        and len(ast.expressions) == 1
-        and not ast.args.get("option")  # CASCADE also truncates child tables
-        and not ast.args.get("is_database")
-        and _ORACLE_TRUNCATE_TABLE.match(_blanked(sql))  # ``TRUNCATE t`` is ORA-03290
-    ):
-        target = ast.expressions[0]
-        if (
-            isinstance(target, exp.Table)
-            and isinstance(target.this, exp.Identifier)
-            and not any(v for k, v in target.args.items() if k not in {"this", "db"})
-        ):
-            identity = _named(target, SqlObjectType.TABLE, "altered")
-            if identity is not None:
-                return StatementFacts("TRUNCATE", "DDL", (identity,))
-
-    if dialect == "duckdb":  # lint: allow-dialect-string: DuckDB metadata statement mappings
-        if isinstance(ast, exp.Comment) and ast.args.get("kind") == "TABLE":
-            identity = _named(ast.this, SqlObjectType.TABLE, "altered")
-            value = ast.args.get("expression")
-            if identity is None or not isinstance(value, exp.Literal) or not value.is_string:
-                return StatementFacts(
-                    "COMMENT", "DDL", diagnostic="duckdb COMMENT ON TABLE value is not read"
-                )
-            return StatementFacts(
-                "COMMENT", "DDL", (identity,), events=frozenset(), table_comment=value.this
-            )
-        if isinstance(ast, (exp.Show, exp.Describe)):
-            return _metadata_facts(ast, ast)
-
-    if dialect == "mysql" and isinstance(  # lint: allow-dialect-string: MySQL DESCRIBE and SHOW
-        ast, (exp.Show, exp.Describe)
-    ):
-        metadata_table = _mysql_metadata_table(ast, sql)
-        if metadata_table is not None:
-            return _metadata_facts(ast, metadata_table)
-
-    if dialect == "oracle" and (  # lint: allow-dialect-string: PL/SQL bodies are not read
-        (
-            isinstance(ast, exp.Create)
-            and str(ast.args.get("kind") or "").upper() in {"PROCEDURE", "FUNCTION", "TRIGGER"}
-        )
-        or _ORACLE_MV_LOG.match(_blanked(sql))  # sqlglot reads the log as a view named LOG
-    ):
-        return _head_facts(
-            sql, "oracle PL/SQL bodies and materialized view logs are not read", dialect=dialect
-        )
-
-    if (
-        dialect == "snowflake"  # lint: allow-dialect-string: unmodelled materialized view logs
-        and _snowflake_materialized_view_log_on(sql, ast)
-    ):
-        return StatementFacts(
-            type(ast).__name__.upper(),
-            "DDL",
-            diagnostic="snowflake materialized view log identity is not modelled",
-        )
-
-    if isinstance(ast, exp.Create):
-        object_type = _created_object_type(ast, dialect)
-        if (
-            dialect == "snowflake"  # lint: allow-dialect-string: unmodelled Snowflake DDL
-            and object_type == SqlObjectType.UNKNOWN
-        ):
-            return StatementFacts(
-                "CREATE",
-                "DDL",
-                diagnostic=f"snowflake {ast.args.get('kind') or 'object'} identity is not modelled",
-            )
-        schema_node = ast.this if isinstance(ast.this, exp.Schema) else None
-        subject = schema_node.this if schema_node is not None else ast.this
-        if (
-            dialect == "snowflake"  # lint: allow-dialect-string: Snowflake schema source proof
-            and object_type == SqlObjectType.SCHEMA
-            and isinstance(subject, exp.Table)
-            and _snowflake_schema_has_discarded_prefix(sql, subject)
-        ):
-            return StatementFacts(
-                "CREATE", "DDL", diagnostic="snowflake schema qualification is not fully read"
-            )
-        properties = ast.args.get("properties")
-        virtual = bool(properties and properties.find(exp.VirtualProperty))
-        identity = _named(subject, object_type, "created") if subject is not None else None
-        if (
-            dialect
-            in {"duckdb", "snowflake"}  # lint: allow-dialect-string: schema identity projection
-            and object_type == SqlObjectType.SCHEMA
-            and isinstance(subject, exp.Table)
-            and subject.db
-        ):
-            identity = NamedObject(subject.db, object_type, "created", subject.catalog or None)
-        if (
-            dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL schema identity only
-            and object_type == SqlObjectType.SCHEMA
-            and isinstance(subject, exp.Table)
-            and subject.db
-            and not subject.catalog
-            and not subject.name
-        ):
-            identity = NamedObject(
-                subject.db,
-                object_type,
-                "created",
-                name_quoted=_identifier_quoted(subject.args.get("db")),
-            )
-        if (
-            dialect == "tsql"  # lint: allow-dialect-string: T-SQL schema name is in Table.db
-            and object_type == SqlObjectType.SCHEMA
-            and isinstance(subject, exp.Table)
-            and subject.db
-            and not subject.catalog
-            and not subject.name
-        ):
-            identity = NamedObject(subject.db, object_type, "created")
-        if (
-            dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL trigger name
-            and object_type == SqlObjectType.TRIGGER
-            and isinstance(subject, exp.Identifier)
-            and subject.name
-        ):
-            identity = NamedObject(
-                subject.name, object_type, "created", name_quoted=_identifier_quoted(subject)
-            )
-        if (
-            dialect == "mysql"  # lint: allow-dialect-string: MySQL names a schema as a database
-            and object_type == SqlObjectType.SCHEMA
-            and isinstance(subject, exp.Table)
-            and subject.db
-            and not subject.catalog
-            and not subject.name
-        ):
-            identity = NamedObject(subject.db, object_type, "created")
-        if (
-            dialect
-            == "mysql"  # lint: allow-dialect-string: MySQL names a trigger by its identifier
-            and object_type == SqlObjectType.TRIGGER
-            and _mysql_identifier_is_proven(subject, sql)
-        ):
-            identity = NamedObject(subject.name, object_type, "created")
-        if (
-            dialect == "snowflake"  # lint: allow-dialect-string: Snowflake object not read
-            and identity is None
-            and not isinstance(subject, exp.Index)
-        ):
-            return _head_facts(
-                sql,
-                f"snowflake {ast.args.get('kind') or 'object'} identity is not read",
-                dialect=dialect,
-            )
-        objects: Tuple[NamedObject, ...] = (identity,) if identity else ()
-        indexed_table = None
-        indexed_columns = None
-        index_items: Optional[list[exp.Expression]] = []
-        if isinstance(subject, exp.Index):
-            params = subject.args.get("params")
-            index_items = params.args.get("columns", []) if params else []
-            table = subject.args.get("table")
-            qualified = _qualified_index(subject)
-            if dialect == "tsql":  # lint: allow-dialect-string: T-SQL indexes belong to tables
-                reference = (
-                    _named(table, SqlObjectType.TABLE, "referenced")
-                    if isinstance(table, exp.Table)
-                    else None
-                )
-                if (
-                    qualified is not None
-                    or not isinstance(subject.this, exp.Identifier)
-                    or reference is None
-                ):
-                    return _head_facts(sql, "tsql index relation is opaque", dialect=dialect)
-                objects = (
-                    NamedObject(subject.this.name, object_type, "created", reference.schema),
-                    reference,
-                )
-                indexed_table = ".".join(
-                    part for part in (reference.schema, reference.name) if part
-                )
-            elif qualified is not None:
-                schema, index_name, indexed_table, index_items = qualified
-                objects = (
-                    NamedObject(index_name, object_type, "created", schema),
-                    NamedObject(indexed_table, SqlObjectType.TABLE, "referenced"),
-                )
-            else:
-                if (
-                    dialect == "mysql"  # lint: allow-dialect-string: MySQL has no CONCURRENTLY
-                    and ast.args.get("concurrently")
-                    and not subject.this
-                ):
-                    # The word is the index name.
-                    objects = (NamedObject("CONCURRENTLY", object_type, "created"),)
-                elif (
-                    dialect == "mysql"  # lint: allow-dialect-string: MySQL has no CONCURRENTLY
-                    and ast.args.get("concurrently")
-                ):
-                    # The word is the index name and the engine rejects what follows it.
-                    objects = ()
-                    index_items = None
-                reference = _named(table, SqlObjectType.TABLE, "referenced") if table else None
-                if reference:
-                    objects += (reference,)
-                    indexed_table = reference.name
-        definitions = schema_node.expressions if schema_node is not None else []
-        partition_override = ast.args.get("partition_parent") is not None
-        if any(
-            isinstance(definition, exp.ColumnDef)
-            and not partition_override
-            and _unread_column_definition(definition)
-            for definition in definitions
-        ):
-            return _head_facts(
-                sql,
-                f"{dialect} CREATE definitions are not fully represented",
-                dialect=dialect,
-                parsed=True,
-            )
-        columns = tuple(
-            x.name
-            for x in definitions
-            if not partition_override and isinstance(x, (exp.ColumnDef, exp.Identifier))
-        )
-        constraints = tuple(
-            detail
-            for definition in definitions
-            if isinstance(definition, exp.ColumnDef)
-            for detail in _column_constraints(definition)
-        ) + tuple(
-            detail
-            for definition in definitions
-            if not isinstance(definition, exp.ColumnDef)
-            if (detail := _declared_constraint(definition))
-        )
-        if isinstance(subject, exp.Index) and index_items is not None:
-            simple = [item.this if isinstance(item, exp.Ordered) else item for item in index_items]
-            if all(isinstance(item, exp.Column) for item in simple):
-                indexed_columns = tuple(item.name for item in simple)
-        if not isinstance(subject, exp.Index) and subject is not None:
-            objects += _referenced(ast, tuple(subject.find_all(exp.Table)))
-        if (
-            dialect == "snowflake"  # lint: allow-dialect-string: CLONE source has the clone's type
-            and ast.args.get("clone") is not None
-            and object_type != SqlObjectType.TABLE
-        ):
-            objects = tuple(
-                replace(obj, type=object_type) if obj.role == "referenced" else obj
-                for obj in objects
-            )
-        diagnostic = f"{dialect} virtual table module arguments are opaque" if virtual else None
-        if isinstance(subject, exp.Index) and indexed_columns is None:
-            diagnostic = f"{dialect} index expression columns are opaque"
-        index_has_only_columns = (
-            isinstance(subject, exp.Index)
-            and (params := subject.args.get("params")) is not None
-            and not any(value for key, value in params.args.items() if key != "columns")
-        )
-        return StatementFacts(
-            "CREATE",
-            "DDL",
-            objects,
-            declared_columns=columns,
-            declared_constraints=constraints,
-            indexed_table=indexed_table,
-            indexed_columns=indexed_columns,
-            events=(
-                frozenset()
-                if (
-                    (object_type == SqlObjectType.TABLE and schema_node is not None)
-                    or (
-                        object_type == SqlObjectType.INDEX
-                        and indexed_columns is not None
-                        and index_has_only_columns
-                    )
-                )
-                and not ast.args.get("replace")
-                and not ast.args.get("expression")
-                and not ast.args.get("clone")
-                and not diagnostic
-                else None
-            ),
-            diagnostic=diagnostic,
-        )
-
-    if isinstance(ast, exp.Drop):
-        kind = str(ast.args.get("kind") or "").upper()
-        object_type = _ddl_object_type(kind, dialect)
-        if dialect == "snowflake" and (  # lint: allow-dialect-string: unmodelled Snowflake DDL
-            object_type == SqlObjectType.UNKNOWN or kind == "ROLE"
-        ):
-            return StatementFacts(
-                "DROP", "DDL", diagnostic=f"snowflake {kind or 'object'} identity is not modelled"
-            )
-        if (
-            dialect
-            in {
-                "postgres",  # lint: allow-dialect-string: materialized views
-                "oracle",  # lint: allow-dialect-string: materialized views
-                "redshift",
-                "snowflake",  # lint: allow-dialect-string: materialized views
-            }
-            and kind == "VIEW"
-            and ast.args.get("materialized")
-        ):
-            object_type = SqlObjectType.MATERIALIZED_VIEW
-        targets = ast.args.get("tables") or ast.args.get("expressions") or [ast.this]
-        if (
-            dialect == "snowflake"  # lint: allow-dialect-string: Snowflake schema source proof
-            and object_type == SqlObjectType.SCHEMA
-            and any(
-                isinstance(node, exp.Table) and _snowflake_schema_has_discarded_prefix(sql, node)
-                for node in targets
-            )
-        ):
-            return StatementFacts(
-                "DROP", "DDL", diagnostic="snowflake schema qualification is not fully read"
-            )
-        if (
-            dialect
-            in {"duckdb", "postgres", "snowflake"}  # lint: allow-dialect-string: schema identity
-            and object_type == SqlObjectType.SCHEMA
-        ):
-            dropped_objects = tuple(
-                NamedObject(
-                    node.db,
-                    object_type,
-                    "dropped",
-                    node.catalog or None,
-                    name_quoted=_identifier_quoted(node.args.get("db")),
-                )
-                for node in targets
-                if isinstance(node, exp.Table) and node.db
-            )
-        elif (
-            dialect == "mysql"  # lint: allow-dialect-string: MySQL names a schema as a database
-            and object_type == SqlObjectType.SCHEMA
-        ):
-            dropped_objects = tuple(
-                NamedObject(node.db, object_type, "dropped")
-                for node in targets
-                if isinstance(node, exp.Table) and node.db and not node.catalog and not node.name
-            )
-        elif (
-            dialect == "tsql"  # lint: allow-dialect-string: T-SQL schema name is in Table.db
-            and object_type == SqlObjectType.SCHEMA
-        ):
-            dropped_objects = tuple(
-                NamedObject(node.db, object_type, "dropped")
-                for node in targets
-                if isinstance(node, exp.Table) and node.db and not node.catalog and not node.name
-            )
-        else:
-            dropped_objects = tuple(
-                obj
-                for node in targets
-                if node is not None
-                if (obj := _named(node, object_type, "dropped"))
-            )
-        indexed_table = None
-        on = ast.args.get("cluster")
-        if (
-            dialect == "tsql"  # lint: allow-dialect-string: T-SQL DROP INDEX names owning table
-            and object_type == SqlObjectType.INDEX
-        ):
-            reference = (
-                _named(on.this, SqlObjectType.TABLE, "referenced")
-                if isinstance(on, exp.OnProperty) and isinstance(on.this, exp.Table)
-                else None
-            )
-            index = targets[0] if len(targets) == 1 else None
-            if (
-                not isinstance(index, exp.Table)
-                or not isinstance(index.this, exp.Identifier)
-                or index.db
-                or index.catalog
-                or reference is None
-            ):
-                return _head_facts(sql, "tsql index relation is opaque", dialect=dialect)
-            return StatementFacts(
-                "DROP",
-                "DDL",
-                (
-                    NamedObject(index.name, object_type, "dropped", reference.schema),
-                    reference,
-                ),
-                indexed_table=".".join(part for part in (reference.schema, reference.name) if part),
-            )
-        if (
-            object_type == SqlObjectType.INDEX
-            and isinstance(on, exp.OnProperty)
-            and dialect
-            not in {"mysql", "tsql"}  # lint: allow-dialect-string: DROP INDEX ON grammar
-        ):
-            return StatementFacts(
-                "DROP",
-                "DDL",
-                dropped_objects,
-                diagnostic=f"index: {dialect} grammar is not modelled for this statement",
-            )
-        if (
-            dialect == "mysql"  # lint: allow-dialect-string: MySQL DROP INDEX names its table
-            and object_type == SqlObjectType.INDEX
-        ):
-            index = targets[0]
-            if not (
-                isinstance(index, exp.Table)
-                and index.args.get("db") is None
-                and _mysql_identifier_is_proven(index.this, sql)
-                and isinstance(on, exp.OnProperty)
-                and (indexed_table := _mysql_on_table_name(on, sql))
-            ) or any(
-                value
-                for key, value in ast.args.items()
-                if key not in {"tables", "kind", "cluster", "exists"}
-            ):
-                return StatementFacts(
-                    "DROP", "DDL", dropped_objects, diagnostic="mysql DROP INDEX relation is opaque"
-                )
-            dropped_objects += (NamedObject(indexed_table, SqlObjectType.TABLE, "referenced"),)
-        return StatementFacts("DROP", "DDL", dropped_objects, indexed_table=indexed_table)
-
-    if isinstance(ast, exp.Alter):
-        kind = str(ast.args.get("kind") or "").upper()
-        object_type = _ddl_object_type(kind, dialect)
-        identity = _named(ast.this, object_type, "altered") if ast.this is not None else None
-        actions = ast.args.get("actions") or []
-        renamed_to = None
-        added_constraint = None
-        lifecycle_diagnostic = None
-        if (
-            dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL table lifecycle grammar
-            and kind == "TABLE"
-            and identity
-            and len(actions) == 1
-        ):
-            sole_action = actions[0]
-            if isinstance(sole_action, exp.AlterRename):
-                destination = sole_action.this
-                if (
-                    isinstance(destination, exp.Table)
-                    and isinstance(destination.this, exp.Identifier)
-                    and not destination.db
-                    and not destination.catalog
-                    and not ast.args.get("only")
-                    and not ast.args.get("options")
-                    and not ast.args.get("not_valid")
-                    and _postgres_table_alter_tokens_match(
-                        sql, ast, [TokenType.RENAME, "TO", destination.this]
-                    )
-                ):
-                    named = _named(destination, SqlObjectType.TABLE, "created")
-                    if named is not None:
-                        renamed_to = replace(
-                            named,
-                            schema=identity.schema,
-                            schema_quoted=identity.schema_quoted,
-                        )
-                elif isinstance(destination, exp.Table) and isinstance(
-                    destination.this, exp.Identifier
-                ):
-                    lifecycle_diagnostic = "postgres ALTER TABLE rename source is not fully read"
-            elif isinstance(sole_action, exp.AddConstraint) and len(sole_action.expressions) == 1:
-                declaration = sole_action.expressions[0]
-                if (
-                    isinstance(declaration, exp.Constraint)
-                    and isinstance(declaration.this, exp.Identifier)
-                    and len(declaration.expressions) == 1
-                    and isinstance(declaration.expressions[0], exp.PrimaryKey)
-                    and declaration.expressions[0].expressions
-                    and all(
-                        isinstance(column, exp.Identifier)
-                        for column in declaration.expressions[0].expressions
-                    )
-                    and not ast.args.get("not_valid")
-                    and not ast.args.get("options")
-                ):
-                    primary = declaration.expressions[0]
-                    tail: list[TokenType | str | exp.Identifier] = [
-                        "ADD",
-                        TokenType.CONSTRAINT,
-                        declaration.this,
-                        TokenType.PRIMARY_KEY,
-                        TokenType.L_PAREN,
-                    ]
-                    for index, column in enumerate(primary.expressions):
-                        if index:
-                            tail.append(TokenType.COMMA)
-                        tail.append(column)
-                    tail.append(TokenType.R_PAREN)
-                    if _postgres_table_alter_tokens_match(sql, ast, tail):
-                        added_constraint = _declared_constraint(declaration)
-                    else:
-                        lifecycle_diagnostic = (
-                            "postgres ALTER TABLE constraint source is not fully read"
-                        )
-                elif isinstance(declaration, exp.Constraint) and any(
-                    isinstance(child, exp.PrimaryKey) for child in declaration.expressions
-                ):
-                    lifecycle_diagnostic = (
-                        "postgres ALTER TABLE constraint source is not fully read"
-                    )
-        if any(
-            isinstance(action, exp.ColumnDef) and _unread_column_definition(action)
-            for action in actions
-        ):
-            return _head_facts(
-                sql,
-                f"{dialect} ALTER actions are not fully represented",
-                dialect=dialect,
-                parsed=True,
-            )
-        columns = tuple(action.name for action in actions if isinstance(action, exp.ColumnDef))
-        action = "add-column" if columns else None
-        added = [item for item in actions if isinstance(item, exp.ColumnDef)]
-        return StatementFacts(
-            "ALTER",
-            "DDL",
-            ((identity,) if identity else ())
-            + tuple(ref for definition in added for ref in _referenced(definition))
-            + (
-                tuple(
-                    ref
-                    for item in actions
-                    if item.args.get("parent") is not None
-                    for ref in _referenced(item)
-                )
-                # lint: allow-dialect-string: PostgreSQL foreign-table parents
-                if dialect == "postgres" and kind == "FOREIGN TABLE"
-                else ()
-            ),
-            declared_columns=columns,
-            declared_constraints=tuple(
-                detail for definition in added for detail in _column_constraints(definition)
-            )
-            + ((added_constraint,) if added_constraint else ()),
-            action=action,
-            diagnostic=(
-                lifecycle_diagnostic if ast.this is not None else f"{dialect} ALTER names no object"
-            ),
-            renamed_to=renamed_to,
-        )
-
-    if (
-        dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL explicit TRUNCATE targets
-        and isinstance(ast, exp.TruncateTable)
-        and ast.expressions
-        and ast.args.get("identity") in (None, "RESTART", "CONTINUE")
-        and str(ast.args.get("option") or "").upper() in ("", "CASCADE", "RESTRICT")
-        and not any(
-            value
-            for key, value in ast.args.items()
-            if key not in {"expressions", "identity", "option"}
-        )
-        and all(
-            isinstance(target, exp.Table)
-            and isinstance(target.this, exp.Identifier)
-            and target.name
-            and target.args.get("catalog") is None
-            and (target.args.get("db") is None or target.db)
-            and not any(
-                value
-                for key, value in target.args.items()
-                if key not in {"this", "db", "catalog", "only"}
-            )
-            for target in ast.expressions
-        )
-    ):
-        # Named targets only: inheritance, CASCADE and identity-sequence effects need a catalogue.
-        identities = tuple(
-            identity
-            for target in ast.expressions
-            if (identity := _named(target, SqlObjectType.TABLE, "altered")) is not None
-        )
-        return StatementFacts("TRUNCATE", "DDL", identities)
-
-    if dialect == "snowflake" and isinstance(  # lint: allow-dialect-string: single-table TRUNCATE
-        ast, exp.TruncateTable
-    ):
-        target = ast.expressions[0] if len(ast.expressions) == 1 else None
-        if (
-            isinstance(target, exp.Table)
-            and isinstance(target.this, exp.Identifier)
-            and all(not v for k, v in ast.args.items() if k not in {"expressions", "exists"})
-            and all(not v for k, v in target.args.items() if k not in {"this", "db", "catalog"})
-            and not _snowflake_schema_has_discarded_prefix(sql, target)
-        ):
-            identity = _named(target, SqlObjectType.TABLE, "altered")
-            if identity is not None:
-                return StatementFacts("TRUNCATE", "DDL", (identity,))
-        return _head_facts(sql, "snowflake TRUNCATE target is not read", dialect=dialect)
-
-    if dialect == "snowflake" and isinstance(  # lint: allow-dialect-string: COMMENT ON a relation
-        ast, exp.Comment
-    ):
-        kind = str(ast.args.get("kind") or "").upper()
-        subject = ast.this
-        if (
-            kind in {"TABLE", "VIEW", "SEQUENCE"}
-            and isinstance(subject, exp.Table)
-            and isinstance(subject.this, exp.Identifier)
-            and not _snowflake_schema_has_discarded_prefix(sql, subject)
-        ) or (kind == "COLUMN" and isinstance(subject, exp.Column)):
-            identity = _postgres_comment_identity(ast)
-            if identity is not None:
-                return StatementFacts("COMMENT", "DDL", (identity,))
-        return _head_facts(sql, "snowflake COMMENT ON target is not read", dialect=dialect)
-
-    if dialect == "tsql" and isinstance(  # lint: allow-dialect-string: T-SQL single-table TRUNCATE
-        ast, exp.TruncateTable
-    ):
-        targets = ast.expressions
-        target = targets[0] if len(targets) == 1 else None
-        if (
-            isinstance(target, exp.Table)
-            and isinstance(target.this, exp.Identifier)
-            and all(not value for key, value in ast.args.items() if key != "expressions")
-            and not any(
-                value for key, value in target.args.items() if key not in {"this", "db", "catalog"}
-            )
-        ):
-            identity = _named(target, SqlObjectType.TABLE, "altered")
-            if identity is not None:
-                return StatementFacts("TRUNCATE", "DDL", (identity,))
-        return _head_facts(sql, "tsql TRUNCATE scope is opaque", dialect=dialect)
-
-    if dialect in {
-        "duckdb",
-        "mysql",  # lint: allow-dialect-string: MySQL TRUNCATE takes exactly one table
-    } and isinstance(ast, exp.TruncateTable):
-        targets = ast.expressions
-        target = targets[0] if len(targets) == 1 else None
-        if isinstance(target, exp.Table) and isinstance(target.this, exp.Identifier):
-            identity = _named(target, SqlObjectType.TABLE, "altered")
-            if identity is not None:
-                return StatementFacts("TRUNCATE", "DDL", (identity,))
-
-    if isinstance(ast, (exp.Insert, exp.Update, exp.Delete)) or (
-        dialect in {"duckdb", "snowflake"}  # lint: allow-dialect-string: qualified MERGE facts
-        and isinstance(ast, exp.Merge)
-    ):
-        operation = type(ast).__name__.upper()
-        if dialect == "oracle":  # lint: allow-dialect-string: Oracle expression write targets
-            subject = ast.this
-            if isinstance(ast, exp.Insert) and isinstance(subject, exp.Schema):
-                subject = subject.this
-            if isinstance(ast, exp.Delete) and not subject:
-                targets = ast.args.get("tables") or []
-                subject = targets[0] if len(targets) == 1 else None
-            alias = subject.args.get("alias") if isinstance(subject, exp.Table) else None
-            # Older sqlglot reads partition restrictions as aliases (INSERT loses the arguments),
-            # newer versions as a `partition` argument: prove the target by its shape instead.
-            restricted_alias = alias is not None and (
-                alias.args.get("columns")
-                or (
-                    alias.name.upper() in {"PARTITION", "SUBPARTITION"}
-                    and not alias.this.args.get("quoted")
-                )
-            )
-            plain_table = isinstance(subject, exp.Table) and not any(
-                value
-                for key, value in subject.args.items()
-                if key not in {"this", "db", "catalog", "alias"}
-            )
-            # `DELETE t FROM u` names a target list apart from its source.
-            split_delete = isinstance(ast, exp.Delete) and ast.this and ast.args.get("tables")
-            if not (
-                plain_table
-                and isinstance(subject.this, exp.Identifier)
-                and subject.name
-                and not restricted_alias
-                and not split_delete
-            ):
-                return StatementFacts(
-                    operation,
-                    "DML",
-                    diagnostic="oracle mutation target is not a direct named table",
-                )
-        if (
-            dialect == "mysql"  # lint: allow-dialect-string: MySQL permits multi-target mutations
-            and _mysql_unresolved_mutation_target(ast)
-        ):
-            return StatementFacts(
-                operation, "DML", diagnostic="mysql mutation has multiple or unproven targets"
-            )
-        table = _dml_target_table(ast)
-        if dialect == "snowflake" and (  # lint: allow-dialect-string: unread target
-            table is None or not table.name
-        ):
-            return StatementFacts(
-                operation, "DML", diagnostic="snowflake mutation target is not read"
-            )
-        if (
-            dialect == "snowflake"  # lint: allow-dialect-string: MERGE actions must be read
-            and isinstance(ast, exp.Merge)
-            and (
-                not _sqlglot_events(ast)
-                # A CTE named like the target leaves it unsaid which of the two is written.
-                or any(
-                    cte.alias.lower() == table.name.lower()
-                    for cte in ast.find_all(exp.CTE)
-                    if table is not None and not table.db
-                )
-            )
-        ):
-            return StatementFacts(
-                operation, "DML", diagnostic="snowflake MERGE actions or CTE scopes are not read"
-            )
-        if (
-            dialect == "mysql"  # lint: allow-dialect-string: MySQL modifier words are not tables
-            and not isinstance(ast, exp.Delete)  # DELETE's table follows FROM
-            and table is not None
-            and isinstance(table.this, exp.Identifier)
-            and not table.this.args.get("quoted")
-            and not table.db
-            and table.name.upper() in MYSQL_DML_MODIFIER_WORDS[operation].split("|")
-        ):
-            return StatementFacts(
-                operation, "DML", diagnostic="mysql modifier word read where a table belongs"
-            )
-        identity = _named(table, SqlObjectType.TABLE, "altered") if table else None
-        target = (
-            ".".join(part for part in (table.catalog, table.db, table.name) if part)
-            if table
-            else None
-        )
-        where = ast.args.get("where")
-        predicate_node = where.this if isinstance(where, exp.Where) else None
-        if predicate_node is not None:
-            if dialect in {"oracle", "snowflake"}:  # lint: allow-dialect-string: as written
-                predicate_node = _oracle_as_written(predicate_node)
-        predicate = predicate_node.sql(dialect=dialect) if predicate_node is not None else None
-        events = _sqlglot_events(ast)
-        columns = tuple(_sqlglot_updated_columns(ast))
-        skipped_references: Tuple[exp.Expression, ...] = (table,) if table is not None else ()
-        if dialect == "tsql":  # lint: allow-dialect-string: write aliases are not source tables
-            if isinstance(ast, exp.Update) and isinstance(ast.this, exp.Table):
-                skipped_references += (ast.this,)
-            if isinstance(ast, exp.Delete):
-                skipped_references += tuple(ast.args.get("tables") or [])
-        if (
-            dialect == "mysql"  # lint: allow-dialect-string: MySQL DELETE target lists are writes
-            and isinstance(ast, exp.Delete)
-        ):
-            # DELETE's target list names write targets, not additional read sources.
-            skipped_references += tuple(ast.args.get("tables") or [])
-        references = (
-            _merge_referenced(ast, dialect == "snowflake")  # lint: allow-dialect-string: folding
-            if isinstance(ast, exp.Merge)
-            else _referenced(ast, skipped_references)
-        )
-        target_table = table
-        if table is not None and (
-            table.args.get("alias") or table.args.get("joins") or table.args.get("only")
-        ):
-            # ``target_sql`` is a table reference a consumer interpolates into raw SQL, so it
-            # never carries the alias, in any dialect.
-            target_table = table.copy()
-            target_table.set("alias", None)
-            target_table.set("joins", None)
-            target_table.set("only", None)
-        if (
-            dialect in {"oracle", "snowflake"}  # lint: allow-dialect-string: spelling
-            and target_table is not None
-        ):
-            target_table = _oracle_as_written(target_table)
-        snowflake_overwrite = (
-            dialect == "snowflake"  # lint: allow-dialect-string: INSERT OVERWRITE effect
-            and isinstance(ast, exp.Insert)
-            and ast.args.get("overwrite")
-        )
-        return StatementFacts(
-            operation,
-            "DML",
-            ((identity,) if identity else ()) + references,
-            target,
-            predicate,
-            affected_columns=columns,
-            events=frozenset(events) if events and not snowflake_overwrite else None,
-            diagnostic=(
-                "snowflake INSERT OVERWRITE replaces the target's existing rows"
-                if snowflake_overwrite
-                else None
-            ),
-            target_sql=target_table.sql(dialect=dialect) if target_table is not None else None,
-        )
-
-    if isinstance(ast, exp.Query):
-        if dialect in {
-            "postgres",  # lint: allow-dialect-string: PostgreSQL SELECT INTO
-            "tsql",  # lint: allow-dialect-string: T-SQL SELECT INTO
-        }:
-            into = _select_into_table(ast)
-            if into is not None:
-                created = _named(into, SqlObjectType.TABLE, "created")
-                if created is not None:
-                    sources = _referenced(ast, tuple(into.find_all(exp.Table)))
-                    return StatementFacts("SELECT", "DML", (created,) + sources)
-        return StatementFacts("SELECT", "QUERY", _referenced(ast), events=frozenset())
-    if dialect in _GRANT_DIALECTS and isinstance(ast, (exp.Grant, exp.Revoke)):
-        return _grant_facts(ast, sql, dialect)
+    for rule in _STATEMENT_RULES:
+        facts = rule(ast, sql, dialect)
+        if facts is not None:
+            return facts
     return _head_facts(
         sql, f"{dialect} {type(ast).__name__} has no statement facts mapping", dialect=dialect
     )
