@@ -5,12 +5,15 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, List, Optional
+from typing import Any, Callable, List, Optional, Tuple
 
 from dblift.core.exceptions import TransactionStatementError
 from dblift.core.sql_parser.statement import Statement, executable_records, execution_strings
 from dblift.core.sql_parser.statement import execution_units as unit_texts
 from dblift.core.utils.row_access import strip_leading_comments
+
+# (index, normalised text, transaction kind or None) of one executable statement.
+_Classified = Tuple[int, str, Optional[str]]
 
 
 @dataclass(frozen=True)
@@ -144,69 +147,22 @@ def neutralise_transaction_statements(
     from dblift.db.provider_registry import ProviderRegistry
 
     quirks = ProviderRegistry.get_quirks(dialect.lower())
-    if records is not None and execution_strings(records) != statements:
-        raise TransactionStatementError(
-            f"{script_name}: execution strings do not match the supplied scanner records; "
-            "none of its statements were executed"
-        )
-    if (
-        records is not None
-        and record_policy_texts is not None
-        and len(record_policy_texts) != len(records)
-    ):
-        raise TransactionStatementError(
-            f"{script_name}: scanner policy views do not match the supplied scanner records; "
-            "none of its statements were executed"
-        )
-    policy_texts: List[Optional[str]] = [None] * len(statements)
-    if records is not None and record_policy_texts is not None:
-        policy_texts = [
-            policy_text
-            for record, policy_text in zip(records, record_policy_texts)
-            if record.kind in ("sql", "copy_stdin")
-            or (record.kind == "directive" and record.execution_text is not None)
-            for _ in range(record.repeat)
-        ]
+    _refuse_unmatched_records(statements, script_name, records, record_policy_texts)
+    policy_texts = _record_policy_texts(statements, records, record_policy_texts)
     prepared = PreparedStatements(statements, policy_texts) if records is not None else statements
     patterns = quirks.transaction_control_sql_patterns
     if not patterns:
-        parser = _script_parser(dialect.lower())
-        if records is None:
-            if not content or parser is None or not hasattr(parser, "split"):
-                return statements
-            records = parser.split(content)
-        sent = 0  # how many strings the records before this one are sent as
-        for record in records:
-            index, sent = sent, sent + len(execution_strings([record]))
-            if not (executable_records([record]) and record.multi):
-                continue
-            parts = record.analysis_statements or (record.text,)
-            if len(parts) < 2:
-                continue
-            for part in parts:
-                text = re.sub(r"\s+", " ", _without_comments(quirks, part)).upper()
-                if re.match(r"^(?:BEGIN|START TRANSACTION|COMMIT|ROLLBACK)\b", text):
-                    where = _position(statements, index, dialect, content, records)
-                    raise TransactionStatementError(
-                        f"{script_name}, {where}: {text.rstrip(';')} manages the transaction "
-                        "inside one execution unit, so none of its statements were executed. "
-                        "Remove it from the combined unit."
-                    )
-        return prepared
+        return _refuse_transaction_control_in_units(
+            statements,
+            prepared,
+            quirks,
+            dialect=dialect,
+            script_name=script_name,
+            content=content,
+            records=records,
+        )
     # (index, normalised text, kind) of every executable statement.
-    executable = []
-    for index, statement in enumerate(statements):
-        policy_text = policy_texts[index]
-        text = re.sub(
-            r"\s+",
-            " ",
-            (
-                policy_text.strip()
-                if policy_text is not None
-                else _without_comments(quirks, statement)
-            ),
-        ).upper()
-        executable.append((index, text, next((k for p, k in patterns if re.match(p, text)), None)))
+    executable = _classified_statements(statements, policy_texts, quirks, patterns)
     marked = [entry for entry in executable if entry[2]]
     if not marked:
         return prepared
@@ -221,30 +177,161 @@ def neutralise_transaction_statements(
     if first[2] == "begin" and last[2] == "end" and first is not last:
         offenders = [entry for entry in marked if entry is not first and entry is not last]
         if not offenders:
-            for entry in executable[1:-1]:
-                reason = classify_execution_statement(
-                    statements[entry[0]], dialect=dialect, policy_text=policy_texts[entry[0]]
-                ).transaction_reason
-                if reason:
-                    raise refuse(
-                        entry,
-                        f"cannot stay inside the envelope: {reason}. The "
-                        f"{first[1].rstrip(';')} ... {last[1].rstrip(';')} around it cannot be "
-                        "dropped; remove the envelope.",
-                    )
+            _refuse_what_cannot_stay_enveloped(
+                executable, statements, policy_texts, dialect, refuse
+            )
             log.warning(
                 f"Dropped {first[1].rstrip(';').rstrip()} and {last[1].rstrip(';').rstrip()} "
                 f"from {script_name}: dblift runs the script in one transaction of its own"
             )
-            kept = [i for i in range(len(statements)) if i not in (first[0], last[0])]
-            return PreparedStatements(
-                [statements[i] for i in kept], [policy_texts[i] for i in kept]
-            )
+            return _without_envelope(statements, policy_texts, first, last)
     else:
         offenders = [entry for entry in marked if entry is not first or entry[2] != "begin"]
     offender = (offenders or marked)[0]
+    raise _offender_refusal(offender, first, patterns, refuse)
+
+
+def _refuse_unmatched_records(
+    statements: List[str],
+    script_name: str,
+    records: Optional[List[Statement]],
+    record_policy_texts: Optional[List[Optional[str]]],
+) -> None:
+    """Refuse records that differ from what execution sends, or policy views not one per record."""
+    if records is not None and execution_strings(records) != statements:
+        raise TransactionStatementError(
+            f"{script_name}: execution strings do not match the supplied scanner records; "
+            "none of its statements were executed"
+        )
+    if (
+        records is not None
+        and record_policy_texts is not None
+        and len(record_policy_texts) != len(records)
+    ):
+        raise TransactionStatementError(
+            f"{script_name}: scanner policy views do not match the supplied scanner records; "
+            "none of its statements were executed"
+        )
+
+
+def _record_policy_texts(
+    statements: List[str],
+    records: Optional[List[Statement]],
+    record_policy_texts: Optional[List[Optional[str]]],
+) -> List[Optional[str]]:
+    """One scanner policy view per execution string; all ``None`` without records or views."""
+    if records is None or record_policy_texts is None:
+        return [None] * len(statements)
+    return [
+        policy_text
+        for record, policy_text in zip(records, record_policy_texts)
+        if record.kind in ("sql", "copy_stdin")
+        or (record.kind == "directive" and record.execution_text is not None)
+        for _ in range(record.repeat)
+    ]
+
+
+def _refuse_transaction_control_in_units(
+    statements: List[str],
+    prepared: List[str],
+    quirks: object,
+    *,
+    dialect: str,
+    script_name: str,
+    content: str,
+    records: Optional[List[Statement]],
+) -> List[str]:
+    """*prepared*, unless one combined execution unit manages the transaction itself."""
+    parser = _script_parser(dialect.lower())
+    if records is None:
+        if not content or parser is None or not hasattr(parser, "split"):
+            return statements
+        records = parser.split(content)
+    sent = 0  # how many strings the records before this one are sent as
+    for record in records:
+        index, sent = sent, sent + len(execution_strings([record]))
+        if not (executable_records([record]) and record.multi):
+            continue
+        parts = record.analysis_statements or (record.text,)
+        if len(parts) < 2:
+            continue
+        for part in parts:
+            text = re.sub(r"\s+", " ", _without_comments(quirks, part)).upper()
+            if re.match(r"^(?:BEGIN|START TRANSACTION|COMMIT|ROLLBACK)\b", text):
+                where = _position(statements, index, dialect, content, records)
+                raise TransactionStatementError(
+                    f"{script_name}, {where}: {text.rstrip(';')} manages the transaction "
+                    "inside one execution unit, so none of its statements were executed. "
+                    "Remove it from the combined unit."
+                )
+    return prepared
+
+
+def _classified_statements(
+    statements: List[str],
+    policy_texts: List[Optional[str]],
+    quirks: object,
+    patterns: Tuple[Tuple[str, str], ...],
+) -> List[_Classified]:
+    """``(index, normalised text, transaction kind or None)`` of each statement."""
+    executable = []
+    for index, statement in enumerate(statements):
+        policy_text = policy_texts[index]
+        text = re.sub(
+            r"\s+",
+            " ",
+            (
+                policy_text.strip()
+                if policy_text is not None
+                else _without_comments(quirks, statement)
+            ),
+        ).upper()
+        executable.append((index, text, next((k for p, k in patterns if re.match(p, text)), None)))
+    return executable
+
+
+def _refuse_what_cannot_stay_enveloped(
+    executable: List[_Classified],
+    statements: List[str],
+    policy_texts: List[Optional[str]],
+    dialect: str,
+    refuse: Callable[[_Classified, str], TransactionStatementError],
+) -> None:
+    """Refuse the first enveloped statement that cannot run inside a transaction."""
+    first, last = executable[0], executable[-1]
+    for entry in executable[1:-1]:
+        reason = classify_execution_statement(
+            statements[entry[0]], dialect=dialect, policy_text=policy_texts[entry[0]]
+        ).transaction_reason
+        if reason:
+            raise refuse(
+                entry,
+                f"cannot stay inside the envelope: {reason}. The "
+                f"{first[1].rstrip(';')} ... {last[1].rstrip(';')} around it cannot be "
+                "dropped; remove the envelope.",
+            )
+
+
+def _without_envelope(
+    statements: List[str],
+    policy_texts: List[Optional[str]],
+    first: _Classified,
+    last: _Classified,
+) -> PreparedStatements:
+    """The statements and policy views between the envelope's first and last statements."""
+    kept = [i for i in range(len(statements)) if i not in (first[0], last[0])]
+    return PreparedStatements([statements[i] for i in kept], [policy_texts[i] for i in kept])
+
+
+def _offender_refusal(
+    offender: _Classified,
+    first: _Classified,
+    patterns: Tuple[Tuple[str, str], ...],
+    refuse: Callable[[_Classified, str], TransactionStatementError],
+) -> TransactionStatementError:
+    """The refusal of a transaction statement that does not form a droppable envelope."""
     if offender[2] == "begin_other" and offender is first:
-        raise refuse(
+        return refuse(
             offender,
             "cannot stand in for dblift's transaction, which it opens itself for each script: "
             "only a plain BEGIN [TRANSACTION] can open a script that is closed by COMMIT or END. "
@@ -256,7 +343,7 @@ def neutralise_transaction_statements(
     )
     if any(kind == "begin" for _, kind in patterns) and any(kind == "end" for _, kind in patterns):
         explanation += "; a script that is only BEGIN ... COMMIT around its whole body is accepted"
-    raise refuse(offender, explanation + ".")
+    return refuse(offender, explanation + ".")
 
 
 def _without_comments(quirks: Any, statement: str, *, blanks: Optional[str] = None) -> str:

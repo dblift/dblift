@@ -17,6 +17,7 @@ from dblift.core.sql_parser.client_directives import classify_directive, is_free
 from dblift.core.sql_parser.delimiter_script import DelimiterScript
 from dblift.core.sql_parser.lexical_spec import (
     BOM,
+    BatchScriptRules,
     DirectiveAction,
     LexicalSpec,
     SegmentScriptRules,
@@ -652,13 +653,27 @@ class LexicalTokenizer(BaseTokenizer):
                 return directive
 
         if self._batches is not None:
-            self._token_start, self._token_line = self.pos, self.line
-            if self.pos >= self._seg_end:
-                self._enter_segment()
+            separator = self._batch_line_token(self._batches)
+            if separator is not None:
+                return separator
 
-        if self._batches is not None and self._line_head and self.peek(2) not in ("--", "/*"):
+        char = self.peek()
+        token = self._word_or_client_command_token(char)
+        if token is None:
+            token = self._comment_quote_or_placeholder_token(char)
+        if token is None:
+            return self._parameter_number_or_symbol_token(char)
+        return token
+
+    def _batch_line_token(self, batches: BatchScriptRules) -> Optional[Token]:
+        """Enter the segment at the cursor; a client command at a line head is a separator."""
+        self._token_start, self._token_line = self.pos, self.line
+        if self.pos >= self._seg_end:
+            self._enter_segment()
+
+        if self._line_head and self.peek(2) not in ("--", "/*"):
             count = read_command(
-                self._batches,
+                batches,
                 self.spec.client_name,
                 self.sql,
                 self.pos,
@@ -668,11 +683,12 @@ class LexicalTokenizer(BaseTokenizer):
             if count is not None:
                 return self._separator_token()
 
-        if self._batches is not None and not self._seg_checked:
+        if not self._seg_checked:
             self._check_segment()
+        return None
 
-        char = self.peek()
-
+    def _word_or_client_command_token(self, char: str) -> Optional[Token]:
+        """A plain word, a combining terminator or a client meta-command at the cursor."""
         # Plain code has no quote, comment or directive opener. Keep its source
         # span in the shared scanner and adapt it to the public Token contract.
         if char.isascii() and (char.isalpha() or char == "_"):
@@ -709,7 +725,13 @@ class LexicalTokenizer(BaseTokenizer):
             )
         ):
             return self._handle_meta_command()
+        return None
 
+    def _comment_quote_or_placeholder_token(self, char: str) -> Optional[Token]:
+        """A ``//`` comment, a placeholder or a quoted identifier at the cursor.
+
+        Refuses a tagged dollar quote where the dialect has only ``$$``.
+        """
         if self.spec.slash_line_comments and self.peek(2) == "//":
             return self._handle_comment()
 
@@ -733,7 +755,10 @@ class LexicalTokenizer(BaseTokenizer):
         # Check for double-quoted identifier BEFORE other checks
         if char == self.spec.quoted_identifier:
             return self._handle_quoted_identifier()
+        return None
 
+    def _parameter_number_or_symbol_token(self, char: str) -> Optional[Token]:
+        """A positional parameter, a number, a ``;`` or a symbol; else the base scanner's token."""
         # '$' that does not open a dollar-quote: a positional parameter ($1)
         # or a stray '$'.
         prefix = self.spec.parameter_prefix
