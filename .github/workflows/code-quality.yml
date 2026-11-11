@@ -15,6 +15,10 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    env:
+      # Exact tool versions, as in unit-tests.yml: the complexity ceiling compares
+      # radon scores for equality, so a radon release must not change the result.
+      PIP_CONSTRAINT: ${{ github.workspace }}/constraints-ci.txt
 
     steps:
       - uses: actions/checkout@v6
@@ -54,6 +58,9 @@ jobs:
 
       - name: Structural debt (ratchet)
         run: python scripts/check_debt_ratchet.py
+
+      - name: Per-function complexity ceiling
+        run: python scripts/check_complexity_ceiling.py
 
       - name: Check public OSS surface and the MCP stdio round trip
         run: |
