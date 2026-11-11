@@ -5,7 +5,7 @@ Undo command implementation.
 from contextlib import ExitStack
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 
 if TYPE_CHECKING:
     pass
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 from dblift.core.logger.results import MigrationInfo, MigrationSqlInfo, UndoResult
 from dblift.core.migration.formats.migration_format import MigrationFormat
 from dblift.core.migration.migration import Migration
+from dblift.core.migration.state.undo_plan import UndoPlan
 from dblift.core.seams.runtime_checks import SqlPreflightError, registered_checks
 
 from ._script_runner import ScriptRunner, ScriptRunPolicy
@@ -98,6 +99,158 @@ class UndoCommand(BaseCommand):
             self._run_error_handler("undo", lambda: self._fire("afterUndoError"))
         return False
 
+    def _undo_cannot_start(self, lock: ExitStack, dry_run: bool, result: UndoResult) -> bool:
+        """Whether undo stops before reading its plan; the migration lock is taken on *lock*.
+
+        Without a history table there is nothing to undo; the lock would create
+        objects in a schema that was never migrated. A dry run never locks.
+        """
+        if not dry_run and not self.history_manager.has_history_table:
+            self.log.info("No migrations to undo")
+            result.complete()
+            return True
+
+        if not dry_run and not lock.enter_context(self._migration_lock()):
+            self.log.error(MIGRATION_LOCK_REFUSAL)
+            result.set_error(MIGRATION_LOCK_REFUSAL)
+            return True
+        return False
+
+    def _accepted_undo_plan(
+        self, plan: UndoPlan, result: UndoResult, target_version: Optional[str]
+    ) -> Optional[List[Tuple[Migration, Migration]]]:
+        """Report *plan*; return its (migration, undo script) pairs, or None when undo stops."""
+        # Store current schema version in result for HTML reports
+        if plan.current_version:
+            result.current_schema_version = plan.current_version
+
+        if plan.refusal and plan.missing_undo_script is None:
+            result.set_error(plan.refusal)
+            return None
+
+        if plan.group_additions:
+            if plan.target_boundary_in_group:
+                self.log.info(
+                    "--target-version %s falls inside a group of migrations written "
+                    "as one unit; undoing %d additional migration(s) too: %s"
+                    % (
+                        target_version,
+                        len(plan.group_additions),
+                        ", ".join(str(m.version) for m in plan.group_additions),
+                    )
+                )
+            else:
+                self.log.info(
+                    "Undoing %d additional migration(s) written as one group with %s: %s"
+                    % (
+                        len(plan.group_additions),
+                        plan.selected[-1].script_name,
+                        ", ".join(str(m.version) for m in plan.group_additions),
+                    )
+                )
+
+        if not plan.selected:
+            self.log.info("No migrations to undo")
+            result.complete()
+            return None
+
+        self.log.info(f"Found {len(plan.selected)} migration(s) to undo")
+
+        if plan.refusal:
+            self.log.error(plan.refusal)
+            result.set_error(plan.refusal)
+            return None
+
+        return [(step.migration, step.undo_script) for step in plan.steps]
+
+    def _undo_scripts_have_sql(
+        self, undo_plan: List[Tuple[Migration, Migration]], result: UndoResult
+    ) -> bool:
+        """Whether every SQL undo script has executable SQL; a failure is set on *result*."""
+        for _, undo_migration in undo_plan:
+            if undo_migration.format != MigrationFormat.SQL:
+                continue
+            statements = self.execution_engine.get_executable_sql_statements(undo_migration, result)
+            if result.error_message:
+                return False
+            if not statements:
+                result.set_error(f"Undo script {undo_migration.script_name} has no executable SQL")
+                return False
+        return True
+
+    def _dry_run_undo(
+        self, undo_plan: List[Tuple[Migration, Migration]], result: UndoResult, show_sql: bool
+    ) -> None:
+        """Prepare each undo script as the real undo would; list them unless one fails."""
+        for migration, undo_migration in undo_plan:
+            # Prepared even without --show-sql: the real undo refuses a script
+            # at this step.
+            if show_sql and undo_migration.format == MigrationFormat.PYTHON:
+                self._add_empty_visible_sql(undo_migration, result)
+            elif show_sql:
+                self._add_visible_sql(undo_migration, result)
+            else:
+                self.execution_engine.get_executable_sql_statements(undo_migration, result)
+            if result.error_message:
+                return
+
+        self.log.info("DRY RUN: Would undo the following migrations:")
+        for migration, _ in undo_plan:
+            self.log.info(f"  - {migration.script_name}")
+        # Note: Callbacks are NOT executed in dry-run mode
+
+    def _fire_before_undo(self, result: UndoResult) -> bool:
+        """Fire ``beforeUndo``; whether undo may go on (a failure is set on *result*).
+
+        A SQL preflight refusal propagates; any other failure fires ``afterUndoError``.
+        """
+        try:
+            self._fire("beforeUndo")
+        except SqlPreflightError:
+            raise
+        except Exception as e:
+            self.log.error(f"beforeUndo callback failed: {e}")
+            result.set_error(f"beforeUndo callback failed: {e}")
+            self._fire("afterUndoError")
+            result.complete()
+            return False
+        return True
+
+    def _run_undo_scripts(
+        self, undo_plan: List[Tuple[Migration, Migration]], result: UndoResult, show_sql: bool
+    ) -> None:
+        """Run the undo scripts in order, stopping at the first failure or a lost lock."""
+        runner = ScriptRunner(self, UNDO_POLICY)
+        for migration, undo_migration in undo_plan:
+            if self._migration_lock_lost():
+                # Another process may have taken the lock over; the undo in
+                # flight could not be interrupted safely, the next must not start.
+                message = (
+                    "The migration lock was lost (taken over by another process or "
+                    f"not renewable); stopping before {undo_migration.script_name}"
+                )
+                self.log.error(message)
+                result.set_error(message)
+                break
+            if show_sql:
+                self._add_visible_sql(undo_migration, result)
+                if result.error_message:
+                    break
+
+            success = runner.run(
+                undo_migration,
+                result,
+                event_data={
+                    "script": undo_migration.script_name,
+                    "version": migration.version,
+                    "description": f"Undo: {migration.description}",
+                    "type": "UNDO_SQL",
+                },
+                on_success=partial(self._record_undone, migration, undo_migration, result),
+            )
+            if not success:
+                break
+
     def execute(
         self,
         scripts_dir: Path,
@@ -130,16 +283,7 @@ class UndoCommand(BaseCommand):
             # migration cannot run on the schema in between. Dry run never locks.
             # Released here, before the lifecycle logs the footer.
             with ExitStack() as lock:
-                # Without a history table there is nothing to undo; the lock would
-                # create objects in a schema that was never migrated.
-                if not dry_run and not self.history_manager.has_history_table:
-                    self.log.info("No migrations to undo")
-                    result.complete()
-                    return
-
-                if not dry_run and not lock.enter_context(self._migration_lock()):
-                    self.log.error(MIGRATION_LOCK_REFUSAL)
-                    result.set_error(MIGRATION_LOCK_REFUSAL)
+                if self._undo_cannot_start(lock, dry_run, result):
                     return
 
                 lock.push(self._fire_error_callback_while_locked)
@@ -168,62 +312,12 @@ class UndoCommand(BaseCommand):
                     migration_rules=self.migration_rules,
                 )
 
-                # Store current schema version in result for HTML reports
-                if plan.current_version:
-                    result.current_schema_version = plan.current_version
-
-                if plan.refusal and plan.missing_undo_script is None:
-                    result.set_error(plan.refusal)
+                undo_plan = self._accepted_undo_plan(plan, result, target_version)
+                if undo_plan is None:
                     return
 
-                if plan.group_additions:
-                    if plan.target_boundary_in_group:
-                        self.log.info(
-                            "--target-version %s falls inside a group of migrations written "
-                            "as one unit; undoing %d additional migration(s) too: %s"
-                            % (
-                                target_version,
-                                len(plan.group_additions),
-                                ", ".join(str(m.version) for m in plan.group_additions),
-                            )
-                        )
-                    else:
-                        self.log.info(
-                            "Undoing %d additional migration(s) written as one group with %s: %s"
-                            % (
-                                len(plan.group_additions),
-                                plan.selected[-1].script_name,
-                                ", ".join(str(m.version) for m in plan.group_additions),
-                            )
-                        )
-
-                if not plan.selected:
-                    self.log.info("No migrations to undo")
-                    result.complete()
+                if not self._undo_scripts_have_sql(undo_plan, result):
                     return
-
-                self.log.info(f"Found {len(plan.selected)} migration(s) to undo")
-
-                if plan.refusal:
-                    self.log.error(plan.refusal)
-                    result.set_error(plan.refusal)
-                    return
-
-                undo_plan = [(step.migration, step.undo_script) for step in plan.steps]
-
-                for _, undo_migration in undo_plan:
-                    if undo_migration.format != MigrationFormat.SQL:
-                        continue
-                    statements = self.execution_engine.get_executable_sql_statements(
-                        undo_migration, result
-                    )
-                    if result.error_message:
-                        return
-                    if not statements:
-                        result.set_error(
-                            f"Undo script {undo_migration.script_name} has no executable SQL"
-                        )
-                        return
 
                 if not dry_run and (
                     not self._capture_objects or registered_checks("migration.preflight_sql")
@@ -234,69 +328,15 @@ class UndoCommand(BaseCommand):
                     self._preflight_execution_sql([undo for _, undo in undo_plan] + callbacks)
 
                 if dry_run:
-                    for migration, undo_migration in undo_plan:
-                        # Prepared even without --show-sql: the real undo refuses a script
-                        # at this step.
-                        if show_sql and undo_migration.format == MigrationFormat.PYTHON:
-                            self._add_empty_visible_sql(undo_migration, result)
-                        elif show_sql:
-                            self._add_visible_sql(undo_migration, result)
-                        else:
-                            self.execution_engine.get_executable_sql_statements(
-                                undo_migration, result
-                            )
-                        if result.error_message:
-                            return
-
-                    self.log.info("DRY RUN: Would undo the following migrations:")
-                    for migration, _ in undo_plan:
-                        self.log.info(f"  - {migration.script_name}")
-                    # Note: Callbacks are NOT executed in dry-run mode
+                    self._dry_run_undo(undo_plan, result, show_sql)
                     return
 
                 # Execute beforeUndo callbacks
-                try:
-                    self._fire("beforeUndo")
-                except SqlPreflightError:
-                    raise
-                except Exception as e:
-                    self.log.error(f"beforeUndo callback failed: {e}")
-                    result.set_error(f"beforeUndo callback failed: {e}")
-                    self._fire("afterUndoError")
-                    result.complete()
+                if not self._fire_before_undo(result):
                     return
 
                 # Execute undo for each migration
-                runner = ScriptRunner(self, UNDO_POLICY)
-                for migration, undo_migration in undo_plan:
-                    if self._migration_lock_lost():
-                        # Another process may have taken the lock over; the undo in
-                        # flight could not be interrupted safely, the next must not start.
-                        message = (
-                            "The migration lock was lost (taken over by another process or "
-                            f"not renewable); stopping before {undo_migration.script_name}"
-                        )
-                        self.log.error(message)
-                        result.set_error(message)
-                        break
-                    if show_sql:
-                        self._add_visible_sql(undo_migration, result)
-                        if result.error_message:
-                            break
-
-                    success = runner.run(
-                        undo_migration,
-                        result,
-                        event_data={
-                            "script": undo_migration.script_name,
-                            "version": migration.version,
-                            "description": f"Undo: {migration.description}",
-                            "type": "UNDO_SQL",
-                        },
-                        on_success=partial(self._record_undone, migration, undo_migration, result),
-                    )
-                    if not success:
-                        break
+                self._run_undo_scripts(undo_plan, result, show_sql)
 
                 # If we reach here, all undo migrations completed successfully
                 # Execute afterUndo callbacks
