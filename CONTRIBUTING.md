@@ -89,3 +89,9 @@ SQLite history table, the `info --format json` keys or the exit codes change.
 `scripts/check_debt_ratchet.py` fails when a structural-debt count grows. Fix
 the new occurrence rather than raising the cap; when your change lowers a
 count, lower the cap in `.debt-ratchet.json` in the same pull request.
+
+`scripts/check_complexity_ceiling.py` fails when a function's cyclomatic
+complexity exceeds the ceiling in `.complexity-ceiling.json`. Split the
+function rather than listing it; when you simplify a listed hotspot, lower its
+entry to the new value, or remove it once it is at or under the ceiling. A
+renamed or moved function's entry moves to its new key at the same value.

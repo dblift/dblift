@@ -105,6 +105,9 @@ echo -e "\n===== Public-API docstrings (zero tolerance, all of dblift/) ====="
 echo -e "\n===== Structural-debt ratchet ====="
 "$PYTHON_BIN" scripts/check_debt_ratchet.py || { echo "❌ Structural-debt ratchet exceeded."; exit_code=1; }
 
+echo -e "\n===== Per-function complexity ceiling ====="
+"$PYTHON_BIN" scripts/check_complexity_ceiling.py || { echo "❌ Complexity ceiling broken."; exit_code=1; }
+
 
 if [ $exit_code -eq 0 ]; then
     echo -e "\n✅ All code quality checks passed!"

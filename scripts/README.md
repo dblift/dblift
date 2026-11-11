@@ -11,8 +11,10 @@ repository workflow.
 
 This runs the same formatting, import ordering, flake8 (line length and import
 position included), mypy, AST-pattern and public-docstring checks used by CI,
-plus the structural-debt ratchet. All but the last scan every file under
-`dblift/` at zero tolerance. Run it from the repository root: a script whose
+plus the structural-debt ratchet and the per-function complexity ceiling
+(`.complexity-ceiling.json`: existing hotspots are listed at their exact value
+and may only shrink). All but the last two scan every file under `dblift/` at
+zero tolerance. Run it from the repository root: a script whose
 default root is missing exits non-zero instead of passing on an empty scan.
 
 ## Cutting a Release

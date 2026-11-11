@@ -28,9 +28,10 @@ jobs:
       - name: Report complexity
         run: radon cc dblift/ -s -a
 
-      # Backstop, not a target: only an F-ranked block fails the build. This is
-      # the strictest threshold the tree passes today (-bE would flag 21 blocks),
-      # so it catches new extremes without blocking on existing debt. Tighten a
-      # rank at a time as the hotspots are split.
+      # --max-absolute F never fails on a block: F is radon's worst rank, so no
+      # single function can exceed it. This step only bounds each module's
+      # average-complexity rank (E) and the overall average (B). Per-function
+      # limits are enforced by scripts/check_complexity_ceiling.py in the Code
+      # Quality workflow.
       - name: Enforce complexity ceiling
         run: xenon --max-absolute F --max-modules E --max-average B dblift/
