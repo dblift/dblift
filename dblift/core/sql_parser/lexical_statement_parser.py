@@ -397,23 +397,14 @@ class LexicalStatementParser(BaseStatementParser):
         newline = self.source.find("\n", pos)
         return newline + 1 if newline >= 0 else len(self.source)
 
-    def _record(
+    def _record_span(
         self,
         tokens: List[Token],
-        rendered: str,
+        first: Token,
         terminator: Optional[Token],
         end_pos: Optional[int],
-    ) -> Statement:
-        """Build the record for one rendered statement.
-
-        The record's text has the terminator stripped; ``execution_text`` is the rendered
-        statement with its terminator when that is what execution sends.
-        """
-        first = (
-            tokens[0]
-            if self.spec.sqlite_shell
-            else next(t for t in tokens if t.type != TokenType.COMMENT)
-        )
+    ) -> Tuple[Optional[int], int, Optional[int]]:
+        """Return the record's source start, its line and its source end."""
         source_start = (
             self._raw_segment_start
             if self.spec.raw_segment_records and self.source is not None
@@ -431,6 +422,21 @@ class LexicalStatementParser(BaseStatementParser):
         )
         if self._script is not None:
             source_end = self._script.record_end(tokens, terminator, source_end)
+        return source_start, line, source_end
+
+    def _combined_parts(
+        self,
+        tokens: List[Token],
+        first: Token,
+        rendered: str,
+        terminator: Optional[Token],
+    ) -> Tuple[List[Token], Optional[Tuple[str, ...]], str]:
+        """Find the combine terminators of a statement and the statements they join.
+
+        Returns the combinators, the analysis statements they separate (None when the
+        statement has none or there is no source) and the rendered text, with each
+        combinator sent as ``;`` when the source is known and unchanged otherwise.
+        """
         combinators = [
             t
             for t in tokens
@@ -438,7 +444,6 @@ class LexicalStatementParser(BaseStatementParser):
             and self.spec.combine_terminator
             and t.text == self.spec.combine_terminator
         ]
-        multi = bool(combinators)
         analysis_statements = None
         if combinators and self.source is not None:
             end = terminator.pos if terminator is not None else len(self.source)
@@ -457,6 +462,62 @@ class LexicalStatementParser(BaseStatementParser):
                 cursor = rel + len(t.text)
             parts.append(rendered[cursor:])
             rendered = "".join(parts)
+        return combinators, analysis_statements, rendered
+
+    def _copy_record(
+        self,
+        tokens: List[Token],
+        first: Token,
+        rendered: str,
+        terminator: Token,
+        *,
+        combinators: List[Token],
+        source_start: Optional[int],
+    ) -> Statement:
+        """Build the record of a COPY FROM STDIN header with its data block."""
+        if combinators:
+            raise UnsafeStatementSplitError(
+                "COPY FROM STDIN cannot be combined with another statement using psql \\;"
+            )
+        if self.source is None:
+            return Statement(text=rendered, line=first.line, terminator="\\.", kind="copy_stdin")
+        end = terminator.pos + len(terminator.text)
+        text = self.source[first.pos : end]
+        ended = self.source.startswith("\\.", end)
+        header_end = next(t.pos for t in tokens if t.type == TokenType.DELIMITER)
+        header = self.source[first.pos : header_end].strip(self.text_blanks)
+        return Statement(
+            text=text,
+            line=first.line,
+            terminator="\\." if ended else None,
+            kind="copy_stdin",
+            analysis_statements=(header,),
+            source_start=source_start,
+            source_end=self._line_end(end) if ended else end,
+        )
+
+    def _record(
+        self,
+        tokens: List[Token],
+        rendered: str,
+        terminator: Optional[Token],
+        end_pos: Optional[int],
+    ) -> Statement:
+        """Build the record for one rendered statement.
+
+        The record's text has the terminator stripped; ``execution_text`` is the rendered
+        statement with its terminator when that is what execution sends.
+        """
+        first = (
+            tokens[0]
+            if self.spec.sqlite_shell
+            else next(t for t in tokens if t.type != TokenType.COMMENT)
+        )
+        source_start, line, source_end = self._record_span(tokens, first, terminator, end_pos)
+        combinators, analysis_statements, rendered = self._combined_parts(
+            tokens, first, rendered, terminator
+        )
+        multi = bool(combinators)
         if terminator is None:
             return Statement(
                 text=rendered,
@@ -468,27 +529,13 @@ class LexicalStatementParser(BaseStatementParser):
                 source_end=source_end,
             )
         if terminator.type == TokenType.COPY_DATA:
-            if combinators:
-                raise UnsafeStatementSplitError(
-                    "COPY FROM STDIN cannot be combined with another statement using psql \\;"
-                )
-            if self.source is None:
-                return Statement(
-                    text=rendered, line=first.line, terminator="\\.", kind="copy_stdin"
-                )
-            end = terminator.pos + len(terminator.text)
-            text = self.source[first.pos : end]
-            ended = self.source.startswith("\\.", end)
-            header_end = next(t.pos for t in tokens if t.type == TokenType.DELIMITER)
-            header = self.source[first.pos : header_end].strip(self.text_blanks)
-            return Statement(
-                text=text,
-                line=first.line,
-                terminator="\\." if ended else None,
-                kind="copy_stdin",
-                analysis_statements=(header,),
+            return self._copy_record(
+                tokens,
+                first,
+                rendered,
+                terminator,
+                combinators=combinators,
                 source_start=source_start,
-                source_end=self._line_end(end) if ended else end,
             )
         text = rendered
         if text.endswith(terminator.text):
