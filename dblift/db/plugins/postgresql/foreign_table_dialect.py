@@ -9,7 +9,7 @@ from __future__ import annotations
 from sqlglot import exp
 from sqlglot.dialects.postgres import Postgres
 from sqlglot.parsers.postgres import PostgresParser
-from sqlglot.tokens import TokenType
+from sqlglot.tokens import Token, TokenType
 
 
 class ForeignTableOption(exp.Expression):
@@ -358,37 +358,59 @@ class ForeignTableParser(PostgresParser):
         if self._curr and self._curr.token_type == TokenType.STAR:
             return self._parse_as_command(start)
         action_index = self._index
-        action = None
+        action = self._foreign_table_action()
+        if action is not None:
+            if self._curr:
+                return self._parse_as_command(start)
+            return self._foreign_alter_node(table, exists, only, actions=[action])
+        node: exp.Alter | exp.Command | None = self._foreign_set_storage(
+            table, exists, only, action_index
+        )
+        if node is None:
+            node = self._foreign_table_options(start, table, exists, only)
+        if node is None:
+            node = self._foreign_column_options(start, table, exists, only)
+        if node is None:
+            node = self._foreign_add_with_options(table, exists, only)
+        if node is None:
+            node = self._foreign_alter_as_table(start, table_index)
+        return node
+
+    def _foreign_alter_node(
+        self, table: exp.Table, exists: bool | None, only: bool, **args: object
+    ) -> exp.Alter:
+        return self.expression(
+            exp.Alter(this=table, kind="FOREIGN TABLE", exists=exists, only=only, **args)
+        )
+
+    def _foreign_table_action(self) -> ForeignTableAction | None:
         if self._match_text_seq("SET", "SCHEMA"):
             schema = self._parse_id_var(any_token=False)
             if isinstance(schema, exp.Identifier) and schema.name:
-                action = ForeignTableAction(kind="SET SCHEMA", this=schema)
+                return ForeignTableAction(kind="SET SCHEMA", this=schema)
         elif self._match_text_seq("OWNER", "TO"):
             owner = self._parse_id_var(any_token=False)
             if isinstance(owner, exp.Identifier) and owner.name:
-                action = ForeignTableAction(kind="OWNER TO", this=owner)
+                return ForeignTableAction(kind="OWNER TO", this=owner)
         elif self._match_texts(("ENABLE", "DISABLE")):
             verb = self._prev.text.upper()
             if self._match_text_seq("TRIGGER"):
                 trigger = self._parse_id_var(any_token=False)
                 if isinstance(trigger, exp.Identifier) and trigger.name:
-                    action = ForeignTableAction(kind=f"{verb} TRIGGER", this=trigger)
+                    return ForeignTableAction(kind=f"{verb} TRIGGER", this=trigger)
         elif self._match_text_seq("NO", "INHERIT"):
             parent = self._foreign_table_target()
             if parent is not None:
-                action = ForeignTableAction(kind="NO INHERIT", parent=parent)
+                return ForeignTableAction(kind="NO INHERIT", parent=parent)
         elif self._match_text_seq("INHERIT"):
             parent = self._foreign_table_target()
             if parent is not None:
-                action = ForeignTableAction(kind="INHERIT", parent=parent)
-        if action is not None:
-            if self._curr:
-                return self._parse_as_command(start)
-            return self.expression(
-                exp.Alter(
-                    this=table, kind="FOREIGN TABLE", exists=exists, only=only, actions=[action]
-                )
-            )
+                return ForeignTableAction(kind="INHERIT", parent=parent)
+        return None
+
+    def _foreign_set_storage(
+        self, table: exp.Table, exists: bool | None, only: bool, action_index: int
+    ) -> exp.Alter | None:
         if self._match_text_seq("ALTER"):
             self._match(TokenType.COLUMN)
             column = self._parse_id_var(any_token=False)
@@ -399,27 +421,30 @@ class ForeignTableParser(PostgresParser):
                     and storage.name.upper() in {"PLAIN", "EXTERNAL", "EXTENDED", "MAIN"}
                     and not self._curr
                 ):
-                    return self.expression(
-                        exp.Alter(
-                            this=table,
-                            kind="FOREIGN TABLE",
-                            exists=exists,
-                            only=only,
-                            actions=[
-                                ForeignTableAction(kind="SET STORAGE", this=column, value=storage)
-                            ],
-                        )
+                    return self._foreign_alter_node(
+                        table,
+                        exists,
+                        only,
+                        actions=[
+                            ForeignTableAction(kind="SET STORAGE", this=column, value=storage)
+                        ],
                     )
             self._retreat(action_index)
+        return None
+
+    def _foreign_table_options(
+        self, start: Token, table: exp.Table, exists: bool | None, only: bool
+    ) -> exp.Alter | exp.Command | None:
         if self._curr and self._curr.text.upper() == "OPTIONS":
             options = self._foreign_options(alter=True)
             if options is None or self._curr:
                 return self._parse_as_command(start)
-            return self.expression(
-                exp.Alter(
-                    this=table, kind="FOREIGN TABLE", exists=exists, only=only, options=options
-                )
-            )
+            return self._foreign_alter_node(table, exists, only, options=options)
+        return None
+
+    def _foreign_column_options(
+        self, start: Token, table: exp.Table, exists: bool | None, only: bool
+    ) -> exp.Alter | exp.Command | None:
         if self._match_text_seq("ALTER"):
             self._match(TokenType.COLUMN)
             column = self._parse_id_var(any_token=False)
@@ -431,15 +456,17 @@ class ForeignTableParser(PostgresParser):
                 options = self._foreign_options(alter=True)
                 if options is None or self._curr:
                     return self._parse_as_command(start)
-                return self.expression(
-                    exp.Alter(
-                        this=table,
-                        kind="FOREIGN TABLE",
-                        exists=exists,
-                        only=only,
-                        actions=[ForeignColumnOptions(this=column, expressions=options)],
-                    )
+                return self._foreign_alter_node(
+                    table,
+                    exists,
+                    only,
+                    actions=[ForeignColumnOptions(this=column, expressions=options)],
                 )
+        return None
+
+    def _foreign_add_with_options(
+        self, table: exp.Table, exists: bool | None, only: bool
+    ) -> exp.Alter | None:
         if self._match_text_seq("ADD"):
             actions = self._parse_alter_table_add()
             if (
@@ -451,16 +478,12 @@ class ForeignTableParser(PostgresParser):
             ):
                 options = self._foreign_options(alter=True)
                 if options is not None and not self._curr:
-                    return self.expression(
-                        exp.Alter(
-                            this=table,
-                            kind="FOREIGN TABLE",
-                            exists=exists,
-                            only=only,
-                            actions=actions,
-                            options=options,
-                        )
+                    return self._foreign_alter_node(
+                        table, exists, only, actions=actions, options=options
                     )
+        return None
+
+    def _foreign_alter_as_table(self, start: Token, table_index: int) -> exp.Alter | exp.Command:
         self._retreat(table_index)
         self._foreign_alter = True
         self._foreign_unread_tail = False
