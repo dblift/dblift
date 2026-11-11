@@ -145,54 +145,12 @@ class SqlConstraint:
         """Check if two constraints are equal."""
         if not isinstance(other, SqlConstraint):
             return False
-        # Core: type, name, columns (or [] guards against None from from_dict etc.)
-        cols_self = self.column_names or []
-        cols_other = other.column_names or []
-        if not (
-            self.constraint_type == other.constraint_type
-            and (self.name or "").lower() == (other.name or "").lower()
-            and set(col.lower() for col in cols_self) == set(col.lower() for col in cols_other)
-        ):
-            return False
-        # FK target
-        if (self.reference_table or "").lower() != (other.reference_table or "").lower():
-            return False
-        if (self.reference_schema or "").lower() != (other.reference_schema or "").lower():
-            return False
-        ref_cols_self = self.reference_columns or []
-        ref_cols_other = other.reference_columns or []
-        if set(col.lower() for col in ref_cols_self) != set(col.lower() for col in ref_cols_other):
-            return False
-        # FK actions
-        if (self.on_delete or "").lower() != (other.on_delete or "").lower():
-            return False
-        if (self.on_update or "").lower() != (other.on_update or "").lower():
-            return False
-        # CHECK expression (str() guards against non-string driver-returned types)
-        if str(self.check_expression or "").strip() != str(other.check_expression or "").strip():
-            return False
-        # Constraint state (diff-relevant)
-        # is_enabled/is_validated: None = default = True (constraints are enabled/validated by
-        # default)
-        if _norm_constraint_enabled(self.is_enabled) != _norm_constraint_enabled(other.is_enabled):
-            return False
-        if _norm_constraint_enabled(self.is_validated) != _norm_constraint_enabled(
-            other.is_validated
-        ):
-            return False
-        # is_deferrable/initially_deferred: None = default = False (not deferrable by default)
-        if _norm_constraint_deferrable(self.is_deferrable) != _norm_constraint_deferrable(
-            other.is_deferrable
-        ):
-            return False
-        if _norm_constraint_deferrable(self.initially_deferred) != _norm_constraint_deferrable(
-            other.initially_deferred
-        ):
-            return False
-        # rely: None = default = False (NORELY)
-        if _norm_constraint_rely(self.rely) != _norm_constraint_rely(other.rely):
-            return False
-        return True
+        return (
+            _same_constraint_key(self, other)
+            and _same_reference(self, other)
+            and _same_actions_and_check(self, other)
+            and _same_constraint_state(self, other)
+        )
 
     def __hash__(self) -> int:
         """Return hash of the constraint — must be consistent with __eq__."""
@@ -308,3 +266,63 @@ class SqlConstraint:
             True if the property was explicitly defined, False otherwise
         """
         return bool(self.explicit_properties.get(property_name, False))
+
+
+def _same_constraint_key(a: SqlConstraint, b: SqlConstraint) -> bool:
+    """Compare type, name and columns (names case-insensitive, columns as a set)."""
+    # or [] guards against None from from_dict etc.
+    cols_self = a.column_names or []
+    cols_other = b.column_names or []
+    if not (
+        a.constraint_type == b.constraint_type
+        and (a.name or "").lower() == (b.name or "").lower()
+        and set(col.lower() for col in cols_self) == set(col.lower() for col in cols_other)
+    ):
+        return False
+    return True
+
+
+def _same_reference(a: SqlConstraint, b: SqlConstraint) -> bool:
+    """Compare the foreign-key target: table, schema and referenced columns."""
+    if (a.reference_table or "").lower() != (b.reference_table or "").lower():
+        return False
+    if (a.reference_schema or "").lower() != (b.reference_schema or "").lower():
+        return False
+    ref_cols_self = a.reference_columns or []
+    ref_cols_other = b.reference_columns or []
+    if set(col.lower() for col in ref_cols_self) != set(col.lower() for col in ref_cols_other):
+        return False
+    return True
+
+
+def _same_actions_and_check(a: SqlConstraint, b: SqlConstraint) -> bool:
+    """Compare the foreign-key actions and the CHECK expression."""
+    if (a.on_delete or "").lower() != (b.on_delete or "").lower():
+        return False
+    if (a.on_update or "").lower() != (b.on_update or "").lower():
+        return False
+    # str() guards against non-string driver-returned types
+    if str(a.check_expression or "").strip() != str(b.check_expression or "").strip():
+        return False
+    return True
+
+
+def _same_constraint_state(a: SqlConstraint, b: SqlConstraint) -> bool:
+    """Compare the diff-relevant state flags, each normalized to its default when None."""
+    # is_enabled/is_validated: None = default = True (constraints are enabled/validated by
+    # default)
+    if _norm_constraint_enabled(a.is_enabled) != _norm_constraint_enabled(b.is_enabled):
+        return False
+    if _norm_constraint_enabled(a.is_validated) != _norm_constraint_enabled(b.is_validated):
+        return False
+    # is_deferrable/initially_deferred: None = default = False (not deferrable by default)
+    if _norm_constraint_deferrable(a.is_deferrable) != _norm_constraint_deferrable(b.is_deferrable):
+        return False
+    if _norm_constraint_deferrable(a.initially_deferred) != _norm_constraint_deferrable(
+        b.initially_deferred
+    ):
+        return False
+    # rely: None = default = False (NORELY)
+    if _norm_constraint_rely(a.rely) != _norm_constraint_rely(b.rely):
+        return False
+    return True
