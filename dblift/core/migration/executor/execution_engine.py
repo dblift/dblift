@@ -79,6 +79,18 @@ def _is_ddl_statement_for_success_log(statement: str) -> bool:
     return head in {"CREATE", "ALTER", "DROP", "TRUNCATE", "COMMENT", "GRANT", "REVOKE", "RENAME"}
 
 
+def _record_callback_result_set(
+    record: Optional[CallbackExecution],
+    statement: str,
+    columns: List[str],
+    rows: List[List[object]],
+) -> None:
+    """Add one query result set to the callback record, when there is one."""
+    if record is not None:
+        record.result_sets.append({"statement": statement, "columns": columns, "rows": rows})
+        record.row_count += len(rows)
+
+
 class ExecutionEngine:
     """Handles the core execution of migrations and SQL statements."""
 
@@ -1143,15 +1155,7 @@ class ExecutionEngine:
         # Route non-SQL callbacks to the executor factory (mirrors execute_migration routing — B5
         # fix)
         if callback.format != MigrationFormat.SQL:
-            exec_result = self.executor_factory.execute(callback)
-            if not exec_result.success:
-                self.log.error(
-                    f"Python callback {callback.script_name} failed: {exec_result.error}"
-                )
-                raise CallbackExecutionError(
-                    f"Python callback {callback.script_name} failed: {exec_result.error}"
-                )
-            self.log.info(f"Python callback {callback.script_name} executed successfully")
+            self._execute_non_sql_callback(callback)
             return
 
         # A SQL callback on a dialect with no SQL DDL is the same mistake as a
@@ -1179,19 +1183,7 @@ class ExecutionEngine:
                 f"autocommit-only statements: {policy.reason}"
             )
 
-        transaction_started = False
-        if policy.transactional and isinstance(self.provider, TransactionalProvider):
-            try:
-                self.provider.begin_transaction()
-                transaction_started = True
-                self.log.debug(f"Started transaction for callback {callback.script_name}")
-            except Exception as e:
-                self.log.warning(
-                    f"Could not begin transaction for callback {callback.script_name}: {e}"
-                )
-                # Continue in the caller's open transaction, without managing it
-                if self.provider.is_caller_owned():
-                    self.provider.note_caller_work()
+        transaction_started = self._begin_callback_transaction(callback, policy)
 
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)
@@ -1211,160 +1203,218 @@ class ExecutionEngine:
                 # same unresolved token and re-interpret `${...}` text that legitimately
                 # came out of a resolved placeholder value (same rationale as the
                 # migration path in `_execute_statements`).
-
-                # Check what kind of SQL statement this is (DDL, DML, or query)
-                statement_type = self.sql_analyzer.get_statement_type(statement)
-
-                # Add more verbose debug logging about statement type
-                if (
-                    statement.strip().upper().startswith("CREATE VIEW")
-                    or "SELECT" in statement.upper()
-                ):
-                    self.log.debug(
-                        f"Callback statement classification: '{statement_type}' for statement: "
-                        f"{statement[:LOG_STATEMENT_PREVIEW_LENGTH]}"
-                        f"{'...' if len(statement) > LOG_STATEMENT_PREVIEW_LENGTH else ''}"
-                    )
-
-                # Execute statement using provider
-                masked = mask_string_literals(statement, self._probe_dialect_key())
-                self.log.debug(f"Executing callback SQL: {masked}")
-
-                try:
-                    if self.sql_execution_service:
-                        is_query, result_data = self.sql_execution_service.execute_statement(
-                            statement, autocommit=policy.autocommit_required
-                        )
-                        if is_query:
-                            if not isinstance(result_data, list):
-                                raise TypeError(
-                                    "Expected list for query result, got "
-                                    f"{type(result_data).__name__}"
-                                )
-                            row_count = len(result_data)
-                            self.log.info(f"Query executed successfully, {row_count} rows returned")
-                            columns, table_rows = rows_to_columns_and_values(result_data)
-                            if record is not None:
-                                record.result_sets.append(
-                                    {
-                                        "statement": statement,
-                                        "columns": columns,
-                                        "rows": table_rows,
-                                    }
-                                )
-                                record.row_count += len(table_rows)
-                            if result is not None and getattr(result, "show_query_results", False):
-                                result.add_query_result(
-                                    callback.script_name,
-                                    callback.version,
-                                    callback.description,
-                                    statement,
-                                    columns,
-                                    table_rows,
-                                )
-                                if table_rows:
-                                    presenter = presentation_for(self, self.log)
-                                    if presenter is not None:
-                                        presenter.present_query_result(self, columns, table_rows)
-                        else:
-                            rows_affected = result_data if isinstance(result_data, int) else -1
-                            if _is_ddl_statement_for_success_log(statement):
-                                self.log.info("Statement executed successfully")
-                            elif rows_affected is not None and rows_affected >= 0:
-                                self.log.info(
-                                    f"Statement executed successfully, {rows_affected} rows "
-                                    "affected"
-                                )
-                            else:
-                                self.log.info("Statement executed successfully")
-                    elif statement_type == "QUERY":
-                        # This is a SELECT statement - execute as query
-                        query_result: List[Dict[str, Any]] = self.provider.execute_query(statement)
-                        # Log query summary (e.g., "10 rows returned") — fires for 0-row
-                        # results too, since an empty SELECT is still a successful query.
-                        row_count = (
-                            len(query_result) if isinstance(query_result, list) else "unknown"
-                        )
-                        self.log.info(f"Query executed successfully, {row_count} rows returned")
-                        if isinstance(query_result, list):
-                            columns, table_rows = rows_to_columns_and_values(query_result)
-                            if record is not None:
-                                record.result_sets.append(
-                                    {
-                                        "statement": statement,
-                                        "columns": columns,
-                                        "rows": table_rows,
-                                    }
-                                )
-                                record.row_count += len(table_rows)
-                            if result is not None and getattr(result, "show_query_results", False):
-                                result.add_query_result(
-                                    callback.script_name,
-                                    callback.version,
-                                    callback.description,
-                                    statement,
-                                    columns,
-                                    table_rows,
-                                )
-                                if table_rows:
-                                    presenter = presentation_for(self, self.log)
-                                    if presenter is not None:
-                                        presenter.present_query_result(self, columns, table_rows)
-                    else:
-                        # This is DDL or DML - execute as regular SQL
-                        if policy.autocommit_required and isinstance(
-                            self.provider, TransactionalProvider
-                        ):
-                            rows_affected = self.provider.execute_autocommit_statement(statement)
-                        else:
-                            rows_affected = self.provider.execute_statement(statement)
-                        if _is_ddl_statement_for_success_log(statement):
-                            self.log.info("Statement executed successfully")
-                        elif rows_affected is not None and rows_affected >= 0:
-                            self.log.info(
-                                f"Statement executed successfully, {rows_affected} rows affected"
-                            )
-                        else:
-                            self.log.info("Statement executed successfully")
-
-                except Exception as e:
-                    self.log.error(
-                        "Error executing callback SQL statement: "
-                        f"{redact_driver_error_text(strip_sql_statement_block(str(e)))}"
-                    )
-                    if not self.sql_execution_service:
-                        self.log.error(f"SQL: {describe_statement(statement)}")
-                    masked = mask_string_literals(statement, self._probe_dialect_key())
-                    self.log.debug(f"Failed statement: {masked}")
-                    raise
+                self._execute_callback_statement(
+                    callback, statement, policy, record=record, result=result
+                )
 
             self._finish_statements(sql_statements)
 
             if transaction_started and isinstance(self.provider, TransactionalProvider):
                 # Commit transaction for successful callback execution
-                try:
-                    self.provider.commit_transaction()
-                    self.log.debug(f"Committed transaction for callback {callback.script_name}")
-                except Exception as e:
-                    self.log.warning(
-                        f"Could not commit transaction for callback {callback.script_name}: {e}"
-                    )
-                    # Continue - the transaction might already be committed
+                self._commit_callback_transaction(self.provider, callback)
 
         except Exception:
             # Rollback safety net for callback execution. Same rationale as the
             # migration-execution path above: ANY uncaught error here must rollback
             # before re-raise, narrowing would let unexpected types skip rollback.
             if transaction_started and isinstance(self.provider, TransactionalProvider):
-                try:
-                    self.provider.rollback_transaction()
-                    self.log.debug(
-                        f"Rolled back transaction for failed callback {callback.script_name}"
-                    )
-                except Exception as rollback_e:
-                    self.log.warning(
-                        f"Could not rollback transaction for callback {callback.script_name}: "
-                        f"{rollback_e}"
-                    )
+                self._rollback_callback_transaction(self.provider, callback)
             # Re-raise the original exception
             raise
+
+    def _execute_non_sql_callback(self, callback: Migration) -> None:
+        """Run a non-SQL callback through the executor factory; raise when it fails."""
+        exec_result = self.executor_factory.execute(callback)
+        if not exec_result.success:
+            self.log.error(f"Python callback {callback.script_name} failed: {exec_result.error}")
+            raise CallbackExecutionError(
+                f"Python callback {callback.script_name} failed: {exec_result.error}"
+            )
+        self.log.info(f"Python callback {callback.script_name} executed successfully")
+
+    def _begin_callback_transaction(
+        self, callback: Migration, policy: TransactionPolicyDecision
+    ) -> bool:
+        """Begin a transaction for a transactional callback; return whether one was started."""
+        transaction_started = False
+        if policy.transactional and isinstance(self.provider, TransactionalProvider):
+            try:
+                self.provider.begin_transaction()
+                transaction_started = True
+                self.log.debug(f"Started transaction for callback {callback.script_name}")
+            except Exception as e:
+                self.log.warning(
+                    f"Could not begin transaction for callback {callback.script_name}: {e}"
+                )
+                # Continue in the caller's open transaction, without managing it
+                if self.provider.is_caller_owned():
+                    self.provider.note_caller_work()
+        return transaction_started
+
+    def _execute_callback_statement(
+        self,
+        callback: Migration,
+        statement: str,
+        policy: TransactionPolicyDecision,
+        *,
+        record: Optional[CallbackExecution],
+        result: Optional[OperationResult],
+    ) -> None:
+        """Execute one callback statement; log the failure and re-raise when it fails."""
+        # Check what kind of SQL statement this is (DDL, DML, or query)
+        statement_type = self.sql_analyzer.get_statement_type(statement)
+
+        # Add more verbose debug logging about statement type
+        if statement.strip().upper().startswith("CREATE VIEW") or "SELECT" in statement.upper():
+            self.log.debug(
+                f"Callback statement classification: '{statement_type}' for statement: "
+                f"{statement[:LOG_STATEMENT_PREVIEW_LENGTH]}"
+                f"{'...' if len(statement) > LOG_STATEMENT_PREVIEW_LENGTH else ''}"
+            )
+
+        # Execute statement using provider
+        masked = mask_string_literals(statement, self._probe_dialect_key())
+        self.log.debug(f"Executing callback SQL: {masked}")
+
+        try:
+            if self.sql_execution_service:
+                self._execute_callback_statement_via_service(
+                    self.sql_execution_service,
+                    callback,
+                    statement,
+                    policy,
+                    record=record,
+                    result=result,
+                )
+            elif statement_type == "QUERY":
+                self._execute_callback_query(callback, statement, record=record, result=result)
+            else:
+                # This is DDL or DML - execute as regular SQL
+                if policy.autocommit_required and isinstance(self.provider, TransactionalProvider):
+                    rows_affected = self.provider.execute_autocommit_statement(statement)
+                else:
+                    rows_affected = self.provider.execute_statement(statement)
+                self._log_callback_statement_success(statement, rows_affected)
+
+        except Exception as e:
+            self.log.error(
+                "Error executing callback SQL statement: "
+                f"{redact_driver_error_text(strip_sql_statement_block(str(e)))}"
+            )
+            if not self.sql_execution_service:
+                self.log.error(f"SQL: {describe_statement(statement)}")
+            masked = mask_string_literals(statement, self._probe_dialect_key())
+            self.log.debug(f"Failed statement: {masked}")
+            raise
+
+    def _execute_callback_statement_via_service(
+        self,
+        service: SqlExecutionService,
+        callback: Migration,
+        statement: str,
+        policy: TransactionPolicyDecision,
+        *,
+        record: Optional[CallbackExecution],
+        result: Optional[OperationResult],
+    ) -> None:
+        """Execute one callback statement through the SQL execution service."""
+        is_query, result_data = service.execute_statement(
+            statement, autocommit=policy.autocommit_required
+        )
+        if is_query:
+            if not isinstance(result_data, list):
+                raise TypeError(
+                    "Expected list for query result, got " f"{type(result_data).__name__}"
+                )
+            row_count = len(result_data)
+            self.log.info(f"Query executed successfully, {row_count} rows returned")
+            columns, table_rows = rows_to_columns_and_values(result_data)
+            _record_callback_result_set(record, statement, columns, table_rows)
+            if result is not None and getattr(result, "show_query_results", False):
+                self._show_callback_query_result(
+                    callback, result, statement=statement, columns=columns, rows=table_rows
+                )
+        else:
+            rows_affected = result_data if isinstance(result_data, int) else -1
+            self._log_callback_statement_success(statement, rows_affected)
+
+    def _execute_callback_query(
+        self,
+        callback: Migration,
+        statement: str,
+        *,
+        record: Optional[CallbackExecution],
+        result: Optional[OperationResult],
+    ) -> None:
+        """Execute one callback SELECT through the provider and capture its rows."""
+        # This is a SELECT statement - execute as query
+        query_result: List[Dict[str, Any]] = self.provider.execute_query(statement)
+        # Log query summary (e.g., "10 rows returned") — fires for 0-row
+        # results too, since an empty SELECT is still a successful query.
+        row_count = len(query_result) if isinstance(query_result, list) else "unknown"
+        self.log.info(f"Query executed successfully, {row_count} rows returned")
+        if isinstance(query_result, list):
+            columns, table_rows = rows_to_columns_and_values(query_result)
+            _record_callback_result_set(record, statement, columns, table_rows)
+            if result is not None and getattr(result, "show_query_results", False):
+                self._show_callback_query_result(
+                    callback, result, statement=statement, columns=columns, rows=table_rows
+                )
+
+    def _show_callback_query_result(
+        self,
+        callback: Migration,
+        result: OperationResult,
+        *,
+        statement: str,
+        columns: List[str],
+        rows: List[List[object]],
+    ) -> None:
+        """Attach a callback's query rows to ``result`` and present them when there are any."""
+        result.add_query_result(
+            callback.script_name,
+            callback.version,
+            callback.description,
+            statement,
+            columns,
+            rows,
+        )
+        if rows:
+            presenter = presentation_for(self, self.log)
+            if presenter is not None:
+                presenter.present_query_result(self, columns, rows)
+
+    def _log_callback_statement_success(self, statement: str, rows_affected: Optional[int]) -> None:
+        """Log a successful non-query callback statement, with its row count when known."""
+        if _is_ddl_statement_for_success_log(statement):
+            self.log.info("Statement executed successfully")
+        elif rows_affected is not None and rows_affected >= 0:
+            self.log.info(f"Statement executed successfully, {rows_affected} rows affected")
+        else:
+            self.log.info("Statement executed successfully")
+
+    def _commit_callback_transaction(
+        self, provider: TransactionalProvider, callback: Migration
+    ) -> None:
+        """Commit a callback's transaction; a failure is logged, not raised."""
+        try:
+            provider.commit_transaction()
+            self.log.debug(f"Committed transaction for callback {callback.script_name}")
+        except Exception as e:
+            self.log.warning(
+                f"Could not commit transaction for callback {callback.script_name}: {e}"
+            )
+            # Continue - the transaction might already be committed
+
+    def _rollback_callback_transaction(
+        self, provider: TransactionalProvider, callback: Migration
+    ) -> None:
+        """Roll back a failed callback's transaction; a failure is logged, not raised."""
+        try:
+            provider.rollback_transaction()
+            self.log.debug(f"Rolled back transaction for failed callback {callback.script_name}")
+        except Exception as rollback_e:
+            self.log.warning(
+                f"Could not rollback transaction for callback {callback.script_name}: "
+                f"{rollback_e}"
+            )
