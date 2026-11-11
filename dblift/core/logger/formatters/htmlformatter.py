@@ -4,7 +4,7 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from dblift.core.logger._formatters import _safe_name, resolve_dblift_package_version
 from dblift.core.logger.console import require_presentation_extras
@@ -183,177 +183,7 @@ when the operation completes.</p>
             # Load the HTML template
             template = self.env.get_template("report.html")
 
-            # Get specific command details
-            command_details = self._get_command_details(normalized_command_type, result)
-
-            # Extract migrations if present
-            migrations = []
-            if hasattr(result, "migrations") and result.migrations:
-                migrations = result.migrations
-
-            # Get journal data if available
-            journal_data = None
-            object_stats = None
-            per_migration_journal: Dict[str, Any] = {}
-            if hasattr(result, "journal") and result.journal:
-                # Prefer the first migration script as the journal key
-                migration_id = None
-                if migrations:
-                    first_migration = migrations[0]
-                    migration_id = getattr(first_migration, "script", None)
-
-                if migration_id:
-                    journal_data = result.journal.get_migration_performance_summary(migration_id)
-                    object_stats = result.journal.get_performance_stats_by_object_type(migration_id)
-
-                # Build per-migration summaries map for timeline rendering
-                if migrations:
-                    for m in migrations:
-                        m_id = getattr(m, "script", None)
-                        if m_id:
-                            try:
-                                per_migration_journal[m_id] = (
-                                    result.journal.get_migration_performance_summary(m_id)
-                                )
-                            except Exception as e:
-                                _logger.debug(f"Migration performance summary unavailable: {e}")
-
-            # Generate context for the template
-            context = {
-                "schema_name": schema,
-                "database_name": database_name,
-                "command_type": normalized_command_type,
-                "result": result,
-                "log_entries": self.log_entries,
-                "command_details": command_details,
-                "migration_data": migrations,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "operation_success": result.success,
-                "error_message": result.error_message,
-                "execution_time": result.execution_time(),
-                "warnings": result.warnings if hasattr(result, "warnings") else [],
-                "journal_data": journal_data,
-                "object_stats": object_stats,
-                "per_migration_journal": per_migration_journal,
-                "server_name": self._extract_server_from_result(result),
-                "report_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                **self._report_metadata(result, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-            }
-
-            # Enrich context with common metadata if available
-            context.update(
-                {
-                    "current_version": getattr(result, "current_schema_version", None),
-                    "using_multi_command": self.using_multi_command,
-                    "command_results": self.command_results,
-                    "db_version": getattr(result, "db_version", None),
-                    "native_driver": getattr(result, "native_driver", None),
-                    "database_url_masked": getattr(result, "database_url_masked", None),
-                }
-            )
-            context.update(self._get_extra_template_context(result, normalized_command_type))
-
-            # Provide KPI metrics for INFO command
-            if normalized_command_type == "INFO" and migrations:
-                times: List[int] = []
-                for m in migrations:
-                    try:
-                        t = getattr(m, "execution_time", 0) or 0
-                        if isinstance(t, (int, float)) and t > 0:
-                            times.append(int(t))
-                    except Exception as e:
-                        _logger.debug(f"Ignoring malformed execution time: {e}")
-                total_execution_time = sum(times) if times else 0
-                execution_count = len(times)
-                avg_execution_time = (
-                    int(total_execution_time / execution_count) if execution_count else 0
-                )
-                context.update(
-                    {
-                        "total_execution_time": total_execution_time,
-                        "execution_count": execution_count,
-                        "avg_execution_time": avg_execution_time,
-                    }
-                )
-
-            # Build multi-command contexts if available
-            multi_commands: List[Dict[str, Any]] = []
-            if self.using_multi_command and self.command_results:
-                for idx, cmd in enumerate(self.command_results, start=1):
-                    cmd_type = cmd.get("command_type")
-                    cmd_result: OperationResult = cmd.get("result")  # type: ignore
-                    cmd_migrations: List[Any] = []
-                    if hasattr(cmd_result, "migrations") and cmd_result.migrations:
-                        cmd_migrations = cmd_result.migrations
-
-                    cmd_per_migration: Dict[str, Any] = {}
-                    if hasattr(cmd_result, "journal") and cmd_result.journal and cmd_migrations:
-                        for m in cmd_migrations:
-                            m_id = getattr(m, "script", None)
-                            if m_id:
-                                try:
-                                    cmd_per_migration[m_id] = (
-                                        cmd_result.journal.get_migration_performance_summary(m_id)
-                                    )
-                                except Exception as e:
-                                    _logger.debug(
-                                        f"Migration performance summary unavailable for {m_id}: {e}"
-                                    )
-
-                    cmd_dict = {
-                        "index": idx,
-                        "command_type": cmd_type,
-                        "result": cmd_result,
-                        "migrations": cmd_migrations,
-                        "sql": getattr(cmd_result, "sql", []),
-                        "query_results": getattr(cmd_result, "query_results", []),
-                        "per_migration_journal": self._enrich_command_journal(
-                            cmd_per_migration, cmd_result
-                        ),
-                        "callbacks": list(getattr(cmd_result, "callbacks", []) or []),
-                        "success": cmd.get("success"),
-                        "error_message": cmd.get("error_message"),
-                        "execution_time": cmd.get("execution_time"),
-                        "timestamp": cmd.get("timestamp"),
-                    }
-                    cmd_dict.update(
-                        self._get_extra_command_context(
-                            cmd_result,
-                            str(cmd_type) if cmd_type else "",  # lint: allow-enum-str
-                        )
-                    )
-
-                    multi_commands.append(cmd_dict)
-
-                context.update(
-                    {
-                        "multi_commands": multi_commands,
-                    }
-                )
-
-            # Build unified_commands: single list consumed by report.html
-            if self.using_multi_command and multi_commands:
-                unified_commands = multi_commands
-            else:
-                single_cmd: Dict[str, Any] = {
-                    "index": 1,
-                    "command_type": normalized_command_type,
-                    "result": result,
-                    "migrations": migrations,
-                    "sql": getattr(result, "sql", []),
-                    "query_results": getattr(result, "query_results", []),
-                    "per_migration_journal": self._enrich_command_journal(
-                        per_migration_journal, result
-                    ),
-                    "callbacks": list(getattr(result, "callbacks", []) or []),
-                    "success": result.success,
-                    "error_message": result.error_message,
-                    "execution_time": result.execution_time(),
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                }
-                single_cmd.update(self._get_extra_command_context(result, normalized_command_type))
-                unified_commands = [single_cmd]
-            context["unified_commands"] = unified_commands
+            context = self._report_context(result, schema, database_name, normalized_command_type)
 
             # Render the template
             html = template.render(**context)
@@ -390,6 +220,192 @@ when the operation completes.</p>
                     f.write(fallback_html)
 
             return fallback_html
+
+    def _report_context(
+        self, result: OperationResult, schema: str, database_name: str, command_type: str
+    ) -> Dict[str, object]:
+        """Build the template context of the report for *result*."""
+        # Get specific command details
+        command_details = self._get_command_details(command_type, result)
+
+        # Extract migrations if present
+        migrations = []
+        if hasattr(result, "migrations") and result.migrations:
+            migrations = result.migrations
+
+        # Get journal data if available
+        journal_data, object_stats, per_migration_journal = self._journal_context(
+            result, migrations
+        )
+
+        # Generate context for the template
+        context = {
+            "schema_name": schema,
+            "database_name": database_name,
+            "command_type": command_type,
+            "result": result,
+            "log_entries": self.log_entries,
+            "command_details": command_details,
+            "migration_data": migrations,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "operation_success": result.success,
+            "error_message": result.error_message,
+            "execution_time": result.execution_time(),
+            "warnings": result.warnings if hasattr(result, "warnings") else [],
+            "journal_data": journal_data,
+            "object_stats": object_stats,
+            "per_migration_journal": per_migration_journal,
+            "server_name": self._extract_server_from_result(result),
+            "report_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            **self._report_metadata(result, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+        }
+
+        # Enrich context with common metadata if available
+        context.update(
+            {
+                "current_version": getattr(result, "current_schema_version", None),
+                "using_multi_command": self.using_multi_command,
+                "command_results": self.command_results,
+                "db_version": getattr(result, "db_version", None),
+                "native_driver": getattr(result, "native_driver", None),
+                "database_url_masked": getattr(result, "database_url_masked", None),
+            }
+        )
+        context.update(self._get_extra_template_context(result, command_type))
+
+        # Provide KPI metrics for INFO command
+        if command_type == "INFO" and migrations:
+            context.update(self._info_kpis(migrations))
+
+        # Build multi-command contexts if available
+        multi_commands: List[Dict[str, Any]] = []
+        if self.using_multi_command and self.command_results:
+            for idx, cmd in enumerate(self.command_results, start=1):
+                multi_commands.append(self._command_context(idx, cmd))
+
+            context.update(
+                {
+                    "multi_commands": multi_commands,
+                }
+            )
+
+        # Build unified_commands: single list consumed by report.html
+        if self.using_multi_command and multi_commands:
+            unified_commands = multi_commands
+        else:
+            single_cmd: Dict[str, Any] = {
+                "index": 1,
+                "command_type": command_type,
+                "result": result,
+                "migrations": migrations,
+                "sql": getattr(result, "sql", []),
+                "query_results": getattr(result, "query_results", []),
+                "per_migration_journal": self._enrich_command_journal(
+                    per_migration_journal, result
+                ),
+                "callbacks": list(getattr(result, "callbacks", []) or []),
+                "success": result.success,
+                "error_message": result.error_message,
+                "execution_time": result.execution_time(),
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            single_cmd.update(self._get_extra_command_context(result, command_type))
+            unified_commands = [single_cmd]
+        context["unified_commands"] = unified_commands
+        return context
+
+    def _journal_context(
+        self, result: OperationResult, migrations: Sequence[object]
+    ) -> Tuple[object, object, Dict[str, object]]:
+        """Return the journal summary, object stats and per-migration summaries of *result*."""
+        journal_data = None
+        object_stats = None
+        per_migration_journal: Dict[str, Any] = {}
+        if hasattr(result, "journal") and result.journal:
+            # Prefer the first migration script as the journal key
+            migration_id = None
+            if migrations:
+                first_migration = migrations[0]
+                migration_id = getattr(first_migration, "script", None)
+
+            if migration_id:
+                journal_data = result.journal.get_migration_performance_summary(migration_id)
+                object_stats = result.journal.get_performance_stats_by_object_type(migration_id)
+
+            # Build per-migration summaries map for timeline rendering
+            if migrations:
+                for m in migrations:
+                    m_id = getattr(m, "script", None)
+                    if m_id:
+                        try:
+                            per_migration_journal[m_id] = (
+                                result.journal.get_migration_performance_summary(m_id)
+                            )
+                        except Exception as e:
+                            _logger.debug(f"Migration performance summary unavailable: {e}")
+        return journal_data, object_stats, per_migration_journal
+
+    @staticmethod
+    def _info_kpis(migrations: Sequence[object]) -> Dict[str, int]:
+        """Total, count and average of the positive execution times of *migrations*."""
+        times: List[int] = []
+        for m in migrations:
+            try:
+                t = getattr(m, "execution_time", 0) or 0
+                if isinstance(t, (int, float)) and t > 0:
+                    times.append(int(t))
+            except Exception as e:
+                _logger.debug(f"Ignoring malformed execution time: {e}")
+        total_execution_time = sum(times) if times else 0
+        execution_count = len(times)
+        avg_execution_time = int(total_execution_time / execution_count) if execution_count else 0
+        return {
+            "total_execution_time": total_execution_time,
+            "execution_count": execution_count,
+            "avg_execution_time": avg_execution_time,
+        }
+
+    def _command_context(self, idx: int, cmd: Dict[str, object]) -> Dict[str, object]:
+        """Build the report block of one command of a multi-command run."""
+        cmd_type = cmd.get("command_type")
+        cmd_result: OperationResult = cmd.get("result")  # type: ignore
+        cmd_migrations: List[Any] = []
+        if hasattr(cmd_result, "migrations") and cmd_result.migrations:
+            cmd_migrations = cmd_result.migrations
+
+        cmd_per_migration: Dict[str, Any] = {}
+        if hasattr(cmd_result, "journal") and cmd_result.journal and cmd_migrations:
+            for m in cmd_migrations:
+                m_id = getattr(m, "script", None)
+                if m_id:
+                    try:
+                        cmd_per_migration[m_id] = (
+                            cmd_result.journal.get_migration_performance_summary(m_id)
+                        )
+                    except Exception as e:
+                        _logger.debug(f"Migration performance summary unavailable for {m_id}: {e}")
+
+        cmd_dict = {
+            "index": idx,
+            "command_type": cmd_type,
+            "result": cmd_result,
+            "migrations": cmd_migrations,
+            "sql": getattr(cmd_result, "sql", []),
+            "query_results": getattr(cmd_result, "query_results", []),
+            "per_migration_journal": self._enrich_command_journal(cmd_per_migration, cmd_result),
+            "callbacks": list(getattr(cmd_result, "callbacks", []) or []),
+            "success": cmd.get("success"),
+            "error_message": cmd.get("error_message"),
+            "execution_time": cmd.get("execution_time"),
+            "timestamp": cmd.get("timestamp"),
+        }
+        cmd_dict.update(
+            self._get_extra_command_context(
+                cmd_result,
+                str(cmd_type) if cmd_type else "",  # lint: allow-enum-str
+            )
+        )
+        return cmd_dict
 
     def _normalize_command_type(self, command_type: str, result: OperationResult) -> str:
         """Normalize command labels for template usage."""

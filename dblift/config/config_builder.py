@@ -8,7 +8,7 @@ overrides, handling URL parsing, and creating new configurations when needed.
 import warnings
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, Union
+from typing import Any, Dict, Mapping, Optional, Tuple, Union
 
 from dblift.config.database_config import (
     BaseDatabaseConfig,
@@ -250,20 +250,7 @@ class ConfigBuilder:
         # Load from file if provided. Raw data from every source is merged before
         # constructing the typed config, so database type is selected only once.
         if file_path:
-            file_path_str = str(file_path)
-            if not Path(file_path_str).exists():
-                raise FileNotFoundError(f"Config file not found: {file_path_str}")
-            try:
-                file_data = DbliftConfig.load_config_data_from_yaml(file_path_str)
-                if file_data:
-                    config_data = DbliftConfig.merge_config_data(config_data, file_data)
-            except (FileNotFoundError, InvalidTargetVersionError, ConfigurationError):
-                raise
-            except Exception as e:
-                warnings.warn(
-                    f"Failed to load config file '{file_path_str}': {e}",
-                    stacklevel=2,
-                )
+            config_data, file_data = cls._load_config_file(file_path)
 
         # Multi-environment layer (same semantics and ordering as load_config):
         # merge the active environments.<name> block over the root sections
@@ -284,63 +271,7 @@ class ConfigBuilder:
 
         # Apply kwargs overrides
         if kwargs:
-            # Convert kwargs to proper config dict format
-            kwargs_dict: dict[str, Any] = {}
-            # Map common kwargs to config structure
-            if "database_url" in kwargs or "db_url" in kwargs:
-                if "database" not in kwargs_dict:
-                    kwargs_dict["database"] = {}
-                kwargs_dict["database"]["url"] = kwargs.get("database_url") or kwargs.get("db_url")
-            if "database_username" in kwargs or "db_username" in kwargs:
-                if "database" not in kwargs_dict:
-                    kwargs_dict["database"] = {}
-                kwargs_dict["database"]["username"] = kwargs.get("database_username") or kwargs.get(
-                    "db_username"
-                )
-            if "database_password" in kwargs or "db_password" in kwargs:
-                if "database" not in kwargs_dict:
-                    kwargs_dict["database"] = {}
-                kwargs_dict["database"]["password"] = kwargs.get("database_password") or kwargs.get(
-                    "db_password"
-                )
-            if "database_schema" in kwargs or "db_schema" in kwargs:
-                if "database" not in kwargs_dict:
-                    kwargs_dict["database"] = {}
-                kwargs_dict["database"]["schema"] = kwargs.get("database_schema") or kwargs.get(
-                    "db_schema"
-                )
-            if "database_type" in kwargs or "db_type" in kwargs:
-                if "database" not in kwargs_dict:
-                    kwargs_dict["database"] = {}
-                kwargs_dict["database"]["type"] = kwargs.get("database_type") or kwargs.get(
-                    "db_type"
-                )
-            for field in (
-                "account_endpoint",
-                "account_key",
-                "database",
-                "database_name",
-                "container_name",
-                "use_managed_identity",
-            ):
-                if field in kwargs:
-                    if "database" not in kwargs_dict:
-                        kwargs_dict["database"] = {}
-                    kwargs_dict["database"][field] = kwargs[field]
-
-            # Map other top-level kwargs
-            for key in [
-                "history_table",
-                "snapshot_table",
-                "max_snapshots",
-                "log_level",
-                "log_file",
-                "log_dir",
-                "log_format",
-            ]:
-                if key in kwargs:
-                    kwargs_dict[key] = kwargs[key]
-
+            kwargs_dict = cls._kwargs_config_data(kwargs)
             if kwargs_dict:
                 config_data = DbliftConfig.merge_config_data(config_data, kwargs_dict)
 
@@ -354,6 +285,74 @@ class ConfigBuilder:
         if active_environment:
             setattr(config, "_active_environment", active_environment)
         return config
+
+    @staticmethod
+    def _load_config_file(
+        file_path: Union[str, Path],
+    ) -> Tuple[Dict[str, object], Mapping[str, object]]:
+        """Read a config file for :meth:`build`; return the merged data and the file's data.
+
+        A load failure other than a missing file, an invalid target version or a configuration
+        error is reported as a warning attributed to the caller of :meth:`build`, not raised.
+        """
+        config_data: Dict[str, object] = {}
+        file_data: Mapping[str, object] = {}
+        file_path_str = str(file_path)
+        if not Path(file_path_str).exists():
+            raise FileNotFoundError(f"Config file not found: {file_path_str}")
+        try:
+            file_data = DbliftConfig.load_config_data_from_yaml(file_path_str)
+            if file_data:
+                config_data = DbliftConfig.merge_config_data(config_data, file_data)
+        except (FileNotFoundError, InvalidTargetVersionError, ConfigurationError):
+            raise
+        except Exception as e:
+            warnings.warn(
+                f"Failed to load config file '{file_path_str}': {e}",
+                # 3 = the caller of build; holds only while build calls this directly.
+                stacklevel=3,
+            )
+        return config_data, file_data
+
+    @staticmethod
+    def _kwargs_config_data(kwargs: Mapping[str, object]) -> Dict[str, object]:
+        """Map the keyword overrides of :meth:`build` to raw config data."""
+        kwargs_dict: dict[str, Any] = {}
+        # Map common kwargs to config structure; a falsy long name falls back to its alias
+        for field, name, alias in (
+            ("url", "database_url", "db_url"),
+            ("username", "database_username", "db_username"),
+            ("password", "database_password", "db_password"),
+            ("schema", "database_schema", "db_schema"),
+            ("type", "database_type", "db_type"),
+        ):
+            if name in kwargs or alias in kwargs:
+                value = kwargs.get(name) or kwargs.get(alias)
+                kwargs_dict.setdefault("database", {})[field] = value
+        for field in (
+            "account_endpoint",
+            "account_key",
+            "database",
+            "database_name",
+            "container_name",
+            "use_managed_identity",
+        ):
+            if field in kwargs:
+                kwargs_dict.setdefault("database", {})[field] = kwargs[field]
+
+        # Map other top-level kwargs
+        for key in [
+            "history_table",
+            "snapshot_table",
+            "max_snapshots",
+            "log_level",
+            "log_file",
+            "log_dir",
+            "log_format",
+        ]:
+            if key in kwargs:
+                kwargs_dict[key] = kwargs[key]
+        return kwargs_dict
 
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> DbliftConfig:
