@@ -652,62 +652,103 @@ def _complete_query(words: List[Token], depth: int = 0) -> bool:
         return False
     first = words[0].text.upper()
     if first == "WITH":
-        at = 1
-        while True:
-            end = _query_name(words, at, 1)
-            if end == at or end + 1 >= len(words) or words[end].text.upper() != "AS":
-                return False
-            if not _is_symbol(words[end + 1], "("):
-                return False
-            start = end + 2
-            level = 1
-            at = start
-            while at < len(words) and level:
-                level += _is_symbol(words[at], "(") - _is_symbol(words[at], ")")
-                at += 1
-            if level or not _complete_query(words[start : at - 1], depth + 1):
-                return False
-            if at >= len(words) or not _is_symbol(words[at], ","):
-                return _complete_query(words[at:], depth + 1)
-            at += 1
+        return _complete_with(words, depth)
     if first not in ("SELECT", "VALUES"):
         return False
-    at = 1
-    if first == "VALUES" and at < len(words) and _is_symbol(words[at], "("):
-        at += 1
-        closing = True
-    else:
-        closing = False
-    star = first == "SELECT" and at < len(words) and _is_symbol(words[at], "*")
-    needs_source = False
-    if star:
-        at += 1
-    else:
-        while True:
-            if at < len(words) and words[at].type in (TokenType.KEYWORD, TokenType.IDENTIFIER):
-                needs_source = True
-            end = _query_atom(words, at)
-            if end == at:
-                return False
-            at = end
-            if at < len(words) and _is_symbol(words[at], ","):
-                at += 1
-                continue
-            break
-    if closing:
-        if at >= len(words) or not _is_symbol(words[at], ")"):
-            return False
-        at += 1
+    closing = first == "VALUES" and 1 < len(words) and _is_symbol(words[1], "(")
+    star = first == "SELECT" and 1 < len(words) and _is_symbol(words[1], "*")
+    listed = (2, False) if star else _query_list(words, 1 + closing, closing)
+    if listed is None:
+        return False
+    at, needs_source = listed
     if first == "SELECT" and at < len(words) and words[at].text.upper() == "FROM":
         source = at + 1
         at = _query_name(words, source)
         if at == source:
             return False
-    elif star:
-        return False
-    elif needs_source:
+    elif star or needs_source:
         return False
     return at == len(words)
+
+
+def _complete_with(words: List[Token], depth: int) -> bool:
+    at = 1
+    while True:
+        end = _query_name(words, at, 1)
+        if end == at or end + 1 >= len(words) or words[end].text.upper() != "AS":
+            return False
+        at = _skip_group(words, end + 1)
+        if at == end + 1 or not _complete_query(words[end + 2 : at - 1], depth + 1):
+            return False
+        if at >= len(words) or not _is_symbol(words[at], ","):
+            return _complete_query(words[at:], depth + 1)
+        at += 1
+
+
+def _query_list(words: List[Token], at: int, closing: bool) -> Optional[Tuple[int, bool]]:
+    needs_source = False
+    while True:
+        if at < len(words) and words[at].type in (TokenType.KEYWORD, TokenType.IDENTIFIER):
+            needs_source = True
+        end = _query_atom(words, at)
+        if end == at:
+            return None
+        at = end
+        if not (at < len(words) and _is_symbol(words[at], ",")):
+            break
+        at += 1
+    if closing and (at >= len(words) or not _is_symbol(words[at], ")")):
+        return None
+    return at + closing, needs_source
+
+
+def _set_facts(words: List[Token], ups: List[str]) -> StatementFacts:
+    if ups[1:2] == ["INTEGRITY"]:
+        return _opaque("SET", "UNKNOWN", SET_INTEGRITY)
+    if (
+        ups[1:3] == ["CURRENT", "SCHEMA"]
+        and len(words) == 5
+        and words[3].text == "="
+        and words[4].type is TokenType.STRING
+        and words[4].text.endswith("'")
+        and words[4].text.count("'") % 2 == 0
+    ):
+        return StatementFacts("SET", "UNKNOWN", events=frozenset())
+    return StatementFacts("SET", "UNKNOWN")
+
+
+def _by_head(sql: str, words: List[Token], ups: List[str], first: str, kind: str) -> StatementFacts:
+    """Facts of a statement named by a known head or a DML prefix, else unclassified."""
+    for head in HEADS:
+        at = _match(ups, head)
+        if at is None:
+            continue
+        facts, reached = _head_facts(words, ups, head, at)
+        end = reached + 1 if head.operation in ("GRANT", "REVOKE") else _head_end(words, at)
+        if any(_is_unterminated(t) for t in words[:end]):
+            return _unterminated(head.operation, head.kind)
+        char = _unread_character(sql, words, end)
+        if char is not None:
+            return _opaque(head.operation, head.kind, UNREAD_NAME.format(code=ord(sql[char])))
+        if facts is not None:
+            return facts
+        return _opaque(
+            head.operation,
+            head.kind,
+            NAME_NOT_READ.format(operation=head.operation, type=head.object_type.name),
+        )
+    prefix = _DML_PREFIX.get(first)
+    if prefix and tuple(ups[: len(prefix)]) == prefix:
+        window = _head_end(words, len(prefix))
+        if any(_is_unterminated(t) for t in words[:window]):
+            return _unterminated(first, kind)
+        char = _unread_character(sql, words, window)
+        if char is not None:
+            return _opaque(first, kind, UNREAD_NAME.format(code=ord(sql[char])))
+        if holds_data_change(ups):
+            return _opaque(first, kind, DATA_CHANGE_QUERY)
+        return _read_dml(sql, words, ups, first)
+    return _opaque(first, kind, NOT_CLASSIFIED.format(word=first))
 
 
 def _is_client_command(ups: List[str]) -> bool:
@@ -740,18 +781,7 @@ class Db2StatementFactsReader:
         if first in _TRANSACTION:
             return StatementFacts(first, "UNKNOWN")
         if first == "SET":
-            if ups[1:2] == ["INTEGRITY"]:
-                return _opaque(first, "UNKNOWN", SET_INTEGRITY)
-            if (
-                ups[1:3] == ["CURRENT", "SCHEMA"]
-                and len(words) == 5
-                and words[3].text == "="
-                and words[4].type is TokenType.STRING
-                and words[4].text.endswith("'")
-                and words[4].text.count("'") % 2 == 0
-            ):
-                return StatementFacts(first, "UNKNOWN", events=frozenset())
-            return StatementFacts(first, "UNKNOWN")
+            return _set_facts(words, ups)
         if first in _QUERY:
             if holds_data_change(ups):
                 if first == "WITH":
@@ -767,33 +797,4 @@ class Db2StatementFactsReader:
             ) and _complete_query(words):
                 return StatementFacts(first, kind, events=frozenset())
             return StatementFacts(first, kind)
-        for head in HEADS:
-            at = _match(ups, head)
-            if at is None:
-                continue
-            facts, reached = _head_facts(words, ups, head, at)
-            end = reached + 1 if head.operation in ("GRANT", "REVOKE") else _head_end(words, at)
-            if any(_is_unterminated(t) for t in words[:end]):
-                return _unterminated(head.operation, head.kind)
-            char = _unread_character(sql, words, end)
-            if char is not None:
-                return _opaque(head.operation, head.kind, UNREAD_NAME.format(code=ord(sql[char])))
-            if facts is not None:
-                return facts
-            return _opaque(
-                head.operation,
-                head.kind,
-                NAME_NOT_READ.format(operation=head.operation, type=head.object_type.name),
-            )
-        prefix = _DML_PREFIX.get(first)
-        if prefix and tuple(ups[: len(prefix)]) == prefix:
-            window = _head_end(words, len(prefix))
-            if any(_is_unterminated(t) for t in words[:window]):
-                return _unterminated(first, kind)
-            char = _unread_character(sql, words, window)
-            if char is not None:
-                return _opaque(first, kind, UNREAD_NAME.format(code=ord(sql[char])))
-            if holds_data_change(ups):
-                return _opaque(first, kind, DATA_CHANGE_QUERY)
-            return _read_dml(sql, words, ups, first)
-        return _opaque(first, kind, NOT_CLASSIFIED.format(word=first))
+        return _by_head(sql, words, ups, first, kind)
