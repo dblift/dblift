@@ -70,6 +70,11 @@ ENGINE_LOOPS = {
     "_classify_execution_statements",
     "get_executable_sql_statements",
     "_execute_statements",
+    "_enable_session_output",
+    "_send_statement",
+    "_send_through_service",
+    "_report_statement",
+    "_continues_after_failure",
     "execute_callback",
 }
 

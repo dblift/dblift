@@ -1288,9 +1288,41 @@ def _postgresql_opaque_cte(ast: exp.Expr, dialect: str) -> Optional[StatementFac
     writes = any(isinstance(cte.this, _CTE_WRITES) for cte in ctes)
     effects_unknown = any(not isinstance(cte.this, exp.Query) for cte in ctes)
     query = ast.args.get("expression") if isinstance(ast, exp.Create) else ast
-    if not (
-        effects_unknown
-        or len(clauses) != 1
+    if not (effects_unknown or _cte_shape_is_unproven(ast, clauses, ctes, aliases, query)):
+        return None
+
+    reason = _unread_cte_reason(ast, dialect)
+    if reason is None and not isinstance(ast, exp.Create):
+        facts = _cte_statement_facts(ast, dialect)
+        if facts is not None:
+            return facts
+    if reason is None:
+        reason = _opaque_cte_reason(ast, dialect, writes)
+    operation, kind, identity = _opaque_cte_identity(ast, dialect, effects_unknown)
+    return StatementFacts(
+        operation,
+        kind,
+        (identity,) if identity is not None else (),
+        diagnostic=reason,
+    )
+
+
+def _cte_shape_is_unproven(
+    ast: exp.Expr,
+    clauses: list[exp.With],
+    ctes: list[exp.CTE],
+    aliases: AbstractSet[str],
+    query: Optional[exp.Expr],
+) -> bool:
+    """Whether the WITH clauses of *ast* take a shape the flat reference filter cannot prove.
+
+    Returns True when there is more than one WITH, the WITH is not attached to *query* (the
+    statement itself, or the query of a CREATE), it is RECURSIVE, a CTE name is quoted, a CTE
+    body reads an unqualified table named like a CTE (*aliases*, lowercased), or any unqualified
+    quoted table reference is named like a CTE; otherwise False.
+    """
+    return bool(
+        len(clauses) != 1
         or clauses[0].parent is not query
         or clauses[0].args.get("recursive")
         or any(cte.args["alias"].this.args.get("quoted") for cte in ctes)
@@ -1306,26 +1338,42 @@ def _postgresql_opaque_cte(ast: exp.Expr, dialect: str) -> Optional[StatementFac
             and table.this.args.get("quoted")
             for table in ast.find_all(exp.Table)
         )
-    ):
-        return None
+    )
 
-    reason = _unread_cte_reason(ast, dialect)
-    if reason is None and not isinstance(ast, exp.Create):
-        facts = _cte_statement_facts(ast, dialect)
-        if facts is not None:
-            return facts
-        reason = (
+
+def _opaque_cte_reason(ast: exp.Expr, dialect: str, writes: bool) -> str:
+    """Return the diagnostic of an opaque WITH that no CTE reason explains.
+
+    With *writes* (a CTE body is an INSERT, UPDATE or DELETE) it is
+    ``"<dialect> CREATE with a data-modifying CTE is not read"`` for a CREATE and
+    ``"<dialect> SELECT INTO behind a data-modifying CTE is not read"`` for any other
+    statement; without, ``"<dialect> CTE source scopes or effects are opaque to statement
+    facts"``.
+    """
+    if not isinstance(ast, exp.Create):
+        return (
             f"{dialect} SELECT INTO behind a data-modifying CTE is not read"
             if writes
             else f"{dialect} CTE source scopes or effects are opaque to statement facts"
         )
-    elif reason is None:
-        reason = (
-            f"{dialect} CREATE with a data-modifying CTE is not read"
-            if writes
-            else f"{dialect} CTE source scopes or effects are opaque to statement facts"
-        )
+    return (
+        f"{dialect} CREATE with a data-modifying CTE is not read"
+        if writes
+        else f"{dialect} CTE source scopes or effects are opaque to statement facts"
+    )
 
+
+def _opaque_cte_identity(
+    ast: exp.Expr, dialect: str, effects_unknown: bool
+) -> Tuple[str, str, Optional[NamedObject]]:
+    """Return ``(operation, kind, identity)`` retained for a WITH statement that is not read.
+
+    A query is ``("SELECT", "UNKNOWN" when *effects_unknown* else "QUERY", None)``; a CREATE is
+    ``("CREATE", "DDL", the created object)``; an INSERT, UPDATE or DELETE is its upper-cased
+    type name, ``"DML"`` and its target table (None without one); any other statement is its
+    upper-cased type name, ``"UNKNOWN"`` and None. The created object and the target table
+    are None when ``_named`` reads no name from them.
+    """
     operation = type(ast).__name__.upper()
     kind = "UNKNOWN"
     identity = None
@@ -1339,12 +1387,7 @@ def _postgresql_opaque_cte(ast: exp.Expr, dialect: str) -> Optional[StatementFac
         kind = "DML"
         table = _dml_target_table(ast)
         identity = _named(table, SqlObjectType.TABLE, "altered") if table is not None else None
-    return StatementFacts(
-        operation,
-        kind,
-        (identity,) if identity is not None else (),
-        diagnostic=reason,
-    )
+    return operation, kind, identity
 
 
 def _merge_referenced(node: exp.Merge, upper: bool = False) -> Tuple[NamedObject, ...]:

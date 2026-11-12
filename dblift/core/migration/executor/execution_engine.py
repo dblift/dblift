@@ -51,6 +51,7 @@ from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.seams import runtime_checks
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.base_provider import BaseProvider
+from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import (
     clean_driver_error_message,
     engine_error_message,
@@ -641,18 +642,7 @@ class ExecutionEngine:
         ctx = self._current_sqlplus_ctx
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)
-        _session_output_conn = getattr(self.provider, "connection", None)
-        _session_output_active = False
-        if (
-            ctx is not None
-            and getattr(ctx, "wants_session_output", False)
-            and _session_output_conn is not None
-        ):
-            try:
-                quirks.enable_session_output(_session_output_conn)
-                _session_output_active = True
-            except Exception as e:
-                self.log.warning(f"Could not enable session output capture: {e}")
+        session_output = self._enable_session_output(ctx, quirks)
 
         # WHENEVER SQLERROR is Oracle/SQL*Plus-only. ctx is None for every other dialect,
         # so we gate all WHENEVER logic on this flag to avoid silently consuming
@@ -688,87 +678,14 @@ class ExecutionEngine:
 
             stmt_start_time = time.time()
             try:
-                if isinstance(self.provider, TransactionalProvider):
-                    try:
-                        self.provider.check_transaction_state()
-                    except TransactionAbortedError as health_error:
-                        raise TransactionAbortedError(
-                            f"Transaction is aborted before executing statement {i + 1}: "
-                            f"{health_error}"
-                        ) from (health_error.__cause__ or health_error)
-
-                if self.sql_execution_service:
-                    is_query, result_data = self.sql_execution_service.execute_statement(
-                        statement, i, autocommit=autocommit
-                    )
-                    if is_query:
-                        if not isinstance(result_data, list):
-                            raise TypeError(
-                                f"Expected list for query result, got {type(result_data).__name__}"
-                            )
-                        rows_affected = len(result_data) if result_data else 0
-                        if getattr(result, "show_query_results", False):
-                            columns, table_rows = rows_to_columns_and_values(result_data)
-                            result.add_query_result(
-                                migration.script_name,
-                                migration.version,
-                                migration.description,
-                                statement,
-                                columns,
-                                table_rows,
-                            )
-                            presenter = presentation_for(self, self.log)
-                            if presenter is not None:
-                                presenter.present_query_result(self, columns, table_rows)
-                    else:
-                        if not isinstance(result_data, int):
-                            raise TypeError(
-                                f"Expected int for rows affected, got {type(result_data).__name__}"
-                            )
-                        rows_affected = result_data
-                elif autocommit and isinstance(self.provider, TransactionalProvider):
-                    rows_affected = self.provider.execute_autocommit_statement(statement)
-                else:
-                    rows_affected = self.provider.execute_statement(statement)
-
-                if _is_ddl_statement_for_success_log(statement):
-                    self.log.info("Statement executed successfully ")
-                elif rows_affected is not None and rows_affected >= 0:
-                    self.log.info(
-                        f"Statement executed successfully, {rows_affected} rows affected "
-                    )
-                else:
-                    self.log.info("Statement executed successfully ")
-
-                execution_time = int((time.time() - stmt_start_time) * SECONDS_TO_MILLISECONDS)
-                self.log.debug(f"Statement execution took {execution_time}ms")
-
-                if _session_output_active:
-                    try:
-                        quirks.read_session_output(_session_output_conn, self.log)
-                    except Exception as e:
-                        self.log.warning(
-                            f"Could not read session output after statement {i + 1}: {e}"
-                        )
-
+                rows_affected = self._send_statement(statement, i, migration, result, autocommit)
+                self._report_statement(
+                    statement, i, rows_affected, stmt_start_time, quirks, session_output
+                )
             except Exception as stmt_error:
-                execution_time = int((time.time() - stmt_start_time) * SECONDS_TO_MILLISECONDS)
-                self.log.debug(f"Statement execution took {execution_time}ms before failure")
-
-                # WHENEVER SQLERROR CONTINUE mirrors SQL*Plus behaviour: only database-level
-                # SQL errors are skippable. Infrastructure failures (aborted transaction,
-                # connection loss) must propagate — continuing would just produce more errors.
-                if (
-                    is_oracle_sqlplus
-                    and whenever_policy == "continue"
-                    and not isinstance(
-                        stmt_error, (TransactionAbortedError, ConnectionError, OSError)
-                    )
+                if self._continues_after_failure(
+                    stmt_error, i, stmt_start_time, is_oracle_sqlplus, whenever_policy
                 ):
-                    self.log.warning(
-                        f"Statement {i + 1} failed (WHENEVER SQLERROR CONTINUE): "
-                        f"{redact_driver_error_text(strip_sql_statement_block(str(stmt_error)))}"
-                    )
                     continue
 
                 total_execution_time = int((time.time() - start_time) * SECONDS_TO_MILLISECONDS)
@@ -791,6 +708,164 @@ class ExecutionEngine:
             )
             return False
         return True
+
+    def _enable_session_output(self, ctx: Optional[object], quirks: BaseQuirks) -> Optional[object]:
+        """Enable session-level output capture when the script context asks for it.
+
+        Capture is enabled on the provider's ``connection`` when *ctx* is set, its
+        ``wants_session_output`` is true and the provider has a connection. Returns that
+        connection once capture is enabled; returns None when capture is not asked for, when
+        there is no connection, or when enabling it failed (logged as a warning).
+        """
+        connection: Optional[object] = getattr(self.provider, "connection", None)
+        if (
+            ctx is not None
+            and getattr(ctx, "wants_session_output", False)
+            and connection is not None
+        ):
+            try:
+                quirks.enable_session_output(connection)
+            except Exception as e:
+                self.log.warning(f"Could not enable session output capture: {e}")
+                return None
+            return connection
+        return None
+
+    def _send_statement(
+        self,
+        statement: str,
+        index: int,
+        migration: Migration,
+        result: OperationResult,
+        autocommit: bool,
+    ) -> int:
+        """Send one statement and return the number of rows it affected.
+
+        A transactional provider first checks that its transaction is not aborted; an aborted
+        one raises :class:`TransactionAbortedError` naming the statement. The statement goes
+        through the SQL execution service when there is one (see ``_send_through_service``),
+        else through the provider's ``execute_autocommit_statement`` when *autocommit* is set
+        and the provider is transactional, else through its ``execute_statement``. Returns
+        what that call reports as rows affected.
+        """
+        if isinstance(self.provider, TransactionalProvider):
+            try:
+                self.provider.check_transaction_state()
+            except TransactionAbortedError as health_error:
+                raise TransactionAbortedError(
+                    f"Transaction is aborted before executing statement {index + 1}: "
+                    f"{health_error}"
+                ) from (health_error.__cause__ or health_error)
+
+        if self.sql_execution_service:
+            return self._send_through_service(
+                self.sql_execution_service, statement, index, migration, result, autocommit
+            )
+        if autocommit and isinstance(self.provider, TransactionalProvider):
+            return self.provider.execute_autocommit_statement(statement)
+        return self.provider.execute_statement(statement)
+
+    def _send_through_service(
+        self,
+        service: SqlExecutionService,
+        statement: str,
+        index: int,
+        migration: Migration,
+        result: OperationResult,
+        autocommit: bool,
+    ) -> int:
+        """Execute one statement through the SQL execution service and return its row count.
+
+        A query must return a list: its row count is returned, and when the result shows query
+        results the rows are added to it and shown by the presentation, if any. Any other
+        statement must return an int, which is returned. Raises TypeError otherwise.
+        """
+        is_query, result_data = service.execute_statement(statement, index, autocommit=autocommit)
+        if is_query:
+            if not isinstance(result_data, list):
+                raise TypeError(f"Expected list for query result, got {type(result_data).__name__}")
+            rows_affected = len(result_data) if result_data else 0
+            if getattr(result, "show_query_results", False):
+                columns, table_rows = rows_to_columns_and_values(result_data)
+                result.add_query_result(
+                    migration.script_name,
+                    migration.version,
+                    migration.description,
+                    statement,
+                    columns,
+                    table_rows,
+                )
+                presenter = presentation_for(self, self.log)
+                if presenter is not None:
+                    presenter.present_query_result(self, columns, table_rows)
+        else:
+            if not isinstance(result_data, int):
+                raise TypeError(f"Expected int for rows affected, got {type(result_data).__name__}")
+            rows_affected = result_data
+        return rows_affected
+
+    def _report_statement(
+        self,
+        statement: str,
+        index: int,
+        rows_affected: Optional[int],
+        started: float,
+        quirks: BaseQuirks,
+        session_output: Optional[object],
+    ) -> None:
+        """Log a statement that ran: its success, its duration, then any session output.
+
+        The success line names *rows_affected* unless the statement is DDL or the count is
+        None or negative. When *session_output* is a connection, its pending output is read
+        into the log; a failure to read it is logged as a warning. Returns None.
+        """
+        if _is_ddl_statement_for_success_log(statement):
+            self.log.info("Statement executed successfully ")
+        elif rows_affected is not None and rows_affected >= 0:
+            self.log.info(f"Statement executed successfully, {rows_affected} rows affected ")
+        else:
+            self.log.info("Statement executed successfully ")
+
+        execution_time = int((time.time() - started) * SECONDS_TO_MILLISECONDS)
+        self.log.debug(f"Statement execution took {execution_time}ms")
+
+        if session_output is not None:
+            try:
+                quirks.read_session_output(session_output, self.log)
+            except Exception as e:
+                self.log.warning(f"Could not read session output after statement {index + 1}: {e}")
+
+    def _continues_after_failure(
+        self,
+        error: Exception,
+        index: int,
+        started: float,
+        is_oracle_sqlplus: bool,
+        whenever_policy: str,
+    ) -> bool:
+        """Log how long a failed statement ran; return whether the script goes on past it.
+
+        Returns True, after logging a warning, when the script runs under SQL*Plus rules with
+        WHENEVER SQLERROR CONTINUE and *error* is not an aborted transaction, a connection
+        error or an OS error; returns False otherwise.
+        """
+        execution_time = int((time.time() - started) * SECONDS_TO_MILLISECONDS)
+        self.log.debug(f"Statement execution took {execution_time}ms before failure")
+
+        # WHENEVER SQLERROR CONTINUE mirrors SQL*Plus behaviour: only database-level
+        # SQL errors are skippable. Infrastructure failures (aborted transaction,
+        # connection loss) must propagate — continuing would just produce more errors.
+        if (
+            is_oracle_sqlplus
+            and whenever_policy == "continue"
+            and not isinstance(error, (TransactionAbortedError, ConnectionError, OSError))
+        ):
+            self.log.warning(
+                f"Statement {index + 1} failed (WHENEVER SQLERROR CONTINUE): "
+                f"{redact_driver_error_text(strip_sql_statement_block(str(error)))}"
+            )
+            return True
+        return False
 
     def _finish_statements(self, statements: List[str]) -> None:
         """Let the provider give its verdict once the last statement of a unit has run."""
