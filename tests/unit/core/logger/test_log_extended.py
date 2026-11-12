@@ -8,7 +8,8 @@ MultiLog, LogFactory, and TextFormatter.
 import json
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, mock_open, patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, Mock, call, mock_open, patch
 
 import pytest
 
@@ -608,6 +609,102 @@ class TestConsoleLog:
         ):
             log._display_result_summary(result)
         # Should not raise
+
+    @staticmethod
+    def _summary(result, report_text):
+        """Run _display_result_summary with ``report_text`` as the formatted report.
+
+        Returns the formatter instance mock, the console mock and the printed lines.
+        """
+        log = ConsoleLog("test_log")
+        log._console = MagicMock()
+        with patch("dblift.core.logger.formatters.formatter.OutputFormatter") as formatter_cls:
+            formatter_cls.return_value.format.return_value = report_text
+            log._display_result_summary(result)
+        printed = [c.args[0] for c in log._console.print.call_args_list]
+        return formatter_cls.return_value, log._console, printed
+
+    def test_display_result_summary_treats_a_missing_success_flag_as_success(self):
+        """A result without ``success`` still gets its performance summary printed."""
+        result = SimpleNamespace(journal={"applied": 1})
+
+        _, _, printed = self._summary(result, "Performance Summary:\nTotal: 1")
+
+        assert printed == ["", "Performance Summary:", "Total: 1"]
+
+    def test_display_result_summary_separates_sql_from_performance_with_one_blank_line(self):
+        """A blank line precedes "SQL Statements:" only when the last kept line is not blank."""
+        result = SimpleNamespace(success=True, journal={"a": 1}, show_sql=True, sql=["SELECT 1"])
+
+        _, _, after_text = self._summary(
+            result, "Performance Summary:\nTotal: 1\nSQL Statements:\nSELECT 1"
+        )
+        _, _, after_blank = self._summary(
+            result, "Performance Summary:\nTotal: 1\n\nSQL Statements:\nSELECT 1"
+        )
+
+        expected = ["", "Performance Summary:", "Total: 1", "", "SQL Statements:", "SELECT 1"]
+        assert after_text == expected
+        assert after_blank == expected
+
+    def test_display_result_summary_ends_a_long_performance_capture_at_a_blank_line(self):
+        """Past ten captured lines with more than five of them filled, a blank line ends it."""
+        result = SimpleNamespace(success=True, journal={"a": 1})
+        body = [f"p{i}" for i in range(1, 9)]
+        report = "\n".join(["Performance Summary:", *body, "", "after"])
+
+        _, _, printed = self._summary(result, report)
+
+        assert printed == ["", "Performance Summary:", *body, ""]
+
+    def test_display_result_summary_formats_a_schemaless_result_as_default(self):
+        """Without a target schema the text report is formatted for schema "default"."""
+        result = SimpleNamespace(success=True, journal={"a": 1}, target_schema=None)
+
+        formatter, _, _ = self._summary(result, "")
+
+        formatter.format.assert_called_once_with(result, format_type="text", schema_name="default")
+
+    def test_display_result_summary_prints_lines_without_markup_or_highlighting(self):
+        """Report lines go to the console verbatim: no Rich markup, no highlighting."""
+        result = SimpleNamespace(success=True, journal={"a": 1})
+
+        _, console, _ = self._summary(result, "Performance Summary:\n[bold]Total[/bold]: 1")
+
+        assert console.print.call_args_list == [
+            call("", markup=False, highlight=False),
+            call("Performance Summary:", markup=False, highlight=False),
+            call("[bold]Total[/bold]: 1", markup=False, highlight=False),
+        ]
+
+    @pytest.mark.parametrize("section", ["Warnings:", "Error Details:"])
+    def test_display_result_summary_stops_the_performance_capture_at(self, section):
+        """The warnings and error sections that follow the performance summary are not shown."""
+        result = SimpleNamespace(success=True, journal={"a": 1})
+
+        _, _, printed = self._summary(result, f"Performance Summary:\nTotal: 1\n{section}\nw1")
+
+        assert printed == ["", "Performance Summary:", "Total: 1"]
+
+    @pytest.mark.parametrize("debug_enabled", [True, False])
+    def test_display_result_summary_reports_a_formatting_failure_only_in_debug(self, debug_enabled):
+        """A failure while formatting is logged at debug level only when debug is enabled."""
+        log = ConsoleLog("test_log", enable_debug=debug_enabled)
+        result = SimpleNamespace(success=True, journal={"a": 1})
+
+        with (
+            patch(
+                "dblift.core.logger.formatters.formatter.OutputFormatter",
+                side_effect=Exception("Test"),
+            ),
+            patch.object(log, "debug") as debug,
+        ):
+            log._display_result_summary(result)
+
+        if debug_enabled:
+            debug.assert_called_once_with("Could not display result summary: Test")
+        else:
+            debug.assert_not_called()
 
 
 @pytest.mark.unit
