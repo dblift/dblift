@@ -817,7 +817,7 @@ class TestDBLiftClientPremiumStubs:
         from dblift.core import premium_manifest
         from dblift.core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL
 
-        # Hermetic: a dev venv with dblift-pro but not dblift-enterprise gets the
+        # Hermetic: a dev venv with a partially installed extension gets the
         # install guidance instead (tests/unit/cli/test_premium_stubs.py covers it).
         monkeypatch.setattr(premium_manifest, "distribution_installed", lambda name: False)
 
