@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, NoReturn, Optional, Tuple
 
 from dblift.api._cli_support import ConnectionProvider
 from dblift.api._client_factory import apply_derived_schema
+from dblift.cli._capability_exit import exit_on_capability_denial
 from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
 from dblift.config.config_builder import ConfigBuilder
 from dblift.config.dblift_config import (
@@ -284,7 +285,8 @@ def _load_and_merge_config(args: argparse.Namespace, log: Any) -> Any:
             args.config = discovered
 
     try:
-        config = load_config(args.config, args)
+        with exit_on_capability_denial():
+            config = load_config(args.config, args)
     except CONFIG_LOAD_ERRORS as e:
         message = str(e)
         if isinstance(e, ConfigurationError) and (

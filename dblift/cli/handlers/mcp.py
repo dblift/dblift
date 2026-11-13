@@ -10,6 +10,7 @@ from dblift.cli._config_helpers import CONFIG_LOAD_ERRORS, _discover_default_con
 from dblift.cli._output import CommandOutput
 from dblift.cli.handlers._shared import CliCommandContext
 from dblift.config.dblift_config import load_config
+from dblift.core.seams.capabilities import CapabilityDeniedError
 
 
 def _announce_target(args: argparse.Namespace) -> None:
@@ -19,7 +20,7 @@ def _announce_target(args: argparse.Namespace) -> None:
     opened. Calls ``load_config`` directly rather than the CLI's
     ``_load_and_merge_config``, which exits the process on a configuration
     error instead of raising it: an error the CLI itself would report
-    (``CONFIG_LOAD_ERRORS``) is printed here and swallowed, since each tool
+    (``CONFIG_LOAD_ERRORS``, or a capability denial) is printed here and swallowed, since each tool
     call loads the configuration for itself and reports its own error;
     anything else is a bug and surfaces.
     """
@@ -36,7 +37,7 @@ def _announce_target(args: argparse.Namespace) -> None:
             f"dblift mcp: environment {environment}; "
             f"database {config.database.describe_target()}"
         )
-    except CONFIG_LOAD_ERRORS as exc:
+    except (*CONFIG_LOAD_ERRORS, CapabilityDeniedError) as exc:
         output.error(
             f"dblift mcp: configuration not loaded at start ({type(exc).__name__}: {exc}); "
             "each tool call loads it and reports its own error"

@@ -28,6 +28,8 @@ class AbstractSecretsProvider(ABC):
         ``dblift mcp`` report it as a configuration error, as they do a bare
         ``ValueError`` or ``RuntimeError``; a caller of
         :meth:`DbliftConfig.from_dict` receives whatever ``resolve`` raises.
+        A :class:`~dblift.core.seams.capabilities.CapabilityDeniedError` exits
+        with ``EXIT_LICENSE_REQUIRED`` instead.
         """
 
     @abstractmethod

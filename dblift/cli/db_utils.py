@@ -14,6 +14,7 @@ from dblift.api._cli_support import (
     format_connection_error,
     get_provider_display_url,
 )
+from dblift.cli._capability_exit import exit_on_capability_denial
 from dblift.cli._output import CommandOutput, from_args
 from dblift.config.dblift_config import DbliftConfig, load_config, unrecognized_top_level_keys
 from dblift.core.constants import ENV_PREFIX
@@ -86,7 +87,8 @@ def validate_config(args: argparse.Namespace) -> int:
             # If the user passed --config, load it: otherwise validate-config is useless as a
             # config-file linter, since DbliftConfig.from_args only reads CLI flags.
             try:
-                config = load_config(config_file, args)
+                with exit_on_capability_denial():
+                    config = load_config(config_file, args)
             except (FileNotFoundError, RuntimeError) as load_err:
                 out.error(f"Error: {load_err}")
                 return 1
@@ -107,7 +109,8 @@ def validate_config(args: argparse.Namespace) -> int:
                     "--db-url, or set DBLIFT_DB_* environment variables."
                 )
                 return 1
-            config = load_config(None, args)
+            with exit_on_capability_denial():
+                config = load_config(None, args)
 
         # Validate the configuration
         is_valid, error_message = ProviderRegistry.validate_database_configuration(config)
@@ -292,7 +295,8 @@ def check_connection(args: argparse.Namespace) -> int:
         try:
             # Create config from arguments
             try:
-                config = load_config(getattr(args, "config", None), args)
+                with exit_on_capability_denial():
+                    config = load_config(getattr(args, "config", None), args)
 
                 # Check if we have enough information to connect.
                 # SQLite can use a file path, not a server/URL.

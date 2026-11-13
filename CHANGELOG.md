@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A capability denial raised while the configuration loads (for example by a registered secrets
+  provider) now exits with code 4 (`EXIT_LICENSE_REQUIRED`) and one `Error:` line on stderr, as a
+  denial at command dispatch does, including from `db validate-config` and `db check-connection`.
+  It used to exit 1 or end in a traceback. `dblift mcp` reports
+  such a denial in its start announcement and still serves; each tool call then reports exit 4.
 - A root flag that only an extension package registers (`--license-key`) is no longer reported by
   argparse as an unrecognized argument when that package is not installed. It now gets the same
   install guidance as a command stub and exits with code 4, and is never accepted silently.

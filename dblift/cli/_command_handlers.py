@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 from typing import Any, Callable, Dict, List, NoReturn, Optional, Tuple
 
-from dblift.cli._constants import EXIT_LICENSE_REQUIRED
+from dblift.cli._constants import EXIT_LICENSE_REQUIRED, LICENSE_REQUIRED_FALLBACK_MESSAGE
 from dblift.cli.extensions import load_command_handlers, load_terminal_commands
 from dblift.cli.handlers._shared import (  # noqa: F401
     _MIGRATION_FILENAME_RE,
@@ -93,7 +93,7 @@ def exit_license_required(error: CapabilityDeniedError, log: Any) -> NoReturn:
     Capability rejections map to the same exit code as premium stubs so
     scripts/CI can branch on entitlement without parsing stderr.
     """
-    message = str(error).strip() or "This command requires a license that is not available."
+    message = str(error).strip() or LICENSE_REQUIRED_FALLBACK_MESSAGE
     log.error(message)
     raise SystemExit(EXIT_LICENSE_REQUIRED) from error
 
