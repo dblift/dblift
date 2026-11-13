@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- With `dblift-pro` installed but not `dblift-enterprise`, the only package that reads a licence
+  key, the command stubs and the stub `DBLiftClient` methods pointed to the upgrade page. They now
+  say to install `dblift-enterprise[<engine>]` and run `dblift license activate <key>`.
 - `validate-sql --dialect <name>` on a project whose configuration file names another database
   type (for example `type: sqlite` with `--dialect postgresql`) was refused since 5.1.6 with
   `database.url: unresolved reference`. The dialect given on the command line now decides the
