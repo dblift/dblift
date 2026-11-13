@@ -39,7 +39,7 @@ from dblift.cli._output import CommandOutput, from_args
 from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
 from dblift.cli.extensions import load_terminal_commands
 from dblift.cli.handlers._shared import reported_exception_name
-from dblift.cli.premium_manifest import render_upsell
+from dblift.cli.premium_manifest import premium_root_flags_missing_from, render_upsell
 from dblift.config.property_registry import PROPERTY_REGISTRY
 from dblift.core.exceptions import InvalidTargetVersionError
 from dblift.core.logger import LogFactory
@@ -464,6 +464,20 @@ def _require_analysis_extras(commands: List[str], args: argparse.Namespace) -> N
     sys.exit(1)
 
 
+def _reject_unregistered_root_flags(argv: List[str], parser: argparse.ArgumentParser) -> None:
+    """Exit with the install guidance when a root flag has no registering parser.
+
+    A root flag that only an extension package registers would otherwise fail
+    in argparse as an unrecognized argument. It is never accepted silently:
+    without a registered owner it gets the same message as a command stub.
+    """
+    registered = {opt for action in parser._actions for opt in action.option_strings}
+    for flag in premium_root_flags_missing_from(registered):
+        if any(arg == flag.name or arg.startswith(flag.name + "=") for arg in argv):
+            CommandOutput("console").error(render_upsell(flag))
+            sys.exit(EXIT_LICENSE_REQUIRED)
+
+
 def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     """Phase 1: extract commands, build args namespace, load config.
 
@@ -484,6 +498,7 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     # boolean set, or its value-lookahead swallows the following command token.
     # See _root_only_long_flags / _root_only_boolean_flags.
     _parser = create_parser()
+    _reject_unregistered_root_flags(argv, _parser)
     global_only_args = list(_GLOBAL_ONLY_ARGS) + sorted(
         _root_only_long_flags(_parser) - set(_GLOBAL_ONLY_ARGS)
     )

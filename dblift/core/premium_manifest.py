@@ -58,9 +58,9 @@ ENTERPRISE_DISTRIBUTION = "dblift-enterprise"
 
 @dataclass(frozen=True)
 class PremiumCommand:
-    """Declarative descriptor for a command that exists only in a paid edition."""
+    """Declarative descriptor for a command, or root flag, that only an extension provides."""
 
-    name: str
+    name: str  # command name, or the flag spelling (``--flag``) for a root flag
     edition: str  # human-facing label: "Pro" or "Enterprise"
     summary: str  # one-line help, mirrored from the paid parser registration
     api_method: Optional[str] = None  # corresponding api.DBLiftClient method, if any
@@ -109,6 +109,16 @@ PREMIUM_COMMANDS: Tuple[PremiumCommand, ...] = (
     ),
 )
 
+# Root flags an extension package registers. Kept apart from PREMIUM_COMMANDS,
+# which drives the subcommand stubs.
+PREMIUM_ROOT_FLAGS: Tuple[PremiumCommand, ...] = (
+    PremiumCommand(
+        "--license-key",
+        "Enterprise",
+        "Pass a key for this invocation",
+    ),
+)
+
 
 def premium_commands_missing_from(
     registered: Iterable[str],
@@ -121,6 +131,14 @@ def premium_commands_missing_from(
     """
     taken = set(registered)
     return tuple(cmd for cmd in PREMIUM_COMMANDS if cmd.name not in taken)
+
+
+def premium_root_flags_missing_from(
+    registered: Iterable[str],
+) -> Tuple[PremiumCommand, ...]:
+    """Root-flag entries whose spelling is not among the ``registered`` option strings."""
+    taken = set(registered)
+    return tuple(flag for flag in PREMIUM_ROOT_FLAGS if flag.name not in taken)
 
 
 def premium_stub_index(registered: Iterable[str]) -> Dict[str, PremiumCommand]:
@@ -157,8 +175,9 @@ def render_upsell(cmd: PremiumCommand) -> str:
             f"Install {ENTERPRISE_DISTRIBUTION}[<engine>] from your DBLift bundle, "
             f"then run: dblift license activate <key>"
         )
+    kind = "option" if cmd.name.startswith("--") else "command"
     return (
-        f"'{cmd.name}' is a dblift {cmd.edition} command and is not included "
+        f"'{cmd.name}' is a dblift {cmd.edition} {kind} and is not included "
         f"in the open-source edition.\n"
         f"  {cmd.summary}.\n"
         f"Learn more and upgrade: {UPGRADE_URL}"
