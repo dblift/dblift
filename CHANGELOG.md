@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A root flag that only an extension package registers (`--license-key`) is no longer reported by
+  argparse as an unrecognized argument when that package is not installed. It now gets the same
+  install guidance as a command stub and exits with code 4, and is never accepted silently.
 - When an extension package is installed without the package that provides a command, the
   command stubs and the stub `DBLiftClient` methods now say which package to install instead of
   the default message. A distribution whose metadata cannot be read no longer makes the check raise.

@@ -266,3 +266,70 @@ def test_api_stub_on_a_partial_extension_install_names_the_package_to_install(mo
         DBLiftClient.diff(Mock())
     assert ENTERPRISE_DISTRIBUTION in str(excinfo.value)
     assert UPGRADE_URL not in str(excinfo.value)
+
+
+# --- A root flag that only an extension package registers ---
+#
+# Without the package that registers the flag, argparse would reject it as
+# "unrecognized arguments" (exit 2). It must get the install guidance and
+# EXIT_LICENSE_REQUIRED instead, and must never be accepted silently.
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--license-key", "x", "migrate"],
+        ["--license-key=x", "info"],
+        ["migrate", "--license-key", "x"],
+    ],
+)
+def test_root_flag_on_a_partial_extension_install_names_the_package_to_install(
+    monkeypatch, capsys, argv
+):
+    import dblift.cli.main as cli_main
+
+    _pretend_installed(monkeypatch, "dblift", PRO_DISTRIBUTION)
+    monkeypatch.setattr("sys.argv", ["dblift"] + argv)
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main.main()
+
+    assert excinfo.value.code == EXIT_LICENSE_REQUIRED
+    captured = capsys.readouterr()
+    output = captured.err + captured.out
+    assert "'--license-key'" in output
+    assert ENTERPRISE_DISTRIBUTION in output
+    assert "unrecognized arguments" not in output
+    assert UPGRADE_URL not in output
+
+
+def test_root_flag_on_a_plain_oss_install_gets_the_upgrade_message(monkeypatch, capsys):
+    import dblift.cli.main as cli_main
+
+    _pretend_installed(monkeypatch, "dblift")
+    monkeypatch.setattr("sys.argv", ["dblift", "--license-key", "x", "migrate"])
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main.main()
+
+    assert excinfo.value.code == EXIT_LICENSE_REQUIRED
+    captured = capsys.readouterr()
+    output = captured.err + captured.out
+    assert "'--license-key'" in output
+    assert "not included in the open-source edition" in output
+    assert " option and is not included" in output
+    assert UPGRADE_URL in output
+    assert "unrecognized arguments" not in output
+
+
+def test_root_flag_registered_by_a_parser_is_left_to_argparse():
+    import dblift.cli.main as cli_main
+
+    parser = ArgumentParser()
+    parser.add_argument("--license-key")
+    # Must return normally: the flag has a real owner, so nothing is rejected.
+    cli_main._reject_unregistered_root_flags(["--license-key", "x", "migrate"], parser)
+
+
+def test_root_flag_check_ignores_argv_without_the_flag():
+    import dblift.cli.main as cli_main
+
+    cli_main._reject_unregistered_root_flags(["migrate", "--target-version", "1"], ArgumentParser())
