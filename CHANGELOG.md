@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The HTML report (`--log-format html`) follows the flat DBLift blue identity of dblift.com: blue
+  accents in place of teal and cyan, emerald for success, flat panels, banners and timeline bars
+  with no gradients or glow, and the single-blue mark with a plain white wordmark. The mark is now
+  inline SVG instead of an embedded PNG, so a report is about 115 KB smaller.
 - The logo at the top of the README (also shown on PyPI) uses the new flat DBLift blue identity:
   a single-blue mark and a plain white wordmark, matching dblift.com. Same file path, now at 2x
   resolution, with its SVG source in `logo/dblift_logo.svg`.
