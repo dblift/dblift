@@ -53,7 +53,13 @@ from dblift.core.migration.target_version import (
     merge_versions,
     validate_target_version,
 )
-from dblift.core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL, render_upsell
+from dblift.core.premium_manifest import (
+    ENTERPRISE_DISTRIBUTION,
+    PREMIUM_COMMANDS,
+    PRO_DISTRIBUTION,
+    UPGRADE_URL,
+    render_upsell,
+)
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.event_listeners import attach_registered_listeners
 from dblift.core.seams.feature_loading import load_feature_extensions
@@ -81,7 +87,7 @@ def _make_premium_stub_method(api_method_name: str) -> Callable[..., Any]:
     (``cli/_command_handlers.py``): rather than the method being entirely
     absent (a bare ``AttributeError`` on call), it exists, accepts
     whatever arguments a paid caller would pass, and raises
-    ``CapabilityDeniedError`` with the same upsell message the CLI shows
+    ``CapabilityDeniedError`` with the same message the CLI shows
     for the equivalent command. Not decorated with ``@_with_client_emitter``
     — it never runs an operation, so there is nothing to bind an emitter
     around (see ``EXPECTED_DECORATED_OPERATIONS`` in
@@ -97,8 +103,10 @@ def _make_premium_stub_method(api_method_name: str) -> Callable[..., Any]:
         f"Paid-tier stub: '{cmd.name}' is a dblift {cmd.edition} command, "
         f"not available in the open-source edition.\n\n"
         f"Raises:\n"
-        f"    CapabilityDeniedError: always, with an upgrade message. "
-        f"See {UPGRADE_URL}."
+        f"    CapabilityDeniedError: always. In an open-source install the "
+        f"message points to {UPGRADE_URL}; with {PRO_DISTRIBUTION} installed "
+        f"but not {ENTERPRISE_DISTRIBUTION}, it says to install "
+        f"{ENTERPRISE_DISTRIBUTION} and activate the licence key."
     )
     return _stub
 

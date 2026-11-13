@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
 from unittest.mock import MagicMock
 
 import pytest
 
 import dblift.core.seams.feature_loading as feature_loading
+from dblift.core import premium_manifest
 from dblift.core.seams.feature_loading import load_feature_extensions
 
 pytestmark = [pytest.mark.unit]
@@ -202,10 +204,10 @@ def test_broken_tier_distribution_metadata_does_not_crash_load_feature_extension
     def _broken_version(name):
         if name == "dblift-pro":
             raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "bad metadata")
-        raise feature_loading.PackageNotFoundError(name)
+        raise PackageNotFoundError(name)
 
     monkeypatch.setattr(feature_loading, "entry_points", lambda group: [])
-    monkeypatch.setattr(feature_loading, "version", _broken_version)
+    monkeypatch.setattr(premium_manifest, "version", _broken_version)
 
     load_feature_extensions()  # must not raise
 

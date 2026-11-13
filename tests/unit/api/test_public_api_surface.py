@@ -813,8 +813,13 @@ class TestDBLiftClientPremiumStubs:
             with pytest.raises(CapabilityDeniedError):
                 method()
 
-    def test_stub_error_message_names_command_edition_and_upgrade_url(self):
+    def test_stub_error_message_names_command_edition_and_upgrade_url(self, monkeypatch):
+        from dblift.core import premium_manifest
         from dblift.core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL
+
+        # Hermetic: a dev venv with dblift-pro but not dblift-enterprise gets the
+        # install guidance instead (tests/unit/cli/test_premium_stubs.py covers it).
+        monkeypatch.setattr(premium_manifest, "distribution_installed", lambda name: False)
 
         by_api_method = {cmd.api_method: cmd for cmd in PREMIUM_COMMANDS if cmd.api_method}
         assert set(by_api_method) == self.STUB_METHOD_NAMES, (

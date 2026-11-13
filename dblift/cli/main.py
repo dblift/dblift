@@ -51,6 +51,7 @@ from dblift.core.logger.console import (
     require_presentation_extras,
     rich_available,
 )
+from dblift.core.premium_manifest import ENTERPRISE_DISTRIBUTION, PRO_DISTRIBUTION
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.feature_loading import load_feature_extensions
 from dblift.core.seams.license_info import get_license_info
@@ -306,8 +307,8 @@ def _format_version() -> str:
             return None
 
     core = _resolve_core_version()
-    pro = _get("dblift-pro")
-    enterprise = _get("dblift-enterprise")
+    pro = _get(PRO_DISTRIBUTION)
+    enterprise = _get(ENTERPRISE_DISTRIBUTION)
 
     # Headline = manifest version (bundled distribution) if present, else the
     # most-derived installed tier (the product actually running).

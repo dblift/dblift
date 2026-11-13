@@ -7,6 +7,7 @@ Covers the three stub surfaces:
 """
 
 import argparse
+import importlib
 from argparse import ArgumentParser
 from unittest.mock import Mock
 
@@ -26,6 +27,7 @@ from dblift.cli.premium_manifest import (
     premium_stub_index,
     render_upsell,
 )
+from dblift.core.premium_manifest import PRO_DISTRIBUTION
 
 
 def test_exit_code_is_distinct_from_failure_and_usage_codes():
@@ -65,7 +67,10 @@ def test_stub_index_empty_when_everything_registered():
     assert premium_stub_index({cmd.name for cmd in PREMIUM_COMMANDS}) == {}
 
 
-def test_render_upsell_names_command_edition_and_url():
+def test_render_upsell_names_command_edition_and_url(monkeypatch):
+    # Hermetic: a dev venv with dblift-pro but not dblift-enterprise gets the
+    # install guidance instead (covered by the add-on-only tests below).
+    _pretend_installed(monkeypatch, "dblift")
     for cmd in PREMIUM_COMMANDS:
         message = render_upsell(cmd)
         assert f"'{cmd.name}'" in message
@@ -197,3 +202,68 @@ def test_capability_denied_maps_to_license_exit_code():
         assert "license" in logged.lower()
     finally:
         handlers._COMMAND_HANDLERS["migrate"] = original
+
+
+# --- An add-on installed without the package that reads licence keys ---
+#
+# dblift-pro can be installed without dblift-enterprise, the only package that
+# reads a licence key. Every command it does not register then lands on these
+# stubs, and an upgrade message is wrong for a user who may already hold a key.
+
+
+def _pretend_installed(monkeypatch, *names):
+    from dblift.core import premium_manifest
+
+    monkeypatch.setattr(premium_manifest, "distribution_installed", lambda name: name in names)
+
+
+@pytest.mark.parametrize("cmd", PREMIUM_COMMANDS, ids=lambda cmd: cmd.name)
+def test_stub_on_a_pro_only_install_says_how_to_license(monkeypatch, cmd):
+    _pretend_installed(monkeypatch, "dblift", "dblift-pro")
+    message = render_upsell(cmd)
+    assert f"'{cmd.name}'" in message
+    assert "dblift-enterprise" in message
+    assert "dblift license activate" in message
+    assert UPGRADE_URL not in message
+
+
+@pytest.mark.parametrize("cmd", PREMIUM_COMMANDS, ids=lambda cmd: cmd.name)
+def test_stub_on_a_plain_oss_install_keeps_the_upgrade_message(monkeypatch, cmd):
+    _pretend_installed(monkeypatch, "dblift")
+    message = render_upsell(cmd)
+    assert "not included in the open-source edition" in message
+    assert UPGRADE_URL in message
+    assert "dblift-enterprise" not in message
+
+
+def test_distribution_installed_reads_the_real_environment():
+    # Guards the seam the tests above patch: it must see this very package.
+    from dblift.core.premium_manifest import distribution_installed
+
+    assert distribution_installed("dblift")
+    assert not distribution_installed("dblift-no-such-distribution")
+
+
+def test_a_broken_add_on_install_counts_as_absent(monkeypatch, tmp_path):
+    # version("dblift-pro") resolves this dist-info and cannot decode its
+    # metadata; the stub must still print the open-source message.
+    dist_info = tmp_path / f"{PRO_DISTRIBUTION.replace('-', '_')}-0.0.0.dist-info"
+    dist_info.mkdir()
+    (dist_info / "METADATA").write_bytes(b"Name: \xff\xfe\x80broken\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    importlib.invalidate_caches()
+    for cmd in PREMIUM_COMMANDS[:2]:
+        message = render_upsell(cmd)
+        assert "not included in the open-source edition" in message
+        assert UPGRADE_URL in message
+
+
+def test_api_stub_on_a_pro_only_install_says_how_to_license(monkeypatch):
+    from dblift.api.client import DBLiftClient
+    from dblift.core.seams.capabilities import CapabilityDeniedError
+
+    _pretend_installed(monkeypatch, "dblift", "dblift-pro")
+    with pytest.raises(CapabilityDeniedError) as excinfo:
+        DBLiftClient.diff(Mock())
+    assert "dblift-enterprise" in str(excinfo.value)
+    assert UPGRADE_URL not in str(excinfo.value)
