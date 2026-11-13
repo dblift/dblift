@@ -35,14 +35,10 @@ advertises one that does not exist, breaking the "real parsers always
 win" precedence above. Keep entries in sync with the real command
 surface, never ahead of it.
 
-A stub also fires when an add-on package is installed but the one that
-registers the command is not: ``dblift-pro`` can be installed without
-``dblift-enterprise``, the only package that reads a licence key. Every
-command the add-on does not register then lands on its stub, and the API's
-stub methods all raise. An upgrade message is wrong for a user who may already
-hold a key, so :func:`render_upsell` says which package to install instead. It
-checks which of the two distributions are installed only when a stub fires,
-never at import time.
+A stub also fires when an extension package is installed without the
+package that provides the command; :func:`render_upsell` then says which
+package to install instead of the default message. It checks the installed
+distributions only when a stub fires, never at import time.
 """
 
 from __future__ import annotations
@@ -55,7 +51,7 @@ from typing import Dict, Iterable, Optional, Tuple
 _log = logging.getLogger(__name__)
 
 UPGRADE_URL = "https://dblift.com/upgrade"
-# Distribution names (PEP 503 canonical form) of the two add-on packages.
+# Distribution names (PEP 503 canonical form) checked by render_upsell and feature loading.
 PRO_DISTRIBUTION = "dblift-pro"
 ENTERPRISE_DISTRIBUTION = "dblift-enterprise"
 
@@ -147,19 +143,17 @@ def distribution_installed(name: str) -> bool:
 def render_upsell(cmd: PremiumCommand) -> str:
     """Message shown when a stubbed command is invoked.
 
-    In an open-source install it names the edition and the upgrade page.
-    With ``dblift-pro`` installed but not ``dblift-enterprise``, the user
-    may already hold a licence key, so it says which package to install and
-    how to activate the key instead.
+    By default it names the edition and the upgrade page. When an extension
+    package is installed without the package that provides the command, it
+    says which package to install instead.
     """
     if distribution_installed(PRO_DISTRIBUTION) and not distribution_installed(
         ENTERPRISE_DISTRIBUTION
     ):
         return (
             f"'{cmd.name}' is provided by the {ENTERPRISE_DISTRIBUTION} package, "
-            f"which reads licence keys.\n"
+            f"which is not installed.\n"
             f"  {cmd.summary}.\n"
-            f"Only {PRO_DISTRIBUTION} is installed here, so no licence key can be read.\n"
             f"Install {ENTERPRISE_DISTRIBUTION}[<engine>] from your DBLift bundle, "
             f"then run: dblift license activate <key>"
         )
