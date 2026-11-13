@@ -247,6 +247,86 @@ class _PlainStderr:
         print(renderable, file=sys.stderr)  # lint: allow-print  plain-text sink
 
 
+def _take_performance_line(
+    line: str, in_performance_section: bool, performance_lines: list[str]
+) -> Optional[bool]:
+    """Apply one report line to the performance capture and return the new capture state.
+
+    A line containing "Performance Summary:" or "Performance by Object Type:" appends a blank
+    line and itself to performance_lines and returns True. Any other line returns False when
+    in_performance_section is falsy. Otherwise a line starting with "Warnings:" or "Error
+    Details:" once stripped returns None without being appended. Any other line is appended,
+    then None is returned when performance_lines holds more than 10 lines, this line is blank
+    once stripped and more than 5 lines of performance_lines are not; True otherwise.
+    None means the capture is over.
+    """
+    # Start capturing when we hit performance sections
+    if "Performance Summary:" in line or "Performance by Object Type:" in line:
+        performance_lines.append("")  # Add spacing
+        performance_lines.append(line)
+        return True
+    if not in_performance_section:
+        return False
+    # Stop capturing when we hit warnings or a section after performance
+    if line.strip().startswith("Warnings:") or line.strip().startswith("Error Details:"):
+        return None
+    # Continue capturing unless we hit two consecutive empty lines
+    performance_lines.append(line)
+
+    # If we have enough content and hit an empty line followed by non-
+    # performance content, stop
+    if (
+        len(performance_lines) > 10
+        and line.strip() == ""
+        and len([ln for ln in performance_lines if ln.strip()]) > 5
+    ):
+        # Look ahead to see if next non-empty line is not performance related
+        return None
+    return True
+
+
+def _summary_section_lines(
+    lines: list[str], has_visible_sql: object, has_journal: object
+) -> list[str]:
+    """Return the report lines the console shows: the SQL section and the performance summary.
+
+    When has_visible_sql is truthy, a line equal to "SQL Statements:" once stripped opens the
+    SQL section and is kept, after an added blank line when a kept line exists and the last
+    one is not blank once stripped. Every line of the open SQL section is kept until a line
+    equal to "Query Results:" once stripped closes it; that line is then handled as a line
+    outside the section. Lines outside the SQL section are dropped when has_journal is falsy
+    and otherwise go through _take_performance_line; the first one it answers None for ends
+    the scan.
+    """
+    in_performance_section = False
+    in_sql_section = False
+    performance_lines: list[str] = []
+
+    for line in lines:
+        if has_visible_sql and line.strip() == "SQL Statements:":
+            in_sql_section = True
+            if performance_lines and performance_lines[-1].strip():
+                performance_lines.append("")
+            performance_lines.append(line)
+            continue
+
+        if in_sql_section and line.strip() == "Query Results:":
+            in_sql_section = False
+
+        if in_sql_section:
+            performance_lines.append(line)
+            continue
+
+        if not has_journal:
+            continue
+
+        capturing = _take_performance_line(line, in_performance_section, performance_lines)
+        if capturing is None:
+            break
+        in_performance_section = capturing
+    return performance_lines
+
+
 # ConsoleLog implementation
 class ConsoleLog(AbstractLog):
     """Simple console-based logger implementation."""
@@ -379,51 +459,7 @@ class ConsoleLog(AbstractLog):
                 # Only display the performance and explicit SQL visibility
                 # sections, not the full report.
                 lines = formatted_result.split("\n")
-                in_performance_section = False
-                in_sql_section = False
-                performance_lines: list[str] = []
-
-                for line in lines:
-                    if has_visible_sql and line.strip() == "SQL Statements:":
-                        in_sql_section = True
-                        if performance_lines and performance_lines[-1].strip():
-                            performance_lines.append("")
-                        performance_lines.append(line)
-                        continue
-
-                    if in_sql_section and line.strip() == "Query Results:":
-                        in_sql_section = False
-
-                    if in_sql_section:
-                        performance_lines.append(line)
-                        continue
-
-                    if not has_journal:
-                        continue
-
-                    # Start capturing when we hit performance sections
-                    if "Performance Summary:" in line or "Performance by Object Type:" in line:
-                        in_performance_section = True
-                        performance_lines.append("")  # Add spacing
-                        performance_lines.append(line)
-                    elif in_performance_section:
-                        # Stop capturing when we hit warnings or a section after performance
-                        if line.strip().startswith("Warnings:") or line.strip().startswith(
-                            "Error Details:"
-                        ):
-                            break
-                        # Continue capturing unless we hit two consecutive empty lines
-                        performance_lines.append(line)
-
-                        # If we have enough content and hit an empty line followed by non-
-                        # performance content, stop
-                        if (
-                            len(performance_lines) > 10
-                            and line.strip() == ""
-                            and len([ln for ln in performance_lines if ln.strip()]) > 5
-                        ):
-                            # Look ahead to see if next non-empty line is not performance related
-                            break
+                performance_lines = _summary_section_lines(lines, has_visible_sql, has_journal)
 
                 # Display the performance summary if we found any. This is
                 # human-facing console output, so keep stdout reserved for

@@ -14,6 +14,45 @@ from dblift.core.logger import Log, NullLog
 if TYPE_CHECKING:
     from azure.cosmos import CosmosClient, DatabaseProxy
 
+# Lowercased error text that marks a transient emulator backend failure.
+_BACKEND_ERROR_MARKERS = (
+    "connection refused",
+    "connection aborted",
+    "remotedisconnected",
+    "remote end closed",
+    "poolerror",
+    "backend",
+    "status code: 500",
+    "status code: 503",
+)
+
+
+def _is_backend_error(error_str: str) -> bool:
+    """Return whether ``error_str`` contains one of ``_BACKEND_ERROR_MARKERS``."""
+    return any(marker in error_str for marker in _BACKEND_ERROR_MARKERS)
+
+
+def _client_kwargs(
+    account_endpoint: str, credential: object, is_emulator: bool, is_https: bool
+) -> Dict[str, Any]:
+    """Return the ``CosmosClient`` keyword arguments for ``account_endpoint``.
+
+    They are the url, the credential, a 10 s connection timeout and a 30 s read timeout, plus
+    ``connection_verify=False`` only when both ``is_emulator`` and ``is_https`` are true.
+    """
+    client_kwargs = {
+        "url": account_endpoint,
+        "credential": credential,
+        # Prevent indefinite hangs when the emulator drops connections
+        # (RemoteDisconnected under parallel-test load).
+        "connection_timeout": 10,
+        "read_timeout": 30,
+    }
+    # Only disable SSL verification for emulator HTTPS endpoints
+    if is_emulator and is_https:
+        client_kwargs["connection_verify"] = False
+    return client_kwargs
+
 
 class CosmosDbConnectionManager:
     """Manages Cosmos DB connections using Azure SDK."""
@@ -105,96 +144,28 @@ class CosmosDbConnectionManager:
             parsed_endpoint = urllib.parse.urlparse(account_endpoint)
             is_https = parsed_endpoint.scheme.lower() == "https"
 
+            credential: object
             if cosmos_config.use_managed_identity:
                 # Use DefaultAzureCredential for managed identity
                 from azure.identity import DefaultAzureCredential
 
                 credential = DefaultAzureCredential()
-                client_kwargs: Dict[str, Any] = {
-                    "url": account_endpoint,
-                    "credential": credential,
-                    "connection_timeout": 10,
-                    "read_timeout": 30,
-                }
-                # Only disable SSL verification for emulator HTTPS endpoints
-                if is_emulator and is_https:
-                    client_kwargs["connection_verify"] = False
-                self.client = CosmosClient(**client_kwargs)
             else:
                 # Use account key
                 if not cosmos_config.account_key:
                     raise ValueError("account_key is required when use_managed_identity is False")
+                credential = cosmos_config.account_key
 
-                client_kwargs = {
-                    "url": account_endpoint,
-                    "credential": cosmos_config.account_key,
-                    # Prevent indefinite hangs when the emulator drops connections
-                    # (RemoteDisconnected under parallel-test load).
-                    "connection_timeout": 10,
-                    "read_timeout": 30,
-                }
-                # Only disable SSL verification for emulator HTTPS endpoints
-                if is_emulator and is_https:
-                    client_kwargs["connection_verify"] = False
-                self.client = CosmosClient(**client_kwargs)
+            self.client = CosmosClient(
+                **_client_kwargs(account_endpoint, credential, is_emulator, is_https)
+            )
 
             # Get database name (from database_name field or database field)
             database_name = cosmos_config.database_name or cosmos_config.database
             if not database_name:
                 raise ValueError("Cosmos DB database_name is required")
 
-            # Create database if it doesn't exist, or get existing database
-            # This is idempotent - will return existing database if it exists
-            # Add retry logic for emulator which may need time for backend services to initialize
-            max_retries = 6 if is_emulator else 1
-            retry_delay = 3.0  # seconds
-
-            for attempt in range(max_retries):
-                try:
-                    if self.client is None:
-                        raise RuntimeError("Cosmos DB client not initialized")
-                    database = self.client.create_database_if_not_exists(id=database_name)
-                    if database is None:
-                        raise RuntimeError(
-                            f"Failed to create or access Cosmos DB database '{database_name}'"
-                        )
-                    self.database = database
-                    self.log.debug(f"Connected to Cosmos DB database: {database_name}")
-                    break  # Success, exit retry loop
-                except Exception as e:
-                    error_str = str(e).lower()
-                    # Check if this is a transient connection error (retryable with emulator)
-                    is_backend_error = (
-                        "connection refused" in error_str
-                        or "connection aborted" in error_str
-                        or "remotedisconnected" in error_str
-                        or "remote end closed" in error_str
-                        or "poolerror" in error_str
-                        or "backend" in error_str
-                        or "status code: 500" in error_str
-                        or "status code: 503" in error_str
-                    )
-
-                    if is_backend_error and attempt < max_retries - 1:
-                        # Backend services might not be ready yet, retry
-                        self.log.debug(
-                            f"Backend connection error (attempt {attempt + 1}/{max_retries}), "
-                            f"retrying in {retry_delay}s: {str(e)}"
-                        )
-                        time.sleep(retry_delay)
-                        continue
-                    else:
-                        # Not a retryable error or out of retries
-                        error_msg = (
-                            f"Failed to create or access Cosmos DB database '{database_name}': "
-                            f"{str(e)}"
-                        )
-                        self.log.error(error_msg)
-                        raise RuntimeError(error_msg) from e
-
-            if self.database is None:
-                raise RuntimeError("Database should be initialized after retry loop")
-            return self.database
+            return self._open_database(database_name, is_emulator)
 
         except ImportError as import_error:
             error_msg = (
@@ -207,6 +178,56 @@ class CosmosDbConnectionManager:
             error_msg = f"Failed to connect to Cosmos DB: {str(e)}"
             self.log.error(error_msg)
             raise
+
+    def _open_database(self, database_name: str, is_emulator: bool) -> "DatabaseProxy":
+        """Create or open the database, store it in ``self.database`` and return it.
+
+        An emulator endpoint gets 6 attempts, any other endpoint one. An ``Exception`` whose
+        lowercased text contains a ``_BACKEND_ERROR_MARKERS`` entry is logged at debug level
+        and retried after a 3 s sleep while attempts remain; any other, or one raised by the
+        last attempt, is logged as an error and raised as ``RuntimeError`` chained to it. A
+        ``None`` client or database raises ``RuntimeError`` inside the attempt, handled the
+        same way. Exceptions that are not ``Exception`` subclasses propagate.
+        """
+        # Create database if it doesn't exist, or get existing database
+        # This is idempotent - will return existing database if it exists
+        # Add retry logic for emulator which may need time for backend services to initialize
+        max_retries = 6 if is_emulator else 1
+        retry_delay = 3.0  # seconds
+
+        for attempt in range(max_retries):
+            try:
+                if self.client is None:
+                    raise RuntimeError("Cosmos DB client not initialized")
+                database = self.client.create_database_if_not_exists(id=database_name)
+                if database is None:
+                    raise RuntimeError(
+                        f"Failed to create or access Cosmos DB database '{database_name}'"
+                    )
+                self.database = database
+                self.log.debug(f"Connected to Cosmos DB database: {database_name}")
+                break  # Success, exit retry loop
+            except Exception as e:
+                error_str = str(e).lower()
+                # Check if this is a transient connection error (retryable with emulator)
+                if _is_backend_error(error_str) and attempt < max_retries - 1:
+                    # Backend services might not be ready yet, retry
+                    self.log.debug(
+                        f"Backend connection error (attempt {attempt + 1}/{max_retries}), "
+                        f"retrying in {retry_delay}s: {str(e)}"
+                    )
+                    time.sleep(retry_delay)
+                    continue
+                # Not a retryable error or out of retries
+                error_msg = (
+                    f"Failed to create or access Cosmos DB database '{database_name}': {str(e)}"
+                )
+                self.log.error(error_msg)
+                raise RuntimeError(error_msg) from e
+
+        if self.database is None:
+            raise RuntimeError("Database should be initialized after retry loop")
+        return self.database
 
     def get_container_client(self, container_name: str) -> Any:
         """Get container client.

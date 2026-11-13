@@ -218,6 +218,43 @@ def _is_already_exists_error(error: Exception) -> bool:
     )
 
 
+# Clean order for owned objects: (object type, DROP prefix, catalog query, DROP suffix).
+_CLEAN_OBJECT_QUERIES = (
+    (
+        "view",
+        "DROP VIEW",
+        "SELECT VIEW_NAME AS object_name FROM ALL_VIEWS WHERE OWNER = ? ORDER BY VIEW_NAME",
+        "",
+    ),
+    (
+        "materialized_view",
+        "DROP MATERIALIZED VIEW",
+        "SELECT MVIEW_NAME AS object_name FROM ALL_MVIEWS WHERE OWNER = ? ORDER BY MVIEW_NAME",
+        "",
+    ),
+    (
+        "table",
+        "DROP TABLE",
+        "SELECT t.TABLE_NAME AS object_name FROM ALL_TABLES t "
+        "WHERE t.OWNER = ? AND t.TABLE_NAME NOT LIKE 'BIN$%' "
+        "AND NOT EXISTS ("
+        "    SELECT 1 FROM ALL_MVIEWS mv "
+        "    WHERE mv.OWNER = t.OWNER "
+        "      AND mv.MVIEW_NAME = t.TABLE_NAME"
+        ") "
+        "ORDER BY t.TABLE_NAME",
+        " CASCADE CONSTRAINTS PURGE",
+    ),
+    (
+        "sequence",
+        "DROP SEQUENCE",
+        "SELECT SEQUENCE_NAME AS object_name FROM ALL_SEQUENCES "
+        "WHERE SEQUENCE_OWNER = ? ORDER BY SEQUENCE_NAME",
+        "",
+    ),
+)
+
+
 class OracleProvider(SqlLeaseLockingProvider):
     """Oracle provider implementation using native SQLAlchemy/python-oracledb."""
 
@@ -967,8 +1004,52 @@ class OracleProvider(SqlLeaseLockingProvider):
 
         # Catalog query failures propagate: reading one as "no objects of this
         # kind" made clean report success having dropped nothing. Only the
-        # reference-partition lookup below, which affects drop order and not
-        # which objects are found, falls back on failure.
+        # reference-partition lookup in _reference_partitioned_children, which
+        # affects drop order and not which objects are found, falls back on failure.
+        self._clean_database_links(summary, schema, execute)
+        self._clean_owned_objects(summary, schema, clean_schema, execute)
+        self._clean_program_objects(summary, schema, clean_schema, execute)
+        self._clean_synonyms(summary, schema, clean_schema, execute)
+        return summary
+
+    def _drop_clean_object(
+        self,
+        summary: CleanExecutionSummary,
+        stmt: str,
+        object_type: str,
+        name: object,
+        schema: str,
+        execute: bool,
+        missing_trigger_ok: bool = False,
+    ) -> None:
+        """Run one clean drop when ``execute`` is set, then record it in ``summary``.
+
+        A statement failing with an ``Exception`` adds "Failed to drop <object_type> <name>:
+        <error>" to the summary's errors and is not recorded, unless ``missing_trigger_ok`` is
+        set and ``_oracle_error_code`` reads ORA-04080 (trigger does not exist) from it: that
+        drop is recorded. Other exceptions propagate. Without ``execute`` the drop is recorded
+        and nothing is run.
+        """
+        if execute:
+            try:
+                self.execute_statement(stmt)
+            except Exception as e:
+                if not (
+                    missing_trigger_ok
+                    and self._oracle_error_code(e) == self._ORA_TRIGGER_DOES_NOT_EXIST
+                ):
+                    summary.add_error(f"Failed to drop {object_type} {name}: {e}")
+                    return
+        summary.record_drop(stmt, object_type, str(name), schema=schema)
+
+    def _clean_database_links(
+        self, summary: CleanExecutionSummary, schema: str, execute: bool
+    ) -> None:
+        """Drop, or with ``execute`` false only record, the session user's database links.
+
+        Rows of ALL_DB_LINKS owned by SESSION_USER without a name are skipped. Each drop goes
+        through ``_drop_clean_object``; a failing catalog query propagates.
+        """
         rows = self.execute_query("""
             SELECT DB_LINK AS object_name
             FROM ALL_DB_LINKS
@@ -980,50 +1061,14 @@ class OracleProvider(SqlLeaseLockingProvider):
             if not name:
                 continue
             stmt = f"DROP DATABASE LINK {_q(_clean_identifier(str(name)))}"
-            if execute:
-                try:
-                    self.execute_statement(stmt)
-                except Exception as e:
-                    summary.add_error(f"Failed to drop database_link {name}: {e}")
-                    continue
-            summary.record_drop(stmt, "database_link", str(name), schema=schema)
+            self._drop_clean_object(summary, stmt, "database_link", name, schema, execute)
 
-        object_queries = [
-            (
-                "view",
-                "DROP VIEW",
-                "SELECT VIEW_NAME AS object_name FROM ALL_VIEWS WHERE OWNER = ? ORDER BY VIEW_NAME",
-                "",
-            ),
-            (
-                "materialized_view",
-                "DROP MATERIALIZED VIEW",
-                "SELECT MVIEW_NAME AS object_name FROM ALL_MVIEWS "
-                "WHERE OWNER = ? ORDER BY MVIEW_NAME",
-                "",
-            ),
-            (
-                "table",
-                "DROP TABLE",
-                "SELECT t.TABLE_NAME AS object_name FROM ALL_TABLES t "
-                "WHERE t.OWNER = ? AND t.TABLE_NAME NOT LIKE 'BIN$%' "
-                "AND NOT EXISTS ("
-                "    SELECT 1 FROM ALL_MVIEWS mv "
-                "    WHERE mv.OWNER = t.OWNER "
-                "      AND mv.MVIEW_NAME = t.TABLE_NAME"
-                ") "
-                "ORDER BY t.TABLE_NAME",
-                " CASCADE CONSTRAINTS PURGE",
-            ),
-            (
-                "sequence",
-                "DROP SEQUENCE",
-                "SELECT SEQUENCE_NAME AS object_name FROM ALL_SEQUENCES "
-                "WHERE SEQUENCE_OWNER = ? ORDER BY SEQUENCE_NAME",
-                "",
-            ),
-        ]
+    def _reference_partitioned_children(self, clean_schema: str) -> Set[str]:
+        """Return the reference-partitioned child tables of ``clean_schema``, as strings.
 
+        A lookup failing with an ``Exception`` logs a warning and returns an empty set. Rows
+        without a child_table value are skipped.
+        """
         try:
             ref_partition_rows = self.execute_query(
                 """
@@ -1055,11 +1100,25 @@ class OracleProvider(SqlLeaseLockingProvider):
         # Reference-partitioned child tables must be dropped before their
         # partitioning parent — CASCADE CONSTRAINTS handles ordinary FK
         # dependencies but not this physical partitioning dependency.
-        ref_partitioned_children = {
+        return {
             str(_row_value(row, "child_table"))
             for row in ref_partition_rows
             if _row_value(row, "child_table")
         }
+
+    def _clean_owned_objects(
+        self, summary: CleanExecutionSummary, schema: str, clean_schema: str, execute: bool
+    ) -> None:
+        """Drop, or with ``execute`` false only record, the objects of ``_CLEAN_OBJECT_QUERIES``.
+
+        Views, materialized views, tables and sequences are handled in that order, one catalog
+        query each; a failing query propagates. Child tables found by
+        ``_reference_partitioned_children`` are moved before the other tables. Rows without a
+        name, sequences ``is_system_generated_sequence`` reports and tables whose upper-cased
+        name starts with an engine support table prefix are skipped. Each drop goes through
+        ``_drop_clean_object``.
+        """
+        ref_partitioned_children = self._reference_partitioned_children(clean_schema)
 
         # Engine-managed support tables (Oracle Text's ``DR$<idx>$*`` among
         # them) share the quirks-declared prefix list used to filter them out
@@ -1074,7 +1133,7 @@ class OracleProvider(SqlLeaseLockingProvider):
             "oracle"
         ).materialized_view_support_table_prefixes
 
-        for object_type, drop_prefix, query, suffix in object_queries:
+        for object_type, drop_prefix, query, suffix in _CLEAN_OBJECT_QUERIES:
             rows = self.execute_query(query, [clean_schema])
             if object_type == "table" and ref_partitioned_children:
                 rows = sorted(
@@ -1095,14 +1154,18 @@ class OracleProvider(SqlLeaseLockingProvider):
                 ):
                     continue
                 stmt = f"{drop_prefix} {_schema_object(schema, str(name))}{suffix}"
-                if execute:
-                    try:
-                        self.execute_statement(stmt)
-                    except Exception as e:
-                        summary.add_error(f"Failed to drop {object_type} {name}: {e}")
-                        continue
-                summary.record_drop(stmt, object_type, str(name), schema=schema)
+                self._drop_clean_object(summary, stmt, object_type, name, schema, execute)
 
+    def _clean_program_objects(
+        self, summary: CleanExecutionSummary, schema: str, clean_schema: str, execute: bool
+    ) -> None:
+        """Drop, or with ``execute`` false only record, the schema's PL/SQL units and types.
+
+        ALL_OBJECTS lists procedures, functions, packages, types and triggers, bodies first
+        and recycle-bin names excluded; a failing query propagates. Rows without a name or
+        type are skipped and a TYPE is dropped with FORCE. Each drop goes through
+        ``_drop_clean_object``, where a trigger drop failing with ORA-04080 is still recorded.
+        """
         rows = self.execute_query(
             """
             SELECT OBJECT_NAME AS object_name, OBJECT_TYPE AS object_type
@@ -1125,22 +1188,26 @@ class OracleProvider(SqlLeaseLockingProvider):
             suffix = " FORCE" if object_type == "TYPE" else ""
             stmt = f"DROP {object_type} {_schema_object(schema, str(name))}{suffix}"
             normalized_type = object_type.lower().replace(" ", "_")
-            if execute:
-                try:
-                    self.execute_statement(stmt)
-                except Exception as e:
-                    if (
-                        object_type == "TRIGGER"
-                        and self._oracle_error_code(e) == self._ORA_TRIGGER_DOES_NOT_EXIST
-                    ):
-                        # Owning table was already cascade-dropped above, taking the
-                        # trigger with it; the desired end state is already reached.
-                        pass
-                    else:
-                        summary.add_error(f"Failed to drop {normalized_type} {name}: {e}")
-                        continue
-            summary.record_drop(stmt, normalized_type, str(name), schema=schema)
+            # A trigger whose owning table was already cascade-dropped by
+            # _clean_owned_objects went with it; the desired end state is reached.
+            self._drop_clean_object(
+                summary,
+                stmt,
+                normalized_type,
+                name,
+                schema,
+                execute,
+                missing_trigger_ok=object_type == "TRIGGER",
+            )
 
+    def _clean_synonyms(
+        self, summary: CleanExecutionSummary, schema: str, clean_schema: str, execute: bool
+    ) -> None:
+        """Drop, or with ``execute`` false only record, the schema's synonyms.
+
+        Rows without a name are skipped. Each drop goes through ``_drop_clean_object``; a
+        failing catalog query propagates.
+        """
         rows = self.execute_query(
             "SELECT SYNONYM_NAME AS object_name FROM ALL_SYNONYMS WHERE OWNER = ? "
             "ORDER BY SYNONYM_NAME",
@@ -1151,12 +1218,4 @@ class OracleProvider(SqlLeaseLockingProvider):
             if not name:
                 continue
             stmt = f"DROP SYNONYM {_schema_object(schema, str(name))}"
-            if execute:
-                try:
-                    self.execute_statement(stmt)
-                except Exception as e:
-                    summary.add_error(f"Failed to drop synonym {name}: {e}")
-                    continue
-            summary.record_drop(stmt, "synonym", str(name), schema=schema)
-
-        return summary
+            self._drop_clean_object(summary, stmt, "synonym", name, schema, execute)

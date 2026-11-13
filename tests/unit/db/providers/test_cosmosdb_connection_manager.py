@@ -1,7 +1,7 @@
 """Tests for db/plugins/cosmosdb/cosmosdb/connection_manager.py."""
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 
 def _make_config(endpoint="https://myaccount.documents.azure.com", db_name="mydb", key="mykey"):
@@ -229,3 +229,135 @@ class TestCosmosDbDatabaseCreationFailure(unittest.TestCase):
             "Failed to create or access Cosmos DB database 'mydb': forbidden",
         )
         self.assertIs(caught.exception.__cause__, cause)
+
+
+def _cosmos_manager(endpoint="https://localhost:8081/", **fields):
+    """A manager over a real CosmosDbConfig for database ``mydb`` and a MagicMock log."""
+    from dblift.db.plugins.cosmosdb.config import CosmosDbConfig
+    from dblift.db.plugins.cosmosdb.cosmosdb.connection_manager import CosmosDbConnectionManager
+
+    values = {"account_key": "k", **fields}
+    config = MagicMock()
+    config.database = CosmosDbConfig(
+        type="cosmosdb", account_endpoint=endpoint, database_name="mydb", **values
+    )
+    return CosmosDbConnectionManager(config=config, log=MagicMock())
+
+
+class TestCosmosDbDatabaseRetries(unittest.TestCase):
+    """Transient backend errors are retried on the emulator only."""
+
+    def _connect(self, mgr, side_effect):
+        client = MagicMock()
+        client.create_database_if_not_exists.side_effect = side_effect
+        with (
+            patch("azure.cosmos.CosmosClient", return_value=client),
+            patch("urllib3.disable_warnings"),
+            patch("time.sleep") as sleep,
+        ):
+            try:
+                return mgr.create_connection(), client, sleep, None
+            except RuntimeError as error:
+                return None, client, sleep, error
+
+    def test_emulator_backend_errors_get_six_attempts_three_seconds_apart(self):
+        _, client, sleep, error = self._connect(
+            _cosmos_manager(), ConnectionError("Connection refused")
+        )
+
+        self.assertEqual(client.create_database_if_not_exists.call_count, 6)
+        self.assertEqual(sleep.call_args_list, [call(3.0)] * 5)
+        self.assertEqual(
+            str(error), "Failed to create or access Cosmos DB database 'mydb': Connection refused"
+        )
+
+    def test_cloud_endpoint_backend_error_is_not_retried(self):
+        _, client, sleep, error = self._connect(
+            _cosmos_manager("https://acct.documents.azure.com:443/"),
+            ConnectionError("Connection refused"),
+        )
+
+        self.assertEqual(client.create_database_if_not_exists.call_count, 1)
+        sleep.assert_not_called()
+        self.assertIsInstance(error.__cause__, ConnectionError)
+
+    def test_emulator_retries_each_transient_backend_error(self):
+        for message in (
+            "Connection refused",
+            "Connection aborted.",
+            "RemoteDisconnected()",
+            "Remote end closed connection",
+            "PoolError",
+            "Backend service unavailable",
+            "(InternalServerError) Status code: 500",
+            "(ServiceUnavailable) Status code: 503",
+        ):
+            with self.subTest(message=message):
+                database = MagicMock()
+                connected, client, sleep, error = self._connect(
+                    _cosmos_manager(), [ConnectionError(message), database]
+                )
+
+                self.assertIsNone(error)
+                self.assertIs(connected, database)
+                self.assertEqual(client.create_database_if_not_exists.call_count, 2)
+                self.assertEqual(sleep.call_args_list, [call(3.0)])
+
+
+class TestCosmosDbClientArguments(unittest.TestCase):
+    """What the manager passes to the Azure SDK."""
+
+    def test_managed_identity_passes_a_default_azure_credential(self):
+        mgr = _cosmos_manager(
+            "https://acct.documents.azure.com:443/", account_key=None, use_managed_identity=True
+        )
+        credential = object()
+        client = MagicMock()
+        with (
+            patch("azure.identity.DefaultAzureCredential", return_value=credential),
+            patch("azure.cosmos.CosmosClient", return_value=client) as cosmos_client,
+        ):
+            database = mgr.create_connection()
+
+        cosmos_client.assert_called_once_with(
+            url="https://acct.documents.azure.com:443/",
+            credential=credential,
+            connection_timeout=10,
+            read_timeout=30,
+        )
+        self.assertIs(database, client.create_database_if_not_exists.return_value)
+
+    def test_emulator_silences_insecure_request_warnings_and_skips_tls_verification(self):
+        import urllib3
+
+        mgr = _cosmos_manager()
+        with (
+            patch("urllib3.disable_warnings") as disable,
+            patch("azure.cosmos.CosmosClient", return_value=MagicMock()) as cosmos_client,
+        ):
+            mgr.create_connection()
+
+        disable.assert_called_once_with(urllib3.exceptions.InsecureRequestWarning)
+        cosmos_client.assert_called_once_with(
+            url="https://localhost:8081/",
+            credential="k",
+            connection_timeout=10,
+            read_timeout=30,
+            connection_verify=False,
+        )
+
+    def test_cloud_endpoint_keeps_insecure_request_warnings_and_tls_verification(self):
+        mgr = _cosmos_manager("https://acct.documents.azure.com:443/")
+        with (
+            patch("urllib3.disable_warnings") as disable,
+            patch("azure.cosmos.CosmosClient", return_value=MagicMock()) as cosmos_client,
+        ):
+            mgr.create_connection()
+
+        disable.assert_not_called()
+        cosmos_client.assert_called_once_with(
+            url="https://acct.documents.azure.com:443/",
+            credential="k",
+            connection_timeout=10,
+            read_timeout=30,
+        )
