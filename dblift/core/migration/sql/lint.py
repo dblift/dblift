@@ -37,6 +37,7 @@ from dblift.core.migration.sql.script_analysis import (
     analyse_script,
 )
 from dblift.core.migration.version_utils import compare_versions
+from dblift.core.utils.path_checks import path_is_dir
 
 # ``lint_rules`` needs sqlglot, so it is imported where a rule runs: ``info`` and ``migrate``
 # import this module and must load without sqlglot.
@@ -162,6 +163,8 @@ def lint_targets(
     overrides = recursive_by_dir or {}
     files: List[Path] = []
     for directory in directories:
+        if not path_is_dir(directory):
+            continue
         pattern = "**/*.sql" if overrides.get(directory, recursive) else "*.sql"
         files.extend(
             sorted(

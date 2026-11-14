@@ -22,7 +22,9 @@ from dblift.cli.handlers import validate_sql
 from dblift.cli.handlers._shared import CliCommandContext, ConfigOnlyClient
 from dblift.config.config_builder import ConfigBuilder
 from dblift.config.dblift_config import load_config
+from dblift.config.errors import ConfigurationError
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.sql.lint import lint_targets
 from dblift.core.utils.path_checks import path_exists, path_is_dir, path_is_file
 
 pytestmark = pytest.mark.unit
@@ -103,7 +105,7 @@ def test_default_config_discovery_does_not_skip_an_unreadable_directory(tmp_path
     locked.chmod(0)
     monkeypatch.setattr(Path, "cwd", classmethod(lambda cls: locked))
     try:
-        with pytest.raises(PermissionError):
+        with pytest.raises(ConfigurationError, match="Cannot read default config file"):
             _config_helpers._discover_default_config()
     finally:
         locked.chmod(0o700)
@@ -176,3 +178,13 @@ def test_validate_sql_does_not_call_an_unreadable_file_not_found(unreadable):
         return
     assert "File not found" not in str(getattr(result, "error_message", "") or "")
     assert result.success is False
+
+
+def test_validate_sql_directory_mode_does_not_skip_an_unreadable_directory(unreadable):
+    with pytest.raises(OSError) as raised:
+        lint_targets([unreadable], recursive=True)
+    assert not isinstance(raised.value, FileNotFoundError)
+
+
+def test_validate_sql_directory_mode_still_skips_a_missing_directory(tmp_path):
+    assert lint_targets([tmp_path / "missing"], recursive=True) == []

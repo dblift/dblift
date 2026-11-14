@@ -73,7 +73,7 @@ def _current_script_checksum(
         checksum = normalize_migration_checksum(getattr(script, "checksum", None))
         if checksum is not None:
             return checksum
-    if script_path and path_exists(script_path):
+    if script_path and script_path.exists():
         raw_text = read_migration_text(
             script_path,
             configured_encoding=manager.script_encoding,

@@ -264,7 +264,11 @@ def _discover_default_config(log: Any = None) -> Optional[str]:
     cwd = Path.cwd()
     for name in _DEFAULT_CONFIG_NAMES:
         candidate = cwd / name
-        if path_is_file(candidate):
+        try:
+            found = path_is_file(candidate)
+        except OSError as e:
+            raise ConfigurationError(f"Cannot read default config file {candidate}: {e}") from e
+        if found:
             if log:
                 log.debug(f"Using discovered config file: {candidate}")
             return str(candidate)
@@ -280,12 +284,11 @@ def _load_and_merge_config(args: argparse.Namespace, log: Any) -> Any:
     # Auto-discover a config file in the cwd when the user passed neither
     # --config nor --db-url, so `dblift <command>` works from a project that has
     # a dblift.yaml without forcing an explicit --config on every invocation.
-    if not getattr(args, "config", None) and not getattr(args, "database_url", None):
-        discovered = _discover_default_config(log)
-        if discovered:
-            args.config = discovered
-
     try:
+        if not getattr(args, "config", None) and not getattr(args, "database_url", None):
+            discovered = _discover_default_config(log)
+            if discovered:
+                args.config = discovered
         with exit_on_capability_denial():
             config = load_config(args.config, args)
     except CONFIG_LOAD_ERRORS as e:
