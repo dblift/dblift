@@ -89,6 +89,7 @@ engine = create_engine('sqlite:///:memory:')
 with DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations) as client:
     assert client.analysis_mode == 'execution'
     assert client.migrate().success
+engine.dispose()
 """,
         blocked=("sqlglot", "rich", "jinja2"),
         cwd=tmp_path,
