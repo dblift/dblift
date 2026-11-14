@@ -592,6 +592,15 @@ def _exit_log_location_error(e: OSError) -> NoReturn:
     sys.exit(1)
 
 
+def _scripts_dir_exists(parser: argparse.ArgumentParser, path: Path, shown: str, kind: str) -> bool:
+    """Whether *path* exists; a path that cannot be examined is a parser error, not 'not found'."""
+    try:
+        return path_exists(path)
+    except OSError as e:
+        parser.error(f"Cannot read {kind} directory: {shown} ({e})")
+        return False
+
+
 def _resolve_scripts_directories(
     args: argparse.Namespace,
     config: Any,
@@ -623,11 +632,8 @@ def _resolve_scripts_directories(
             except ConfigurationError as e:
                 parser.error(str(e))
         scripts_dir = Path(args.scripts_list[0]).resolve()
-        try:
-            scripts_dir_found = path_exists(scripts_dir)
-        except OSError as e:
-            parser.error(f"Cannot read migration scripts directory: {args.scripts_list[0]} ({e})")
-        if not scripts_dir_found and args.command not in ["baseline"]:
+        found = _scripts_dir_exists(parser, scripts_dir, args.scripts_list[0], "migration scripts")
+        if not found and args.command not in ["baseline"]:
             parser.error(f"Migration scripts directory not found: {args.scripts_list[0]}")
 
         config.migrations.directory = str(scripts_dir)
@@ -642,11 +648,7 @@ def _resolve_scripts_directories(
         if len(args.scripts_list) > 1:
             for scripts_path in args.scripts_list[1:]:
                 add_dir = Path(scripts_path).resolve()
-                try:
-                    add_dir_found = path_exists(add_dir)
-                except OSError as e:
-                    parser.error(f"Cannot read additional scripts directory: {scripts_path} ({e})")
-                if not add_dir_found:
+                if not _scripts_dir_exists(parser, add_dir, scripts_path, "additional scripts"):
                     parser.error(f"Additional scripts directory not found: {scripts_path}")
                 additional_scripts_dirs.append(add_dir)
 
