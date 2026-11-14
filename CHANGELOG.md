@@ -56,8 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - PostgreSQL `CREATE TABLE … TABLESPACE` and `CREATE INDEX … TABLESPACE` read their declared
   columns, indexed table and indexed columns on SQLGlot 30.30. On 30.23 the statement stays
   opaque with the object named from its head.
-- The `data` command stub's one-line description listed an `undo` subcommand that no longer
-  exists. It now lists the subcommands that do: `plan/apply/status`.
+- The one-line descriptions of the `data` and `license` command stubs now match the commands' own
+  help. The `data` description listed an `undo` subcommand that does not exist; it now names
+  `plan/apply/status`. The `license` description no longer carries a subcommand list that could
+  drift from the real subcommands.
 
 ### Removed
 
