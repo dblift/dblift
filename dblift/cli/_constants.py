@@ -28,3 +28,6 @@ MACHINE_READABLE_FORMATS: frozenset[str] = frozenset(
 # so scripts and CI pipelines can branch on entitlement without parsing
 # stderr. Distinct from 1 (command failure) and 2 (argparse usage error).
 EXIT_LICENSE_REQUIRED: int = 4
+
+# Message reported with EXIT_LICENSE_REQUIRED when a capability denial has none.
+LICENSE_REQUIRED_FALLBACK_MESSAGE: str = "This command requires a license that is not available."

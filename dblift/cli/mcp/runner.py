@@ -46,14 +46,13 @@ import threading
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
-from dblift.cli._constants import EXIT_LICENSE_REQUIRED
+from dblift.cli._constants import EXIT_LICENSE_REQUIRED, LICENSE_REQUIRED_FALLBACK_MESSAGE
 from dblift.cli.handlers._shared import CliCommandContext, reported_exception_name
 from dblift.core.logger import LogFactory
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.tier_resolver import resolve_tier
 
 JSON_FORMAT_ARGV: tuple[str, ...] = ("--format", "json")
-_LICENSE_FALLBACK = "This command requires a license that is not available."
 _TAIL = 2000
 _CALL_LOCK = threading.Lock()
 
@@ -297,7 +296,7 @@ def _run_command_locked(
                 )
             )
     except CapabilityDeniedError as exc:
-        message = str(exc).strip() or _LICENSE_FALLBACK
+        message = str(exc).strip() or LICENSE_REQUIRED_FALLBACK_MESSAGE
         raise CommandInvocationError(
             f"{message} (exit code {EXIT_LICENSE_REQUIRED})", EXIT_LICENSE_REQUIRED
         ) from exc
