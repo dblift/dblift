@@ -82,7 +82,7 @@ PREMIUM_COMMANDS: Tuple[PremiumCommand, ...] = (
     PremiumCommand(
         "data",
         "Pro",
-        "Manage data corrections - audited DML with plan/apply/undo",
+        "Manage data corrections - audited DML with plan/apply/status",
     ),
     PremiumCommand(
         "snapshot",

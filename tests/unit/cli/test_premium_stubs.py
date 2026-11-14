@@ -333,3 +333,11 @@ def test_root_flag_check_ignores_argv_without_the_flag():
     import dblift.cli.main as cli_main
 
     cli_main._reject_unregistered_root_flags(["migrate", "--target-version", "1"], ArgumentParser())
+
+
+def test_data_stub_describes_only_existing_subcommands():
+    """`data` has the subcommands plan, apply and status; `undo` was withdrawn,
+    so the stub's one-line summary must not advertise it."""
+    summary = {cmd.name: cmd.summary for cmd in PREMIUM_COMMANDS}["data"]
+    assert "undo" not in summary.lower()
+    assert "plan/apply/status" in summary
