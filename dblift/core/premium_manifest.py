@@ -82,7 +82,7 @@ PREMIUM_COMMANDS: Tuple[PremiumCommand, ...] = (
     PremiumCommand(
         "data",
         "Pro",
-        "Manage data corrections - audited DML with plan/apply/undo",
+        "Manage data corrections (Lane B) - audited DML with plan/apply/status",
     ),
     PremiumCommand(
         "snapshot",
@@ -105,7 +105,7 @@ PREMIUM_COMMANDS: Tuple[PremiumCommand, ...] = (
     PremiumCommand(
         "license",
         "Enterprise",
-        "Manage the dblift license (activate, info, check)",
+        "Manage the dblift license",
     ),
 )
 

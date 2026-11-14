@@ -333,3 +333,16 @@ def test_root_flag_check_ignores_argv_without_the_flag():
     import dblift.cli.main as cli_main
 
     cli_main._reject_unregistered_root_flags(["migrate", "--target-version", "1"], ArgumentParser())
+
+
+def test_data_stub_summary_mirrors_the_command_help():
+    """The summary lists the subcommands that exist (plan, apply, status)."""
+    summary = {cmd.name: cmd.summary for cmd in PREMIUM_COMMANDS}["data"]
+    assert summary == "Manage data corrections (Lane B) - audited DML with plan/apply/status"
+
+
+def test_license_stub_summary_does_not_enumerate_subcommands():
+    """A subcommand list in the summary can drift from the real subcommands."""
+    summary = {cmd.name: cmd.summary for cmd in PREMIUM_COMMANDS}["license"]
+    assert "(" not in summary
+    assert summary == "Manage the dblift license"
