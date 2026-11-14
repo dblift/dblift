@@ -24,6 +24,7 @@ from dblift.core.migration.commands.base_command import (
     is_required_schema_missing,
 )
 from dblift.core.utils.database_url_parser import DatabaseUrlParser
+from dblift.core.utils.path_checks import path_exists, path_is_file
 from dblift.core.utils.string_utils import safe_split_first
 from dblift.core.utils.url_masking import mask_database_url
 
@@ -263,7 +264,7 @@ def _discover_default_config(log: Any = None) -> Optional[str]:
     cwd = Path.cwd()
     for name in _DEFAULT_CONFIG_NAMES:
         candidate = cwd / name
-        if candidate.is_file():
+        if path_is_file(candidate):
             if log:
                 log.debug(f"Using discovered config file: {candidate}")
             return str(candidate)
@@ -612,7 +613,7 @@ def _resolve_scripts_directories(
     config_base_dir = Path.cwd()
     if hasattr(args, "config") and args.config:
         config_path = Path(args.config)
-        if config_path.exists():
+        if path_exists(config_path):
             config_base_dir = config_path.resolve().parent
 
     if hasattr(args, "scripts_list") and args.scripts_list:
@@ -622,7 +623,11 @@ def _resolve_scripts_directories(
             except ConfigurationError as e:
                 parser.error(str(e))
         scripts_dir = Path(args.scripts_list[0]).resolve()
-        if not scripts_dir.exists() and args.command not in ["baseline"]:
+        try:
+            scripts_dir_found = path_exists(scripts_dir)
+        except OSError as e:
+            parser.error(f"Cannot read migration scripts directory: {args.scripts_list[0]} ({e})")
+        if not scripts_dir_found and args.command not in ["baseline"]:
             parser.error(f"Migration scripts directory not found: {args.scripts_list[0]}")
 
         config.migrations.directory = str(scripts_dir)
@@ -637,7 +642,11 @@ def _resolve_scripts_directories(
         if len(args.scripts_list) > 1:
             for scripts_path in args.scripts_list[1:]:
                 add_dir = Path(scripts_path).resolve()
-                if not add_dir.exists():
+                try:
+                    add_dir_found = path_exists(add_dir)
+                except OSError as e:
+                    parser.error(f"Cannot read additional scripts directory: {scripts_path} ({e})")
+                if not add_dir_found:
                     parser.error(f"Additional scripts directory not found: {scripts_path}")
                 additional_scripts_dirs.append(add_dir)
 

@@ -151,7 +151,7 @@ database:
   username: testuser
   password: testpw
 """)
-    with patch("os.path.exists", return_value=True):
+    with patch("dblift.config.dblift_config.path_exists", return_value=True):
         config = load_config(str(config_file), None)
         assert config.database.username == "testuser"
         assert config.database.url.startswith("postgresql+psycopg")
@@ -165,7 +165,7 @@ def test_load_config_file_exists_and_invalid(tmp_path):
     # silently fall back to defaults (otherwise typos in --config are invisible).
     config_file = tmp_path / "bad.yaml"
     config_file.write_text("database: [")
-    with patch("os.path.exists", return_value=True):
+    with patch("dblift.config.dblift_config.path_exists", return_value=True):
         with pytest.raises(RuntimeError, match="Error loading config file"):
             load_config(str(config_file), None)
 
@@ -193,7 +193,7 @@ def test_load_config_file_not_exists(tmp_path):
     # An explicit --config path that does not exist is a user error, not a reason to
     # silently fall back to defaults.
     config_file = tmp_path / "nofile.yaml"
-    with patch("os.path.exists", return_value=False):
+    with patch("dblift.config.dblift_config.path_exists", return_value=False):
         with pytest.raises(FileNotFoundError, match="Config file not found"):
             load_config(str(config_file), None)
 
@@ -291,7 +291,7 @@ database:
 """)
     monkeypatch.setenv("DBLIFT_DB_USER", "envuser")
     monkeypatch.setenv("DBLIFT_DB_URL", "postgresql+psycopg://envhost:5432/db")
-    with patch("os.path.exists", return_value=True):
+    with patch("dblift.config.dblift_config.path_exists", return_value=True):
         config = load_config(str(config_file), None)
         assert config.database.username == "envuser"
         assert config.database.url.startswith("postgresql+psycopg://envhost")
@@ -330,7 +330,7 @@ database:
         strict_mode = True
         history_table = "h"
 
-    with patch("os.path.exists", return_value=True):
+    with patch("dblift.config.dblift_config.path_exists", return_value=True):
         config = load_config(str(config_file), Args())
         assert config.database.username == "cliuser"
         assert config.database.schema == "public"

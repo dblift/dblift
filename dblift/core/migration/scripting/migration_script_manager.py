@@ -26,6 +26,7 @@ from dblift.core.migration.scripting.filename_parser import (
 from dblift.core.migration.scripting.migration_markers import MigrationMarkerMixin
 from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
 from dblift.core.migration.version_utils import is_migration_success
+from dblift.core.utils.path_checks import path_exists, path_is_dir
 
 
 class _DiscoveredScript(NamedTuple):
@@ -72,7 +73,7 @@ def _current_script_checksum(
         checksum = normalize_migration_checksum(getattr(script, "checksum", None))
         if checksum is not None:
             return checksum
-    if script_path and script_path.exists():
+    if script_path and path_exists(script_path):
         raw_text = read_migration_text(
             script_path,
             configured_encoding=manager.script_encoding,
@@ -190,7 +191,7 @@ class MigrationScriptManager(MigrationMarkerMixin):
     @staticmethod
     def migration_directory_exists(path: Path) -> bool:
         """Report filesystem status for migration input collection."""
-        return path.exists()
+        return path_exists(path)
 
     def get_migration_scripts(
         self,
@@ -425,7 +426,7 @@ class MigrationScriptManager(MigrationMarkerMixin):
 
         for dir_path, resolved_dir_path in normalized_dirs:
             # Validate the directory exists
-            if not dir_path.exists() or not dir_path.is_dir():
+            if not path_is_dir(dir_path):
                 self.logger.debug(
                     f"Migration directory does not exist or is not a directory: {dir_path}"
                 )
