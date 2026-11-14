@@ -24,6 +24,7 @@ from dblift.core.migration.commands.base_command import (
     is_required_schema_missing,
 )
 from dblift.core.utils.database_url_parser import DatabaseUrlParser
+from dblift.core.utils.output_paths import requested_log_dir
 from dblift.core.utils.path_checks import path_exists, path_is_file
 from dblift.core.utils.string_utils import safe_split_first
 from dblift.core.utils.url_masking import mask_database_url
@@ -506,12 +507,7 @@ def _configure_logging(
     Returns:
         Configured log instance
     """
-    log_dir_path = Path(args.log_dir or "logs")
-    try:
-        log_dir_path.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        _exit_log_location_error(e)
-
+    log_dir_path = requested_log_dir(args.log_dir, args.log_file, config.logging.directory)
     log_level = _LOG_LEVEL_MAP.get(_effective_log_level_name(args, config), LogLevel.INFO)
     # ``--quiet`` raises the *console* threshold to NOTICE so info/debug
     # lines disappear from the terminal while NOTICE (success

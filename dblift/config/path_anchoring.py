@@ -7,20 +7,13 @@ from dblift.config.dblift_config import DbliftConfig, DirectoryConfig
 from dblift.config.file_path_anchoring import _IN_MEMORY, anchorer
 
 
-def is_derived_log_dir(config: DbliftConfig, directory: str) -> bool:
-    """Whether *directory* is the default that :func:`anchor_config_paths` filled in."""
-    return directory == config.derived_log_dir
-
-
 def anchor_config_paths(config: DbliftConfig, base_dir: Path) -> None:
     """Rewrite *config*'s relative paths as absolute paths under *base_dir*.
 
     Covers the migration directories, a file-based database path, and the log
-    directory. Absolute paths are left untouched. When no log directory is
-    configured, logs go to ``<base_dir>/logs`` so nothing is written to the
-    process working directory. That derived directory is a default, not a
-    request for logging: it is recorded in ``config.derived_log_dir`` so
-    :func:`is_derived_log_dir` can tell it apart from one the user set.
+    directory (or, with no log directory, the log file). Absolute paths are left
+    untouched. A log directory that is not configured stays unset: no log file
+    is written unless one is requested.
     """
     base = Path(base_dir).expanduser().resolve()
     anchor = anchorer(base)
@@ -50,6 +43,7 @@ def anchor_config_paths(config: DbliftConfig, base_dir: Path) -> None:
         config.log_dir = anchor(config.log_dir)
     elif getattr(config.logging, "directory", None):
         config.logging.directory = anchor(config.logging.directory)
-    else:
-        config.log_dir = str(base / "logs")
-        config.derived_log_dir = config.log_dir
+    elif config.log_file:
+        config.log_file = anchor(config.log_file)
+    elif config.logging.file:
+        config.logging.file = anchor(config.logging.file)

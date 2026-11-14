@@ -6,7 +6,7 @@
     "cli/_config_helpers.py::_load_and_merge_config": 34,
     "cli/_config_helpers.py::_resolve_scripts_directories": 23,
     "cli/_config_helpers.py::_validate_db_config": 30,
-    "cli/db_utils.py::check_connection": 23,
+    "cli/db_utils.py::check_connection": 22,
     "cli/main.py::_dispatch_command": 26,
     "cli/main.py::_parse_argv_and_load_config": 24,
     "cli/mcp/runner.py::_run_command_locked": 25,

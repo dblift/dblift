@@ -31,7 +31,9 @@ secret that cannot be resolved never stops the start — the line says so and
 the server starts anyway; every tool call still loads the configuration
 itself and reports its own error.
 
-Each tool call logs under `--log-dir`, exactly as one CLI invocation does.
+Each tool call logs to a file when a log directory or file is requested
+(`--log-dir`, `DBLIFT_LOG_DIR`, `log_dir`/`logging.directory` in the
+configuration file); otherwise no log file is written.
 With the default text log format, the server writes one log file per
 session: the first call's file is reused and appended to for every later
 call in that process. HTML and JSON log formats do not share a file across

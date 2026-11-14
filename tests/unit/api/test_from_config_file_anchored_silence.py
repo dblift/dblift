@@ -1,4 +1,4 @@
-"""A log directory derived by path anchoring is not an opt-in to logging."""
+"""A client built from a config file without logging settings is silent and writes no files."""
 
 import pytest
 
@@ -42,8 +42,8 @@ class TestAnchoredClientIsSilent:
         with DBLiftClient.from_config_file(str(config), relative_to_config=True) as client:
             assert isinstance(client.logger, DbliftLogger)
 
-    def test_log_level_keeps_logs_next_to_config(self, tmp_path):
-        config = _project(tmp_path, "logging:\n  level: DEBUG\n")
+    def test_log_level_with_log_dir_writes_logs_next_to_config(self, tmp_path):
+        config = _project(tmp_path, "logging:\n  level: DEBUG\nlog_dir: logs\n")
         with DBLiftClient.from_config_file(str(config), relative_to_config=True) as client:
             assert isinstance(client.logger, DbliftLogger)
             client.migrate()

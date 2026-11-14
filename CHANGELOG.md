@@ -31,6 +31,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   triggers).
 - A DML statement read from its head reports its predicate without the leading `WHERE` on every
   dialect, as the parsed path and MySQL already did.
+- **Default change:** dblift no longer writes a log file by default. Logging goes to the console
+  only, and no `logs/` directory is created in the working directory (CLI, Python API and MCP
+  server), unless a directory or a file is requested with `--log-dir`, `--log-file`,
+  `DBLIFT_LOG_DIR`, `DBLIFT_LOG_FILE`, `log_dir`, `log_file` or `logging.directory`. From the
+  command line, a bare `--log-file` name is written to the working directory. The CLI now honours
+  `logging.directory` in the configuration file, which it ignored before. A client built from a
+  configuration file no longer derives `<config folder>/logs`, and a relative `log_file` there is
+  resolved against the file's folder. To keep the previous layout, pass `--log-dir logs`, set
+  `DBLIFT_LOG_DIR=logs`, or set `log_dir: logs` in the configuration file; a relative `log_dir`
+  in the configuration file resolves against the file's folder, so `log_dir: logs` keeps the
+  layout when the file sits in the working directory.
 
 ### Fixed
 

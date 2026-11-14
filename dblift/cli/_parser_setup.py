@@ -549,8 +549,13 @@ def create_parser(
     )
     # No defaults on --log-dir/--log-format, for the reason given at --log-level
     # below: a non-None default would always beat DBLIFT_LOG_DIR / DBLIFT_LOG_FORMAT
-    # and the config file. _configure_logging() falls back to "logs" and "text".
-    parser.add_argument("--log-dir", default=None, help="Log directory (default: logs)")
+    # and the config file. No log file is written unless a directory or file is
+    # requested; _configure_logging() falls back to "text" for the format.
+    parser.add_argument(
+        "--log-dir",
+        default=None,
+        help="Directory for log files (default: no log file is written)",
+    )
     parser.add_argument(
         "--log-format", default=None, help="Log format (text, json, html; default: text)"
     )

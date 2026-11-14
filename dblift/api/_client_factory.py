@@ -15,9 +15,10 @@ from dblift.config import DbliftConfig
 from dblift.config.config_builder import ConfigBuilder
 from dblift.config.database_config import BaseDatabaseConfig
 from dblift.config.errors import ConfigurationError
-from dblift.config.path_anchoring import anchor_config_paths, is_derived_log_dir
+from dblift.config.path_anchoring import anchor_config_paths
 from dblift.core.logger import DbliftLogger, Log, LogFormat, LogLevel, NullLog
 from dblift.core.migration.executor.migration_executor import require_analysis_support
+from dblift.core.utils.output_paths import requested_log_dir
 from dblift.db.native_connection_manager import NativeConnectionManager
 from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.provider_registry import ProviderRegistry
@@ -61,20 +62,15 @@ def resolve_client_logfile_dir(config: Any, eff_log_file: Optional[str]) -> Opti
     """Resolve ``DbliftLogger``'s ``logfile_dir`` from config and optional log file path.
 
     Absolute log file paths define the directory via their parent. Relative paths that
-    are only a file name (parent is ``.``) use :func:`_configured_log_directory` when set.
-    When no log file is configured, an explicit log directory still applies.
+    are only a file name (parent is ``.``) use :func:`_configured_log_directory` when set,
+    else the working directory. With neither a log file nor a log directory the result is
+    ``None`` and the logger writes no file.
     """
-    eff_log_dir = _configured_log_directory(config)
-    if not eff_log_file:
-        return Path(eff_log_dir) if eff_log_dir else None
-    p = Path(eff_log_file)
-    if p.is_absolute():
-        return p.parent
-    if p.parent != Path("."):
-        return p.parent
-    if eff_log_dir:
-        return Path(eff_log_dir)
-    return None
+    if eff_log_file:
+        p = Path(eff_log_file)
+        if p.is_absolute() or p.parent != Path("."):
+            return p.parent
+    return requested_log_dir(_configured_log_directory(config), eff_log_file)
 
 
 def resolve_config_or_raise(
@@ -109,10 +105,7 @@ def _logging_requested(
         return True
     if any(getattr(config, name, None) for name in ("log_level", "log_format", "log_file")):
         return True
-    log_dir = _configured_log_directory(config)
-    if (log_dir and not is_derived_log_dir(config, log_dir)) or effective_log_file_from_config(
-        config
-    ):
+    if _configured_log_directory(config) or effective_log_file_from_config(config):
         return True
     section_level = _section_level(config)
     return section_level is not None and str(section_level).upper() != "INFO"
