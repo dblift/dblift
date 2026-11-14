@@ -18,6 +18,7 @@ from dblift.config.errors import ConfigurationError
 from dblift.config.path_anchoring import anchor_config_paths
 from dblift.core.logger import DbliftLogger, Log, LogFormat, LogLevel, NullLog
 from dblift.core.migration.executor.migration_executor import require_analysis_support
+from dblift.core.utils.output_paths import requested_log_dir
 from dblift.db.native_connection_manager import NativeConnectionManager
 from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.provider_registry import ProviderRegistry
@@ -65,15 +66,11 @@ def resolve_client_logfile_dir(config: Any, eff_log_file: Optional[str]) -> Opti
     else the working directory. With neither a log file nor a log directory the result is
     ``None`` and the logger writes no file.
     """
-    eff_log_dir = _configured_log_directory(config)
-    if not eff_log_file:
-        return Path(eff_log_dir) if eff_log_dir else None
-    p = Path(eff_log_file)
-    if p.is_absolute():
-        return p.parent
-    if p.parent != Path("."):
-        return p.parent
-    return Path(eff_log_dir) if eff_log_dir else Path(".")
+    if eff_log_file:
+        p = Path(eff_log_file)
+        if p.is_absolute() or p.parent != Path("."):
+            return p.parent
+    return requested_log_dir(_configured_log_directory(config), eff_log_file)
 
 
 def resolve_config_or_raise(

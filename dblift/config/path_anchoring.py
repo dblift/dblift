@@ -11,8 +11,9 @@ def anchor_config_paths(config: DbliftConfig, base_dir: Path) -> None:
     """Rewrite *config*'s relative paths as absolute paths under *base_dir*.
 
     Covers the migration directories, a file-based database path, and the log
-    directory. Absolute paths are left untouched. A log directory that is not
-    configured stays unset: no log file is written unless one is requested.
+    directory (or, with no log directory, the log file). Absolute paths are left
+    untouched. A log directory that is not configured stays unset: no log file
+    is written unless one is requested.
     """
     base = Path(base_dir).expanduser().resolve()
     anchor = anchorer(base)
@@ -42,3 +43,7 @@ def anchor_config_paths(config: DbliftConfig, base_dir: Path) -> None:
         config.log_dir = anchor(config.log_dir)
     elif getattr(config.logging, "directory", None):
         config.logging.directory = anchor(config.logging.directory)
+    elif config.log_file:
+        config.log_file = anchor(config.log_file)
+    elif config.logging.file:
+        config.logging.file = anchor(config.logging.file)

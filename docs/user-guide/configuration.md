@@ -401,7 +401,7 @@ log_dir: build/logs
 ```
 
 dblift writes no log file unless a directory or a file is requested: logging goes to the console only
-and no `logs/` directory is created. A relative `--log-file` name with no directory is written to
+and no `logs/` directory is created. `--log-format` alone does not create a file. A relative `--log-file` name with no directory is written to
 the working directory. `--log-dir logs` (or `DBLIFT_LOG_DIR=logs`, or `log_dir: logs` in the
 configuration file) keeps the layout of earlier versions. The CLI honours `logging.directory`
 as well as `log_dir`; relative paths in the configuration file are resolved from the file's folder.

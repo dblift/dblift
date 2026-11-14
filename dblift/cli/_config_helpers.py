@@ -508,12 +508,6 @@ def _configure_logging(
         Configured log instance
     """
     log_dir_path = requested_log_dir(args.log_dir, args.log_file, config.logging.directory)
-    if log_dir_path is not None:
-        try:
-            log_dir_path.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            _exit_log_location_error(e)
-
     log_level = _LOG_LEVEL_MAP.get(_effective_log_level_name(args, config), LogLevel.INFO)
     # ``--quiet`` raises the *console* threshold to NOTICE so info/debug
     # lines disappear from the terminal while NOTICE (success
