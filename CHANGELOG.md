@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The PyPI page now shows project links (homepage, documentation, source, issues, changelog), the
+  Apache-2.0 licence as an SPDX expression, the author and the database topic. The licence
+  classifier is replaced by that expression.
 - The package declares Python 3.13 and 3.14 in its classifiers, and CI runs the unit tests on
   Python 3.11 to 3.14.
 - The HTML report (`--log-format html`) follows the flat DBLift blue identity of dblift.com: blue
