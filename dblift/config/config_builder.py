@@ -24,6 +24,7 @@ from dblift.config.dblift_config import (
 )
 from dblift.config.errors import ConfigurationError
 from dblift.core.exceptions import InvalidTargetVersionError
+from dblift.core.utils.path_checks import path_exists
 
 
 class ConfigBuilder:
@@ -298,7 +299,7 @@ class ConfigBuilder:
         config_data: Dict[str, object] = {}
         file_data: Mapping[str, object] = {}
         file_path_str = str(file_path)
-        if not Path(file_path_str).exists():
+        if not path_exists(file_path_str):
             raise FileNotFoundError(f"Config file not found: {file_path_str}")
         try:
             file_data = DbliftConfig.load_config_data_from_yaml(file_path_str)

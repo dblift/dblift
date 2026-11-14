@@ -28,6 +28,7 @@ from dblift.core.constants import (
     ENV_PREFIX,
 )
 from dblift.core.exceptions import InvalidTargetVersionError
+from dblift.core.utils.path_checks import path_exists
 
 _log = logging.getLogger(__name__)
 
@@ -528,12 +529,12 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
     # If a config path was provided explicitly, it must exist and be loadable. Silently
     # falling back to defaults hides typos in --config and produces surprising downstream errors.
     if config_file_path:
-        if not os.path.exists(config_file_path):
-            raise FileNotFoundError(f"Config file not found: {config_file_path}")
         try:
+            if not path_exists(config_file_path):
+                raise FileNotFoundError(f"Config file not found: {config_file_path}")
             file_data = DbliftConfig.load_config_data_from_yaml(config_file_path)
             config_data = DbliftConfig.merge_config_data(config_data, file_data)
-        except (InvalidTargetVersionError, ConfigurationError):
+        except (FileNotFoundError, InvalidTargetVersionError, ConfigurationError):
             raise
         except _CONFIG_LOAD_EXC as e:
             raise RuntimeError(f"Error loading config file {config_file_path}: {e}") from e

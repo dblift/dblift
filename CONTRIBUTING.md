@@ -20,7 +20,7 @@ Remove credentials from URLs and logs before pasting.
 
 ## Development setup
 
-Python 3.11 or 3.12.
+Python 3.11 to 3.14.
 
 ```bash
 git clone https://github.com/dblift/dblift.git

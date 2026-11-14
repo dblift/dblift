@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The package declares Python 3.13 and 3.14 in its classifiers, and CI runs the unit tests on
+  Python 3.11 to 3.14.
 - The HTML report (`--log-format html`) follows the flat DBLift blue identity of dblift.com: blue
   accents in place of teal and cyan, emerald for success, flat panels, banners and timeline bars
   with no gradients or glow, and the single-blue mark with a plain white wordmark. The mark is now
@@ -29,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A config file or migration scripts directory that cannot be examined (a parent directory that is
+  not searchable, a name that is too long) is reported as a read error instead of "not found" or
+  being silently skipped, on Python 3.11 to 3.14.
 - A capability denial raised while the configuration loads (for example by a registered secrets
   provider) now exits with code 4 (`EXIT_LICENSE_REQUIRED`) and one `Error:` line on stderr, as a
   denial at command dispatch does, including from `db validate-config` and `db check-connection`.
