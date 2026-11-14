@@ -177,6 +177,8 @@ def _check(tmp_path, url, files, expect, leak=S):
         tmp_path,
         url,
         files,
+        "--log-dir",
+        "logs",
         "--log-level",
         "debug",
         "--log-format",
@@ -186,7 +188,7 @@ def _check(tmp_path, url, files, expect, leak=S):
         "json",
     )
     assert failed.returncode != 0, failed.stdout + failed.stderr
-    info = _cli(tmp_path, url, files, "info", "--format", "json")
+    info = _cli(tmp_path, url, files, "--log-dir", "logs", "info", "--format", "json")
     logs = "".join(p.read_text() for p in (tmp_path / "logs").iterdir())
     everything = logs + failed.stdout + failed.stderr + info.stdout + info.stderr
     assert leak not in everything

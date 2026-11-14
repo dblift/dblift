@@ -4,7 +4,6 @@ import argparse
 import os
 import pprint
 import traceback
-from pathlib import Path
 from typing import Any, Dict, List
 
 import yaml
@@ -19,6 +18,7 @@ from dblift.cli._output import CommandOutput, from_args
 from dblift.config.dblift_config import DbliftConfig, load_config, unrecognized_top_level_keys
 from dblift.core.constants import ENV_PREFIX
 from dblift.core.logger import DbliftLogger, LogFormat
+from dblift.core.utils.output_paths import requested_log_dir
 from dblift.core.utils.url_masking import mask_database_url
 
 
@@ -275,13 +275,9 @@ def check_connection(args: argparse.Namespace) -> int:
         # db subcommands run before the main _configure_logging call so we
         # replicate the relevant subset here. ``log_file_pattern`` accepts an
         # absolute path (Path division replaces ``log_dir``) so passing
-        # ``--log-file /abs/path/log.json`` writes there directly.
-        _log_dir_arg = getattr(args, "log_dir", None)
-        try:
-            log_dir = Path(_log_dir_arg) if _log_dir_arg else Path("./logs")
-        except TypeError:
-            log_dir = Path("./logs")
-        log_dir.mkdir(parents=True, exist_ok=True)
+        # ``--log-file /abs/path/log.json`` writes there directly. With neither
+        # flag the logger is console only.
+        _log_dir_raw = getattr(args, "log_dir", None)
         _fmt_raw = getattr(args, "log_format", None)
         _fmt_str = (
             (str(_fmt_raw) if isinstance(_fmt_raw, str) else "text").split(",")[0].strip().lower()
@@ -289,6 +285,9 @@ def check_connection(args: argparse.Namespace) -> int:
         _log_format = {"json": LogFormat.JSON, "html": LogFormat.HTML}.get(_fmt_str, LogFormat.TEXT)
         _log_file_raw = getattr(args, "log_file", None)
         _log_file_pattern = _log_file_raw if isinstance(_log_file_raw, str) else None
+        log_dir = requested_log_dir(
+            _log_dir_raw if isinstance(_log_dir_raw, str) else None, _log_file_pattern
+        )
         logger = DbliftLogger(
             logfile_dir=log_dir, format=_log_format, log_file_pattern=_log_file_pattern
         )

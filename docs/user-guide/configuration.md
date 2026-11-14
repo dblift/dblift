@@ -391,7 +391,7 @@ command-line flag, then environment variable, then the configuration file, then 
 | --- | --- | --- | --- | --- |
 | Level (`debug`, `info`, `warn`, `error`) | `--log-level` | `DBLIFT_LOG_LEVEL` | `log_level` or `logging.level` | `info` |
 | Format (`text`, `json`, `html`, comma-separated for several) | `--log-format` | `DBLIFT_LOG_FORMAT` | `log_format` | `text` |
-| Directory | `--log-dir` | `DBLIFT_LOG_DIR` | `log_dir` | `logs` |
+| Directory | `--log-dir` | `DBLIFT_LOG_DIR` | `log_dir` or `logging.directory` | none |
 | File name | `--log-file` | `DBLIFT_LOG_FILE` | `log_file` | generated |
 
 ```yaml
@@ -399,6 +399,12 @@ log_level: warn
 log_format: text,json
 log_dir: build/logs
 ```
+
+dblift writes no log file unless a directory or a file is requested: logging goes to the console only
+and no `logs/` directory is created. A relative `--log-file` name with no directory is written to
+the working directory. `--log-dir logs` (or `DBLIFT_LOG_DIR=logs`, or `log_dir: logs` in the
+configuration file) keeps the layout of earlier versions. The CLI honours `logging.directory`
+as well as `log_dir`; relative paths in the configuration file are resolved from the file's folder.
 
 Level names are case-insensitive, `warning` is accepted for `warn` in the flag, the environment variable and the file, and `critical` for `error` in the environment variable and the file. An unknown level from any of them exits with status 2, as an unknown format does. A level hides everything
 below it on the console and in the log files: `error` shows only errors, `warn` shows warnings and

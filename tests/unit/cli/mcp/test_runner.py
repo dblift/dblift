@@ -11,12 +11,15 @@ import yaml
 from dblift.cli.mcp.runner import CommandInvocationError, run_command
 from dblift.core.seams.capabilities import CapabilityDeniedError
 
+#: Ask for the log directory the file-sharing tests below inspect.
+LOGS = ["--log-dir", "logs"]
+
 
 @pytest.fixture
 def sqlite_project(tmp_path, monkeypatch):
     """A dblift.yaml + one migration on SQLite, returned as the config path.
 
-    ``chdir`` so the CLI's default ``logs/`` directory lands in ``tmp_path``.
+    ``chdir`` so a relative ``--log-dir logs`` lands in ``tmp_path``.
     """
     monkeypatch.chdir(tmp_path)
     migrations = tmp_path / "migrations"
@@ -362,8 +365,8 @@ def test_keyboard_interrupt_propagates(sqlite_project, monkeypatch):
 
 @pytest.mark.unit
 def test_two_calls_share_one_text_log_file(sqlite_project, _clock):
-    run_command([], "info", [])
-    run_command([], "info", [])
+    run_command(LOGS, "info", [])
+    run_command(LOGS, "info", [])
 
     assert len(list((sqlite_project.parent / "logs").glob("*.log"))) == 1
 
@@ -372,8 +375,8 @@ def test_two_calls_share_one_text_log_file(sqlite_project, _clock):
 def test_json_log_format_keeps_one_file_per_call(sqlite_project, _clock):
     """JSON writes the complete log on close, so a shared file would clobber
     the previous call: the pin is TEXT-only."""
-    run_command(["--log-format", "json"], "info", [])
-    run_command(["--log-format", "json"], "info", [])
+    run_command([*LOGS, "--log-format", "json"], "info", [])
+    run_command([*LOGS, "--log-format", "json"], "info", [])
 
     assert len(list((sqlite_project.parent / "logs").glob("*.json"))) == 2
 
@@ -382,7 +385,7 @@ def test_json_log_format_keeps_one_file_per_call(sqlite_project, _clock):
 def test_user_supplied_log_file_pattern_is_expanded_once(sqlite_project, _clock):
     """``<timestamp>`` in a user ``--log-file`` expands on the first call and
     the resolved path is reused, not re-expanded per call."""
-    argv = ["--log-file", "custom_<timestamp>.log"]
+    argv = [*LOGS, "--log-file", "custom_<timestamp>.log"]
 
     run_command(argv, "info", [])
     after_first = sorted(p.name for p in (sqlite_project.parent / "logs").glob("custom_*.log"))
@@ -399,12 +402,12 @@ def test_a_deleted_log_file_is_not_recreated(sqlite_project, _clock):
     """Deleting the pinned file unpins it: later calls open and then share a
     fresh file, and the deleted path is never written back."""
     logs = sqlite_project.parent / "logs"
-    run_command([], "info", [])
-    run_command([], "info", [])
+    run_command(LOGS, "info", [])
+    run_command(LOGS, "info", [])
     (pinned,) = logs.glob("*.log")
     pinned.unlink()
 
-    run_command([], "info", [])
+    run_command(LOGS, "info", [])
     assert not pinned.exists()
 
     # The re-opening call also leaves behind the file the config load opens
@@ -412,7 +415,7 @@ def test_a_deleted_log_file_is_not_recreated(sqlite_project, _clock):
     # any unpinned call, so the count is not asserted. What must hold is that
     # the new file is pinned in turn: the call after it adds nothing.
     after_reopen = sorted(path.name for path in logs.glob("*.log"))
-    run_command([], "info", [])
+    run_command(LOGS, "info", [])
 
     assert sorted(path.name for path in logs.glob("*.log")) == after_reopen
 
@@ -424,9 +427,9 @@ def test_an_additional_file_format_keeps_one_text_file_per_call(sqlite_project, 
     text log."""
     logs = sqlite_project.parent / "logs"
 
-    run_command(["--log-format", "text,html"], "info", [])
+    run_command([*LOGS, "--log-format", "text,html"], "info", [])
     after_first = sorted(path.name for path in logs.glob("*.log"))
-    run_command(["--log-format", "text,html"], "info", [])
+    run_command([*LOGS, "--log-format", "text,html"], "info", [])
 
     assert len(after_first) == 1
     # More than one, not exactly two: an unpinned call also opens a file while
@@ -445,9 +448,9 @@ def test_html_log_format_does_not_leave_a_stub_file_per_call(sqlite_project, _cl
     the one file ``_configure_logging`` opens for it."""
     logs = sqlite_project.parent / "logs"
 
-    run_command(["--log-format", "html"], "info", [])
-    run_command(["--log-format", "html"], "info", [])
-    run_command(["--log-format", "html"], "info", [])
+    run_command([*LOGS, "--log-format", "html"], "info", [])
+    run_command([*LOGS, "--log-format", "html"], "info", [])
+    run_command([*LOGS, "--log-format", "html"], "info", [])
 
     assert len(list(logs.glob("*.html"))) == 3
 
@@ -460,11 +463,11 @@ def test_a_call_asking_for_another_format_is_not_forced_onto_the_pinned_file(
     own file instead of overwriting the text log the pin accumulated."""
     logs = sqlite_project.parent / "logs"
 
-    run_command([], "info", [])
+    run_command(LOGS, "info", [])
     (pinned,) = logs.glob("*.log")
     text_so_far = pinned.read_text()
 
-    run_command(["--log-format", "json"], "info", [])
+    run_command([*LOGS, "--log-format", "json"], "info", [])
 
     assert [path.name for path in logs.glob("*.log")] == [pinned.name]
     assert pinned.read_text().startswith(text_so_far)
@@ -472,7 +475,7 @@ def test_a_call_asking_for_another_format_is_not_forced_onto_the_pinned_file(
     assert len(list(logs.glob("*.json"))) == 1
 
     # The pin survives the interruption: the next text call appends to it.
-    run_command([], "info", [])
+    run_command(LOGS, "info", [])
 
     assert [path.name for path in logs.glob("*.log")] == [pinned.name]
     assert len(pinned.read_text()) > len(text_so_far)
