@@ -204,12 +204,6 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
             # session/transaction is used.
             if self._connection is not None and not self._connection.closed:
                 return self._connection
-            if (
-                self._tx is not None
-                and self._connection is not None
-                and not self._connection.closed
-            ):
-                return self._connection
             self._connection = self._conn_mgr.create_connection()
             return self._connection
 

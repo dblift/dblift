@@ -514,23 +514,11 @@ class Migration:
         metadata = parse_migration_filename(self.script_name)
         return metadata.migration_type, metadata.version, metadata.description, list(metadata.tags)
 
-    def _extract_version(self) -> Optional[str]:
-        """Extract version from script name through the canonical parser."""
-        return self._parse_filename()[1]
-
-    def _extract_description(self) -> str:
-        """Extract description from script name through the canonical parser."""
-        return self._parse_filename()[2]
-
     def _determine_type(self) -> MigrationType:
         """Determine the type of migration based on the script name."""
         if not self.script_name:
             return MigrationType.UNKNOWN
         return self._parse_filename()[0]
-
-    def _extract_tags(self) -> List[str]:
-        """Extract tags from script name through the canonical parser."""
-        return self._parse_filename()[3]
 
     def __repr__(self) -> str:
         # Import the shared type matcher only when formatting a migration.

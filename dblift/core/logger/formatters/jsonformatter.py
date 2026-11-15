@@ -688,15 +688,3 @@ class JsonFormatter:
             return obj.__dict__
         else:
             return str(obj)
-
-    def _count_log_levels(self) -> Dict[str, int]:
-        """Count log entries by level.
-
-        Returns:
-            Dictionary with counts for each log level
-        """
-        counts: Dict[str, int] = {}
-        for entry in self.log_entries:
-            level = entry.get("level", "UNKNOWN")
-            counts[level] = counts.get(level, 0) + 1
-        return counts

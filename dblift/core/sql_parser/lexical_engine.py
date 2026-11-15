@@ -68,8 +68,6 @@ class LexicalEngine:
                 lambda: tokenizer.open_lexeme,
             )
             tokens = []
-        elif self.spec.copy_from_stdin:
-            tokens = tokenizer._iter_sql_tokens()
         else:
             tokens = tokenizer._iter_sql_tokens()
         if tokenizer.open_comment is not None:  # the engine rejects the whole script
