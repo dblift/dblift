@@ -4224,14 +4224,34 @@ def _added_reference_tokens(
 
 
 # MySQL 8.4 additions to the 8.0 reserved words in the SQLGlot MySQL generator.
-_MYSQL_POSITION_RESERVED = {"_filename", "manual", "qualify", "tablesample"}
+_MYSQL_ATTRIBUTE_RESERVED = {"_filename", "manual", "qualify", "tablesample"}
 # Additional words in the MariaDB reserved-word table, default SQL mode.
-_MARIADB_POSITION_RESERVED = frozenset("""
+_MARIADB_ATTRIBUTE_RESERVED = frozenset("""
 conversion current_path current_role delete_domain_id do_domain_ids ignore_domain_ids
 master_demote_to_replica master_demote_to_slave offset page_checksum parse_vcol_expr portion
 ref_system_id returning sql_after_gtids sql_before_gtids stats_auto_recalc stats_persistent
 stats_sample_pages to_date vector
 """.split())
+
+
+def _mysql_attribute_name(
+    column: exp.Expr, grammar: Dialect, mariadb: bool
+) -> Optional[exp.Identifier]:
+    if (
+        not isinstance(column, exp.Column)
+        or len(column.parts) != 1
+        or not isinstance(column.this, exp.Identifier)
+    ):
+        return None
+    if not column.this.quoted:
+        name = column.name.lower()
+        if (
+            name in grammar.generator_class.RESERVED_KEYWORDS
+            or name in _MYSQL_ATTRIBUTE_RESERVED
+            or (mariadb and name in _MARIADB_ATTRIBUTE_RESERVED)
+        ):
+            return None
+    return column.this
 
 
 def _added_column_position(
@@ -4242,26 +4262,35 @@ def _added_column_position(
         return []
     if position.args.get("position") == "FIRST" and position.this is None:
         return [TokenType.FIRST]
-    column = position.this
-    if (
-        position.args.get("position") != "AFTER"
-        or not isinstance(column, exp.Column)
-        or len(column.parts) != 1
-        or not isinstance(column.this, exp.Identifier)
+    if position.args.get("position") != "AFTER":
+        return []
+    name = _mysql_attribute_name(position.this, grammar, mariadb)
+    return ["AFTER", name] if name is not None else []
+
+
+def _added_column_collation(name: exp.Expr, grammar: Dialect, mariadb: bool) -> list[_AlterToken]:
+    if isinstance(name, exp.Identifier):
+        return [TokenType.COLLATE, name]
+    if grammar == "mysql":  # lint: allow-dialect-string: unqualified collation name
+        identifier = _mysql_attribute_name(name, grammar, mariadb)
+        return [TokenType.COLLATE, identifier] if identifier is not None else []
+    if not (
+        grammar == "postgres"  # lint: allow-dialect-string: schema-qualified collation name
+        and isinstance(name, exp.Column)
+        and isinstance(name.this, exp.Identifier)
     ):
         return []
-    if not column.this.quoted:
-        name = column.name.lower()
-        if (
-            name in grammar.generator_class.RESERVED_KEYWORDS
-            or name in _MYSQL_POSITION_RESERVED
-            or (mariadb and name in _MARIADB_POSITION_RESERVED)
-        ):
-            return []
-    return ["AFTER", column.this]
+    parts = name.parts
+    if len(parts) == 1:
+        return [TokenType.COLLATE, name.this]
+    if len(parts) == 2 and isinstance(parts[0], exp.Identifier):
+        return [TokenType.COLLATE, parts[0], TokenType.DOT, name.this]
+    return []
 
 
-def _added_column_clause(kind: exp.Expr, grammar: Dialect, named: bool) -> list[_AlterToken]:
+def _added_column_clause(
+    kind: exp.Expr, grammar: Dialect, mariadb: bool, named: bool
+) -> list[_AlterToken]:
     """Spell out modeled sibling clauses. A dialect's tokenizer also accepts foreign grammar."""
     # lint: allow-dialect-string: PostgreSQL allows named column constraints
     plain_or_postgres = not named or grammar == "postgres"
@@ -4276,12 +4305,8 @@ def _added_column_clause(kind: exp.Expr, grammar: Dialect, named: bool) -> list[
             *grammar.tokenize(grammar.generate(kind.this)),
             TokenType.R_PAREN,
         ]
-    if (
-        not named
-        and isinstance(kind, exp.CollateColumnConstraint)
-        and isinstance(kind.this, exp.Identifier)
-    ):
-        return [TokenType.COLLATE, kind.this]
+    if not named and isinstance(kind, exp.CollateColumnConstraint):
+        return _added_column_collation(kind.this, grammar, mariadb)
     # lint: allow-dialect-string: MySQL/MariaDB column attributes
     if not named and grammar == "mysql":
         if isinstance(kind, exp.AutoIncrementColumnConstraint):
@@ -4325,7 +4350,7 @@ def _added_column_tokens(
                 return []
             tokens.extend(reference)
         else:
-            clause = _added_column_clause(kind, grammar, named=item.this is not None)
+            clause = _added_column_clause(kind, grammar, mariadb, named=item.this is not None)
             if not clause:
                 return []
             tokens.extend(clause)
