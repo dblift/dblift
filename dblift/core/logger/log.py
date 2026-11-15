@@ -491,6 +491,7 @@ class FileLog(AbstractLog):
         max_bytes: int = None,
         backup_count: int = None,
         log_level: Optional[LogLevel] = None,
+        existing_log_file: Optional[Path] = None,
     ):
         """Initialize a new file log.
 
@@ -504,6 +505,7 @@ class FileLog(AbstractLog):
             enable_debug: Whether debug messages should be displayed
             max_bytes: Maximum size of each log file before rotation
             backup_count: Number of backup files to keep
+            existing_log_file: Literal selected filename, without pattern expansion
         """
         super().__init__(name, enable_debug, log_level)
         self.log_dir = Path(log_dir)
@@ -511,19 +513,22 @@ class FileLog(AbstractLog):
         self.schema = schema
         self.database_name = database_name
         self.log_file_pattern = log_file_pattern
+        self._existing_log_file = existing_log_file
         self.max_bytes = max_bytes
         self.backup_count = backup_count
         self.current_size = 0
 
-        # Create log directory if it doesn't exist
-        self._ensure_log_dir()
-
-        # Get initial log file path
+        # Expand the actual file before creating directories: an absolute or
+        # own-directory pattern can ignore log_dir and contain placeholders.
         self.log_file = self._get_log_file()
         refuse_symlink_output(self.log_file)
         # Defense-in-depth: a custom pattern may legitimately nest directories;
         # ensure the file's parent exists so the header write never crashes.
-        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+        self.log_dir = self.log_file.parent
+        self._ensure_log_dir()
+        # Validate the actual sink before command success, including deferred JSON/HTML writes.
+        with self.log_file.open("a", encoding="utf-8"):
+            pass
 
         # Create formatter based on format
         from typing import Union
@@ -553,7 +558,9 @@ class FileLog(AbstractLog):
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_log_file(self) -> Path:
-        """Get the log file path using the specified naming pattern."""
+        """Get the literal selected file or expand the requested naming pattern."""
+        if self._existing_log_file is not None:
+            return self._existing_log_file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Get the appropriate file extension based on the log format enum

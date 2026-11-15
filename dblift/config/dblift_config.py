@@ -19,7 +19,14 @@ from dblift.config.database_config import (
     _infer_type_from_url_scheme,
 )
 from dblift.config.errors import ConfigurationError
-from dblift.config.file_path_anchoring import URL_SCHEME, anchor_file_data, file_url, left_relative
+from dblift.config.file_path_anchoring import (
+    URL_SCHEME,
+    anchor_file_data,
+    anchor_log_file,
+    file_url,
+    left_relative,
+    retain_log_file_fallback,
+)
 from dblift.config.secrets import SecretsConfig, resolve_secret_refs
 from dblift.config.secrets._registry import is_secret_uri
 from dblift.core.constants import (
@@ -557,14 +564,18 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
     # config.database before calling create(), so a lone DBLIFT_DB_SCHEMA never
     # triggers an "Unsupported database type" crash.
     env_dict = DbliftConfig.from_env_dict()
+    log_file_override = env_dict.get("log_file")
     if env_dict:
         config_data = DbliftConfig.merge_config_data(config_data, env_dict)
 
     # Override with command line arguments if provided
     if args:
         args_dict = DbliftConfig.from_args_dict(args)
+        log_file_override = args_dict.get("log_file", log_file_override)
         if args_dict:
             config_data = DbliftConfig.merge_config_data(config_data, args_dict)
+
+    log_file_fallback = anchor_log_file(config_data, config_file_path, bool(log_file_override))
 
     # ``validate-sql`` does not need a real database, but static linting does
     # need an explicit SQL dialect or a database type from config.
@@ -598,6 +609,7 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
     )
     refuse_empty_database_locator(file_data, active_environment, config_data)
     config = DbliftConfig.from_dict(config_data, resolve_secrets=not is_offline_cmd)
+    retain_log_file_fallback(config, log_file_fallback)
     if active_environment:
         setattr(config, "_active_environment", active_environment)
     if config_file_path:
@@ -1057,6 +1069,16 @@ class DbliftConfig:
     def merge_config_data(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
         """Merge raw config dictionaries before constructing typed config objects."""
         merged = deep_merge_dicts(base or {}, override or {})
+        # Flat and nested spellings are aliases: a newer source wins independently for
+        # each destination field, regardless of the spelling the older source used.
+        logging_override = override.get("logging")
+        section = logging_override if isinstance(logging_override, dict) else {}
+        for flat, nested in (("log_file", "file"), ("log_dir", "directory")):
+            if override.get(flat):
+                if isinstance(merged.get("logging"), dict):
+                    merged["logging"] = {k: v for k, v in merged["logging"].items() if k != nested}
+            elif section.get(nested):
+                merged.pop(flat, None)
         base_db = base.get("database") if base else None
         override_db = override.get("database") if override else None
         if (

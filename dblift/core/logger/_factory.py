@@ -12,7 +12,6 @@ from typing import Any, ClassVar, List, Optional, Tuple, Union
 
 from dblift.core.logger._base import Log
 from dblift.core.logger._levels import LogFormat, LogLevel
-from dblift.core.utils.output_paths import refuse_symlink_output
 
 
 class LogFactory:
@@ -222,7 +221,6 @@ class LogFactory:
         # Add file logger for primary format if enabled
         if cls._use_file and cls._log_dir:
             if cls._existing_log_file:
-                refuse_symlink_output(cls._existing_log_file)
                 # Create a FileLog that points to the existing file
                 file_log = FileLog(
                     name=class_name,
@@ -232,9 +230,8 @@ class LogFactory:
                     database_name=cls._database_name,
                     enable_debug=cls._debug_enabled,
                     log_level=cls._log_level,
+                    existing_log_file=cls._existing_log_file,
                 )
-                # Override the auto-generated log file path with our specified one
-                file_log.log_file = cls._existing_log_file
                 logs.append(file_log)
             else:
                 # Create a file logger for the primary format

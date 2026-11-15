@@ -15,6 +15,7 @@ from dblift.config import DbliftConfig
 from dblift.config.config_builder import ConfigBuilder
 from dblift.config.database_config import BaseDatabaseConfig
 from dblift.config.errors import ConfigurationError
+from dblift.config.file_path_anchoring import retain_log_file_fallback
 from dblift.config.path_anchoring import anchor_config_paths
 from dblift.core.logger import DbliftLogger, Log, LogFormat, LogLevel, NullLog
 from dblift.core.migration.executor.migration_executor import require_analysis_support
@@ -58,19 +59,11 @@ def effective_log_file_from_config(config: Any) -> Optional[str]:
     )
 
 
-def resolve_client_logfile_dir(config: Any, eff_log_file: Optional[str]) -> Optional[Path]:
-    """Resolve ``DbliftLogger``'s ``logfile_dir`` from config and optional log file path.
-
-    Absolute log file paths define the directory via their parent. Relative paths that
-    are only a file name (parent is ``.``) use :func:`_configured_log_directory` when set,
-    else the working directory. With neither a log file nor a log directory the result is
-    ``None`` and the logger writes no file.
-    """
-    if eff_log_file:
-        p = Path(eff_log_file)
-        if p.is_absolute() or p.parent != Path("."):
-            return p.parent
-    return requested_log_dir(_configured_log_directory(config), eff_log_file)
+def resolve_client_logfile_dir(
+    config: Any, eff_log_file: Optional[str], log_dir: Optional[str] = None
+) -> Optional[Path]:
+    """Select a requested file sink without interpreting an unexpanded filename's parent."""
+    return requested_log_dir(log_dir, eff_log_file, _configured_log_directory(config))
 
 
 def resolve_config_or_raise(
@@ -116,6 +109,8 @@ def build_default_logger(
     log_level: Optional[str],
     log_format: Optional[str],
     log_file: Optional[str],
+    *,
+    log_dir: Optional[str] = None,
 ) -> Log:
     """Return the logger a client uses when the caller passes none.
 
@@ -126,7 +121,7 @@ def build_default_logger(
     built, to stderr when no file is set. Ctor overrides take precedence over
     ``config``; ``None`` means "fall back to config".
     """
-    if not _logging_requested(config, log_level, log_format, log_file):
+    if log_dir is None and not _logging_requested(config, log_level, log_format, log_file):
         return NullLog()
     raw_fmt = log_format if log_format is not None else getattr(config, "log_format", None)
     log_format_value = _resolve_enum_value(raw_fmt, LogFormat, LogFormat.TEXT)
@@ -137,10 +132,15 @@ def build_default_logger(
     log_level_value = _resolve_enum_value(raw_lvl, LogLevel, LogLevel.INFO)
 
     eff_log_file = log_file if log_file is not None else effective_log_file_from_config(config)
+    if log_file is None and (log_dir or _configured_log_directory(config)):
+        fallback = vars(config).get("_log_file_fallback")
+        if fallback and eff_log_file == fallback[0]:
+            eff_log_file = fallback[1]
     return DbliftLogger(
         format=log_format_value,
         level=log_level_value,
-        logfile_dir=resolve_client_logfile_dir(config, eff_log_file),
+        logfile_dir=resolve_client_logfile_dir(config, eff_log_file, log_dir),
+        log_file_pattern=eff_log_file,
     )
 
 
@@ -280,7 +280,11 @@ def client_from_config(
     # Create logger if not provided
     if logger is None:
         logger = build_default_logger(
-            config, kwargs.get("log_level"), kwargs.get("log_format"), kwargs.get("log_file")
+            config,
+            kwargs.get("log_level"),
+            kwargs.get("log_format"),
+            kwargs.get("log_file"),
+            log_dir=kwargs.get("log_dir"),
         )
 
     apply_derived_schema(client_config.database)
@@ -350,7 +354,9 @@ def client_from_config_file(
     require_analysis_support(analysis_mode)
     config = ConfigBuilder.build(file_path=config_path, **overrides)
     if relative_to_config:
-        anchor_config_paths(config, Path(config_path).expanduser().resolve().parent)
+        anchor_config_paths(
+            config, Path(config_path).expanduser().resolve().parent, include_logging=False
+        )
     # Keys already merged into ``config`` by ConfigBuilder.build must not be passed again
     # to DBLiftClient (would re-apply or confuse nested database_* aliases).
     passthrough = {
@@ -442,11 +448,14 @@ def client_from_sqlalchemy(
                 ):  # noqa: E501
                     setattr(merged, f, val)
         derived = merged
+        retain_log_file_fallback(derived, vars(config).get("_log_file_fallback"))
 
     # Respect explicit logger if provided (matches client_from_config contract).
     # Only fall back to building from log_* params when logger is None.
     if logger is None:
-        logger = build_default_logger(derived, log_level, log_format, log_file)
+        logger = build_default_logger(
+            derived, log_level, log_format, log_file, log_dir=kwargs.get("log_dir")
+        )
 
     apply_derived_schema(derived.database)
     provider = ProviderRegistry.create_provider(derived, logger)
