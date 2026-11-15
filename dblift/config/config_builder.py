@@ -23,6 +23,7 @@ from dblift.config.dblift_config import (
     select_environment,
 )
 from dblift.config.errors import ConfigurationError
+from dblift.config.file_path_anchoring import anchor_log_file
 from dblift.core.exceptions import InvalidTargetVersionError
 from dblift.core.utils.path_checks import path_exists
 
@@ -260,6 +261,7 @@ class ConfigBuilder:
         refuse_unusable_file_paths(file_data, active_environment)
         config_data = apply_environment(config_data, active_environment)
 
+        log_file_overridden = False
         # Apply environment variables if enabled.
         # Merge the raw env dict directly — bypassing from_env() which requires
         # DBLIFT_DB_URL and rejects partial env-only configs otherwise.
@@ -267,14 +269,18 @@ class ConfigBuilder:
         # only values that env actually provided participate in precedence.
         if env_overrides:
             env_dict = DbliftConfig.from_env_dict()
+            log_file_overridden = bool(env_dict.get("log_file"))
             if env_dict:
                 config_data = DbliftConfig.merge_config_data(config_data, env_dict)
 
         # Apply kwargs overrides
         if kwargs:
             kwargs_dict = cls._kwargs_config_data(kwargs)
+            log_file_overridden = log_file_overridden or bool(kwargs_dict.get("log_file"))
             if kwargs_dict:
                 config_data = DbliftConfig.merge_config_data(config_data, kwargs_dict)
+
+        anchor_log_file(config_data, file_path, log_file_overridden)
 
         if not config_data:
             raise ConfigurationError(

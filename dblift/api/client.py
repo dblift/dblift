@@ -305,7 +305,9 @@ class DBLiftClient:
         config = resolve_config_or_raise(provider, config)
 
         if logger is None:
-            logger = build_default_logger(config, log_level, log_format, log_file)
+            logger = build_default_logger(
+                config, log_level, log_format, log_file, log_dir=kwargs.get("log_dir")
+            )
 
         normalize_migrations_dirs(config, migrations_dir)
         apply_ctor_overrides(config, kwargs, log_level, log_format, log_file)

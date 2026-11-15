@@ -49,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Requested log filenames now reach the Python API logger, including timestamp patterns.
+  Ordinary commands and `db check-connection` honour flat and nested configuration, environment
+  variables and flags consistently. Configured relative filenames resolve from the config folder;
+  explicit overrides retain their working-directory meaning. Unusable destinations report a
+  friendly error, and a filename with its own directory no longer creates an unused log directory.
+
 - Statement facts now report simple primary, unique and foreign keys added by `ALTER TABLE`, including
   composite keys, constraint names and referenced tables. Unread key details remain opaque.
 - A config file or migration scripts directory that cannot be examined (a parent directory that is

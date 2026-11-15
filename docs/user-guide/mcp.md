@@ -32,8 +32,16 @@ the server starts anyway; every tool call still loads the configuration
 itself and reports its own error.
 
 Each tool call logs to a file when a log directory or file is requested
-(`--log-dir`, `DBLIFT_LOG_DIR`, `log_dir`/`logging.directory` in the
-configuration file); otherwise no log file is written.
+(`--log-dir`, `--log-file`, `DBLIFT_LOG_DIR`, `DBLIFT_LOG_FILE`, or
+`log_dir`/`log_file`/`logging.directory`/`logging.file` in the configuration
+file); otherwise no log file is written. For example, put
+`"args": ["--log-file", "agent.log", "mcp"]` in the server configuration.
+A bare filename uses the requested log directory, or the working directory
+for a flag/environment override and the config folder for a configured filename.
+A filename with its own directory selects that path instead of `log_dir`:
+configured relative paths start at the config folder, while flag and environment
+paths start at the working directory. Logging stays on stderr and in requested
+files; stdout is reserved for the MCP protocol.
 With the default text log format, the server writes one log file per
 session: the first call's file is reused and appended to for every later
 call in that process. HTML and JSON log formats do not share a file across

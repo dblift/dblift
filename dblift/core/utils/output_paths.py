@@ -17,10 +17,13 @@ def requested_log_dir(
 ) -> Optional[Path]:
     """The directory log files go to, or ``None`` when no file was requested.
 
-    ``log_dir`` wins, then ``configured_dir``, then the working directory when
+    Absolute filenames select their parent. Otherwise ``log_dir`` wins, then
+    ``configured_dir``, then the working directory when
     only ``log_file`` is given: a file name with its own directory part is
     expanded and created by the file sink, never taken literally here.
     """
+    if log_file and Path(log_file).is_absolute():
+        return Path(log_file).parent
     chosen = log_dir or configured_dir
     if chosen:
         return Path(chosen)

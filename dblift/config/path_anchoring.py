@@ -7,7 +7,9 @@ from dblift.config.dblift_config import DbliftConfig, DirectoryConfig
 from dblift.config.file_path_anchoring import _IN_MEMORY, anchorer
 
 
-def anchor_config_paths(config: DbliftConfig, base_dir: Path) -> None:
+def anchor_config_paths(
+    config: DbliftConfig, base_dir: Path, *, include_logging: bool = True
+) -> None:
     """Rewrite *config*'s relative paths as absolute paths under *base_dir*.
 
     Covers the migration directories, a file-based database path, and the log
@@ -39,6 +41,8 @@ def anchor_config_paths(config: DbliftConfig, base_dir: Path) -> None:
         # Only file-based engines (e.g. SQLite) define ``path``.
         setattr(config.database, "path", anchor(database_path))
 
+    if not include_logging:
+        return
     if getattr(config, "log_dir", None):
         config.log_dir = anchor(config.log_dir)
     elif getattr(config.logging, "directory", None):

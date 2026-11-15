@@ -4,7 +4,7 @@ import argparse
 import os
 import pprint
 import traceback
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -14,10 +14,10 @@ from dblift.api._cli_support import (
     get_provider_display_url,
 )
 from dblift.cli._capability_exit import exit_on_capability_denial
-from dblift.cli._output import CommandOutput, from_args
+from dblift.cli._output import CommandOutput, _exit_log_location_error, from_args
 from dblift.config.dblift_config import DbliftConfig, load_config, unrecognized_top_level_keys
 from dblift.core.constants import ENV_PREFIX
-from dblift.core.logger import DbliftLogger, LogFormat
+from dblift.core.logger import DbliftLogger, LogFormat, LogLevel
 from dblift.core.utils.output_paths import requested_log_dir
 from dblift.core.utils.url_masking import mask_database_url
 
@@ -253,6 +253,36 @@ def diagnose_connection(args: argparse.Namespace) -> int:
         return 1
 
 
+def _connection_logger(args: argparse.Namespace, config: Optional[DbliftConfig]) -> DbliftLogger:
+    """Build one utility logger from merged config or flags after a configuration refusal."""
+
+    def log_value(name: str, nested: str = "") -> Optional[str]:
+        """Read the first supplied flat or nested logging string."""
+        value = getattr(args, name, None)
+        if isinstance(value, str) and value:
+            return value
+        value = getattr(config, name, None)
+        if isinstance(value, str) and value:
+            return value
+        value = getattr(getattr(config, "logging", None), nested, None) if nested else None
+        return value if isinstance(value, str) else None
+
+    log_file = log_value("log_file", "file")
+    log_dir = requested_log_dir(log_value("log_dir", "directory"), log_file)
+    format_name = (log_value("log_format") or "text").split(",")[0].strip().lower()
+    log_format = {"json": LogFormat.JSON, "html": LogFormat.HTML}.get(format_name, LogFormat.TEXT)
+    level_name = log_value("log_level", "level") or "info"
+    try:
+        return DbliftLogger(
+            logfile_dir=log_dir,
+            format=log_format,
+            log_file_pattern=log_file,
+            level=LogLevel.from_string(level_name.upper()),
+        )
+    except OSError as e:
+        _exit_log_location_error(e)
+
+
 def check_connection(args: argparse.Namespace) -> int:
     """Test database connection using provided parameters.
 
@@ -271,65 +301,53 @@ def check_connection(args: argparse.Namespace) -> int:
             "database_info": {},
         }
 
-        # Initialize logger — honour --log-dir, --log-format, and --log-file.
-        # db subcommands run before the main _configure_logging call so we
-        # replicate the relevant subset here. ``log_file_pattern`` accepts an
-        # absolute path (Path division replaces ``log_dir``) so passing
-        # ``--log-file /abs/path/log.json`` writes there directly. With neither
-        # flag the logger is console only.
-        _log_dir_raw = getattr(args, "log_dir", None)
-        _fmt_raw = getattr(args, "log_format", None)
-        _fmt_str = (
-            (str(_fmt_raw) if isinstance(_fmt_raw, str) else "text").split(",")[0].strip().lower()
-        )
-        _log_format = {"json": LogFormat.JSON, "html": LogFormat.HTML}.get(_fmt_str, LogFormat.TEXT)
-        _log_file_raw = getattr(args, "log_file", None)
-        _log_file_pattern = _log_file_raw if isinstance(_log_file_raw, str) else None
-        log_dir = requested_log_dir(
-            _log_dir_raw if isinstance(_log_dir_raw, str) else None, _log_file_pattern
-        )
-        logger = DbliftLogger(
-            logfile_dir=log_dir, format=_log_format, log_file_pattern=_log_file_pattern
-        )
+        # Resolve the destination once from the same merged config as the connection.
+        # An explicit file still records a configuration refusal when loading fails.
+        config = None
+        config_error = None
         try:
-            # Create config from arguments
-            try:
-                with exit_on_capability_denial():
-                    config = load_config(getattr(args, "config", None), args)
+            with exit_on_capability_denial():
+                config = load_config(getattr(args, "config", None), args)
+        except Exception as e:
+            config_error = e
 
-                # Check if we have enough information to connect.
-                # SQLite can use a file path, not a server/URL.
-                # CosmosDB uses account_endpoint, not url/server.
-                _db_type_lower = (config.database.type or "").lower()
-                _has_path = getattr(config.database, "path", None) or getattr(
-                    config.database, "database", None
-                )
-                _quirks = ProviderRegistry.get_quirks(_db_type_lower)
-                _url_optional_for_path = _quirks.url_optional_when_file_path_given
-                _has_connection_identifier = _quirks.has_connection_identifier(config.database)
-                _has_endpoint = getattr(config.database, "account_endpoint", None)
-                if (
-                    not config.database.url
-                    and not (_url_optional_for_path and _has_path)
-                    and not _has_endpoint
-                    and (not config.database.type or not _has_connection_identifier)
-                ):
-                    error_message = (
-                        "Missing required connection parameters. "
-                        "Either provide --db-url or --config."
-                    )
-                    out.error(error_message)
-                    results["error"] = error_message
-                    print_connection_results(results, out)
-                    return 1
-
-                results["connection_info"]["config_source"] = "Created from provided parameters"
-            except Exception as e:
-                error_message = f"Error creating configuration: {str(e)}"
-                logger.error(error_message)
-                results["error"] = str(e)
+        logger = _connection_logger(args, config)
+        try:
+            # Keep configuration refusals in the requested log and structured output.
+            if config_error is not None:
+                logger.error(f"Error creating configuration: {config_error}")
+                results["error"] = str(config_error)
                 print_connection_results(results, out)
                 return 1
+            assert config is not None
+
+            # Check if we have enough information to connect.
+            # SQLite can use a file path, not a server/URL.
+            # CosmosDB uses account_endpoint, not url/server.
+            _db_type_lower = (config.database.type or "").lower()
+            _has_path = getattr(config.database, "path", None) or getattr(
+                config.database, "database", None
+            )
+            _quirks = ProviderRegistry.get_quirks(_db_type_lower)
+            _url_optional_for_path = _quirks.url_optional_when_file_path_given
+            _has_connection_identifier = _quirks.has_connection_identifier(config.database)
+            _has_endpoint = getattr(config.database, "account_endpoint", None)
+            if (
+                not config.database.url
+                and not (_url_optional_for_path and _has_path)
+                and not _has_endpoint
+                and (not config.database.type or not _has_connection_identifier)
+            ):
+                error_message = (
+                    "Missing required connection parameters. "
+                    "Either provide --db-url or --config."
+                )
+                out.error(error_message)
+                results["error"] = error_message
+                print_connection_results(results, out)
+                return 1
+
+            results["connection_info"]["config_source"] = "Created from provided parameters"
 
             # Validate database type
             if not config.database.type:

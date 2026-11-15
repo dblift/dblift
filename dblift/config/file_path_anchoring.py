@@ -2,7 +2,7 @@
 
 import re
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple, Union
 from urllib.parse import parse_qs
 
 import sqlalchemy
@@ -142,8 +142,40 @@ def anchor_file_data(data: Dict[str, object], base_dir: Path) -> None:
                     anchor,
                     bool(qmark and dialect and dialect[2]),
                 )
-        logging = block.get("logging")
-        if isinstance(logging, dict) and isinstance(logging.get("directory"), str):
-            logging["directory"] = anchor(logging["directory"]) if logging["directory"] else ""
-        if isinstance(block.get("log_dir"), str) and block["log_dir"]:
-            block["log_dir"] = anchor(block["log_dir"])
+        _anchor_log_paths(block, anchor)
+
+
+def anchor_log_file(
+    data: Dict[str, object], config_file: Optional[Union[str, Path]], overridden: bool = False
+) -> None:
+    """Anchor a file-origin bare log filename when no effective directory was requested.
+
+    Called after merging overrides, only while the selected filename still comes from the file.
+    Own-directory filenames are already anchored by :func:`anchor_file_data`.
+    """
+    if not config_file or overridden:
+        return
+    logging = data.get("logging")
+    section = logging if isinstance(logging, dict) else {}
+    if data.get("log_dir") or section.get("directory"):
+        return
+    owner = data if data.get("log_file") else section
+    key = "log_file" if owner is data else "file"
+    value = owner.get(key)
+    if isinstance(value, str) and value:
+        owner[key] = anchorer(Path(str(config_file)).expanduser().resolve().parent)(value)
+
+
+def _anchor_log_paths(block: Dict[str, object], anchor: Callable[[object], str]) -> None:
+    """Anchor file-origin directories and filenames that select their own directory."""
+    # A filename with its own directory selects that path independently of log_dir.
+    for owner, key in ((block, "log_file"), (block.get("logging"), "file")):
+        if isinstance(owner, dict):
+            value = owner.get(key)
+            if isinstance(value, str) and value and Path(value).parent != Path("."):
+                owner[key] = anchor(value)
+    logging = block.get("logging")
+    if isinstance(logging, dict) and isinstance(logging.get("directory"), str):
+        logging["directory"] = anchor(logging["directory"]) if logging["directory"] else ""
+    if isinstance(block.get("log_dir"), str) and block["log_dir"]:
+        block["log_dir"] = anchor(block["log_dir"])

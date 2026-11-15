@@ -515,15 +515,14 @@ class FileLog(AbstractLog):
         self.backup_count = backup_count
         self.current_size = 0
 
-        # Create log directory if it doesn't exist
-        self._ensure_log_dir()
-
-        # Get initial log file path
+        # Expand the actual file before creating directories: an absolute or
+        # own-directory pattern can ignore log_dir and contain placeholders.
         self.log_file = self._get_log_file()
         refuse_symlink_output(self.log_file)
         # Defense-in-depth: a custom pattern may legitimately nest directories;
         # ensure the file's parent exists so the header write never crashes.
-        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+        self.log_dir = self.log_file.parent
+        self._ensure_log_dir()
 
         # Create formatter based on format
         from typing import Union
