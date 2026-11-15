@@ -4,7 +4,7 @@ import argparse
 import os
 import pprint
 import traceback
-from typing import Any, Dict, List, Mapping, Optional
+from typing import Any, Callable, Dict, List, Mapping, Optional
 
 import yaml
 
@@ -293,6 +293,24 @@ def _connection_logger(args: argparse.Namespace, config: Optional[DbliftConfig])
         _exit_log_location_error(e)
 
 
+def _capture_connection_error(operation: Callable[[], object]) -> Optional[Exception]:
+    """Capture one recoverable connection or log-finalization error without retrying."""
+    try:
+        operation()
+    except Exception as error:
+        return error
+    return None
+
+
+def _report_connection_error(
+    error: Exception, args: argparse.Namespace, out: CommandOutput
+) -> None:
+    """Retain the utility's error message and optional traceback for a captured error."""
+    out.error(f"Error testing connection: {error}")
+    if getattr(args, "log_level", "info") == "debug":
+        traceback.print_exception(error)
+
+
 def _complete_connection_log(
     logger: DbliftLogger, results: Mapping[str, object], config_error: Optional[Exception]
 ) -> None:
@@ -415,15 +433,14 @@ def check_connection(args: argparse.Namespace) -> int:
 
         # Test connection. Format known driver errors as a one-line message so the CLI doesn't
         # dump a Python traceback to stderr on e.g. connection refused / auth failure.
-        try:
-            provider.create_connection()
-        except Exception as connection_error:
+        connection_error = _capture_connection_error(provider.create_connection)
+        if connection_error is not None:
             friendly = _format_connection_error(connection_error, db_type)
             out.error(friendly)
             results["error"] = friendly
             print_connection_results(results, out)
             if getattr(args, "log_level", "info") == "debug":
-                traceback.print_exc()
+                traceback.print_exception(connection_error)
             return 1
 
         try:
@@ -448,14 +465,17 @@ def check_connection(args: argparse.Namespace) -> int:
     except Exception as e:
         results["success"] = False
         results["error"] = str(e)
-        out.error(f"Error testing connection: {str(e)}")
-        if getattr(args, "log_level", "info") == "debug":
-            traceback.print_exc()
+        _report_connection_error(e, args, out)
         return 1
 
     finally:
         if logger is not None:
-            _complete_connection_log(logger, results, config_error)
+            finalization_error = _capture_connection_error(
+                lambda: _complete_connection_log(logger, results, config_error)
+            )
+            if finalization_error is not None:
+                _report_connection_error(finalization_error, args, out)
+                return 1
 
 
 # Re-exported so ``db check-connection`` and every other command's own
