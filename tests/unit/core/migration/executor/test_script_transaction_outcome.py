@@ -119,7 +119,8 @@ def test_open_rolls_back_and_records_a_failed_row():
     engine, migration, result, provider, _ = _run(TransactionOutcome.OPEN)
     engine.execute_migration(migration, result)
     assert provider.events == ["begin", "execute", "rollback", "begin", "history:False", "commit"]
-    assert "left a transaction open" in result.error_message
+    assert "the script left a transaction open; it was rolled back" in result.error_message
+    assert result.error_message.count(migration.script_name) == 1
 
 
 @pytest.mark.unit

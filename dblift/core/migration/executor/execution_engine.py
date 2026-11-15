@@ -1017,7 +1017,7 @@ class ExecutionEngine:
             self._record_autocommit_migration_history(migration, execution_time)
             return True
         error = TransactionLeftOpenError(
-            f"{migration.script_name} left a transaction open; it was rolled back. "
+            "the script left a transaction open; it was rolled back. "
             "End every transaction the script opens with COMMIT or ROLLBACK"
         )
         self._handle_statement_failure(
