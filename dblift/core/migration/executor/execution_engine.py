@@ -1355,8 +1355,8 @@ class ExecutionEngine:
             )
         provider.rollback_transaction()
         self.log.warning(
-            f"{callback.script_name} ended its transaction itself (COMMIT or ROLLBACK in "
-            "the script); its history row is recorded in a separate transaction"
+            f"{callback.script_name} ended its transaction itself "
+            "(COMMIT or ROLLBACK in the script)"
         )
 
     def _execute_non_sql_callback(self, callback: Migration) -> None:

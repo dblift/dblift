@@ -166,7 +166,11 @@ def test_callback_that_ended_its_transaction_is_released_not_committed():
     engine, callback, provider, log = _callback(TransactionOutcome.ENDED)
     engine.execute_callback(callback)
     assert provider.events == ["begin", "execute", "rollback"]
-    assert any("ended its transaction itself" in m for m in log.warnings)
+    assert any(
+        m.endswith("ended its transaction itself (COMMIT or ROLLBACK in the script)")
+        for m in log.warnings
+    )
+    assert not any("history row" in m for m in log.warnings)
 
 
 @pytest.mark.unit
