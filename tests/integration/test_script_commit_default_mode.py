@@ -16,12 +16,14 @@ per migration, and a failed run leaves neither a row in ``h`` nor a changed
 Some scenarios are pinned to a clean failure where the engine refuses the
 construct; the reason is asserted in the error message.
 
-They run against live PostgreSQL, CockroachDB, MySQL, MariaDB and Oracle servers. Each test
-provisions a throwaway database (Oracle: user) holding ``t (a, b)`` with the
+They run against live PostgreSQL, CockroachDB, MySQL, MariaDB, Oracle and Db2
+servers. Each test provisions a throwaway place holding ``t (a, b)`` with the
 row (1, 2) and an empty ``h (v)``, using an administrative account, and drops
-it afterwards. An engine that cannot be reached is skipped; set
-DBLIFT_<ENGINE>_HOST / _PORT / _USERNAME / _PASSWORD (PostgreSQL also
-_DATABASE, Oracle also _SERVICE) to point at one. The Oracle service
+it afterwards: a database (PostgreSQL, CockroachDB, MySQL, MariaDB), a user
+(Oracle) or a schema in the existing database (Db2). An engine that cannot be
+reached is skipped; set DBLIFT_<ENGINE>_HOST / _PORT / _USERNAME / _PASSWORD
+(PostgreSQL, CockroachDB and Db2 also _DATABASE, Oracle also _SERVICE) to point
+at one. The Oracle service
 defaults to FREEPDB1, like the other self-contained Oracle modules here.
 An engine whose port answers but whose login fails is an error, not a skip.
 
@@ -328,7 +330,7 @@ def _script(engine: str, fragments) -> str:
 
 
 class Place:
-    """A throwaway database (Oracle: user) and the means to read it back."""
+    """A throwaway database, user (Oracle) or schema (Db2), and the means to read it back."""
 
     def __init__(self, engine: str):
         self.engine = engine
