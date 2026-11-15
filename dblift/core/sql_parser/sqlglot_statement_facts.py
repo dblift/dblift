@@ -9,7 +9,6 @@ import re
 from dataclasses import replace
 from typing import AbstractSet, Callable, Optional, Tuple, TypeVar, Union
 
-from sqlalchemy.dialects.postgresql.base import RESERVED_WORDS as POSTGRES_RESERVED
 from sqlglot import exp, parse_one
 from sqlglot.dialects import Dialect
 from sqlglot.errors import ParseError, TokenError
@@ -1002,24 +1001,40 @@ def _declared_constraint(
 _AlterToken = TokenType | str | exp.Identifier | Token
 
 
-def _alter_identifier_token(token: Token, grammar: Dialect) -> bool:
+# PostgreSQL 18 gram.y ColId accepts IDENT, unreserved_keyword and col_name_keyword.
+# These are the remaining two classes in src/include/parser/kwlist.h.
+_POSTGRES_NON_COLID = frozenset("""
+all analyse analyze and any array as asc asymmetric authorization binary both case cast check
+collate collation column concurrently constraint create cross current_catalog current_date
+current_role current_schema current_time current_timestamp current_user default deferrable
+desc distinct do else end except false fetch for foreign freeze from full grant group having
+ilike in initially inner intersect into is isnull join lateral leading left like limit
+localtime localtimestamp natural not notnull null offset on only or order outer overlaps
+placing primary references returning right select session_user similar some symmetric
+system_user table tablesample then to trailing true union unique user using variadic verbose
+when where window with
+""".split())
+
+
+def _alter_identifier_token(token: Token, grammar: Dialect, sql: str) -> bool:
     if token.token_type == TokenType.IDENTIFIER:
         return True
-    if grammar == "postgres":  # lint: allow-dialect-string: nonreserved PostgreSQL identifiers
-        # SQLGlot may build an Identifier even for a reserved word in a column list.
+    if grammar == "postgres":  # lint: allow-dialect-string: PostgreSQL ColId grammar
         return (
-            token.token_type in grammar.parser_class.ID_VAR_TOKENS
-            and token.text.lower() not in POSTGRES_RESERVED
-            and token.text.upper() not in {"LATERAL", "SYSTEM_USER"}
+            sql[token.start : token.end + 1] == token.text
+            and re.fullmatch(r"[A-Za-z_\x80-\U0010ffff][A-Za-z_0-9$\x80-\U0010ffff]*", token.text)
+            is not None
+            and token.text.lower() not in _POSTGRES_NON_COLID
         )
     return token.token_type in {TokenType.VAR, TokenType.NAME}
 
 
-def _alter_token_matches(token: Token, part: _AlterToken, grammar: Dialect) -> bool:
+def _alter_token_matches(token: Token, part: _AlterToken, grammar: Dialect, sql: str) -> bool:
     if isinstance(part, exp.Identifier):
         return bool(
             part.name
-            and _alter_identifier_token(token, grammar)
+            and bool(part.args.get("quoted")) == (token.token_type == TokenType.IDENTIFIER)
+            and _alter_identifier_token(token, grammar, sql)
             and token.start == part.meta.get("start")
             and token.end == part.meta.get("end")
             and token.text == part.meta.get("written", part.name)
@@ -1087,7 +1102,7 @@ def _table_alter_tokens_match(
         if part == TokenType.COLUMN and token.token_type != TokenType.COLUMN:
             continue  # ADD [COLUMN] definition in a mixed action list
         at += 1
-        if not _alter_token_matches(token, part, grammar):
+        if not _alter_token_matches(token, part, grammar, sql):
             return False
     return at == len(tokens)
 
@@ -4210,16 +4225,21 @@ def _added_reference_tokens(
 
 def _added_column_tokens(definition: exp.ColumnDef, dialect: str) -> list[_AlterToken]:
     """Require the same plain key grammar for inline keys in a mixed ALTER."""
-    if _unread_column_definition(definition):
+    if not isinstance(definition.this, exp.Identifier) or _unread_column_definition(definition):
         return []
-    base = definition.copy()
-    base.set("constraints", [])
     grammar = Dialect.get_or_raise(dialect)
-    tokens: list[_AlterToken] = [
-        "ADD",
-        TokenType.COLUMN,
-        *grammar.tokenize(base.sql(dialect=dialect)),
-    ]
+    tokens: list[_AlterToken] = ["ADD", TokenType.COLUMN]
+    if definition.args.get("exists"):
+        tokens.extend(("IF", TokenType.NOT, TokenType.EXISTS))
+    tokens.append(definition.this)
+    if definition.kind:
+        tokens.extend(grammar.tokenize(definition.kind.sql(dialect=dialect)))
+    has_inline_key = any(
+        isinstance(
+            item.kind, (exp.PrimaryKeyColumnConstraint, exp.UniqueColumnConstraint, exp.Reference)
+        )
+        for item in definition.constraints
+    )
     for item in definition.constraints:
         if isinstance(item.this, exp.Identifier):
             tokens.extend((TokenType.CONSTRAINT, item.this))
@@ -4233,10 +4253,29 @@ def _added_column_tokens(definition: exp.ColumnDef, dialect: str) -> list[_Alter
             if not reference:
                 return []
             tokens.extend(reference)
-        elif isinstance(kind, (exp.NotNullColumnConstraint, exp.DefaultColumnConstraint)):
-            tokens.extend(grammar.tokenize(kind.sql(dialect=dialect)))
         else:
-            return []
+            # Preserve independent column clauses by replaying the typed source. Beside an
+            # inline key, a separate AST node may itself be a key option (e.g. replication).
+            if not isinstance(kind, exp.ColumnConstraintKind) or (
+                has_inline_key
+                and not isinstance(
+                    kind,
+                    (
+                        exp.NotNullColumnConstraint,
+                        exp.DefaultColumnConstraint,
+                        exp.CheckColumnConstraint,
+                        exp.CollateColumnConstraint,
+                        exp.GeneratedAsIdentityColumnConstraint,
+                        exp.ComputedColumnConstraint,
+                        exp.AutoIncrementColumnConstraint,
+                        exp.CommentColumnConstraint,
+                    ),
+                )
+            ):
+                return []
+            tokens.extend(grammar.tokenize(kind.sql(dialect=dialect)))
+    if position := definition.args.get("position"):
+        tokens.extend(grammar.tokenize(position.sql(dialect=dialect)))
     return tokens
 
 
