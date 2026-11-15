@@ -869,7 +869,6 @@ class TestPrepareTransaction(unittest.TestCase):
         cleared.
         """
         from dblift.db.plugins.sqlserver.provider import SqlServerProvider
-        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
         class _FakeConnection:
             closed = False
@@ -893,7 +892,7 @@ class TestPrepareTransaction(unittest.TestCase):
         )
         migration = _make_sql_migration()
 
-        with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+        with patch.object(SqlServerProvider, "begin_transaction", lambda self: None):
             result = engine._prepare_transaction(migration)
 
         self.assertTrue(result)
@@ -905,7 +904,6 @@ class TestPrepareTransaction(unittest.TestCase):
         nothing to undo — must not clear the cache either.
         """
         from dblift.db.plugins.sqlserver.provider import SqlServerProvider
-        from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
         class _FakeConnection:
             closed = False
@@ -929,7 +927,7 @@ class TestPrepareTransaction(unittest.TestCase):
         )
         migration = _make_sql_migration()
 
-        with patch.object(SqlAlchemyProvider, "begin_transaction", lambda self: None):
+        with patch.object(SqlServerProvider, "begin_transaction", lambda self: None):
             result = engine._prepare_transaction(migration)
 
         self.assertTrue(result)

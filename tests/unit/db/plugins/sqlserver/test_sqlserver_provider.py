@@ -1,9 +1,12 @@
 """SQL Server native provider unit tests (no live SQL Server needed)."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 from dblift.config.dblift_config import DbliftConfig
 from dblift.db.plugins.sqlserver.provider import SqlServerProvider
+from dblift.db.provider_interfaces import TransactionOutcome
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
@@ -291,3 +294,60 @@ def test_non_dbo_login_is_not_blocked(monkeypatch):
     monkeypatch.setattr(SqlAlchemyProvider, "execute_statement", MagicMock(return_value=0))
 
     provider.set_current_schema("some_schema")  # must not raise
+
+
+def _row(count, txn_id):
+    return [{"transaction_count": count, "transaction_id": txn_id}]
+
+
+def _begun(baseline, *reads):
+    p = SqlServerProvider(_cfg())
+    p.execute_query = MagicMock(side_effect=[_row(*baseline), *[_row(*r) for r in reads]])
+    with patch.object(SqlAlchemyProvider, "begin_transaction"):
+        p.begin_transaction()
+    return p
+
+
+@pytest.mark.parametrize(
+    "current, expected",
+    [
+        ((1, 100), TransactionOutcome.INTACT),
+        ((0, 555), TransactionOutcome.ENDED),
+        ((2, 100), TransactionOutcome.OPEN),
+        ((1, 777), TransactionOutcome.OPEN),
+        ((2, 777), TransactionOutcome.OPEN),
+    ],
+)
+def test_sqlserver_transaction_outcome(current, expected):
+    p = _begun((1, 100), current)
+    assert p.transaction_outcome() is expected
+
+
+def test_sqlserver_outcome_is_intact_when_begin_opened_no_server_transaction():
+    p = _begun((0, 5))
+    assert p.transaction_outcome() is TransactionOutcome.INTACT
+    assert p.execute_query.call_count == 1
+
+
+def test_sqlserver_begin_survives_a_failing_state_query():
+    p = SqlServerProvider(_cfg())
+    p.execute_query = MagicMock(side_effect=RuntimeError("boom"))
+    with patch.object(SqlAlchemyProvider, "begin_transaction"):
+        p.begin_transaction()
+    assert p.transaction_outcome() is TransactionOutcome.INTACT
+
+
+def test_sqlserver_outcome_without_begin_sends_nothing():
+    p = SqlServerProvider(_cfg())
+    p.execute_query = MagicMock()
+    assert p.transaction_outcome() is TransactionOutcome.INTACT
+    p.execute_query.assert_not_called()
+
+
+@pytest.mark.parametrize("end", ["commit_transaction", "rollback_transaction"])
+def test_sqlserver_commit_and_rollback_forget_the_baseline(end):
+    p = _begun((1, 100), (0, 555))
+    with patch.object(SqlAlchemyProvider, end):
+        getattr(p, end)()
+    assert p.transaction_outcome() is TransactionOutcome.INTACT
+    assert p.execute_query.call_count == 1
