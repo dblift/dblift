@@ -460,7 +460,7 @@ def check_connection(args: argparse.Namespace) -> int:
 
         # Print results in requested format
         print_connection_results(results, out)
-        return 0
+        exit_code = 0
 
     except Exception as e:
         results["success"] = False
@@ -475,7 +475,9 @@ def check_connection(args: argparse.Namespace) -> int:
             )
             if finalization_error is not None:
                 _report_connection_error(finalization_error, args, out)
-                return 1
+                exit_code = 1
+
+    return exit_code
 
 
 # Re-exported so ``db check-connection`` and every other command's own
