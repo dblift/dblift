@@ -5,12 +5,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from dblift.core.exceptions import TransactionLeftOpenError
 from dblift.core.logger import NullLog
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.provider_interfaces import TransactionalProvider, TransactionOutcome
+from tests.unit._migration_factory import make_migration
 
 
 class _Provider(TransactionalProvider):
@@ -140,3 +142,36 @@ def test_script_with_no_statement_does_not_fail():
     engine, migration, result, provider, _ = _run(TransactionOutcome.OPEN, content="-- nothing")
     engine.execute_migration(migration, result)
     assert "left a transaction open" in result.error_message
+
+
+def _callback(outcome: Any = None):
+    engine, _, _, provider, log = _run(outcome)
+    callback = make_migration(
+        script_name="beforeMigrate__cb.sql",
+        content="INSERT INTO t VALUES (1);",
+        sql_statements=["INSERT INTO t VALUES (1);"],
+    )
+    return engine, callback, provider, log
+
+
+@pytest.mark.unit
+def test_callback_default_outcome_commits():
+    engine, callback, provider, _ = _callback()
+    engine.execute_callback(callback)
+    assert provider.events == ["begin", "execute", "commit"]
+
+
+@pytest.mark.unit
+def test_callback_that_ended_its_transaction_is_released_not_committed():
+    engine, callback, provider, log = _callback(TransactionOutcome.ENDED)
+    engine.execute_callback(callback)
+    assert provider.events == ["begin", "execute", "rollback"]
+    assert any("ended its transaction itself" in m for m in log.warnings)
+
+
+@pytest.mark.unit
+def test_callback_that_left_a_transaction_open_fails():
+    engine, callback, provider, _ = _callback(TransactionOutcome.OPEN)
+    with pytest.raises(TransactionLeftOpenError, match="left a transaction open"):
+        engine.execute_callback(callback)
+    assert provider.events == ["begin", "execute", "rollback"]

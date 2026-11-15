@@ -1329,8 +1329,7 @@ class ExecutionEngine:
             self._finish_statements(sql_statements)
 
             if transaction_started and isinstance(self.provider, TransactionalProvider):
-                # Commit transaction for successful callback execution
-                self._commit_callback_transaction(self.provider, callback)
+                self._settle_callback_transaction(self.provider, callback)
 
         except Exception:
             # Rollback safety net for callback execution. Same rationale as the
@@ -1340,6 +1339,25 @@ class ExecutionEngine:
                 self._rollback_callback_transaction(self.provider, callback)
             # Re-raise the original exception
             raise
+
+    def _settle_callback_transaction(
+        self, provider: TransactionalProvider, callback: Migration
+    ) -> None:
+        """Close the callback's transaction per the script's outcome; raise when left open."""
+        outcome = self._script_transaction_outcome()
+        if outcome is TransactionOutcome.INTACT:
+            self._commit_callback_transaction(provider, callback)
+            return
+        if outcome is TransactionOutcome.OPEN:
+            raise TransactionLeftOpenError(
+                f"{callback.script_name} left a transaction open; it was rolled back. "
+                "End every transaction the script opens with COMMIT or ROLLBACK"
+            )
+        provider.rollback_transaction()
+        self.log.warning(
+            f"{callback.script_name} ended its transaction itself (COMMIT or ROLLBACK in "
+            "the script); its history row is recorded in a separate transaction"
+        )
 
     def _execute_non_sql_callback(self, callback: Migration) -> None:
         """Run a non-SQL callback through the executor factory; raise when it fails."""
