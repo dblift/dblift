@@ -193,16 +193,17 @@ def test_caller_owned_connection_script_that_ends_its_transaction(account, tmp_p
         f"@{HOST}:{PORT}/{db_name}"
     )
     engine = create_engine(url)
+    conn = engine.connect()
     try:
-        with engine.connect() as conn:
-            client = DBLiftClient.from_sqlalchemy(
-                connection=conn, schema=SCHEMA, migrations_dir=tmp_path, logger=NullLog()
-            )
-            result = client.migrate()
-            client.close()
-            conn.commit()
+        client = DBLiftClient.from_sqlalchemy(
+            connection=conn, schema=SCHEMA, migrations_dir=tmp_path, logger=NullLog()
+        )
+        result = client.migrate()
     finally:
-        engine.dispose()
+        try:
+            conn.close()
+        finally:
+            engine.dispose()
 
     assert result.success, result.error_message
     assert _t(account) == [(1, 2)]
