@@ -143,4 +143,5 @@ class SqlglotStatementFactsReader:
             dialect=self.dialect,
             allow_leading_dot=self.spec is not None and self.spec.allow_leading_dot_relation,
             read_dialect=self.read_dialect(),
+            source_engine=self.spec.name if self.spec is not None else None,
         )

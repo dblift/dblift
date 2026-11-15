@@ -49,6 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Statement facts now report simple primary, unique and foreign keys added by `ALTER TABLE`, including
+  composite keys, constraint names and referenced tables. Unread key details remain opaque.
 - A config file or migration scripts directory that cannot be examined (a parent directory that is
   not searchable, a name that is too long) is reported as a read error instead of "not found" or
   being silently skipped, on Python 3.11 to 3.14.
