@@ -157,6 +157,18 @@ def _history(account) -> list:
     ]
 
 
+def _assert_truthful(account, result, migrations: int = 1) -> None:
+    """The outcome dblift reports is the outcome the history and the data show."""
+    history = _history(account)
+    assert history, "no history row at all"
+    assert result.success == history[-1][1], (result.success, history)
+    if result.success:
+        assert len(history) >= migrations, history
+    else:
+        assert _h(account) == [], "a failed run left a row nobody committed"
+        assert _t(account) in ([(1, 2)], [(2, 2)]), _t(account)
+
+
 CASES = [
     (
         "balanced_across_units",
@@ -233,6 +245,39 @@ CASES = [
         [],
         [False],
     ),
+    (
+        "commit_then_work",
+        f"{UPD}\nCOMMIT;\nGO\nINSERT INTO app.h VALUES (1);\nGO\n",
+        True,
+        [(2, 2)],
+        [1],
+        [True],
+    ),
+    (
+        "rollback_then_work",
+        f"{UPD}\nROLLBACK;\nGO\nINSERT INTO app.h VALUES (1);\nGO\n",
+        True,
+        [(1, 2)],
+        [1],
+        [True],
+    ),
+    (
+        "savepoint_rollback_to",
+        f"SAVE TRANSACTION s1;\n{UPD}\nROLLBACK TRANSACTION s1;\n"
+        "INSERT INTO app.h VALUES (1);\nGO\n",
+        True,
+        [(1, 2)],
+        [1],
+        [True],
+    ),
+    (
+        "envelope_failure",
+        f"BEGIN TRAN;\nGO\n{UPD}\nGO\nINSERT INTO app.nosuch VALUES (1);\nGO\nCOMMIT;\nGO\n",
+        False,
+        [(1, 2)],
+        [],
+        [False],
+    ),
 ]
 
 
@@ -246,6 +291,7 @@ def test_script_transaction_outcome(account, tmp_path, name, script, ok, t, h, h
     assert _t(account) == t
     assert _h(account) == h
     assert [success for _, success in _history(account)] == history
+    _assert_truthful(account, result)
 
 
 def test_caller_owned_connection_script_that_ends_its_transaction(account, tmp_path):
@@ -271,6 +317,7 @@ def test_caller_owned_connection_script_that_ends_its_transaction(account, tmp_p
     assert result.success, result.error_message
     assert _t(account) == [(1, 2)]
     assert [success for _, success in _history(account)] == [True]
+    _assert_truthful(account, result)
 
 
 def test_ordinary_migration_after_an_ended_one_is_atomic(account, tmp_path):
@@ -286,6 +333,7 @@ def test_ordinary_migration_after_an_ended_one_is_atomic(account, tmp_path):
     assert not result.success
     assert _history(account) == [("V1__ended.sql", True), ("V2__fails.sql", False)]
     assert _h(account) == []
+    _assert_truthful(account, result, 2)
 
 
 def test_callback_that_ends_its_transaction_does_not_break_the_run(account, tmp_path):
@@ -300,6 +348,22 @@ def test_callback_that_ends_its_transaction_does_not_break_the_run(account, tmp_
 
     assert result.success, result.error_message
     assert _t(account) == [(2, 2)] and _h(account) == []
+    _assert_truthful(account, result)
+
+
+def test_callback_that_commits_keeps_its_work(account, tmp_path):
+    create_migration(
+        tmp_path,
+        "beforeMigrate__cb.sql",
+        "INSERT INTO app.h VALUES (7);\nCOMMIT;\nGO\n",
+    )
+    create_migration(tmp_path, "V1__case.sql", f"{UPD}\nGO\n")
+
+    result = _migrate(account, tmp_path)
+
+    assert result.success, result.error_message
+    assert _t(account) == [(2, 2)] and _h(account) == [7]
+    _assert_truthful(account, result)
 
 
 def test_undo_script_that_ends_its_transaction_succeeds(account, tmp_path):
@@ -313,8 +377,24 @@ def test_undo_script_that_ends_its_transaction_succeeds(account, tmp_path):
     )
     applied = _migrate(account, tmp_path)
     assert applied.success, applied.error_message
+    _assert_truthful(account, applied)
 
     undo_result = _undo(account, tmp_path)
 
     assert undo_result.success, undo_result.error_message
     assert _t(account) == [(2, 2)]
+
+
+def test_undo_script_that_commits_succeeds(account, tmp_path):
+    create_migration(tmp_path, "V1__case.sql", f"{UPD}\nGO\n")
+    create_undo_migration(
+        tmp_path, "1", "case", "UPDATE app.t SET a = 1 WHERE a = 2;\nCOMMIT;\nGO\n"
+    )
+    applied = _migrate(account, tmp_path)
+    assert applied.success, applied.error_message
+    _assert_truthful(account, applied)
+
+    undo_result = _undo(account, tmp_path)
+
+    assert undo_result.success, undo_result.error_message
+    assert _t(account) == [(1, 2)]

@@ -1,37 +1,52 @@
-"""Work after a script's own COMMIT is committed with the history row.
+"""Scripts that manage their own transaction, on every local engine.
 
-Engines that report nothing about the transaction a script ended keep the
-default: dblift commits whatever follows the script's COMMIT together with the
-history row, and a failure after that COMMIT keeps the committed part. These
-tests are pins: they pass before and after the change they guard, and fail if
-that default is broken.
+dblift opens a transaction for each script, runs the statements, writes the
+history row and commits. These tests run real scripts that commit, roll back,
+open their own transaction or fail, and check three things after each run: the
+reported outcome, the data and the history rows. Engines that report nothing
+about the transaction a script ended keep the default: whatever follows the
+script's COMMIT is committed with the history row, and a failure after that
+COMMIT keeps the committed part.
+
+Every scenario also asserts the truthfulness rule: ``result.success`` equals
+the ``success`` of the last history row, a successful run has a history row
+per migration, and a failed run leaves neither a row in ``h`` nor a changed
+``t`` that the script did not commit itself.
 
 They run against live PostgreSQL, MySQL, MariaDB and Oracle servers. Each test
-provisions a throwaway database (Oracle: user) with an administrative account
-and drops it afterwards. An engine that cannot be reached is skipped; set
+provisions a throwaway database (Oracle: user) holding ``t (a, b)`` with the
+row (1, 2) and an empty ``h (v)``, using an administrative account, and drops
+it afterwards. An engine that cannot be reached is skipped; set
 DBLIFT_<ENGINE>_HOST / _PORT / _USERNAME / _PASSWORD (PostgreSQL also
 _DATABASE, Oracle also _SERVICE) to point at one. The Oracle service
 defaults to FREEPDB1, like the other self-contained Oracle modules here.
 An engine whose port answers but whose login fails is an error, not a skip.
+
+Adding an engine is data: a provisioning branch, a row in DEFAULTS, a fragment
+override in ENGINE_FRAGMENTS, and the engine's name in the rows it runs.
 """
 
 import os
 import socket
 import uuid
+from urllib.parse import quote
 
 import pytest
+from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
 from dblift.config import DbliftConfig
+from dblift.core.logger import NullLog
 from dblift.db.plugins.mysql.config import MySqlConfig
 from dblift.db.plugins.oracle.config import OracleConfig
 from dblift.db.plugins.postgresql.config import PostgreSqlConfig
 from dblift.db.provider_registry import ProviderRegistry
-from tests.integration.helpers.migration_helper import create_migration
+from tests.integration.helpers.migration_helper import create_migration, create_undo_migration
 
 pytestmark = pytest.mark.integration
 
 ENGINES = ["postgresql", "mysql", "mariadb", "oracle"]
+ALL = ENGINES
 DEFAULTS = {
     "postgresql": ("localhost", "5432", "postgres", "postgres"),
     "mysql": ("localhost", "3306", "root", "root"),
@@ -40,12 +55,221 @@ DEFAULTS = {
 }
 ORACLE_USER_PASSWORD = "Dblift_Pin1x"
 
-COMMITTED_THEN_MORE = "INSERT INTO t VALUES (1);\nCOMMIT;\nINSERT INTO t VALUES (2);\n"
-COMMITTED_THEN_FAILS = "INSERT INTO t VALUES (1);\nCOMMIT;\nINSERT INTO nosuch VALUES (2);\n"
+# Statement fragments. A scenario is a tuple of fragment names, joined by newlines.
+FRAGMENTS = {
+    "UPD": "UPDATE t SET a = b WHERE a = 1;",
+    "INS1": "INSERT INTO h VALUES (1);",
+    "INS2": "INSERT INTO h VALUES (2);",
+    "INS7": "INSERT INTO h VALUES (7);",
+    "FAIL": "INSERT INTO nosuch VALUES (1);",
+    "COMMIT": "COMMIT;",
+    "ROLLBACK": "ROLLBACK;",
+    "SAVE": "SAVEPOINT s;",
+    "BACK": "ROLLBACK TO SAVEPOINT s;",
+    "UNDO_UPD": "UPDATE t SET a = 1 WHERE a = 2;",
+}
+MYSQL_PROCEDURE = (
+    "DELIMITER //\n"
+    "CREATE PROCEDURE p() BEGIN\n"
+    "  UPDATE t SET a = b WHERE a = 1;\n"
+    "  IF ROW_COUNT() = {rows} THEN COMMIT; ELSE ROLLBACK; END IF;\n"
+    "END //\n"
+    "DELIMITER ;\n"
+    "CALL p();"
+)
+ORACLE_BLOCK = (
+    "BEGIN\n"
+    "  UPDATE t SET a = b WHERE a = 1;\n"
+    "  IF SQL%ROWCOUNT = {rows} THEN COMMIT; ELSE ROLLBACK; END IF;\n"
+    "END;\n"
+    "/"
+)
+ENGINE_FRAGMENTS = {
+    "postgresql": {
+        "BEGIN": "BEGIN;",
+        "DO_BLOCK": (
+            "DO $$\n"
+            "DECLARE n int;\n"
+            "BEGIN\n"
+            "  UPDATE t SET a = b WHERE a = 1;\n"
+            "  GET DIAGNOSTICS n = ROW_COUNT;\n"
+            "  IF n = 1 THEN COMMIT; ELSE ROLLBACK; END IF;\n"
+            "END $$;"
+        ),
+    },
+    "mysql": {
+        "BEGIN": "START TRANSACTION;",
+        "PROC_COMMIT": MYSQL_PROCEDURE.format(rows=1),
+        "PROC_ROLLBACK": MYSQL_PROCEDURE.format(rows=100),
+    },
+    "mariadb": {
+        "BEGIN": "START TRANSACTION;",
+        "PROC_COMMIT": MYSQL_PROCEDURE.format(rows=1),
+        "PROC_ROLLBACK": MYSQL_PROCEDURE.format(rows=100),
+    },
+    "oracle": {
+        "PROC_COMMIT": ORACLE_BLOCK.format(rows=1),
+        "PROC_ROLLBACK": ORACLE_BLOCK.format(rows=100),
+    },
+}
+T_START = [(1, 2)]
+T_DONE = [(2, 2)]
+
+# One migration V1__case.sql per row: (id, fragments, success, t, h, history, engines).
+# The expectations were fixed before any run.
+EXPECT = [
+    ("plain", ("UPD",), True, T_DONE, [], [True], ALL),
+    ("plain_failure", ("UPD", "FAIL"), False, T_START, [], [False], ALL),
+    ("commit_last", ("UPD", "COMMIT"), True, T_DONE, [], [True], ALL),
+    ("commit_then_work", ("UPD", "COMMIT", "INS1"), True, T_DONE, [1], [True], ALL),
+    ("commit_then_failure", ("UPD", "COMMIT", "FAIL"), False, T_DONE, [], [False], ALL),
+    ("rollback_last", ("UPD", "ROLLBACK"), True, T_START, [], [True], ALL),
+    ("rollback_then_work", ("UPD", "ROLLBACK", "INS1"), True, T_START, [1], [True], ALL),
+    (
+        "rollback_then_failure",
+        ("INS1", "ROLLBACK", "FAIL"),
+        False,
+        T_START,
+        [],
+        [False],
+        ALL,
+    ),
+    ("savepoint_rollback_to", ("SAVE", "UPD", "BACK", "INS1"), True, T_START, [1], [True], ALL),
+    (
+        "envelope",
+        ("BEGIN", "UPD", "COMMIT"),
+        True,
+        T_DONE,
+        [],
+        [True],
+        ["postgresql", "mysql", "mariadb"],
+    ),
+    (
+        "envelope_failure",
+        ("BEGIN", "UPD", "FAIL", "COMMIT"),
+        False,
+        T_START,
+        [],
+        [False],
+        ["postgresql", "mysql", "mariadb"],
+    ),
+    (
+        "envelope_rollback",
+        ("BEGIN", "UPD", "ROLLBACK"),
+        True,
+        T_START,
+        [],
+        [True],
+        ["postgresql", "mysql", "mariadb"],
+    ),
+    (
+        "begin_mid",
+        ("UPD", "BEGIN", "INS1"),
+        True,
+        T_DONE,
+        [1],
+        [True],
+        ["postgresql", "mysql", "mariadb"],
+    ),
+    ("procedural_commit", ("PROC_COMMIT",), True, T_DONE, [], [True], ["oracle"]),
+    ("procedural_rollback", ("PROC_ROLLBACK",), True, T_START, [], [True], ["oracle"]),
+    ("procedural_refused", ("DO_BLOCK",), False, T_START, [], [False], ["postgresql"]),
+]
+# An engine the script's COMMIT is refused on says so in the error message.
+ERROR_CONTAINS = {"procedural_refused": "invalid transaction termination"}
+
+# Scenarios whose outcome was not known in advance; the pinned values are what
+# was observed, with the server version it was observed on.
+# Observed 2026-11-15 on MySQL 8.0.46 and MariaDB 11.8.8: the procedure's own
+# COMMIT / ROLLBACK is honoured and nothing is left uncommitted.
+RECORD = [
+    ("procedural_commit", ("PROC_COMMIT",), True, T_DONE, [], [True], ["mysql", "mariadb"]),
+    ("procedural_rollback", ("PROC_ROLLBACK",), True, T_START, [], [True], ["mysql", "mariadb"]),
+]
+
+# Flow scenarios: (id, {file: fragments}, undo fragments or None, caller_owned,
+# success, t, h, history as (script, success)).
+FLOWS = [
+    (
+        "callback_commit",
+        {"beforeMigrate__cb.sql": ("INS7", "COMMIT"), "V1__case.sql": ("UPD",)},
+        None,
+        False,
+        True,
+        T_DONE,
+        [7],
+        [("V1__case.sql", True)],
+    ),
+    (
+        "callback_rollback",
+        {"beforeMigrate__cb.sql": ("INS7", "ROLLBACK"), "V1__case.sql": ("UPD",)},
+        None,
+        False,
+        True,
+        T_DONE,
+        [],
+        [("V1__case.sql", True)],
+    ),
+    (
+        "undo_commit",
+        {"V1__case.sql": ("UPD",)},
+        ("UNDO_UPD", "COMMIT"),
+        False,
+        True,
+        T_START,
+        [],
+        None,
+    ),
+    (
+        "undo_rollback",
+        {"V1__case.sql": ("UPD",)},
+        ("UNDO_UPD", "ROLLBACK"),
+        False,
+        True,
+        T_DONE,
+        [],
+        None,
+    ),
+    (
+        "next_migration_is_atomic",
+        {"V1__ended.sql": ("UPD", "COMMIT"), "V2__fails.sql": ("INS2", "FAIL")},
+        None,
+        False,
+        False,
+        T_DONE,
+        [],
+        [("V1__ended.sql", True), ("V2__fails.sql", False)],
+    ),
+    (
+        "caller_owned_rollback",
+        {"V1__case.sql": ("UPD", "ROLLBACK")},
+        None,
+        True,
+        True,
+        T_START,
+        [],
+        [("V1__case.sql", True)],
+    ),
+    (
+        "caller_owned_commit_then_work",
+        {"V1__case.sql": ("UPD", "COMMIT", "INS1")},
+        None,
+        True,
+        True,
+        T_DONE,
+        [1],
+        [("V1__case.sql", True)],
+    ),
+]
 
 
 def _env(engine: str, name: str, default: str) -> str:
     return os.environ.get(f"DBLIFT_{engine.upper()}_{name}", default)
+
+
+def _script(engine: str, fragments) -> str:
+    table = {**FRAGMENTS, **ENGINE_FRAGMENTS[engine]}
+    return "\n".join(table[name] for name in fragments) + "\n"
 
 
 class Place:
@@ -108,7 +332,7 @@ class Place:
         try:
             cursor = conn.cursor()
             cursor.execute(sql)
-            return list(cursor.fetchall())
+            return [tuple(row) for row in cursor.fetchall()]
         finally:
             conn.close()
 
@@ -116,7 +340,7 @@ class Place:
         if self.engine == "postgresql":
             self.schema = "public"
             self.execute(f'CREATE DATABASE "{self.name}"')
-            self.execute("CREATE TABLE t (a int)", self.name)
+            database, prefix = self.name, ""
         elif self.engine == "oracle":
             self.name = self.name.upper()
             self.schema = self.name
@@ -125,10 +349,13 @@ class Place:
                 f"GRANT CREATE SESSION, CREATE TABLE, CREATE SEQUENCE, CREATE VIEW, "
                 f"CREATE PROCEDURE, CREATE TRIGGER, UNLIMITED TABLESPACE TO {self.name}"
             )
-            self.execute(f"CREATE TABLE {self.name}.t (a int)")
+            database, prefix = None, f"{self.name}."
         else:
             self.execute(f"CREATE DATABASE `{self.name}`")
-            self.execute("CREATE TABLE t (a int)", self.name)
+            database, prefix = self.name, ""
+        self.execute(f"CREATE TABLE {prefix}t (a int, b int)", database)
+        self.execute(f"INSERT INTO {prefix}t VALUES (1, 2)", database)
+        self.execute(f"CREATE TABLE {prefix}h (v int)", database)
 
     def drop(self) -> None:
         try:
@@ -171,27 +398,62 @@ class Place:
         config.migrations.directory = str(migrations_dir)
         return config
 
-    def migrate(self, migrations_dir):
+    def sqlalchemy_url(self) -> str:
+        user, password = self.admin, self.password
+        if self.engine == "oracle":
+            user, password = self.name, ORACLE_USER_PASSWORD
+        auth = f"{quote(user, safe='')}:{quote(password, safe='')}@{self.host}:{self.port}"
+        if self.engine == "postgresql":
+            return f"postgresql+psycopg://{auth}/{self.name}"
+        if self.engine == "oracle":
+            return f"oracle+oracledb://{auth}/?service_name={_env('oracle', 'SERVICE', 'FREEPDB1')}"
+        return f"{self.engine}+pymysql://{auth}/{self.name}"
+
+    def run(self, migrations_dir, operation: str = "migrate", caller_owned: bool = False):
+        """Run migrate or undo on dblift's own connection, or on one the caller opened."""
+        if caller_owned:
+            engine = create_engine(self.sqlalchemy_url())
+            conn = engine.connect()
+            try:
+                client = DBLiftClient.from_sqlalchemy(
+                    connection=conn,
+                    schema=self.schema,
+                    migrations_dir=migrations_dir,
+                    logger=NullLog(),
+                )
+                return client.undo() if operation == "undo" else client.migrate()
+            finally:
+                try:
+                    conn.close()
+                finally:
+                    engine.dispose()
         config = self.config(migrations_dir)
         provider = ProviderRegistry.create_provider(config)
         provider.create_connection()
         try:
             client = DBLiftClient(provider=provider, migrations_dir=migrations_dir, config=config)
-            return client.migrate()
+            return client.undo() if operation == "undo" else client.migrate()
         finally:
             provider.close()
 
-    def rows(self) -> list:
-        prefix = f"{self.name}." if self.engine == "oracle" else ""
-        return [row[0] for row in self.query(f"SELECT a FROM {prefix}t ORDER BY a")]
+    def _prefix(self) -> str:
+        return f"{self.name}." if self.engine == "oracle" else ""
+
+    def t(self) -> list:
+        return self.query(f"SELECT a, b FROM {self._prefix()}t ORDER BY a")
+
+    def h(self) -> list:
+        return sorted(row[0] for row in self.query(f"SELECT v FROM {self._prefix()}h"))
 
     def history(self) -> list:
-        prefix = f"{self.name}." if self.engine == "oracle" else ""
-        sql = f"SELECT success FROM {prefix}dblift_schema_history ORDER BY installed_rank"
-        return [bool(row[0]) for row in self.query(sql)]
+        sql = (
+            f"SELECT script, success FROM {self._prefix()}dblift_schema_history "
+            "ORDER BY installed_rank"
+        )
+        return [(script, bool(success)) for script, success in self.query(sql)]
 
 
-@pytest.fixture(params=ENGINES)
+@pytest.fixture
 def place(request):
     engine = request.param
     place = Place(engine)
@@ -209,21 +471,67 @@ def place(request):
         place.drop()
 
 
-def test_work_after_the_scripts_commit_is_committed_with_the_history_row(place, tmp_path):
-    create_migration(tmp_path, "V1__case.sql", COMMITTED_THEN_MORE)
+def _combos(rows):
+    """One pytest case per (engine, row): the engine is the indirect ``place`` parameter."""
+    return [
+        pytest.param(engine, *row[:-1], id=f"{engine}-{row[0]}")
+        for row in rows
+        for engine in row[-1]
+    ]
 
-    result = place.migrate(tmp_path)
 
-    assert result.success, result.error_message
-    assert place.rows() == [1, 2]
-    assert place.history() == [True]
+def _assert_truthful(place, result, migrations: int) -> None:
+    """The outcome dblift reports is the outcome the history and the data show."""
+    history = place.history()
+    assert history, "no history row at all"
+    assert result.success == history[-1][1], (result.success, history)
+    if result.success:
+        assert len(history) >= migrations, history
+    else:
+        assert place.h() == [], "a failed run left a row nobody committed"
+        assert place.t() in (T_START, T_DONE), place.t()
 
 
-def test_commit_then_failure_keeps_the_committed_part_and_records_a_failed_row(place, tmp_path):
-    create_migration(tmp_path, "V1__case.sql", COMMITTED_THEN_FAILS)
+@pytest.mark.parametrize(
+    "place, name, fragments, ok, t, h, history",
+    _combos(EXPECT + RECORD),
+    indirect=["place"],
+)
+def test_script_transaction_outcome(place, tmp_path, name, fragments, ok, t, h, history):
+    create_migration(tmp_path, "V1__case.sql", _script(place.engine, fragments))
 
-    result = place.migrate(tmp_path)
+    result = place.run(tmp_path)
 
-    assert not result.success
-    assert place.rows() == [1]
-    assert place.history() == [False]
+    assert result.success is ok, result.error_message
+    if name in ERROR_CONTAINS:
+        assert ERROR_CONTAINS[name] in (result.error_message or "")
+    assert place.t() == t
+    assert place.h() == h
+    assert [success for _, success in place.history()] == history
+    _assert_truthful(place, result, 1)
+
+
+@pytest.mark.parametrize(
+    "place, name, files, undo, caller_owned, ok, t, h, history",
+    _combos([(*flow, ENGINES) for flow in FLOWS]),
+    indirect=["place"],
+)
+def test_script_transaction_flow(
+    place, tmp_path, name, files, undo, caller_owned, ok, t, h, history
+):
+    for filename, fragments in files.items():
+        create_migration(tmp_path, filename, _script(place.engine, fragments))
+    if undo:
+        create_undo_migration(tmp_path, "1", "case", _script(place.engine, undo))
+
+    result = place.run(tmp_path, caller_owned=caller_owned)
+
+    assert result.success is ok, result.error_message
+    _assert_truthful(place, result, len([f for f in files if f.startswith("V")]))
+    if undo:
+        undone = place.run(tmp_path, "undo")
+        assert undone.success, undone.error_message
+    assert place.t() == t
+    assert place.h() == h
+    if history is not None:
+        assert [row for row in place.history() if row[0] in dict(history)] == history
