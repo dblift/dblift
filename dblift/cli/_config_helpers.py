@@ -3,11 +3,12 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, NoReturn, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from dblift.api._cli_support import ConnectionProvider
-from dblift.api._client_factory import apply_derived_schema
+from dblift.api._client_factory import apply_derived_schema, effective_log_file_from_config
 from dblift.cli._capability_exit import exit_on_capability_denial
+from dblift.cli._output import _exit_log_location_error
 from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
 from dblift.config.config_builder import ConfigBuilder
 from dblift.config.dblift_config import (
@@ -507,7 +508,10 @@ def _configure_logging(
     Returns:
         Configured log instance
     """
-    log_dir_path = requested_log_dir(args.log_dir, args.log_file, config.logging.directory)
+    log_file = args.log_file or effective_log_file_from_config(config)
+    log_dir_path = requested_log_dir(
+        args.log_dir or config.log_dir, log_file, config.logging.directory
+    )
     log_level = _LOG_LEVEL_MAP.get(_effective_log_level_name(args, config), LogLevel.INFO)
     # ``--quiet`` raises the *console* threshold to NOTICE so info/debug
     # lines disappear from the terminal while NOTICE (success
@@ -566,7 +570,7 @@ def _configure_logging(
         log_format=primary_log_format,
         schema=config.database.schema,
         database_name=db_name,
-        log_file_pattern=args.log_file,
+        log_file_pattern=log_file,
         log_level=log_level,
         additional_formats=additional_formats,
         console_log_level=console_log_level,
@@ -578,17 +582,6 @@ def _configure_logging(
         _exit_log_location_error(e)
     log.debug(f"Using database name: {db_name}")
     return log
-
-
-def _exit_log_location_error(e: OSError) -> NoReturn:
-    """Report an unusable log location (unwritable dir, bad name) without a traceback."""
-    target = f": {e.filename}" if e.filename else ""
-    print(
-        f"Error: cannot write log file ({e.strerror or e}){target}. "
-        "Use --log-dir or --log-file to choose a writable location.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
 
 
 def _scripts_dir_exists(parser: argparse.ArgumentParser, path: Path, shown: str, kind: str) -> bool:

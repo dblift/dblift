@@ -50,7 +50,7 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Any, Optional, TextIO
+from typing import Any, NoReturn, Optional, TextIO
 
 from dblift.cli._constants import MACHINE_READABLE_FORMATS
 
@@ -177,3 +177,14 @@ def _primary_output_format(output_format: Optional[str]) -> Optional[str]:
         return None
     primary = output_format.split(",", 1)[0].strip().lower()
     return "text" if primary == "console" else primary
+
+
+def _exit_log_location_error(e: OSError) -> NoReturn:
+    """Report an unusable log location (unwritable dir, bad name) without a traceback."""
+    target = f": {e.filename}" if e.filename else ""
+    print(
+        f"Error: cannot write log file ({e.strerror or e}){target}. "
+        "Use --log-dir or --log-file to choose a writable location.",
+        file=sys.stderr,
+    )
+    sys.exit(1)

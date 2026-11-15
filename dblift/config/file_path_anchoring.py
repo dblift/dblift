@@ -2,13 +2,14 @@
 
 import re
 from pathlib import Path
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple, Union
 from urllib.parse import parse_qs
 
 import sqlalchemy
 from sqlalchemy.exc import ArgumentError
 
 from dblift.config.database_config import _file_dialect
+from dblift.core.utils.output_paths import anchor_output_file
 
 _IN_MEMORY = ":memory:"
 _SCHEME = r"[A-Za-z][A-Za-z0-9+.-]*"
@@ -142,8 +143,57 @@ def anchor_file_data(data: Dict[str, object], base_dir: Path) -> None:
                     anchor,
                     bool(qmark and dialect and dialect[2]),
                 )
-        logging = block.get("logging")
-        if isinstance(logging, dict) and isinstance(logging.get("directory"), str):
-            logging["directory"] = anchor(logging["directory"]) if logging["directory"] else ""
-        if isinstance(block.get("log_dir"), str) and block["log_dir"]:
-            block["log_dir"] = anchor(block["log_dir"])
+        _anchor_log_paths(block, anchor, base_dir)
+
+
+def anchor_log_output(value: str, base_dir: Path) -> str:
+    """Anchor a log output's parent while preserving non-path references as written."""
+    return value if _REFERENCE.search(value) else anchor_output_file(value, base_dir)
+
+
+def retain_log_file_fallback(config: object, fallback: Optional[Tuple[str, str]]) -> None:
+    """Keep actual bare-filename provenance outside the serializable configuration fields."""
+    if fallback is not None:
+        vars(config)["_log_file_fallback"] = fallback
+
+
+def anchor_log_file(
+    data: Dict[str, object], config_file: Optional[Union[str, Path]], overridden: bool = False
+) -> Optional[Tuple[str, str]]:
+    """Anchor a file-origin bare log filename when no effective directory was requested.
+
+    Called after merging overrides, only while the selected filename still comes from the file.
+    Return its anchored and original spellings so later directory overrides can reuse it.
+    Own-directory filenames are already anchored by :func:`anchor_file_data`.
+    """
+    if not config_file or overridden:
+        return None
+    logging = data.get("logging")
+    section = logging if isinstance(logging, dict) else {}
+    if data.get("log_dir") or section.get("directory"):
+        return None
+    owner = data if data.get("log_file") else section
+    key = "log_file" if owner is data else "file"
+    value = owner.get(key)
+    if isinstance(value, str) and value and not _REFERENCE.search(value):
+        owner[key] = anchor_log_output(value, Path(config_file).expanduser().resolve().parent)
+        if not Path(value).is_absolute() and Path(value).parent == Path("."):
+            return str(owner[key]), value
+    return None
+
+
+def _anchor_log_paths(
+    block: Dict[str, object], anchor: Callable[[object], str], base_dir: Path
+) -> None:
+    """Anchor file-origin directories and filenames that select their own directory."""
+    # A filename with its own directory selects that path independently of log_dir.
+    for owner, key in ((block, "log_file"), (block.get("logging"), "file")):
+        if isinstance(owner, dict):
+            value = owner.get(key)
+            if isinstance(value, str) and value and Path(value).parent != Path("."):
+                owner[key] = anchor_log_output(value, base_dir)
+    logging = block.get("logging")
+    if isinstance(logging, dict) and isinstance(logging.get("directory"), str):
+        logging["directory"] = anchor(logging["directory"]) if logging["directory"] else ""
+    if isinstance(block.get("log_dir"), str) and block["log_dir"]:
+        block["log_dir"] = anchor(block["log_dir"])
