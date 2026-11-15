@@ -491,6 +491,7 @@ class FileLog(AbstractLog):
         max_bytes: int = None,
         backup_count: int = None,
         log_level: Optional[LogLevel] = None,
+        existing_log_file: Optional[Path] = None,
     ):
         """Initialize a new file log.
 
@@ -504,6 +505,7 @@ class FileLog(AbstractLog):
             enable_debug: Whether debug messages should be displayed
             max_bytes: Maximum size of each log file before rotation
             backup_count: Number of backup files to keep
+            existing_log_file: Literal selected filename, without pattern expansion
         """
         super().__init__(name, enable_debug, log_level)
         self.log_dir = Path(log_dir)
@@ -511,6 +513,7 @@ class FileLog(AbstractLog):
         self.schema = schema
         self.database_name = database_name
         self.log_file_pattern = log_file_pattern
+        self._existing_log_file = existing_log_file
         self.max_bytes = max_bytes
         self.backup_count = backup_count
         self.current_size = 0
@@ -555,7 +558,9 @@ class FileLog(AbstractLog):
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_log_file(self) -> Path:
-        """Get the log file path using the specified naming pattern."""
+        """Get the literal selected file or expand the requested naming pattern."""
+        if self._existing_log_file is not None:
+            return self._existing_log_file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Get the appropriate file extension based on the log format enum

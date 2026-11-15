@@ -55,7 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explicit overrides retain their working-directory meaning. Unusable destinations report a
   friendly error before command success, and a filename with its own directory no longer creates
   an unused log directory. Configured output symlinks are refused, and later API directory
-  overrides preserve a configured bare filename.
+  overrides preserve a configured bare filename. Utility audit logs retain failure diagnostics,
+  including provider cleanup errors.
 
 - Statement facts now report simple primary, unique and foreign keys added by `ALTER TABLE`, including
   composite keys, constraint names and referenced tables. Unread key details remain opaque.

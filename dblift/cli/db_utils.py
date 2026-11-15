@@ -276,11 +276,18 @@ def _connection_logger(args: argparse.Namespace, config: Optional[DbliftConfig])
     log_format = {"json": LogFormat.JSON, "html": LogFormat.HTML}.get(format_name, LogFormat.TEXT)
     level_name = log_value("log_level", "level") or "info"
     try:
+        log_level = LogLevel.from_string(level_name.upper())
+    except ValueError:
+        if config is not None:
+            raise
+        # An ancillary option cannot replace the configuration refusal being reported.
+        log_level = LogLevel.INFO
+    try:
         return DbliftLogger(
             logfile_dir=log_dir,
             format=log_format,
             log_file_pattern=log_file,
-            level=LogLevel.from_string(level_name.upper()),
+            level=log_level,
         )
     except OSError as e:
         _exit_log_location_error(e)
@@ -307,6 +314,19 @@ def _complete_connection_log(
         logger.close()
 
 
+def _connection_info(
+    database_url: Optional[str], db_type: str, schema: Optional[str]
+) -> Dict[str, object]:
+    """Build the known connection details for the utility's result envelope."""
+    info: Dict[str, object] = {
+        "database_url": mask_database_url(database_url) if database_url else database_url,
+        "db_type": db_type,
+    }
+    if schema:
+        info["schema"] = schema
+    return info
+
+
 def check_connection(args: argparse.Namespace) -> int:
     """Test database connection using provided parameters.
 
@@ -317,18 +337,18 @@ def check_connection(args: argparse.Namespace) -> int:
         Exit code (0 for success, non-zero for failure)
     """
     out = from_args(args)
+    results: Dict[str, Any] = {
+        "success": False,
+        "error": None,
+        "connection_info": {},
+        "database_info": {},
+    }
+    logger = None
+    config_error = None
     try:
-        results: Dict[str, Any] = {
-            "success": False,
-            "error": None,
-            "connection_info": {},
-            "database_info": {},
-        }
-
         # Resolve the destination once from the same merged config as the connection.
         # An explicit file still records a configuration refusal when loading fails.
         config = None
-        config_error = None
         try:
             with exit_on_capability_denial():
                 config = load_config(getattr(args, "config", None), args)
@@ -336,108 +356,106 @@ def check_connection(args: argparse.Namespace) -> int:
             config_error = e
 
         logger = _connection_logger(args, config)
-        try:
-            # Keep configuration refusals in the requested log and structured output.
-            if config_error is not None:
-                message = f"Error creating configuration: {config_error}"
-                logger.error(message)
-                results["error"] = str(config_error)
-                print_connection_results(results, out)
-                return 1
-            assert config is not None
-
-            # Check if we have enough information to connect.
-            # SQLite can use a file path, not a server/URL.
-            # CosmosDB uses account_endpoint, not url/server.
-            _db_type_lower = (config.database.type or "").lower()
-            _has_path = getattr(config.database, "path", None) or getattr(
-                config.database, "database", None
-            )
-            _quirks = ProviderRegistry.get_quirks(_db_type_lower)
-            _url_optional_for_path = _quirks.url_optional_when_file_path_given
-            _has_connection_identifier = _quirks.has_connection_identifier(config.database)
-            _has_endpoint = getattr(config.database, "account_endpoint", None)
-            if (
-                not config.database.url
-                and not (_url_optional_for_path and _has_path)
-                and not _has_endpoint
-                and (not config.database.type or not _has_connection_identifier)
-            ):
-                error_message = (
-                    "Missing required connection parameters. "
-                    "Either provide --db-url or --config."
-                )
-                out.error(error_message)
-                results["error"] = error_message
-                print_connection_results(results, out)
-                return 1
-
-            results["connection_info"]["config_source"] = "Created from provided parameters"
-
-            # Validate database type
-            if not config.database.type:
-                error_message = (
-                    "Missing database type. "
-                    "Please provide --db-type or a configuration with database type."
-                )
-                out.error(error_message)
-                results["error"] = error_message
-                print_connection_results(results, out)
-                return 1
-
-            db_type = config.database.type.lower()
-
-            # Create database provider via registry (DIP — no concrete plugin imports)
-            try:
-                provider: Any = ProviderRegistry.create_provider(config, logger)
-            except ValueError as e:
-                results["error"] = str(e)
-                print_connection_results(results, out)
-                return 1
-
-            # Test connection. Format known driver errors as a one-line message so the CLI doesn't
-            # dump a Python traceback to stderr on e.g. connection refused / auth failure.
-            try:
-                provider.create_connection()
-            except Exception as connection_error:
-                friendly = _format_connection_error(connection_error, db_type)
-                out.error(friendly)
-                results["error"] = friendly
-                print_connection_results(results, out)
-                if getattr(args, "log_level", "info") == "debug":
-                    traceback.print_exc()
-                return 1
-
-            try:
-                # Get database version and URL before updating results
-                version = provider.get_database_version()
-                database_url = get_provider_display_url(provider, config) or config.database.url
-
-                # Update results atomically once all operations succeed
-                results["success"] = True
-                results["connection_info"]["database_url"] = (
-                    mask_database_url(database_url) if database_url else database_url
-                )
-                results["connection_info"]["db_type"] = db_type
-                schema = getattr(config.database, "schema", None)
-                if schema:
-                    results["connection_info"]["schema"] = schema
-                results["database_info"]["version"] = version
-            finally:
-                # Close connection even if get_database_version/display URL lookup raises
-                provider.close()
-
-            # Print results in requested format
+        # Keep configuration refusals in the requested log and structured output.
+        if config_error is not None:
+            message = f"Error creating configuration: {config_error}"
+            logger.error(message)
+            results["error"] = str(config_error)
             print_connection_results(results, out)
-            return 0
+            return 1
+        assert config is not None
+
+        # Check if we have enough information to connect.
+        # SQLite can use a file path, not a server/URL.
+        # CosmosDB uses account_endpoint, not url/server.
+        _db_type_lower = (config.database.type or "").lower()
+        _has_path = getattr(config.database, "path", None) or getattr(
+            config.database, "database", None
+        )
+        _quirks = ProviderRegistry.get_quirks(_db_type_lower)
+        _url_optional_for_path = _quirks.url_optional_when_file_path_given
+        _has_connection_identifier = _quirks.has_connection_identifier(config.database)
+        _has_endpoint = getattr(config.database, "account_endpoint", None)
+        if (
+            not config.database.url
+            and not (_url_optional_for_path and _has_path)
+            and not _has_endpoint
+            and (not config.database.type or not _has_connection_identifier)
+        ):
+            error_message = (
+                "Missing required connection parameters. " "Either provide --db-url or --config."
+            )
+            out.error(error_message)
+            results["error"] = error_message
+            print_connection_results(results, out)
+            return 1
+
+        results["connection_info"]["config_source"] = "Created from provided parameters"
+
+        # Validate database type
+        if not config.database.type:
+            error_message = (
+                "Missing database type. "
+                "Please provide --db-type or a configuration with database type."
+            )
+            out.error(error_message)
+            results["error"] = error_message
+            print_connection_results(results, out)
+            return 1
+
+        db_type = config.database.type.lower()
+
+        # Create database provider via registry (DIP — no concrete plugin imports)
+        try:
+            provider: Any = ProviderRegistry.create_provider(config, logger)
+        except ValueError as e:
+            results["error"] = str(e)
+            print_connection_results(results, out)
+            return 1
+
+        # Test connection. Format known driver errors as a one-line message so the CLI doesn't
+        # dump a Python traceback to stderr on e.g. connection refused / auth failure.
+        try:
+            provider.create_connection()
+        except Exception as connection_error:
+            friendly = _format_connection_error(connection_error, db_type)
+            out.error(friendly)
+            results["error"] = friendly
+            print_connection_results(results, out)
+            if getattr(args, "log_level", "info") == "debug":
+                traceback.print_exc()
+            return 1
+
+        try:
+            # Get database version and URL before updating results
+            version = provider.get_database_version()
+            database_url = get_provider_display_url(provider, config) or config.database.url
+
+            # Update results atomically once all operations succeed
+            results["success"] = True
+            results["connection_info"].update(
+                _connection_info(database_url, db_type, getattr(config.database, "schema", None))
+            )
+            results["database_info"]["version"] = version
         finally:
-            _complete_connection_log(logger, results, config_error)
+            # Close connection even if get_database_version/display URL lookup raises
+            provider.close()
+
+        # Print results in requested format
+        print_connection_results(results, out)
+        return 0
 
     except Exception as e:
+        results["success"] = False
+        results["error"] = str(e)
         out.error(f"Error testing connection: {str(e)}")
         if getattr(args, "log_level", "info") == "debug":
             traceback.print_exc()
         return 1
+
+    finally:
+        if logger is not None:
+            _complete_connection_log(logger, results, config_error)
 
 
 # Re-exported so ``db check-connection`` and every other command's own
