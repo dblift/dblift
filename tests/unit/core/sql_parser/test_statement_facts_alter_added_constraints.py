@@ -70,11 +70,22 @@ def test_add_constraint_exposes_the_existing_declaration(dialect, declaration, e
             tuple(column.upper() for column in expected.referenced_columns),
         )
 
+    elif dialect in {"oracle", "snowflake"} and expected.referenced_table:
+        # Table names fold; constraint and column names retain their written spelling.
+        expected = DeclaredConstraint(
+            expected.kind,
+            expected.columns,
+            expected.name,
+            expected.referenced_table.upper(),
+            expected.referenced_columns,
+        )
     assert (facts.operation, facts.kind) == ("ALTER", "DDL")
     assert facts.error is None
     assert facts.declared_constraints == (expected,)
     assert facts.declared_columns == ()
-    assert facts.affected_objects[0].name == ("CHILD" if dialect == "db2" else "child")
+    assert facts.affected_objects[0].name == (
+        "CHILD" if dialect in {"db2", "oracle", "snowflake"} else "child"
+    )
 
 
 @pytest.mark.parametrize(

@@ -20342,5 +20342,29 @@
    "target": "T",
    "target_sql": "T"
   }
+ },
+ "6173b395e5248ec9": {
+  "class": "disagree",
+  "path": "both",
+  "reason": "ALTER TABLE changes `NEWTAB` and declares `fk1` on `a` referencing `OTHER(b)`. The analyzer recorded only `default_schema.newtab` and the hybrid extraction only `newtab`; the reader folds the table names and includes the referenced parent.",
+  "sql": "ALTER TABLE newtab ADD CONSTRAINT fk1 FOREIGN KEY (a) REFERENCES other(b)"
+ },
+ "851e4202df9255bc": {
+  "class": "disagree",
+  "path": "both",
+  "reason": "ALTER TABLE changes `ORDERS` and declares `fk1` on `a` referencing `B(c)`. The analyzer recorded only `default_schema.orders` and the hybrid extraction only `orders`; the reader folds the table names and includes the referenced parent.",
+  "sql": "ALTER TABLE orders ADD CONSTRAINT fk1 FOREIGN KEY (a) REFERENCES b(c)"
+ },
+ "aaf78c1b488e5cf8": {
+  "class": "disagree",
+  "path": "both",
+  "reason": "ALTER TABLE changes `ORDERS` and declares `fk_user` on `user_id` referencing `USERS(id)`. The analyzer recorded only `default_schema.orders` and the hybrid extraction only `orders`; the reader folds the table names and includes the referenced parent.",
+  "sql": "ALTER TABLE orders ADD CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id)"
+ },
+ "b560ae9634899dee": {
+  "class": "disagree",
+  "path": "both",
+  "reason": "ALTER TABLE changes `ORDERS` and declares `fk_customer` on `customer_id` referencing `CUSTOMERS(id)`. The analyzer recorded only `default_schema.orders` and the hybrid extraction only `orders`; the reader folds the table names and includes the referenced parent.",
+  "sql": "ALTER TABLE orders ADD CONSTRAINT fk_customer FOREIGN KEY (customer_id) REFERENCES customers(id)"
  }
 }

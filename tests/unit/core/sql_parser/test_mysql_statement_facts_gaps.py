@@ -14,6 +14,7 @@ import pytest
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser import sqlglot_statement_facts
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
+from dblift.core.sql_parser.statement_facts import DeclaredConstraint
 from dblift.db import dml_analysis
 
 OTHER = json.loads(
@@ -34,7 +35,15 @@ def test_named_foreign_key_alter_is_read_without_a_grammar_gap():
     facts = mysql("ALTER TABLE t ADD FOREIGN KEY fk_user(user_id) REFERENCES users(id)")
 
     assert facts.diagnostic is None
-    assert objects(facts) == [("t", SqlObjectType.TABLE, "altered", None)]
+    assert objects(facts) == [
+        ("t", SqlObjectType.TABLE, "altered", None),
+        ("users", SqlObjectType.TABLE, "referenced", None),
+    ]
+    assert facts.declared_constraints == (
+        DeclaredConstraint(
+            "FOREIGN_KEY", ("user_id",), referenced_table="users", referenced_columns=("id",)
+        ),
+    )
 
 
 # --- TRUNCATE -----------------------------------------------------------------------------

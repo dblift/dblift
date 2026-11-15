@@ -998,10 +998,34 @@ def _declared_constraint(
     return None
 
 
-def _postgres_table_alter_tokens_match(
-    sql: str, ast: exp.Alter, tail: list[TokenType | str | exp.Identifier]
+_AlterToken = TokenType | str | exp.Identifier | Token
+
+
+def _alter_token_matches(token: Token, part: _AlterToken) -> bool:
+    if isinstance(part, exp.Identifier):
+        return bool(
+            part.name
+            and token.token_type in {TokenType.VAR, TokenType.IDENTIFIER, TokenType.NAME}
+            and token.start == part.meta.get("start")
+            and token.end == part.meta.get("end")
+            and token.text == part.meta.get("written", part.name)
+        )
+    if isinstance(part, Token):
+        # Column definitions render INTEGER as INT. Preserve exact quoted text.
+        return token.token_type == part.token_type and (
+            token.text == part.text
+            or token.token_type == TokenType.INT
+            or (token.token_type not in _QUOTED_TOKENS and token.text.upper() == part.text.upper())
+        )
+    if isinstance(part, str):
+        return token.token_type == TokenType.VAR and token.text.upper() == part
+    return token.token_type == part
+
+
+def _table_alter_tokens_match(
+    sql: str, dialect: str, ast: exp.Alter, tail: list[_AlterToken]
 ) -> bool:
-    """Prove every source token belongs to a supported PostgreSQL table action."""
+    """Prove every source token belongs to a supported table action."""
     table = ast.this
     if (
         not isinstance(table, exp.Table)
@@ -1009,7 +1033,7 @@ def _postgres_table_alter_tokens_match(
         or table.catalog
     ):
         return False
-    expected: list[TokenType | str | exp.Identifier] = [TokenType.ALTER, TokenType.TABLE]
+    expected: list[_AlterToken] = [TokenType.ALTER, TokenType.TABLE]
     if ast.args.get("exists"):
         expected.extend(("IF", TokenType.EXISTS))
     if ast.args.get("only"):
@@ -1021,27 +1045,20 @@ def _postgres_table_alter_tokens_match(
         expected.extend((schema, TokenType.DOT))
     expected.append(table.this)
     expected.extend(tail)
-    grammar = "postgres"  # lint: allow-dialect-string: PostgreSQL table action source proof
-    tokens = Dialect.get_or_raise(grammar).tokenize(sql)
+    tokens = Dialect.get_or_raise(dialect).tokenize(sql)
     if tokens and tokens[-1].token_type == TokenType.SEMICOLON:
         tokens.pop()
-    if len(tokens) != len(expected):
-        return False
-    for token, part in zip(tokens, expected):
-        if isinstance(part, exp.Identifier):
-            if (
-                token.token_type not in {TokenType.VAR, TokenType.IDENTIFIER}
-                or token.start != part.meta.get("start")
-                or token.end != part.meta.get("end")
-                or token.text != part.name
-            ):
-                return False
-        elif isinstance(part, str):
-            if token.token_type != TokenType.VAR or token.text.upper() != part:
-                return False
-        elif token.token_type != part:
+    at = 0
+    for part in expected:
+        if at == len(tokens):
             return False
-    return True
+        token = tokens[at]
+        if part == TokenType.COLUMN and token.token_type != TokenType.COLUMN:
+            continue  # ADD [COLUMN] definition in a mixed action list
+        at += 1
+        if not _alter_token_matches(token, part):
+            return False
+    return at == len(tokens)
 
 
 def _referenced(node: exp.Expr, skip: Tuple[exp.Expr, ...] = ()) -> Tuple[NamedObject, ...]:
@@ -4024,9 +4041,12 @@ def _alter_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFac
     object_type = _ddl_object_type(kind, dialect)
     identity = _named(ast.this, object_type, "altered") if ast.this is not None else None
     actions = ast.args.get("actions") or []
-    renamed_to, added_constraint, lifecycle_diagnostic = _postgres_table_lifecycle(
-        ast, sql, dialect, kind, identity, actions
-    )
+    if kind == "TABLE" and any(
+        isinstance(action, exp.AddConstraint)
+        and action.find(exp.PrimaryKey, exp.UniqueColumnConstraint, exp.ForeignKey) is not None
+        for action in actions
+    ):
+        return _alter_with_added_keys(ast, sql, dialect, actions, identity)
     if any(
         isinstance(action, exp.ColumnDef) and _unread_column_definition(action)
         for action in actions
@@ -4037,38 +4057,21 @@ def _alter_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFac
             dialect=dialect,
             parsed=True,
         )
-    return _alter_statement_facts(
-        ast, dialect, kind, identity, actions, renamed_to, added_constraint, lifecycle_diagnostic
-    )
-
-
-def _postgres_table_lifecycle(
-    ast: exp.Alter,
-    sql: str,
-    dialect: str,
-    kind: str,
-    identity: Optional[NamedObject],
-    actions: list[exp.Expression],
-) -> Tuple[Optional[NamedObject], Optional[DeclaredConstraint], Optional[str]]:
-    """A PostgreSQL ``ALTER TABLE`` rename or primary key: the renamed table, the added
-    constraint, or why the source is not fully read."""
+    renamed_to, diagnostic = None, None
     if (
-        dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL table lifecycle grammar
+        dialect == "postgres"  # lint: allow-dialect-string: PostgreSQL table rename
         and kind == "TABLE"
         and identity
         and len(actions) == 1
+        and isinstance(actions[0], exp.AlterRename)
     ):
-        sole_action = actions[0]
-        if isinstance(sole_action, exp.AlterRename):
-            return _postgres_table_rename(ast, sql, identity, sole_action)
-        if isinstance(sole_action, exp.AddConstraint) and len(sole_action.expressions) == 1:
-            return _postgres_table_primary_key(ast, sql, sole_action)
-    return None, None, None
+        renamed_to, diagnostic = _postgres_table_rename(ast, sql, identity, actions[0], dialect)
+    return _alter_statement_facts(ast, dialect, kind, identity, actions, renamed_to, diagnostic)
 
 
 def _postgres_table_rename(
-    ast: exp.Alter, sql: str, identity: NamedObject, sole_action: exp.AlterRename
-) -> Tuple[Optional[NamedObject], Optional[DeclaredConstraint], Optional[str]]:
+    ast: exp.Alter, sql: str, identity: NamedObject, sole_action: exp.AlterRename, dialect: str
+) -> Tuple[Optional[NamedObject], Optional[str]]:
     """``ALTER TABLE t RENAME TO u``: the renamed table, or why its source is not fully read."""
     renamed_to = None
     lifecycle_diagnostic = None
@@ -4081,7 +4084,7 @@ def _postgres_table_rename(
         and not ast.args.get("only")
         and not ast.args.get("options")
         and not ast.args.get("not_valid")
-        and _postgres_table_alter_tokens_match(sql, ast, [TokenType.RENAME, "TO", destination.this])
+        and _table_alter_tokens_match(sql, dialect, ast, [TokenType.RENAME, "TO", destination.this])
     ):
         named = _named(destination, SqlObjectType.TABLE, "created")
         if named is not None:
@@ -4092,51 +4095,140 @@ def _postgres_table_rename(
             )
     elif isinstance(destination, exp.Table) and isinstance(destination.this, exp.Identifier):
         lifecycle_diagnostic = "postgres ALTER TABLE rename source is not fully read"
-    return renamed_to, None, lifecycle_diagnostic
+    return renamed_to, lifecycle_diagnostic
 
 
-def _postgres_table_primary_key(
-    ast: exp.Alter, sql: str, sole_action: exp.AddConstraint
-) -> Tuple[Optional[NamedObject], Optional[DeclaredConstraint], Optional[str]]:
-    """``ALTER TABLE t ADD CONSTRAINT c PRIMARY KEY (...)``: the constraint, or why its source is
-    not fully read."""
-    added_constraint = None
-    lifecycle_diagnostic = None
-    declaration = sole_action.expressions[0]
+def _key_column_tokens(columns: list[exp.Expression]) -> list[_AlterToken]:
+    """Source identifiers of a plain key; the dialect may wrap them in Column or Ordered."""
+    result: list[_AlterToken] = [TokenType.L_PAREN]
+    for item in columns:
+        column = item.find(exp.Identifier)
+        if column is None or not column.name or item.name != column.name:
+            return []
+        if len(result) > 1:
+            result.append(TokenType.COMMA)
+        result.append(column)
+    return [*result, TokenType.R_PAREN] if columns else []
+
+
+def _added_key_tokens(declaration: exp.Expression, dialect: str) -> list[_AlterToken]:
+    """Build just the source grammar represented by the declaration, without any modifiers."""
+    tail: list[_AlterToken] = ["ADD"]
+    if isinstance(declaration, exp.Constraint):
+        if not isinstance(declaration.this, exp.Identifier) or len(declaration.expressions) != 1:
+            return []
+        tail.extend((TokenType.CONSTRAINT, declaration.this))
+        declaration = declaration.expressions[0]
+    if isinstance(declaration, exp.UniqueColumnConstraint) and isinstance(
+        declaration.this, exp.Schema
+    ):
+        kind, columns = TokenType.UNIQUE, declaration.this.expressions
+    elif isinstance(declaration, exp.PrimaryKey):
+        kind, columns = TokenType.PRIMARY_KEY, declaration.expressions
+    elif isinstance(declaration, exp.ForeignKey):
+        kind, columns = TokenType.FOREIGN_KEY, declaration.expressions
+    else:
+        return []
+    local = _key_column_tokens(columns)
+    # lint: allow-dialect-string: SQLite has no ADD key; DuckDB supports ADD PRIMARY KEY
+    if not local or dialect == "sqlite" or (dialect == "duckdb" and kind != TokenType.PRIMARY_KEY):
+        return []
+    tail.append(kind)
     if (
-        isinstance(declaration, exp.Constraint)
+        isinstance(declaration, exp.ForeignKey)
+        and dialect
+        == "mysql"  # lint: allow-dialect-string: FK index name is not its constraint name
         and isinstance(declaration.this, exp.Identifier)
-        and len(declaration.expressions) == 1
-        and isinstance(declaration.expressions[0], exp.PrimaryKey)
-        and declaration.expressions[0].expressions
-        and all(
-            isinstance(column, exp.Identifier) for column in declaration.expressions[0].expressions
-        )
-        and not ast.args.get("not_valid")
-        and not ast.args.get("options")
     ):
-        primary = declaration.expressions[0]
-        tail: list[TokenType | str | exp.Identifier] = [
-            "ADD",
-            TokenType.CONSTRAINT,
-            declaration.this,
-            TokenType.PRIMARY_KEY,
-            TokenType.L_PAREN,
-        ]
-        for index, column in enumerate(primary.expressions):
-            if index:
-                tail.append(TokenType.COMMA)
-            tail.append(column)
-        tail.append(TokenType.R_PAREN)
-        if _postgres_table_alter_tokens_match(sql, ast, tail):
-            added_constraint = _declared_constraint(declaration)
+        tail.append(declaration.this)
+    tail.extend(local)
+    if kind != TokenType.FOREIGN_KEY:
+        return tail
+    remote = _added_reference_tokens(declaration, dialect, len(columns))
+    return [*tail, *remote] if remote else []
+
+
+def _added_reference_tokens(
+    declaration: exp.Expression, dialect: str, arity: int
+) -> list[_AlterToken]:
+    reference = declaration.args.get("reference")
+    if not isinstance(reference, exp.Reference):
+        return []
+    target = reference.this
+    if isinstance(target, exp.Schema):
+        remote = _key_column_tokens(target.expressions)
+        if not remote or len(target.expressions) != arity:
+            return []
+        target = target.this
+    elif dialect == "mysql":  # lint: allow-dialect-string: MySQL REFERENCES requires a column list
+        return []
+    else:
+        remote = []
+    if not isinstance(target, exp.Table):
+        return []
+    tail: list[_AlterToken] = [TokenType.REFERENCES]
+    for i, part in enumerate(target.parts):
+        if not isinstance(part, exp.Identifier):
+            return []
+        if i:
+            tail.append(TokenType.DOT)
+        tail.append(part)
+    return [*tail, *remote]
+
+
+def _alter_with_added_keys(
+    ast: exp.Alter,
+    sql: str,
+    dialect: str,
+    actions: list[exp.Expression],
+    identity: Optional[NamedObject],
+) -> StatementFacts:
+    """Publish declarations only if the whole ALTER matches the modeled ADD actions."""
+    objects = [identity] if identity else []
+    unread = StatementFacts(
+        "ALTER",
+        "DDL",
+        tuple(objects),
+        diagnostic=f"{dialect} ALTER TABLE constraint source is not fully read",
+    )
+    tail: list[_AlterToken] = []
+    constraints: list[DeclaredConstraint] = []
+    columns: list[str] = []
+    for action in actions:
+        if tail:
+            tail.append(TokenType.COMMA)
+        if isinstance(action, exp.ColumnDef) and not _unread_column_definition(action):
+            tail.extend(
+                (
+                    "ADD",
+                    TokenType.COLUMN,
+                    *Dialect.get_or_raise(dialect).tokenize(action.sql(dialect=dialect)),
+                )
+            )
+            columns.append(action.name)
+            constraints.extend(_column_constraints(action))
+        elif isinstance(action, exp.AddConstraint) and len(action.expressions) == 1:
+            declaration = action.expressions[0]
+            tokens = _added_key_tokens(declaration, dialect)
+            detail = _declared_constraint(declaration)
+            if not tokens or detail is None:
+                return unread
+            tail.extend(tokens)
+            constraints.append(detail)
         else:
-            lifecycle_diagnostic = "postgres ALTER TABLE constraint source is not fully read"
-    elif isinstance(declaration, exp.Constraint) and any(
-        isinstance(child, exp.PrimaryKey) for child in declaration.expressions
-    ):
-        lifecycle_diagnostic = "postgres ALTER TABLE constraint source is not fully read"
-    return None, added_constraint, lifecycle_diagnostic
+            return unread
+        for ref in _referenced(action):
+            _append_distinct_named(objects, ref)
+    if not _table_alter_tokens_match(sql, dialect, ast, tail):
+        return unread
+    return StatementFacts(
+        "ALTER",
+        "DDL",
+        tuple(objects),
+        declared_columns=tuple(columns),
+        declared_constraints=tuple(constraints),
+        action="add-column" if columns else None,
+    )
 
 
 def _alter_statement_facts(
@@ -4146,7 +4238,6 @@ def _alter_statement_facts(
     identity: Optional[NamedObject],
     actions: list[exp.Expression],
     renamed_to: Optional[NamedObject],
-    added_constraint: Optional[DeclaredConstraint],
     lifecycle_diagnostic: Optional[str],
 ) -> StatementFacts:
     """The ``ALTER`` facts: the altered object, added columns and their references."""
@@ -4172,8 +4263,7 @@ def _alter_statement_facts(
         declared_columns=columns,
         declared_constraints=tuple(
             detail for definition in added for detail in _column_constraints(definition)
-        )
-        + ((added_constraint,) if added_constraint else ()),
+        ),
         action=action,
         diagnostic=(
             lifecycle_diagnostic if ast.this is not None else f"{dialect} ALTER names no object"

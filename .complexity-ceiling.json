@@ -48,7 +48,6 @@
     "core/sql_parser/lexical_tokenizer.py::LexicalTokenizer._read_delimiter_token": 26,
     "core/sql_parser/program_body.py::ProgramBody._head": 27,
     "core/sql_parser/sqlglot_statement_facts.py::_mysql_unresolved_mutation_target": 21,
-    "core/sql_parser/sqlglot_statement_facts.py::_postgres_table_alter_tokens_match": 21,
     "core/sql_parser/sqlglot_statement_facts.py::_table_name_matches_source": 29,
     "core/sql_parser/sqlglot_statement_facts.py::_unread_names": 25,
     "db/plugins/cosmosdb/cosmosdb/history_manager.py::CosmosDbHistoryManager.create_history_container_if_not_exists": 26,
