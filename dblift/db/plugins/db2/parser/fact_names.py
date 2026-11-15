@@ -120,3 +120,31 @@ def _is_unterminated(token: Token) -> bool:
 
 def _is_symbol(token: Token, text: str) -> bool:
     return token.type is TokenType.SYMBOL and token.text == text
+
+
+def _unread_character(sql: str, words: List[Token], head_end: int) -> Optional[int]:
+    """Offset of the first non-ASCII character the engine may read as part of a name."""
+    for token in words[:head_end]:
+        if token.type is TokenType.SYMBOL:
+            for k, char in enumerate(token.text):
+                if ord(char) > 127:
+                    return token.pos + k
+        elif token.type is TokenType.KEYWORD:
+            for at in (token.pos - 1, token.pos + len(token.text)):
+                if 0 <= at < len(sql) and ord(sql[at]) > 127:
+                    return at
+    return None
+
+
+def _key_names_are_complete(sql: str, tokens: List[Token]) -> bool:
+    """All non-ASCII characters belong to complete lexemes such as comments or quoted names."""
+    if sql.isascii():
+        return True
+    if _unread_character(sql, tokens, len(tokens)) is not None:
+        return False
+    start = 0
+    for token in tokens:
+        if not sql[start : token.pos].isascii():
+            return False
+        start = token.pos + len(token.text)
+    return sql[start:].isascii()

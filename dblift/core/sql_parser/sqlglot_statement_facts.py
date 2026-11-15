@@ -9,6 +9,7 @@ import re
 from dataclasses import replace
 from typing import AbstractSet, Callable, Optional, Tuple, TypeVar, Union
 
+from sqlalchemy.dialects.postgresql.base import RESERVED_WORDS as POSTGRES_RESERVED
 from sqlglot import exp, parse_one
 from sqlglot.dialects import Dialect
 from sqlglot.errors import ParseError, TokenError
@@ -1001,11 +1002,24 @@ def _declared_constraint(
 _AlterToken = TokenType | str | exp.Identifier | Token
 
 
-def _alter_token_matches(token: Token, part: _AlterToken) -> bool:
+def _alter_identifier_token(token: Token, grammar: Dialect) -> bool:
+    if token.token_type == TokenType.IDENTIFIER:
+        return True
+    if grammar == "postgres":  # lint: allow-dialect-string: nonreserved PostgreSQL identifiers
+        # SQLGlot may build an Identifier even for a reserved word in a column list.
+        return (
+            token.token_type in grammar.parser_class.ID_VAR_TOKENS
+            and token.text.lower() not in POSTGRES_RESERVED
+            and token.text.upper() not in {"LATERAL", "SYSTEM_USER"}
+        )
+    return token.token_type in {TokenType.VAR, TokenType.NAME}
+
+
+def _alter_token_matches(token: Token, part: _AlterToken, grammar: Dialect) -> bool:
     if isinstance(part, exp.Identifier):
         return bool(
             part.name
-            and token.token_type in {TokenType.VAR, TokenType.IDENTIFIER, TokenType.NAME}
+            and _alter_identifier_token(token, grammar)
             and token.start == part.meta.get("start")
             and token.end == part.meta.get("end")
             and token.text == part.meta.get("written", part.name)
@@ -1022,30 +1036,47 @@ def _alter_token_matches(token: Token, part: _AlterToken) -> bool:
     return token.token_type == part
 
 
+# lint: allow-dialect-string: ALTER TABLE IF EXISTS precedes the subject in these grammars
+_ALTER_IF_EXISTS = {"postgres", "duckdb", "snowflake", "oracle"}
+
+
+def _key_table_tokens(table: exp.Expr, dialect: str) -> list[_AlterToken]:
+    """A table's written identifiers in qualification order."""
+    if not isinstance(table, exp.Table) or not isinstance(table.this, exp.Identifier):
+        return []
+    # lint: allow-dialect-string: three-part table names in ADD key actions
+    if table.catalog and dialect not in {"tsql", "snowflake", "duckdb"}:
+        return []
+    parts: list[_AlterToken] = []
+    for part in table.parts:
+        if not isinstance(part, exp.Identifier) or not part.name:
+            return []
+        if parts:
+            parts.append(TokenType.DOT)
+        parts.append(part)
+    return parts
+
+
 def _table_alter_tokens_match(
     sql: str, dialect: str, ast: exp.Alter, tail: list[_AlterToken]
 ) -> bool:
     """Prove every source token belongs to a supported table action."""
-    table = ast.this
-    if (
-        not isinstance(table, exp.Table)
-        or not isinstance(table.this, exp.Identifier)
-        or table.catalog
-    ):
+    subject = _key_table_tokens(ast.this, dialect)
+    if not subject:
         return False
     expected: list[_AlterToken] = [TokenType.ALTER, TokenType.TABLE]
     if ast.args.get("exists"):
+        if dialect not in _ALTER_IF_EXISTS and not ast.meta.get("mariadb_if_exists"):
+            return False
         expected.extend(("IF", TokenType.EXISTS))
     if ast.args.get("only"):
-        expected.append(TokenType.ONLY)
-    if table.db:
-        schema = table.args.get("db")
-        if not isinstance(schema, exp.Identifier):
+        if dialect not in {"postgres", "duckdb"}:  # lint: allow-dialect-string: ALTER TABLE ONLY
             return False
-        expected.extend((schema, TokenType.DOT))
-    expected.append(table.this)
+        expected.append(TokenType.ONLY)
+    expected.extend(subject)
     expected.extend(tail)
-    tokens = Dialect.get_or_raise(dialect).tokenize(sql)
+    grammar = Dialect.get_or_raise(dialect)
+    tokens = grammar.tokenize(sql)
     if tokens and tokens[-1].token_type == TokenType.SEMICOLON:
         tokens.pop()
     at = 0
@@ -1056,7 +1087,7 @@ def _table_alter_tokens_match(
         if part == TokenType.COLUMN and token.token_type != TokenType.COLUMN:
             continue  # ADD [COLUMN] definition in a mixed action list
         at += 1
-        if not _alter_token_matches(token, part):
+        if not _alter_token_matches(token, part, grammar):
             return False
     return at == len(tokens)
 
@@ -1079,7 +1110,11 @@ def _column_constraints(definition: exp.ColumnDef) -> Tuple[DeclaredConstraint, 
     return tuple(
         detail
         for constraint in definition.args.get("constraints", [])
-        if (detail := _declared_constraint(constraint.args["kind"], (definition.name,)))
+        if (
+            detail := _declared_constraint(
+                constraint.args["kind"], (definition.name,), constraint.name or None
+            )
+        )
     )
 
 
@@ -4144,14 +4179,13 @@ def _added_key_tokens(declaration: exp.Expression, dialect: str) -> list[_AlterT
     tail.extend(local)
     if kind != TokenType.FOREIGN_KEY:
         return tail
-    remote = _added_reference_tokens(declaration, dialect, len(columns))
+    remote = _added_reference_tokens(declaration.args.get("reference"), dialect, len(columns))
     return [*tail, *remote] if remote else []
 
 
 def _added_reference_tokens(
-    declaration: exp.Expression, dialect: str, arity: int
+    reference: Optional[exp.Expression], dialect: str, arity: int
 ) -> list[_AlterToken]:
-    reference = declaration.args.get("reference")
     if not isinstance(reference, exp.Reference):
         return []
     target = reference.this
@@ -4164,16 +4198,46 @@ def _added_reference_tokens(
         return []
     else:
         remote = []
-    if not isinstance(target, exp.Table):
+    parts = _key_table_tokens(target, dialect)
+    if not parts:
         return []
-    tail: list[_AlterToken] = [TokenType.REFERENCES]
-    for i, part in enumerate(target.parts):
-        if not isinstance(part, exp.Identifier):
+    if dialect == "tsql" and target.catalog:  # lint: allow-dialect-string: same-database FK
+        alter = reference.find_ancestor(exp.Alter)
+        if alter is not None and alter.this.catalog and alter.this.catalog != target.catalog:
             return []
-        if i:
-            tail.append(TokenType.DOT)
-        tail.append(part)
-    return [*tail, *remote]
+    return [TokenType.REFERENCES, *parts, *remote]
+
+
+def _added_column_tokens(definition: exp.ColumnDef, dialect: str) -> list[_AlterToken]:
+    """Require the same plain key grammar for inline keys in a mixed ALTER."""
+    if _unread_column_definition(definition):
+        return []
+    base = definition.copy()
+    base.set("constraints", [])
+    grammar = Dialect.get_or_raise(dialect)
+    tokens: list[_AlterToken] = [
+        "ADD",
+        TokenType.COLUMN,
+        *grammar.tokenize(base.sql(dialect=dialect)),
+    ]
+    for item in definition.constraints:
+        if isinstance(item.this, exp.Identifier):
+            tokens.extend((TokenType.CONSTRAINT, item.this))
+        kind = item.args["kind"]
+        if isinstance(kind, exp.PrimaryKeyColumnConstraint):
+            tokens.append(TokenType.PRIMARY_KEY)
+        elif isinstance(kind, exp.UniqueColumnConstraint):
+            tokens.append(TokenType.UNIQUE)
+        elif isinstance(kind, exp.Reference):
+            reference = _added_reference_tokens(kind, dialect, 1)
+            if not reference:
+                return []
+            tokens.extend(reference)
+        elif isinstance(kind, (exp.NotNullColumnConstraint, exp.DefaultColumnConstraint)):
+            tokens.extend(grammar.tokenize(kind.sql(dialect=dialect)))
+        else:
+            return []
+    return tokens
 
 
 def _alter_with_added_keys(
@@ -4197,14 +4261,11 @@ def _alter_with_added_keys(
     for action in actions:
         if tail:
             tail.append(TokenType.COMMA)
-        if isinstance(action, exp.ColumnDef) and not _unread_column_definition(action):
-            tail.extend(
-                (
-                    "ADD",
-                    TokenType.COLUMN,
-                    *Dialect.get_or_raise(dialect).tokenize(action.sql(dialect=dialect)),
-                )
-            )
+        if isinstance(action, exp.ColumnDef):
+            tokens = _added_column_tokens(action, dialect)
+            if not tokens:
+                return unread
+            tail.extend(tokens)
             columns.append(action.name)
             constraints.extend(_column_constraints(action))
         elif isinstance(action, exp.AddConstraint) and len(action.expressions) == 1:
@@ -4656,6 +4717,7 @@ def read_statement_facts(
     dialect: str,
     allow_leading_dot: bool = False,
     read_dialect: Optional[type[Dialect]] = None,
+    source_engine: Optional[str] = None,
 ) -> StatementFacts:
     """Read one already-split statement; never retry a second extractor.
 
@@ -4685,6 +4747,9 @@ def read_statement_facts(
         return facts
     try:
         ast = parse_one(_UPDATE_OR.sub(r"\1", sql), read=read_dialect or dialect)
+        # lint: allow-dialect-string: MariaDB allows ALTER TABLE IF EXISTS with the MySQL parser
+        if isinstance(ast, exp.Alter) and source_engine == "mariadb" and dialect == "mysql":
+            ast.meta["mariadb_if_exists"] = True
         facts = _folded_name_facts(ast, sql, dialect)
         if facts is not None:
             return facts

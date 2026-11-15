@@ -21,10 +21,12 @@ from dblift.db.plugins.db2.parser.fact_names import (
     _is_symbol,
     _is_unterminated,
     _key_columns,
+    _key_names_are_complete,
     _name_run,
     _object,
     _read_name,
     _unquote,
+    _unread_character,
 )
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_RULES, DB2_SPEC
 
@@ -578,20 +580,6 @@ def _read_dml(sql: str, words: List[Token], ups: List[str], first: str) -> State
     )
 
 
-def _unread_character(sql: str, words: List[Token], head_end: int) -> Optional[int]:
-    """Offset of the first non-ASCII character the engine may read as part of a head name."""
-    for token in words[:head_end]:
-        if token.type is TokenType.SYMBOL:
-            for k, char in enumerate(token.text):
-                if ord(char) > 127:
-                    return token.pos + k
-        elif token.type is TokenType.KEYWORD:
-            for at in (token.pos - 1, token.pos + len(token.text)):
-                if 0 <= at < len(sql) and ord(sql[at]) > 127:
-                    return at
-    return None
-
-
 def _head_end(words: List[Token], at: int) -> int:
     """The head words and the next eight tokens, cut after the first opening parenthesis."""
     end = min(len(words), at + 8)
@@ -699,7 +687,13 @@ def _set_facts(words: List[Token], ups: List[str]) -> StatementFacts:
 
 
 def _by_head(
-    sql: str, words: List[Token], ups: List[str], first: str, kind: str, open_lexeme: int
+    sql: str,
+    words: List[Token],
+    ups: List[str],
+    first: str,
+    kind: str,
+    open_lexeme: int,
+    tokens: List[Token],
 ) -> StatementFacts:
     """Facts of a statement named by a known head or a DML prefix, else unclassified."""
     for head in HEADS:
@@ -714,7 +708,11 @@ def _by_head(
         if char is not None:
             return _opaque(head.operation, head.kind, UNREAD_NAME.format(code=ord(sql[char])))
         if facts is not None:
-            if head.words == ("ALTER", "TABLE") and open_lexeme < 0:
+            if (
+                head.words == ("ALTER", "TABLE")
+                and open_lexeme < 0
+                and _key_names_are_complete(sql, tokens)
+            ):
                 return _alter_added_keys(words, ups, reached, facts.objects[0]) or facts
             return facts
         return _opaque(
@@ -783,4 +781,4 @@ class Db2StatementFactsReader:
             ) and _complete_query(words):
                 return StatementFacts(first, kind, events=frozenset())
             return StatementFacts(first, kind)
-        return _by_head(sql, words, ups, first, kind, tokenizer.open_lexeme)
+        return _by_head(sql, words, ups, first, kind, tokenizer.open_lexeme, tokens)
