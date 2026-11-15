@@ -42,6 +42,8 @@ from dblift.api import DBLiftClient
 from dblift.config import DbliftConfig
 from dblift.core.logger import NullLog
 from dblift.db.plugins.cockroachdb.sqlalchemy_url import build_sqlalchemy_url
+from dblift.db.plugins.db2.config import Db2Config
+from dblift.db.plugins.db2.sqlalchemy_url import build_sqlalchemy_url as build_db2_url
 from dblift.db.plugins.mysql.config import MySqlConfig
 from dblift.db.plugins.oracle.config import OracleConfig
 from dblift.db.plugins.postgresql.config import PostgreSqlConfig
@@ -50,7 +52,7 @@ from tests.integration.helpers.migration_helper import create_migration, create_
 
 pytestmark = pytest.mark.integration
 
-ENGINES = ["postgresql", "mysql", "mariadb", "oracle", "cockroachdb"]
+ENGINES = ["postgresql", "mysql", "mariadb", "oracle", "cockroachdb", "db2"]
 PG_FAMILY = ("postgresql", "cockroachdb")
 ALL = ENGINES
 DEFAULTS = {
@@ -59,6 +61,7 @@ DEFAULTS = {
     "mariadb": ("localhost", "3306", "root", "root"),
     "oracle": ("localhost", "1521", "system", "oracle"),
     "cockroachdb": ("localhost", "26257", "root", ""),
+    "db2": ("localhost", "50000", "db2inst1", "db2admin"),
 }
 DEFAULT_DATABASE = {"postgresql": "postgres", "cockroachdb": "defaultdb"}
 ORACLE_USER_PASSWORD = "Dblift_Pin1x"
@@ -101,7 +104,20 @@ PG_DO_BLOCK = (
     "  IF n = 1 THEN COMMIT; ELSE ROLLBACK; END IF;\n"
     "END $$;"
 )
+DB2_BLOCK = (
+    "BEGIN NOT ATOMIC\n"
+    "  DECLARE n INT;\n"
+    "  UPDATE t SET a = b WHERE a = 1;\n"
+    "  GET DIAGNOSTICS n = ROW_COUNT;\n"
+    "  IF n = {rows} THEN COMMIT; ELSE ROLLBACK; END IF;\n"
+    "END;"
+)
 ENGINE_FRAGMENTS = {
+    "db2": {
+        "SAVE": "SAVEPOINT s ON ROLLBACK RETAIN CURSORS;",
+        "PROC_COMMIT": DB2_BLOCK.format(rows=1),
+        "PROC_ROLLBACK": DB2_BLOCK.format(rows=100),
+    },
     "postgresql": {
         "BEGIN": "BEGIN;",
         "DO_BLOCK": PG_DO_BLOCK,
@@ -201,8 +217,8 @@ ERROR_CONTAINS = {
 
 # Scenarios whose outcome was not known in advance; the pinned values are what
 # was observed, with the server version it was observed on.
-# Observed 2026-11-15 on MySQL 8.0.46 and MariaDB 11.8.8: the procedure's own
-# COMMIT / ROLLBACK is honoured and nothing is left uncommitted.
+# Observed 2026-11-15 on MySQL 8.0.46, MariaDB 11.8.8 and Db2 12.1.5: the procedure's (Db2:
+# block's) own COMMIT / ROLLBACK is honoured and nothing is left uncommitted.
 CRDB = ["cockroachdb"]
 RECORD = [
     # Observed on CockroachDB v24.3.18: a BEGIN inside dblift's transaction is refused
@@ -214,8 +230,16 @@ RECORD = [
     ("begin_mid", ("UPD", "BEGIN", "INS1"), False, T_START, [], [False], CRDB),
     # CockroachDB v24.3.18 rejects the DO block itself (syntax error), so the run fails cleanly.
     ("do_block", ("DO_BLOCK",), False, T_START, [], [False], CRDB),
-    ("procedural_commit", ("PROC_COMMIT",), True, T_DONE, [], [True], ["mysql", "mariadb"]),
-    ("procedural_rollback", ("PROC_ROLLBACK",), True, T_START, [], [True], ["mysql", "mariadb"]),
+    ("procedural_commit", ("PROC_COMMIT",), True, T_DONE, [], [True], ["mysql", "mariadb", "db2"]),
+    (
+        "procedural_rollback",
+        ("PROC_ROLLBACK",),
+        True,
+        T_START,
+        [],
+        [True],
+        ["mysql", "mariadb", "db2"],
+    ),
 ]
 
 # Flow scenarios: (id, {file: fragments}, undo fragments or None, caller_owned,
@@ -339,6 +363,17 @@ class Place:
             )
             conn.autocommit = True
             return conn
+        if self.engine == "db2":
+            import ibm_db_dbi
+
+            conn = ibm_db_dbi.connect(
+                f"DATABASE={_env('db2', 'DATABASE', 'testdb')};HOSTNAME={self.host};"
+                f"PORT={self.port};PROTOCOL=TCPIP;UID={self.admin};PWD={self.password};",
+                "",
+                "",
+            )
+            conn.set_autocommit(True)
+            return conn
         import pymysql
 
         return pymysql.connect(
@@ -359,7 +394,7 @@ class Place:
             conn.close()
 
     def query(self, sql: str) -> list:
-        conn = self.admin_connection(self.name if self.engine != "oracle" else None)
+        conn = self.admin_connection(None if self.engine in ("oracle", "db2") else self.name)
         try:
             cursor = conn.cursor()
             cursor.execute(sql)
@@ -381,6 +416,12 @@ class Place:
                 f"CREATE PROCEDURE, CREATE TRIGGER, UNLIMITED TABLESPACE TO {self.name}"
             )
             database, prefix = None, f"{self.name}."
+        elif self.engine == "db2":
+            # A database takes minutes to create here: the throwaway place is a schema.
+            self.name = self.name.upper()
+            self.schema = self.name
+            self.execute(f"CREATE SCHEMA {self.name}")
+            database, prefix = None, f"{self.name}."
         else:
             self.execute(f"CREATE DATABASE `{self.name}`")
             database, prefix = self.name, ""
@@ -396,6 +437,13 @@ class Place:
                 self.execute(f'DROP DATABASE IF EXISTS "{self.name}" CASCADE')
             elif self.engine == "oracle":
                 self.execute(f"DROP USER {self.name} CASCADE")
+            elif self.engine == "db2":
+                tables = self.query(
+                    f"SELECT tabname FROM syscat.tables WHERE tabschema = '{self.name}'"
+                )
+                for (table,) in tables:
+                    self.execute(f'DROP TABLE {self.name}."{table}"')
+                self.execute(f"DROP SCHEMA {self.name} RESTRICT")
             else:
                 self.execute(f"DROP DATABASE IF EXISTS `{self.name}`")
         except Exception:  # best effort: a place that never got created has nothing to drop
@@ -407,6 +455,14 @@ class Place:
             database = PostgreSqlConfig(
                 type=self.engine,
                 database=self.name,
+                username=self.admin,
+                password=self.password,
+                **common,
+            )
+        elif self.engine == "db2":
+            database = Db2Config(
+                type="db2",
+                database=_env("db2", "DATABASE", "testdb"),
                 username=self.admin,
                 password=self.password,
                 **common,
@@ -436,6 +492,8 @@ class Place:
         if self.engine == "oracle":
             user, password = self.name, ORACLE_USER_PASSWORD
         auth = f"{quote(user, safe='')}:{quote(password, safe='')}@{self.host}:{self.port}"
+        if self.engine == "db2":
+            return build_db2_url(self.config(".").database)
         if self.engine == "cockroachdb":
             url = make_url(build_sqlalchemy_url(self.config(".").database))
             # The insecure server ignores the password; the config dblift derives from a
@@ -475,7 +533,7 @@ class Place:
             provider.close()
 
     def _prefix(self) -> str:
-        return f"{self.name}." if self.engine == "oracle" else ""
+        return f"{self.name}." if self.engine in ("oracle", "db2") else ""
 
     def t(self) -> list:
         return self.query(f"SELECT a, b FROM {self._prefix()}t ORDER BY a")
