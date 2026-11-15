@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Trigger models can retain a subject table schema distinct from the trigger's schema through
+  qualification, comparison and dictionary/JSON round trips. Older dictionaries keep their
+  same-schema meaning; an explicit null subject schema remains unqualified.
+
 ### Changed
 
 - The PyPI page now shows project links (homepage, documentation, source, issues, changelog), the
