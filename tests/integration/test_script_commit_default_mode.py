@@ -13,7 +13,10 @@ the ``success`` of the last history row, a successful run has a history row
 per migration, and a failed run leaves neither a row in ``h`` nor a changed
 ``t`` that the script did not commit itself.
 
-They run against live PostgreSQL, MySQL, MariaDB and Oracle servers. Each test
+Some scenarios are pinned to a clean failure where the engine refuses the
+construct; the reason is asserted in the error message.
+
+They run against live PostgreSQL, CockroachDB, MySQL, MariaDB and Oracle servers. Each test
 provisions a throwaway database (Oracle: user) holding ``t (a, b)`` with the
 row (1, 2) and an empty ``h (v)``, using an administrative account, and drops
 it afterwards. An engine that cannot be reached is skipped; set
@@ -185,8 +188,16 @@ EXPECT = [
     ("procedural_rollback", ("PROC_ROLLBACK",), True, T_START, [], [True], ["oracle"]),
     ("procedural_refused", ("DO_BLOCK",), False, T_START, [], [False], ["postgresql"]),
 ]
-# An engine the script's COMMIT is refused on says so in the error message.
-ERROR_CONTAINS = {"procedural_refused": "invalid transaction termination"}
+# Where an engine refuses a construct, the error message says why: (engine, id) -> text.
+IN_PROGRESS = "there is already a transaction in progress"
+ERROR_CONTAINS = {
+    ("postgresql", "procedural_refused"): "invalid transaction termination",
+    ("cockroachdb", "envelope"): IN_PROGRESS,
+    ("cockroachdb", "envelope_failure"): IN_PROGRESS,
+    ("cockroachdb", "envelope_rollback"): IN_PROGRESS,
+    ("cockroachdb", "begin_mid"): IN_PROGRESS,
+    ("cockroachdb", "do_block"): "syntax error",
+}
 
 # Scenarios whose outcome was not known in advance; the pinned values are what
 # was observed, with the server version it was observed on.
@@ -196,6 +207,7 @@ CRDB = ["cockroachdb"]
 RECORD = [
     # Observed on CockroachDB v24.3.18: a BEGIN inside dblift's transaction is refused
     # ("there is already a transaction in progress"); the run fails, nothing is left.
+    # envelope_failure fails at BEGIN and never reaches the failing statement.
     ("envelope", ("BEGIN", "UPD", "COMMIT"), False, T_START, [], [False], CRDB),
     ("envelope_failure", ("BEGIN", "UPD", "FAIL", "COMMIT"), False, T_START, [], [False], CRDB),
     ("envelope_rollback", ("BEGIN", "UPD", "ROLLBACK"), False, T_START, [], [False], CRDB),
@@ -528,14 +540,12 @@ def test_script_transaction_outcome(place, tmp_path, name, fragments, ok, t, h, 
 
     result = place.run(tmp_path)
 
-    if ok is not None:
-        assert result.success is ok, result.error_message
-    if name in ERROR_CONTAINS:
-        assert ERROR_CONTAINS[name] in (result.error_message or "")
-    if t is not None:
-        assert place.t() == t
-        assert place.h() == h
-        assert [success for _, success in place.history()] == history
+    assert result.success is ok, result.error_message
+    if (place.engine, name) in ERROR_CONTAINS:
+        assert ERROR_CONTAINS[(place.engine, name)] in (result.error_message or "")
+    assert place.t() == t
+    assert place.h() == h
+    assert [success for _, success in place.history()] == history
     _assert_truthful(place, result, 1)
 
 
