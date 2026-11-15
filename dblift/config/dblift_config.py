@@ -25,6 +25,7 @@ from dblift.config.file_path_anchoring import (
     anchor_log_file,
     file_url,
     left_relative,
+    retain_log_file_fallback,
 )
 from dblift.config.secrets import SecretsConfig, resolve_secret_refs
 from dblift.config.secrets._registry import is_secret_uri
@@ -574,7 +575,7 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
         if args_dict:
             config_data = DbliftConfig.merge_config_data(config_data, args_dict)
 
-    anchor_log_file(config_data, config_file_path, bool(log_file_override))
+    log_file_fallback = anchor_log_file(config_data, config_file_path, bool(log_file_override))
 
     # ``validate-sql`` does not need a real database, but static linting does
     # need an explicit SQL dialect or a database type from config.
@@ -608,6 +609,7 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
     )
     refuse_empty_database_locator(file_data, active_environment, config_data)
     config = DbliftConfig.from_dict(config_data, resolve_secrets=not is_offline_cmd)
+    retain_log_file_fallback(config, log_file_fallback)
     if active_environment:
         setattr(config, "_active_environment", active_environment)
     if config_file_path:

@@ -523,6 +523,9 @@ class FileLog(AbstractLog):
         # ensure the file's parent exists so the header write never crashes.
         self.log_dir = self.log_file.parent
         self._ensure_log_dir()
+        # Validate the actual sink before command success, including deferred JSON/HTML writes.
+        with self.log_file.open("a", encoding="utf-8"):
+            pass
 
         # Create formatter based on format
         from typing import Union

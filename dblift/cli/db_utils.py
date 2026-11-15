@@ -4,7 +4,7 @@ import argparse
 import os
 import pprint
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Mapping, Optional
 
 import yaml
 
@@ -16,8 +16,9 @@ from dblift.api._cli_support import (
 from dblift.cli._capability_exit import exit_on_capability_denial
 from dblift.cli._output import CommandOutput, _exit_log_location_error, from_args
 from dblift.config.dblift_config import DbliftConfig, load_config, unrecognized_top_level_keys
+from dblift.config.property_registry import env_name
 from dblift.core.constants import ENV_PREFIX
-from dblift.core.logger import DbliftLogger, LogFormat, LogLevel
+from dblift.core.logger import DbliftLogger, LogFormat, LogLevel, OperationResult
 from dblift.core.utils.output_paths import requested_log_dir
 from dblift.core.utils.url_masking import mask_database_url
 
@@ -256,6 +257,8 @@ def diagnose_connection(args: argparse.Namespace) -> int:
 def _connection_logger(args: argparse.Namespace, config: Optional[DbliftConfig]) -> DbliftLogger:
     """Build one utility logger from merged config or flags after a configuration refusal."""
 
+    env = os.environ if config is None else {}
+
     def log_value(name: str, nested: str = "") -> Optional[str]:
         """Read the first supplied flat or nested logging string."""
         value = getattr(args, name, None)
@@ -265,7 +268,7 @@ def _connection_logger(args: argparse.Namespace, config: Optional[DbliftConfig])
         if isinstance(value, str) and value:
             return value
         value = getattr(getattr(config, "logging", None), nested, None) if nested else None
-        return value if isinstance(value, str) else None
+        return value if isinstance(value, str) else env.get(env_name(name))
 
     log_file = log_value("log_file", "file")
     log_dir = requested_log_dir(log_value("log_dir", "directory"), log_file)
@@ -281,6 +284,27 @@ def _connection_logger(args: argparse.Namespace, config: Optional[DbliftConfig])
         )
     except OSError as e:
         _exit_log_location_error(e)
+
+
+def _complete_connection_log(
+    logger: DbliftLogger, results: Mapping[str, object], config_error: Optional[Exception]
+) -> None:
+    """Record the utility's known outcome for structured sinks before closing them."""
+    error = results["error"]
+    if config_error is not None:
+        error = f"Error creating configuration: {config_error}"
+    result = OperationResult(
+        success=bool(results["success"]), error_message=error if isinstance(error, str) else None
+    )
+    result.complete()
+    try:
+        if logger.log is not None:
+            # The connection report already owns console output; propagate metadata only.
+            logger.log.set_command_completed(
+                result.success, "Connection check result", "CHECK-CONNECTION", result
+            )
+    finally:
+        logger.close()
 
 
 def check_connection(args: argparse.Namespace) -> int:
@@ -315,7 +339,8 @@ def check_connection(args: argparse.Namespace) -> int:
         try:
             # Keep configuration refusals in the requested log and structured output.
             if config_error is not None:
-                logger.error(f"Error creating configuration: {config_error}")
+                message = f"Error creating configuration: {config_error}"
+                logger.error(message)
                 results["error"] = str(config_error)
                 print_connection_results(results, out)
                 return 1
@@ -406,7 +431,7 @@ def check_connection(args: argparse.Namespace) -> int:
             print_connection_results(results, out)
             return 0
         finally:
-            logger.close()
+            _complete_connection_log(logger, results, config_error)
 
     except Exception as e:
         out.error(f"Error testing connection: {str(e)}")

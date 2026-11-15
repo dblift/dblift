@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Union
 
 from dblift.config.dblift_config import DbliftConfig, DirectoryConfig
-from dblift.config.file_path_anchoring import _IN_MEMORY, anchorer
+from dblift.config.file_path_anchoring import _IN_MEMORY, anchor_log_output, anchorer
 
 
 def anchor_config_paths(
@@ -48,6 +48,6 @@ def anchor_config_paths(
     elif getattr(config.logging, "directory", None):
         config.logging.directory = anchor(config.logging.directory)
     elif config.log_file:
-        config.log_file = anchor(config.log_file)
+        config.log_file = anchor_log_output(config.log_file, base)
     elif config.logging.file:
-        config.logging.file = anchor(config.logging.file)
+        config.logging.file = anchor_log_output(config.logging.file, base)

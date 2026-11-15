@@ -15,6 +15,7 @@ from dblift.config import DbliftConfig
 from dblift.config.config_builder import ConfigBuilder
 from dblift.config.database_config import BaseDatabaseConfig
 from dblift.config.errors import ConfigurationError
+from dblift.config.file_path_anchoring import retain_log_file_fallback
 from dblift.config.path_anchoring import anchor_config_paths
 from dblift.core.logger import DbliftLogger, Log, LogFormat, LogLevel, NullLog
 from dblift.core.migration.executor.migration_executor import require_analysis_support
@@ -131,6 +132,10 @@ def build_default_logger(
     log_level_value = _resolve_enum_value(raw_lvl, LogLevel, LogLevel.INFO)
 
     eff_log_file = log_file if log_file is not None else effective_log_file_from_config(config)
+    if log_file is None and (log_dir or _configured_log_directory(config)):
+        fallback = vars(config).get("_log_file_fallback")
+        if fallback and eff_log_file == fallback[0]:
+            eff_log_file = fallback[1]
     return DbliftLogger(
         format=log_format_value,
         level=log_level_value,
@@ -443,6 +448,7 @@ def client_from_sqlalchemy(
                 ):  # noqa: E501
                     setattr(merged, f, val)
         derived = merged
+        retain_log_file_fallback(derived, vars(config).get("_log_file_fallback"))
 
     # Respect explicit logger if provided (matches client_from_config contract).
     # Only fall back to building from log_* params when logger is None.

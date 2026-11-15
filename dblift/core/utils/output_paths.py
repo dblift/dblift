@@ -10,6 +10,14 @@ def refuse_symlink_output(path: Path) -> None:
         raise OSError(f"Refusing to write through symlinked output path: {path}")
 
 
+def anchor_output_file(path: Union[str, Path], base_dir: Path) -> str:
+    """Anchor an output's parent without resolving away its requested leaf."""
+    requested = Path(path).expanduser()
+    if not requested.is_absolute():
+        requested = base_dir / requested
+    return str(requested.parent.resolve() / requested.name)
+
+
 def requested_log_dir(
     log_dir: Optional[Union[str, Path]],
     log_file: Optional[Union[str, Path]],

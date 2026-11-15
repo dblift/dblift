@@ -23,7 +23,7 @@ from dblift.config.dblift_config import (
     select_environment,
 )
 from dblift.config.errors import ConfigurationError
-from dblift.config.file_path_anchoring import anchor_log_file
+from dblift.config.file_path_anchoring import anchor_log_file, retain_log_file_fallback
 from dblift.core.exceptions import InvalidTargetVersionError
 from dblift.core.utils.path_checks import path_exists
 
@@ -280,7 +280,7 @@ class ConfigBuilder:
             if kwargs_dict:
                 config_data = DbliftConfig.merge_config_data(config_data, kwargs_dict)
 
-        anchor_log_file(config_data, file_path, log_file_overridden)
+        log_file_fallback = anchor_log_file(config_data, file_path, log_file_overridden)
 
         if not config_data:
             raise ConfigurationError(
@@ -289,6 +289,7 @@ class ConfigBuilder:
 
         refuse_empty_database_locator(file_data, active_environment, config_data)
         config = cls.from_dict(config_data)
+        retain_log_file_fallback(config, log_file_fallback)
         if active_environment:
             setattr(config, "_active_environment", active_environment)
         return config
