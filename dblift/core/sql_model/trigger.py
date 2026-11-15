@@ -203,7 +203,6 @@ class Trigger(SqlObject):
             execution_order=data.get("execution_order"),
             follows_trigger=data.get("follows_trigger"),
             precedes_trigger=data.get("precedes_trigger"),
-            table_schema=data.get("table_schema"),
         )
         if "table_schema" in data:
             trigger.table_schema = data["table_schema"]
