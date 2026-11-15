@@ -71,6 +71,10 @@ class TransactionAbortedError(ExecutionError):
     """Raised when a database transaction is in an aborted state."""
 
 
+class TransactionLeftOpenError(ExecutionError):
+    """Raised when a script finishes with a transaction it opened still open."""
+
+
 class CallerTransactionError(DbliftError, RuntimeError):
     """Raised when a client operation receives a connection with an open caller transaction."""
 
