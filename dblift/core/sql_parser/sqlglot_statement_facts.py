@@ -1081,7 +1081,7 @@ def _table_alter_tokens_match(
         return False
     expected: list[_AlterToken] = [TokenType.ALTER, TokenType.TABLE]
     if ast.args.get("exists"):
-        if dialect not in _ALTER_IF_EXISTS and not ast.meta.get("mariadb_if_exists"):
+        if dialect not in _ALTER_IF_EXISTS and not ast.meta.get("mariadb_grammar"):
             return False
         expected.extend(("IF", TokenType.EXISTS))
     if ast.args.get("only"):
@@ -4223,23 +4223,94 @@ def _added_reference_tokens(
     return [TokenType.REFERENCES, *parts, *remote]
 
 
-def _added_column_tokens(definition: exp.ColumnDef, dialect: str) -> list[_AlterToken]:
+# MySQL 8.4 additions to the 8.0 reserved words in the SQLGlot MySQL generator.
+_MYSQL_POSITION_RESERVED = {"_filename", "manual", "qualify", "tablesample"}
+# Additional words in the MariaDB reserved-word table, default SQL mode.
+_MARIADB_POSITION_RESERVED = frozenset("""
+conversion current_path current_role delete_domain_id do_domain_ids ignore_domain_ids
+master_demote_to_replica master_demote_to_slave offset page_checksum parse_vcol_expr portion
+ref_system_id returning sql_after_gtids sql_before_gtids stats_auto_recalc stats_persistent
+stats_sample_pages to_date vector
+""".split())
+
+
+def _added_column_position(
+    position: exp.Expr, grammar: Dialect, mariadb: bool
+) -> list[_AlterToken]:
+    # lint: allow-dialect-string: MySQL and MariaDB ADD COLUMN permit FIRST or AFTER col_name
+    if grammar != "mysql" or not isinstance(position, exp.ColumnPosition):
+        return []
+    if position.args.get("position") == "FIRST" and position.this is None:
+        return [TokenType.FIRST]
+    column = position.this
+    if (
+        position.args.get("position") != "AFTER"
+        or not isinstance(column, exp.Column)
+        or len(column.parts) != 1
+        or not isinstance(column.this, exp.Identifier)
+    ):
+        return []
+    if not column.this.quoted:
+        name = column.name.lower()
+        if (
+            name in grammar.generator_class.RESERVED_KEYWORDS
+            or name in _MYSQL_POSITION_RESERVED
+            or (mariadb and name in _MARIADB_POSITION_RESERVED)
+        ):
+            return []
+    return ["AFTER", column.this]
+
+
+def _added_column_clause(kind: exp.Expr, grammar: Dialect, named: bool) -> list[_AlterToken]:
+    """Spell out modeled sibling clauses. A dialect's tokenizer also accepts foreign grammar."""
+    # lint: allow-dialect-string: PostgreSQL allows named column constraints
+    plain_or_postgres = not named or grammar == "postgres"
+    if isinstance(kind, exp.NotNullColumnConstraint) and plain_or_postgres:
+        return [TokenType.NULL] if kind.args.get("allow_null") else [TokenType.NOT, TokenType.NULL]
+    # lint: allow-dialect-string: T-SQL also allows named defaults
+    if isinstance(kind, exp.DefaultColumnConstraint) and (plain_or_postgres or grammar == "tsql"):
+        return [TokenType.DEFAULT, *grammar.tokenize(grammar.generate(kind.this))]
+    if isinstance(kind, exp.CheckColumnConstraint):
+        return [
+            *grammar.tokenize("CHECK ("),
+            *grammar.tokenize(grammar.generate(kind.this)),
+            TokenType.R_PAREN,
+        ]
+    if (
+        not named
+        and isinstance(kind, exp.CollateColumnConstraint)
+        and isinstance(kind.this, exp.Identifier)
+    ):
+        return [TokenType.COLLATE, kind.this]
+    # lint: allow-dialect-string: MySQL/MariaDB column attributes
+    if not named and grammar == "mysql":
+        if isinstance(kind, exp.AutoIncrementColumnConstraint):
+            return list(grammar.tokenize("AUTO_INCREMENT"))
+        if isinstance(kind, exp.CommentColumnConstraint) and kind.this.is_string:
+            return [TokenType.COMMENT, *grammar.tokenize(grammar.generate(kind.this))]
+    # lint: allow-dialect-string: PostgreSQL identity columns
+    if grammar == "postgres" and isinstance(kind, exp.GeneratedAsIdentityColumnConstraint):
+        mode = "ALWAYS" if kind.this else "BY DEFAULT"
+        return list(grammar.tokenize(f"GENERATED {mode} AS IDENTITY"))
+    return []
+
+
+def _added_column_tokens(
+    definition: exp.ColumnDef, dialect: str, mariadb: bool
+) -> list[_AlterToken]:
     """Require the same plain key grammar for inline keys in a mixed ALTER."""
     if not isinstance(definition.this, exp.Identifier) or _unread_column_definition(definition):
         return []
     grammar = Dialect.get_or_raise(dialect)
     tokens: list[_AlterToken] = ["ADD", TokenType.COLUMN]
     if definition.args.get("exists"):
+        # lint: allow-dialect-string: ADD COLUMN IF NOT EXISTS
+        if dialect != "postgres" and not mariadb:
+            return []
         tokens.extend(("IF", TokenType.NOT, TokenType.EXISTS))
     tokens.append(definition.this)
     if definition.kind:
         tokens.extend(grammar.tokenize(definition.kind.sql(dialect=dialect)))
-    has_inline_key = any(
-        isinstance(
-            item.kind, (exp.PrimaryKeyColumnConstraint, exp.UniqueColumnConstraint, exp.Reference)
-        )
-        for item in definition.constraints
-    )
     for item in definition.constraints:
         if isinstance(item.this, exp.Identifier):
             tokens.extend((TokenType.CONSTRAINT, item.this))
@@ -4254,28 +4325,15 @@ def _added_column_tokens(definition: exp.ColumnDef, dialect: str) -> list[_Alter
                 return []
             tokens.extend(reference)
         else:
-            # Preserve independent column clauses by replaying the typed source. Beside an
-            # inline key, a separate AST node may itself be a key option (e.g. replication).
-            if not isinstance(kind, exp.ColumnConstraintKind) or (
-                has_inline_key
-                and not isinstance(
-                    kind,
-                    (
-                        exp.NotNullColumnConstraint,
-                        exp.DefaultColumnConstraint,
-                        exp.CheckColumnConstraint,
-                        exp.CollateColumnConstraint,
-                        exp.GeneratedAsIdentityColumnConstraint,
-                        exp.ComputedColumnConstraint,
-                        exp.AutoIncrementColumnConstraint,
-                        exp.CommentColumnConstraint,
-                    ),
-                )
-            ):
+            clause = _added_column_clause(kind, grammar, named=item.this is not None)
+            if not clause:
                 return []
-            tokens.extend(grammar.tokenize(kind.sql(dialect=dialect)))
+            tokens.extend(clause)
     if position := definition.args.get("position"):
-        tokens.extend(grammar.tokenize(position.sql(dialect=dialect)))
+        position_tokens = _added_column_position(position, grammar, mariadb)
+        if not position_tokens:
+            return []
+        tokens.extend(position_tokens)
     return tokens
 
 
@@ -4301,7 +4359,7 @@ def _alter_with_added_keys(
         if tail:
             tail.append(TokenType.COMMA)
         if isinstance(action, exp.ColumnDef):
-            tokens = _added_column_tokens(action, dialect)
+            tokens = _added_column_tokens(action, dialect, bool(ast.meta.get("mariadb_grammar")))
             if not tokens:
                 return unread
             tail.extend(tokens)
@@ -4786,9 +4844,9 @@ def read_statement_facts(
         return facts
     try:
         ast = parse_one(_UPDATE_OR.sub(r"\1", sql), read=read_dialect or dialect)
-        # lint: allow-dialect-string: MariaDB allows ALTER TABLE IF EXISTS with the MySQL parser
+        # lint: allow-dialect-string: distinguish MariaDB ALTER grammar when using the MySQL parser
         if isinstance(ast, exp.Alter) and source_engine == "mariadb" and dialect == "mysql":
-            ast.meta["mariadb_if_exists"] = True
+            ast.meta["mariadb_grammar"] = True
         facts = _folded_name_facts(ast, sql, dialect)
         if facts is not None:
             return facts
