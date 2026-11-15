@@ -49,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL Server: a migration, undo script or SQL callback that ends its transaction itself (a `COMMIT`
+  or `ROLLBACK` in the script) is now reported as applied. Before, the run failed with `Can't
+  reconnect until invalid transaction is rolled back` although the script's work and its history
+  row were in place. A script that leaves a transaction open now fails, with that open work rolled
+  back and a failed history row. Before, the run reported success and both the work and the history
+  row were lost when the connection closed.
 - Requested log filenames now reach the Python API logger, including timestamp patterns.
   Ordinary commands and `db check-connection` honour flat and nested configuration, environment
   variables and flags consistently. Configured relative filenames resolve from the config folder;
