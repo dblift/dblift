@@ -10,10 +10,13 @@ They run against live PostgreSQL, MySQL, MariaDB and Oracle servers. Each test
 provisions a throwaway database (Oracle: user) with an administrative account
 and drops it afterwards. An engine that cannot be reached is skipped; set
 DBLIFT_<ENGINE>_HOST / _PORT / _USERNAME / _PASSWORD (PostgreSQL also
-_DATABASE, Oracle also _SERVICE) to point at one.
+_DATABASE, Oracle also _SERVICE) to point at one. The Oracle service
+defaults to FREEPDB1, like the other self-contained Oracle modules here.
+An engine whose port answers but whose login fails is an error, not a skip.
 """
 
 import os
+import socket
 import uuid
 
 import pytest
@@ -193,11 +196,11 @@ def place(request):
     engine = request.param
     place = Place(engine)
     try:
-        place.admin_connection().close()
-    except Exception as exc:
+        socket.create_connection((place.host, place.port), timeout=3).close()
+    except OSError as exc:
         pytest.skip(
-            f"{engine} not reachable ({type(exc).__name__}); set DBLIFT_{engine.upper()}_HOST, "
-            "_PORT, _USERNAME and _PASSWORD"
+            f"{engine} not reachable at {place.host}:{place.port} ({exc}); set "
+            f"DBLIFT_{engine.upper()}_HOST, _PORT, _USERNAME and _PASSWORD"
         )
     try:
         place.provision()
