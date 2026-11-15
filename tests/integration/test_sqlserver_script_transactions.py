@@ -278,6 +278,15 @@ CASES = [
         [],
         [False],
     ),
+    ("plain", f"{UPD}\nGO\n", True, [(2, 2)], [], [True]),
+    (
+        "rollback_then_failure",
+        "INSERT INTO app.h VALUES (1);\nROLLBACK;\nGO\nINSERT INTO app.nosuch VALUES (1);\nGO\n",
+        False,
+        [(1, 2)],
+        [],
+        [False],
+    ),
 ]
 
 
@@ -294,9 +303,8 @@ def test_script_transaction_outcome(account, tmp_path, name, script, ok, t, h, h
     _assert_truthful(account, result)
 
 
-def test_caller_owned_connection_script_that_ends_its_transaction(account, tmp_path):
+def _migrate_caller_owned(account, tmp_path):
     db_name, login = account
-    create_migration(tmp_path, "V1__case.sql", ENDED)
     url = (
         f"mssql+pymssql://{quote(login, safe='')}:{quote(LOGIN_PASSWORD, safe='')}"
         f"@{HOST}:{PORT}/{db_name}"
@@ -307,15 +315,35 @@ def test_caller_owned_connection_script_that_ends_its_transaction(account, tmp_p
         client = DBLiftClient.from_sqlalchemy(
             connection=conn, schema=SCHEMA, migrations_dir=tmp_path, logger=NullLog()
         )
-        result = client.migrate()
+        return client.migrate()
     finally:
         try:
             conn.close()
         finally:
             engine.dispose()
 
+
+def test_caller_owned_connection_script_that_ends_its_transaction(account, tmp_path):
+    create_migration(tmp_path, "V1__case.sql", ENDED)
+
+    result = _migrate_caller_owned(account, tmp_path)
+
     assert result.success, result.error_message
     assert _t(account) == [(1, 2)]
+    assert [success for _, success in _history(account)] == [True]
+    _assert_truthful(account, result)
+
+
+def test_caller_owned_connection_commit_then_work(account, tmp_path):
+    create_migration(
+        tmp_path, "V1__case.sql", f"{UPD}\nCOMMIT;\nGO\nINSERT INTO app.h VALUES (1);\nGO\n"
+    )
+
+    result = _migrate_caller_owned(account, tmp_path)
+
+    assert result.success, result.error_message
+    assert _t(account) == [(2, 2)]
+    assert _h(account) == [1]
     assert [success for _, success in _history(account)] == [True]
     _assert_truthful(account, result)
 

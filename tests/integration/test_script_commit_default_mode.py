@@ -33,10 +33,12 @@ from urllib.parse import quote
 
 import pytest
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 
 from dblift.api import DBLiftClient
 from dblift.config import DbliftConfig
 from dblift.core.logger import NullLog
+from dblift.db.plugins.cockroachdb.sqlalchemy_url import build_sqlalchemy_url
 from dblift.db.plugins.mysql.config import MySqlConfig
 from dblift.db.plugins.oracle.config import OracleConfig
 from dblift.db.plugins.postgresql.config import PostgreSqlConfig
@@ -45,14 +47,17 @@ from tests.integration.helpers.migration_helper import create_migration, create_
 
 pytestmark = pytest.mark.integration
 
-ENGINES = ["postgresql", "mysql", "mariadb", "oracle"]
+ENGINES = ["postgresql", "mysql", "mariadb", "oracle", "cockroachdb"]
+PG_FAMILY = ("postgresql", "cockroachdb")
 ALL = ENGINES
 DEFAULTS = {
     "postgresql": ("localhost", "5432", "postgres", "postgres"),
     "mysql": ("localhost", "3306", "root", "root"),
     "mariadb": ("localhost", "3306", "root", "root"),
     "oracle": ("localhost", "1521", "system", "oracle"),
+    "cockroachdb": ("localhost", "26257", "root", ""),
 }
+DEFAULT_DATABASE = {"postgresql": "postgres", "cockroachdb": "defaultdb"}
 ORACLE_USER_PASSWORD = "Dblift_Pin1x"
 
 # Statement fragments. A scenario is a tuple of fragment names, joined by newlines.
@@ -84,18 +89,23 @@ ORACLE_BLOCK = (
     "END;\n"
     "/"
 )
+PG_DO_BLOCK = (
+    "DO $$\n"
+    "DECLARE n int;\n"
+    "BEGIN\n"
+    "  UPDATE t SET a = b WHERE a = 1;\n"
+    "  GET DIAGNOSTICS n = ROW_COUNT;\n"
+    "  IF n = 1 THEN COMMIT; ELSE ROLLBACK; END IF;\n"
+    "END $$;"
+)
 ENGINE_FRAGMENTS = {
     "postgresql": {
         "BEGIN": "BEGIN;",
-        "DO_BLOCK": (
-            "DO $$\n"
-            "DECLARE n int;\n"
-            "BEGIN\n"
-            "  UPDATE t SET a = b WHERE a = 1;\n"
-            "  GET DIAGNOSTICS n = ROW_COUNT;\n"
-            "  IF n = 1 THEN COMMIT; ELSE ROLLBACK; END IF;\n"
-            "END $$;"
-        ),
+        "DO_BLOCK": PG_DO_BLOCK,
+    },
+    "cockroachdb": {
+        "BEGIN": "BEGIN;",
+        "DO_BLOCK": PG_DO_BLOCK,
     },
     "mysql": {
         "BEGIN": "START TRANSACTION;",
@@ -182,7 +192,16 @@ ERROR_CONTAINS = {"procedural_refused": "invalid transaction termination"}
 # was observed, with the server version it was observed on.
 # Observed 2026-11-15 on MySQL 8.0.46 and MariaDB 11.8.8: the procedure's own
 # COMMIT / ROLLBACK is honoured and nothing is left uncommitted.
+CRDB = ["cockroachdb"]
 RECORD = [
+    # Observed on CockroachDB v24.3.18: a BEGIN inside dblift's transaction is refused
+    # ("there is already a transaction in progress"); the run fails, nothing is left.
+    ("envelope", ("BEGIN", "UPD", "COMMIT"), False, T_START, [], [False], CRDB),
+    ("envelope_failure", ("BEGIN", "UPD", "FAIL", "COMMIT"), False, T_START, [], [False], CRDB),
+    ("envelope_rollback", ("BEGIN", "UPD", "ROLLBACK"), False, T_START, [], [False], CRDB),
+    ("begin_mid", ("UPD", "BEGIN", "INS1"), False, T_START, [], [False], CRDB),
+    # CockroachDB v24.3.18 rejects the DO block itself (syntax error), so the run fails cleanly.
+    ("do_block", ("DO_BLOCK",), False, T_START, [], [False], CRDB),
     ("procedural_commit", ("PROC_COMMIT",), True, T_DONE, [], [True], ["mysql", "mariadb"]),
     ("procedural_rollback", ("PROC_ROLLBACK",), True, T_START, [], [True], ["mysql", "mariadb"]),
 ]
@@ -286,7 +305,7 @@ class Place:
         self.schema = self.name
 
     def admin_connection(self, database=None):
-        if self.engine == "postgresql":
+        if self.engine in PG_FAMILY:
             import psycopg
 
             return psycopg.connect(
@@ -294,7 +313,7 @@ class Place:
                 port=self.port,
                 user=self.admin,
                 password=self.password,
-                dbname=database or _env("postgresql", "DATABASE", "postgres"),
+                dbname=database or _env(self.engine, "DATABASE", DEFAULT_DATABASE[self.engine]),
                 autocommit=True,
                 connect_timeout=5,
             )
@@ -337,7 +356,7 @@ class Place:
             conn.close()
 
     def provision(self) -> None:
-        if self.engine == "postgresql":
+        if self.engine in PG_FAMILY:
             self.schema = "public"
             self.execute(f'CREATE DATABASE "{self.name}"')
             database, prefix = self.name, ""
@@ -361,6 +380,8 @@ class Place:
         try:
             if self.engine == "postgresql":
                 self.execute(f'DROP DATABASE IF EXISTS "{self.name}" WITH (FORCE)')
+            elif self.engine == "cockroachdb":
+                self.execute(f'DROP DATABASE IF EXISTS "{self.name}" CASCADE')
             elif self.engine == "oracle":
                 self.execute(f"DROP USER {self.name} CASCADE")
             else:
@@ -370,9 +391,9 @@ class Place:
 
     def config(self, migrations_dir) -> DbliftConfig:
         common = dict(host=self.host, port=self.port, schema=self.schema)
-        if self.engine == "postgresql":
+        if self.engine in PG_FAMILY:
             database = PostgreSqlConfig(
-                type="postgresql",
+                type=self.engine,
                 database=self.name,
                 username=self.admin,
                 password=self.password,
@@ -403,6 +424,11 @@ class Place:
         if self.engine == "oracle":
             user, password = self.name, ORACLE_USER_PASSWORD
         auth = f"{quote(user, safe='')}:{quote(password, safe='')}@{self.host}:{self.port}"
+        if self.engine == "cockroachdb":
+            url = make_url(build_sqlalchemy_url(self.config(".").database))
+            # The insecure server ignores the password; the config dblift derives from a
+            # caller's engine refuses an empty one.
+            return url.set(password=url.password or "insecure").render_as_string(False)
         if self.engine == "postgresql":
             return f"postgresql+psycopg://{auth}/{self.name}"
         if self.engine == "oracle":
@@ -502,12 +528,14 @@ def test_script_transaction_outcome(place, tmp_path, name, fragments, ok, t, h, 
 
     result = place.run(tmp_path)
 
-    assert result.success is ok, result.error_message
+    if ok is not None:
+        assert result.success is ok, result.error_message
     if name in ERROR_CONTAINS:
         assert ERROR_CONTAINS[name] in (result.error_message or "")
-    assert place.t() == t
-    assert place.h() == h
-    assert [success for _, success in place.history()] == history
+    if t is not None:
+        assert place.t() == t
+        assert place.h() == h
+        assert [success for _, success in place.history()] == history
     _assert_truthful(place, result, 1)
 
 
