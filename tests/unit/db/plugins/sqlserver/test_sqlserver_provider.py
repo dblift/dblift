@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import OperationalError
 
 from dblift.config.dblift_config import DbliftConfig
 from dblift.db.plugins.sqlserver.provider import SqlServerProvider
@@ -331,7 +332,9 @@ def test_sqlserver_outcome_is_intact_when_begin_opened_no_server_transaction():
 
 def test_sqlserver_begin_survives_a_failing_state_query():
     p = SqlServerProvider(_cfg())
-    p.execute_query = MagicMock(side_effect=RuntimeError("boom"))
+    p.execute_query = MagicMock(
+        side_effect=OperationalError("SELECT 1", {}, Exception("unknown function"))
+    )
     with patch.object(SqlAlchemyProvider, "begin_transaction"):
         p.begin_transaction()
     assert p.transaction_outcome() is TransactionOutcome.INTACT

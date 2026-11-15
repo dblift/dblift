@@ -2,6 +2,8 @@
 
 from typing import Optional, Tuple
 
+from sqlalchemy.exc import SQLAlchemyError
+
 from dblift.db.provider_interfaces import TransactionOutcome
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
@@ -22,7 +24,7 @@ class SqlServerTransactionProvider(SqlAlchemyProvider):
         super().begin_transaction()
         try:
             self._transaction_baseline = self._server_transaction_state()
-        except Exception as exc:
+        except SQLAlchemyError as exc:
             self._transaction_baseline = None
             self.log.debug(f"SQL Server transaction state unavailable at begin: {exc}")
 
