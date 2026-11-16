@@ -129,11 +129,11 @@ class SQLServerTokenizer(BaseTokenizer):
 
         # Check for bracket identifier first
         if self.peek() == "[":
-            return self._handle_bracketed_identifier()
+            return self._read_delimited_identifier("]")
 
         # Check for double-quoted identifier
         if self.peek() == '"':
-            return self._handle_quoted_identifier()
+            return self._read_delimited_identifier('"')
 
         # Regular keyword/identifier
         return super()._handle_keyword()
@@ -162,74 +162,6 @@ class SQLServerTokenizer(BaseTokenizer):
         return Token(
             TokenType.IDENTIFIER,
             text,
-            start_pos,
-            start_line,
-            start_col,
-            self.parens_depth,
-        )
-
-    def _handle_bracketed_identifier(self) -> Token:
-        """Handle [bracketed] identifiers.
-
-        Returns:
-            Identifier token
-        """
-        start_pos = self.pos
-        start_line = self.line
-        start_col = self.col
-
-        identifier_text = self.read()  # Opening bracket [
-
-        # Read until closing bracket
-        while self.pos < len(self.sql):
-            char = self.peek()
-            if char == "]":
-                # Check for doubled bracket (escape: [table]]name])
-                if self.peek(2) == "]]":
-                    identifier_text += self.read(2)
-                else:
-                    identifier_text += self.read()  # Closing bracket
-                    break
-            else:
-                identifier_text += self.read()
-
-        return Token(
-            TokenType.IDENTIFIER,
-            identifier_text,
-            start_pos,
-            start_line,
-            start_col,
-            self.parens_depth,
-        )
-
-    def _handle_quoted_identifier(self) -> Token:
-        """Handle double-quoted identifiers.
-
-        Returns:
-            Identifier token
-        """
-        start_pos = self.pos
-        start_line = self.line
-        start_col = self.col
-
-        identifier_text = self.read()  # Opening quote
-
-        # Read until closing quote
-        while self.pos < len(self.sql):
-            char = self.peek()
-            if char == '"':
-                # Check for doubled quote (escape)
-                if self.peek(2) == '""':
-                    identifier_text += self.read(2)
-                else:
-                    identifier_text += self.read()  # Closing quote
-                    break
-            else:
-                identifier_text += self.read()
-
-        return Token(
-            TokenType.IDENTIFIER,
-            identifier_text,
             start_pos,
             start_line,
             start_col,

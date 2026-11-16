@@ -22,10 +22,6 @@ class TokenizerWarning(UserWarning):
     """
 
 
-class TokenizerError(ValueError):
-    """Raised when strict tokenization encounters an unknown character."""
-
-
 class BaseTokenizer:
     """Base tokenizer using streaming character-by-character parsing.
 
@@ -123,16 +119,13 @@ class BaseTokenizer:
     #: Dialects that document nesting (PostgreSQL, SQL Server) set this True.
     NESTED_BLOCK_COMMENTS: bool = False
 
-    def __init__(self, sql: str, strict_unknown_chars: bool = False):
+    def __init__(self, sql: str):
         """Initialize the tokenizer.
 
         Args:
             sql: SQL content to tokenize
-            strict_unknown_chars: If True, unknown characters raise
-                TokenizerError instead of being warned and skipped.
         """
         self.sql = sql
-        self.strict_unknown_chars = strict_unknown_chars
         self.pos = 0
         self.line = 1
         self.col = 1
@@ -196,9 +189,7 @@ class BaseTokenizer:
         error or as a statement that simply works, never as silent corruption.
 
         The ``TokenizerWarning`` is still raised — the character is safe, but
-        the gap in the dialect's rules is a defect worth fixing — and
-        ``strict_unknown_chars`` still escalates it, which is how
-        ``core/sql_validator`` reports such gaps as findings.
+        the gap in the dialect's rules is a defect worth fixing.
 
         Returns:
             A SYMBOL token holding the character unchanged.
@@ -208,8 +199,6 @@ class BaseTokenizer:
             f"{char!r} at line {self.line}, col {self.col}; "
             f"passing it through verbatim"
         )
-        if self.strict_unknown_chars:
-            raise TokenizerError(message)
         warnings.warn(message, TokenizerWarning, stacklevel=2)
 
         start_pos = self.pos
@@ -530,6 +519,41 @@ class BaseTokenizer:
         )
 
         return Token(token_type, text, start_pos, start_line, start_col, self.parens_depth)
+
+    def _read_delimited_identifier(self, closer: str) -> Token:
+        """Read an identifier from its opening delimiter to ``closer``.
+
+        The current character is the opening delimiter. A doubled ``closer``
+        is an escaped literal character, not the end; an unclosed identifier
+        runs to the end of the input. The token text keeps both delimiters.
+
+        Returns:
+            Identifier token
+        """
+        start_pos = self.pos
+        start_line = self.line
+        start_col = self.col
+
+        identifier_text = self.read()  # Opening delimiter
+
+        while self.pos < len(self.sql):
+            if self.peek() == closer:
+                if self.peek(2) == closer + closer:
+                    identifier_text += self.read(2)
+                else:
+                    identifier_text += self.read()  # Closing delimiter
+                    break
+            else:
+                identifier_text += self.read()
+
+        return Token(
+            TokenType.IDENTIFIER,
+            identifier_text,
+            start_pos,
+            start_line,
+            start_col,
+            self.parens_depth,
+        )
 
     def _read_until(self, target: str) -> str:
         """Read characters until a target string is found.
