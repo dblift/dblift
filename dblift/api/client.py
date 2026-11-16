@@ -133,15 +133,9 @@ def _with_client_emitter(
     def decorator(inner: _F) -> _F:
         @wraps(inner)
         def wrapper(self: "DBLiftClient", *args: Any, **kwargs: Any) -> Any:
-            # ``getattr`` so tests that bypass ``__init__`` (e.g.
-            # ``DBLiftClient.__new__``) keep working: no lock/tracking is
-            # applied when the attributes aren't there.
-            emitter = getattr(self, "events", None)
-            lock = getattr(self, "_operation_lock", None)
-            thread_state = getattr(self, "_thread_state", None)
-            if lock is None or thread_state is None:
-                with use_client_emitter(emitter):
-                    return inner(self, *args, **kwargs)
+            emitter = self.events
+            lock = self._operation_lock
+            thread_state = self._thread_state
 
             stack = getattr(thread_state, "stack", [])
             if mutating:
@@ -537,7 +531,7 @@ class DBLiftClient:
                 "dry_run": dry_run,
                 "show_sql": show_sql,
                 "tags": tags,
-                "dialect": getattr(self, "dialect", None),
+                "dialect": self.dialect,
             },
         )
 
@@ -574,21 +568,21 @@ class DBLiftClient:
                     {
                         "operation": "migrate",
                         "result": result,
-                        "migrations_applied": getattr(result, "migrations_applied", []),
+                        "migrations_applied": result.migrations_applied,
                         "config": self.config,
                         "provider": self.provider,
                         "history_manager": self.executor.history_manager,
                         "log": self.logger,
-                        "dialect": getattr(self, "dialect", None),
+                        "dialect": self.dialect,
                     },
                 )
             else:
                 self.events.emit(
                     EventType.MIGRATION_FAILED,
                     {
-                        "error": getattr(result, "error_message", None),
+                        "error": result.error_message,
                         "target_version": target_version,
-                        "dialect": getattr(self, "dialect", None),
+                        "dialect": self.dialect,
                     },
                 )
 
@@ -599,7 +593,7 @@ class DBLiftClient:
                 {
                     "error": str(e),
                     "target_version": target_version,
-                    "dialect": getattr(self, "dialect", None),
+                    "dialect": self.dialect,
                 },
             )
             preflight = _preflight_connection_failure(e)
@@ -731,7 +725,7 @@ class DBLiftClient:
         self._check_target_version(
             target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
         )
-        self.events.emit(EventType.VALIDATION_STARTED, {"dialect": getattr(self, "dialect", None)})
+        self.events.emit(EventType.VALIDATION_STARTED, {"dialect": self.dialect})
 
         try:
             recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
@@ -752,14 +746,14 @@ class DBLiftClient:
 
             self.events.emit(
                 EventType.VALIDATION_COMPLETED,
-                {"result": result, "dialect": getattr(self, "dialect", None)},
+                {"result": result, "dialect": self.dialect},
             )
 
             return result
         except Exception as e:
             self.events.emit(
                 EventType.VALIDATION_FAILED,
-                {"error": str(e), "dialect": getattr(self, "dialect", None)},
+                {"error": str(e), "dialect": self.dialect},
             )
             preflight = _preflight_connection_failure(e)
             if preflight is not None:
@@ -866,7 +860,7 @@ class DBLiftClient:
                 self.events.emit(
                     EventType.UNDO_FAILED,
                     {
-                        "error": getattr(result, "error_message", None),
+                        "error": result.error_message,
                         "operation": "undo",
                     },
                 )
@@ -946,7 +940,7 @@ class DBLiftClient:
                 self.events.emit(
                     EventType.CLEAN_FAILED,
                     {
-                        "error": getattr(result, "error_message", None),
+                        "error": result.error_message,
                         "operation": "clean",
                     },
                 )
@@ -1009,7 +1003,7 @@ class DBLiftClient:
                 self.events.emit(
                     EventType.BASELINE_FAILED,
                     {
-                        "error": getattr(result, "error_message", None),
+                        "error": result.error_message,
                         "operation": "baseline",
                     },
                 )
@@ -1087,7 +1081,7 @@ class DBLiftClient:
                 self.events.emit(
                     EventType.REPAIR_FAILED,
                     {
-                        "error": getattr(result, "error_message", None),
+                        "error": result.error_message,
                         "operation": "repair",
                     },
                 )
@@ -1375,13 +1369,8 @@ class DBLiftClient:
         ``self._operation_lock``, blocking until another thread's
         operation finishes.
         """
-        thread_state = getattr(self, "_thread_state", None)
-        if thread_state is not None:
-            _raise_if_reentrant(getattr(thread_state, "stack", []), "close")
-        lock = getattr(self, "_operation_lock", None)
-        if lock is None:
-            return self._exit_unlocked(exc_type, exc_val, exc_tb)
-        with lock:
+        _raise_if_reentrant(getattr(self._thread_state, "stack", []), "close")
+        with self._operation_lock:
             return self._exit_unlocked(exc_type, exc_val, exc_tb)
 
     def _exit_unlocked(

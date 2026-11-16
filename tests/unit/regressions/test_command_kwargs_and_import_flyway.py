@@ -12,6 +12,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from tests.unit._client_factory import bare_client
+
 
 # ---------------------------------------------------------------------------
 # scripts_dir kwarg collision must raise a pointed TypeError
@@ -23,9 +25,8 @@ class TestScriptsDirKwargGuard(unittest.TestCase):
     """
 
     def _make_client(self):
-        from dblift.api.client import DBLiftClient
 
-        client = DBLiftClient.__new__(DBLiftClient)
+        client = bare_client()
         client.config = MagicMock()
         client.config.migrations.directory = "/tmp/migrations"
         client.provider = MagicMock()

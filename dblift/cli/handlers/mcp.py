@@ -82,13 +82,11 @@ def _handle_mcp(ctx: CliCommandContext) -> Tuple[bool, Any]:
     from dblift.cli.mcp.server import MissingMcpSdkError, build_server
 
     global_argv: List[str] = list(getattr(ctx.args, "global_arguments", None) or [])
-    read_only = bool(getattr(ctx.args, "read_only", False))
-    offline = bool(getattr(ctx.args, "offline", False))
-    mode = str(getattr(ctx.args, "mode", None) or "author")
-    allowed_tools, tools_ok = _name_list(getattr(ctx.args, "tools", None), "--tools")
-    allowed_resources, resources_ok = _name_list(
-        getattr(ctx.args, "resources", None), "--resources"
-    )
+    read_only = bool(ctx.args.read_only)
+    offline = bool(ctx.args.offline)
+    mode = str(ctx.args.mode)
+    allowed_tools, tools_ok = _name_list(ctx.args.tools, "--tools")
+    allowed_resources, resources_ok = _name_list(ctx.args.resources, "--resources")
     if not tools_ok or not resources_ok:
         return (False, None)
     try:

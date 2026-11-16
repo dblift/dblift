@@ -26,7 +26,7 @@ def test_mcp_is_a_registered_zero_config_command():
 def test_handle_mcp_builds_server_with_global_argv_and_serves():
     server = _quiet_server()
     ctx = CliCommandContext(
-        args=SimpleNamespace(config=None, env=None, global_arguments=["--config", "x.yaml"])
+        args=_announce_args(config=None, env=None, global_arguments=["--config", "x.yaml"])
     )
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
@@ -48,7 +48,7 @@ def test_handle_mcp_reports_missing_sdk_on_stderr(capsys):
     from dblift.cli.mcp.server import SDK_HINT, MissingMcpSdkError
 
     with patch("dblift.cli.mcp.server.build_server", side_effect=MissingMcpSdkError(SDK_HINT)):
-        assert _handle_mcp(CliCommandContext(args=SimpleNamespace())) == (False, None)
+        assert _handle_mcp(CliCommandContext(args=_announce_args())) == (False, None)
 
     captured = capsys.readouterr()
     assert 'pip install "dblift[mcp]"' in captured.err
@@ -84,7 +84,7 @@ def test_handle_mcp_reports_a_failed_build_instead_of_a_traceback(capsys):
         raise ValueError("Duplicate MCP tool: info")
 
     with patch("dblift.cli.mcp.server.load_mcp_tool_registrars", return_value=[broken]):
-        assert _handle_mcp(CliCommandContext(args=SimpleNamespace())) == (False, None)
+        assert _handle_mcp(CliCommandContext(args=_announce_args())) == (False, None)
 
     captured = capsys.readouterr()
     assert "could not start the server" in captured.err
@@ -159,7 +159,7 @@ def test_zero_config_dispatch_keeps_tools_value_out_of_the_command_list(monkeypa
 def test_handle_mcp_passes_the_restrictions_to_build_server():
     server = _quiet_server()
     ctx = CliCommandContext(
-        args=SimpleNamespace(
+        args=_announce_args(
             config=None, env=None, global_arguments=[], read_only=True, tools=" info, validate,,"
         )
     )
@@ -187,7 +187,7 @@ def test_handle_mcp_reports_each_skipped_tool_on_stderr_and_still_serves(capsys)
         ("validate", "not in the allowed tool list"),
     ]
     ctx = CliCommandContext(
-        args=SimpleNamespace(config=None, env=None, global_arguments=[], read_only=True, tools=None)
+        args=_announce_args(config=None, env=None, global_arguments=[], read_only=True, tools=None)
     )
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server):
@@ -208,7 +208,7 @@ def test_handle_mcp_refuses_to_start_on_an_unknown_allowlisted_tool(capsys):
     server.skipped_tools.return_value = [("validate", "not in the allowed tool list")]
     server.unmatched_allowed_tools.return_value = ["nope"]
     ctx = CliCommandContext(
-        args=SimpleNamespace(global_arguments=[], read_only=False, tools="info,nope")
+        args=_announce_args(global_arguments=[], read_only=False, tools="info,nope")
     )
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server):
@@ -226,7 +226,7 @@ def test_handle_mcp_refuses_to_start_on_an_unknown_allowlisted_tool(capsys):
 @pytest.mark.unit
 def test_handle_mcp_refuses_an_empty_allowlist(capsys):
     server = _quiet_server()
-    ctx = CliCommandContext(args=SimpleNamespace(global_arguments=[], read_only=False, tools=" , "))
+    ctx = CliCommandContext(args=_announce_args(global_arguments=[], read_only=False, tools=" , "))
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
         assert _handle_mcp(ctx) == (False, None)
@@ -260,7 +260,7 @@ def test_offline_is_a_known_subcommand_boolean_flag():
 def test_handle_mcp_passes_offline_to_build_server():
     server = _quiet_server()
     ctx = CliCommandContext(
-        args=SimpleNamespace(
+        args=_announce_args(
             config=None, env=None, global_arguments=[], read_only=False, tools=None, offline=True
         )
     )
@@ -282,7 +282,7 @@ def test_handle_mcp_names_the_connection_bound_registrations_on_stderr(capsys):
     server.connection_bound_tools.return_value = ["info", "validate"]
     server.connection_bound_resources.return_value = ["dblift://history"]
     ctx = CliCommandContext(
-        args=SimpleNamespace(
+        args=_announce_args(
             config=None, env=None, global_arguments=[], read_only=False, tools=None, offline=True
         )
     )
@@ -305,7 +305,7 @@ def test_the_offline_note_omits_a_group_that_is_empty(capsys):
     server.connection_bound_tools.return_value = ["info"]
     server.connection_bound_resources.return_value = []
     ctx = CliCommandContext(
-        args=SimpleNamespace(
+        args=_announce_args(
             config=None, env=None, global_arguments=[], read_only=False, tools=None, offline=True
         )
     )
@@ -323,7 +323,7 @@ def test_a_connected_server_says_nothing_about_offline(capsys):
     server = _quiet_server()
     server.connection_bound_tools.return_value = ["info"]
     ctx = CliCommandContext(
-        args=SimpleNamespace(
+        args=_announce_args(
             config=None, env=None, global_arguments=[], read_only=False, tools=None, offline=False
         )
     )
@@ -349,7 +349,7 @@ def test_mcp_parser_accepts_resources():
 def test_handle_mcp_passes_the_resource_allowlist_to_build_server():
     server = _quiet_server()
     ctx = CliCommandContext(
-        args=SimpleNamespace(
+        args=_announce_args(
             config=None,
             env=None,
             global_arguments=[],
@@ -371,7 +371,7 @@ def test_handle_mcp_refuses_to_start_on_an_unknown_resource(capsys):
     server.resource_names.return_value = ["history"]
     server.unmatched_allowed_resources.return_value = ["histroy"]
     ctx = CliCommandContext(
-        args=SimpleNamespace(
+        args=_announce_args(
             global_arguments=[], read_only=False, tools=None, resources="history,histroy"
         )
     )
@@ -390,7 +390,7 @@ def test_handle_mcp_refuses_to_start_on_an_unknown_resource(capsys):
 def test_handle_mcp_refuses_an_empty_resource_allowlist(capsys):
     server = _quiet_server()
     ctx = CliCommandContext(
-        args=SimpleNamespace(global_arguments=[], read_only=False, tools=None, resources=" , ")
+        args=_announce_args(global_arguments=[], read_only=False, tools=None, resources=" , ")
     )
 
     with patch("dblift.cli.mcp.server.build_server", return_value=server) as build:
@@ -411,7 +411,7 @@ def test_handle_mcp_reports_unknown_tools_and_resources_in_one_pass(capsys):
     server.unmatched_allowed_tools.return_value = ["nope"]
     server.unmatched_allowed_resources.return_value = ["histroy"]
     ctx = CliCommandContext(
-        args=SimpleNamespace(
+        args=_announce_args(
             global_arguments=[], read_only=False, tools="info,nope", resources="history,histroy"
         )
     )
@@ -431,7 +431,7 @@ def test_handle_mcp_reports_each_skipped_resource_on_stderr(capsys):
     server = _quiet_server()
     server.skipped_resources.return_value = [("pending", "not in the allowed resource list")]
     ctx = CliCommandContext(
-        args=SimpleNamespace(
+        args=_announce_args(
             config=None,
             env=None,
             global_arguments=[],
@@ -490,7 +490,7 @@ def test_mcp_parser_accepts_mode_review():
 def test_handle_mcp_passes_the_mode_to_build_server():
     server = _quiet_server()
     ctx = CliCommandContext(
-        args=SimpleNamespace(
+        args=_announce_args(
             config=None, env=None, global_arguments=[], read_only=False, tools=None, mode="review"
         )
     )

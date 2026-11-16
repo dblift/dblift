@@ -32,17 +32,17 @@ def _pending_ids_from_info(info: Any) -> list[str]:
     info when useful) so callers can log or surface them in health responses.
     """
     reraise_preflight_failure(info)
-    if not getattr(info, "success", True):
-        detail = getattr(info, "error_message", None) or "migration state is unavailable"
+    if not info.success:
+        detail = info.error_message or "migration state is unavailable"
         raise DbliftError(f"Could not determine migration state: {detail}")
 
     # Use the documented property that already filters status == PENDING
-    pending = getattr(info, "pending_migrations", []) or []
+    pending = info.pending_migrations
     ids: list[str] = []
     for m in pending:
-        script = getattr(m, "script", "")
-        version = getattr(m, "version", None)
-        desc = getattr(m, "description", "") or ""
+        script = m.script
+        version = m.version
+        desc = m.description or ""
         if version is not None:
             ver = str(version)
             if desc and desc not in (ver, script):
@@ -114,7 +114,7 @@ def health_payload(client: DBLiftClient) -> dict:
     return {
         "pending_migrations": pending,
         "current": current,
-        "current_schema_version": getattr(info, "current_schema_version", None),
+        "current_schema_version": info.current_schema_version,
         "pending_count": len(pending),
     }
 
@@ -154,6 +154,6 @@ async def health_payload_async(client: "AsyncDBLiftClient") -> dict:
     return {
         "pending_migrations": pending,
         "current": current,
-        "current_schema_version": getattr(info, "current_schema_version", None),
+        "current_schema_version": info.current_schema_version,
         "pending_count": len(pending),
     }
