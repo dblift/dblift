@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from dblift.api._preflight import reraise_preflight_failure
+from dblift.core.logger.results import OperationResult
 from dblift.core.migration.commands.base_command import reported_exception_name
 
 # The preflight re-raise helper lives on the API layer; this name stays for CLI handlers.
@@ -206,7 +207,6 @@ def run_json_guarded(
             if error is not None
             else f"{command_type.lower()}() returned no result"
         )
-        from dblift.core.logger.results import OperationResult
 
         failed_result = OperationResult(success=False, error_message=text)
         failed_result.complete()

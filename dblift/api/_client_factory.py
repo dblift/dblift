@@ -14,6 +14,7 @@ from dblift.api._engine_config import config_from_engine
 from dblift.config import DbliftConfig
 from dblift.config.config_builder import ConfigBuilder
 from dblift.config.database_config import BaseDatabaseConfig
+from dblift.config.dblift_config import DirectoryConfig, refuse_empty_migrations_path
 from dblift.config.errors import ConfigurationError
 from dblift.config.file_path_anchoring import retain_log_file_fallback
 from dblift.config.path_anchoring import anchor_config_paths
@@ -157,7 +158,6 @@ def normalize_migrations_dirs(config: Any, migrations_dir: Union[str, Path, List
     """
     if isinstance(migrations_dir, (str, Path)):
         migrations_dir = [migrations_dir]
-    from dblift.config.dblift_config import DirectoryConfig, refuse_empty_migrations_path
 
     for raw in migrations_dir:
         if isinstance(raw, DirectoryConfig):
@@ -187,8 +187,6 @@ def normalize_migrations_dirs(config: Any, migrations_dir: Union[str, Path, List
 
 def _as_migration_dir_entry(directory: Any) -> Any:
     """Keep ``DirectoryConfig.recursive``; flatten plain paths to strings."""
-    from dblift.config.dblift_config import DirectoryConfig
-
     if isinstance(directory, DirectoryConfig):
         return directory
     if isinstance(directory, dict) and "recursive" in directory:

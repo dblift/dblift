@@ -29,6 +29,9 @@ from dblift.core.logger.results import (
 )
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.journals.migration_journal import MigrationJournal
+from dblift.core.migration.placeholders.placeholder_service import (
+    PlaceholderService,
+)
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.statement_reader import StatementReader
@@ -37,6 +40,7 @@ from dblift.core.migration.ui.migration_ui import MigrationUI
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
 
+from ..sql.sql_execution_service import SqlExecutionService
 from .execution_engine import ExecutionEngine
 from .migration_helpers import MigrationHelpers
 from .placeholder_manager import PlaceholderManager
@@ -105,9 +109,6 @@ class MigrationExecutor:
         self.placeholders = self.placeholder_manager.init_placeholders()
 
         # Initialize PlaceholderService
-        from dblift.core.migration.placeholders.placeholder_service import (
-            PlaceholderService,
-        )
 
         self.placeholder_service = PlaceholderService(self.placeholders, log)
 
@@ -165,7 +166,6 @@ class MigrationExecutor:
         self.journal = MigrationJournal(capture_objects=analysis_mode == "full")
 
         # Initialize SqlExecutionService for journal support
-        from ..sql.sql_execution_service import SqlExecutionService
 
         self.sql_execution_service = SqlExecutionService(
             provider=self.provider,

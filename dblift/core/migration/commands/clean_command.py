@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, cast
 
 from dblift.core.exceptions import FixedDboSchemaError
 from dblift.core.logger._null import NullLog
-from dblift.core.logger.console import rich_available
+from dblift.core.logger.console import render_tree_to_str, rich_available
 from dblift.core.logger.results import CleanResult
 from dblift.core.seams.runtime_checks import SqlPreflightError
 from dblift.db.error import engine_error_message
@@ -304,8 +304,6 @@ class CleanCommand(BaseCommand):
             return
 
         from rich.tree import Tree
-
-        from dblift.core.logger.console import render_tree_to_str
 
         root = Tree(f"Cleaned {total_objects} object(s) from schema '{result.target_schema}'")
 

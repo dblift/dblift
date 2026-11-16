@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 import sqlalchemy
 
 from dblift.config.database_config import BaseDatabaseConfig, register_database_type
+from dblift.db.provider_registry import ProviderRegistry
 
 
 # lint: allow-dialect-string: config type registration
@@ -59,8 +60,6 @@ class DuckDBConfig(BaseDatabaseConfig):
 
     def build_database_url(self) -> str:
         """Build the DuckDB plugin-owned SQLAlchemy URL."""
-        from dblift.db.provider_registry import ProviderRegistry
-
         return ProviderRegistry.build_sqlalchemy_url(self)
 
     def to_dict(self) -> Dict[str, Any]:

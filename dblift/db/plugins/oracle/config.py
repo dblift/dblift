@@ -8,6 +8,7 @@ from dblift.config.database_config import (
     register_database_type,
     schema_name_allowed,
 )
+from dblift.db.provider_registry import ProviderRegistry
 
 
 # lint: allow-dialect-string: config type registration
@@ -59,6 +60,4 @@ class OracleConfig(BaseDatabaseConfig):
 
     def build_database_url(self) -> str:
         """Build the Oracle plugin-owned SQLAlchemy URL."""
-        from dblift.db.provider_registry import ProviderRegistry
-
         return ProviderRegistry.build_sqlalchemy_url(self)

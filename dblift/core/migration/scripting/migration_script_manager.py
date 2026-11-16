@@ -8,6 +8,7 @@ from typing import Dict, Iterable, Iterator, List, NamedTuple, Optional, Set, Tu
 from dblift.core.logger import Log
 from dblift.core.migration._type_match import is_migration_type
 from dblift.core.migration.encoding import MigrationEncodingError, read_migration_text
+from dblift.core.migration.formats import MigrationFormat, MigrationFormatDetector
 from dblift.core.migration.migration import (
     Migration,
     MigrationType,
@@ -86,8 +87,6 @@ class MigrationScriptManager(MigrationMarkerMixin):
 
         A vanished file raises the encoding reader's error.
         """
-        from dblift.core.migration.formats import MigrationFormat
-
         metadata = (
             filename_metadata
             if filename_metadata is not None
@@ -281,7 +280,6 @@ class MigrationScriptManager(MigrationMarkerMixin):
 
             # Choose the appropriate search method based on recursive flag
             # Support multiple migration formats
-            from dblift.core.migration.formats import MigrationFormatDetector
 
             if dir_recursive:
                 # Recursively find all migration files in the directory and subdirectories

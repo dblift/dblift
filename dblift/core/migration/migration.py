@@ -12,7 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
-from dblift.core.logger import Log
+from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.logger import DbliftLogger, Log
 from dblift.core.migration.encoding import read_migration_text
 from dblift.core.migration.formats import MigrationFormat, MigrationFormatDetector
 from dblift.core.migration.migration_types import (  # noqa: F401 - public compatibility re-export
@@ -25,6 +26,8 @@ from dblift.core.migration.scripting.filename_parser import (  # noqa: F401 - ca
 )
 from dblift.core.migration.sql.migration_sql_parser import (  # noqa: F401 - compatibility re-export
     _default_splitter_dialect,
+    parse_migration_sql,
+    resolve_migration_sql_dialect,
 )
 
 
@@ -470,18 +473,11 @@ class Migration:
             return []
 
         # Use the provided logger or create a standard logger
-        from dblift.core.logger import DbliftLogger
-
         logger = self.logger
         if logger is None:
             logger = DbliftLogger()
         log = cast(Log, logger)
 
-        from dblift.core.exceptions import UnsafeStatementSplitError
-        from dblift.core.migration.sql.migration_sql_parser import (
-            parse_migration_sql,
-            resolve_migration_sql_dialect,
-        )
         from dblift.core.migration.sql.statement_reader import StatementReader
 
         if dialect:

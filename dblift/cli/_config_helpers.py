@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from dblift.api._cli_support import ConnectionProvider
+from dblift.api._cli_support import ConnectionProvider, ProviderRegistry
 from dblift.api._client_factory import apply_derived_schema, effective_log_file_from_config
 from dblift.cli._capability_exit import exit_on_capability_denial
 from dblift.cli._output import _exit_log_location_error
@@ -19,7 +19,9 @@ from dblift.config.dblift_config import (
 )
 from dblift.config.errors import ConfigurationError
 from dblift.config.secrets._provider_base import SecretsResolutionError
+from dblift.config.secrets._resolver import resolve_secret_refs
 from dblift.core.logger import LogFactory, LogFormat, LogLevel
+from dblift.core.logger.console import set_progress_disabled
 from dblift.core.migration.commands.base_command import (
     SCHEMA_REQUIRED_ERROR,
     is_required_schema_missing,
@@ -321,8 +323,6 @@ def _load_and_merge_config(args: argparse.Namespace, log: Any) -> Any:
             _command_handler_attr(command, "_dblift_skip_secret_resolution", False)
         )
         if not is_offline:
-            from dblift.config.secrets._resolver import resolve_secret_refs
-
             try:
                 db_overrides = resolve_secret_refs({"database": db_overrides}, config.secrets).get(
                     "database", db_overrides
@@ -404,8 +404,6 @@ def _validate_db_config(
         if hasattr(config, "database") and config.database
         else ""
     )
-
-    from dblift.api._cli_support import ProviderRegistry
 
     _qcs = ProviderRegistry.get_quirks((db_type or "").lower())
     if _qcs.url_optional_when_file_path_given:
@@ -530,8 +528,6 @@ def _configure_logging(
     ):
         console_log_level = LogLevel.NOTICE
     if getattr(args, "no_progress", False):
-        from dblift.core.logger.console import set_progress_disabled
-
         set_progress_disabled(True)
 
     format_strings = [f.strip().lower() for f in (args.log_format or "text").split(",")]

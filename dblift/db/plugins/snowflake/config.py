@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from dblift.config.database_config import BaseDatabaseConfig, register_database_type
+from dblift.db.provider_registry import ProviderRegistry
 
 
 # lint: allow-dialect-string: config type registration
@@ -39,8 +40,6 @@ class SnowflakeConfig(BaseDatabaseConfig):
 
     def build_database_url(self) -> str:
         """Build the Snowflake SQLAlchemy URL through the provider registry."""
-        from dblift.db.provider_registry import ProviderRegistry
-
         url: str = ProviderRegistry.build_sqlalchemy_url(self)
         return url
 
