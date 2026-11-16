@@ -1,10 +1,9 @@
 """Redshift plugin-owned SQLAlchemy URL construction."""
 
-from types import SimpleNamespace
-
 import pytest
 from sqlalchemy.engine import make_url
 
+from dblift.db.plugins.postgresql.config import PostgreSqlConfig
 from dblift.db.plugins.redshift.plugin import PLUGIN as REDSHIFT_PLUGIN
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -27,7 +26,7 @@ def test_redshift_plugin_uses_redshift_connector_driver() -> None:
 def test_redshift_registry_builds_redshift_connector_url(_reset_registry) -> None:
     ProviderRegistry._plugins["redshift"] = REDSHIFT_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = PostgreSqlConfig(
         type="redshift",
         host="redshift.example.com",
         port=5439,
@@ -52,7 +51,7 @@ def test_redshift_registry_builds_redshift_connector_url(_reset_registry) -> Non
 def test_redshift_postgresql_url_is_mapped_to_redshift_connector(_reset_registry) -> None:
     ProviderRegistry._plugins["redshift"] = REDSHIFT_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = PostgreSqlConfig(
         type="redshift",
         url="postgresql://stale:old@redshift.example.com:5439/dev",
         username="tempuser",

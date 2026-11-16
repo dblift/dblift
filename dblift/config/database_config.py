@@ -82,6 +82,11 @@ def register_database_type(
 # ---------------------------------------------------------------------------
 
 
+def _url_scheme(url: str) -> str:
+    """Return *url*'s lower-cased scheme without its driver (``Pg+psycopg://`` -> ``pg``)."""
+    return url.lower().split(":", 1)[0].split("+", 1)[0]
+
+
 def _infer_type_from_url_scheme(data: Dict[str, Any]) -> None:
     """Phase 1: infer a missing ``type`` from well-known URL prefixes.
 
@@ -93,8 +98,7 @@ def _infer_type_from_url_scheme(data: Dict[str, Any]) -> None:
     if not db_type and url:
         _normalize_sqlite_url_alias(data)
         url = str(data.get("url") or "")
-        url_lower = url.lower()
-        scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
+        scheme = _url_scheme(url)
         if scheme:
             canonical = _native_canonical_from_scheme(scheme)
             if canonical:
@@ -165,8 +169,7 @@ def _infer_type_from_uri(data: Dict[str, Any], url: str) -> None:
     """
     _normalize_sqlite_url_alias(data)
     url = str(data.get("url") or url)
-    url_l = (url or "").strip().lower()
-    scheme = url_l.split(":", 1)[0].split("+", 1)[0]
+    scheme = _url_scheme((url or "").strip())
     canonical = _native_canonical_from_scheme(scheme)
     if canonical:
         data["type"] = canonical

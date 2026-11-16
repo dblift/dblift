@@ -20,7 +20,7 @@ def build_sqlalchemy_url(database_config: Any) -> str:
     DuckDB is embedded/file-based; the ``duckdb_engine`` dialect uses
     ``duckdb:///<file>`` (and ``duckdb:///:memory:`` for in-memory).
     """
-    raw_url = getattr(database_config, "url", None)
+    raw_url = database_config.url
     if isinstance(raw_url, str) and raw_url:
         if raw_url.startswith(("duckdb://", "duckdb+")):
             return raw_url

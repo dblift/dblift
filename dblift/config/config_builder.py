@@ -14,6 +14,7 @@ from dblift.config.database_config import (
     BaseDatabaseConfig,
     _detect_dialect_from_url,
     _file_url_dialect_from_scheme,
+    _url_scheme,
 )
 from dblift.config.dblift_config import (
     DbliftConfig,
@@ -161,7 +162,7 @@ class ConfigBuilder:
             if hasattr(result, key):
                 setattr(result, key, value)
         if overrides.get("url"):
-            _scheme = overrides["url"].strip().lower().split(":", 1)[0].split("+", 1)[0]
+            _scheme = _url_scheme(overrides["url"].strip())
             _file_dialect = _file_url_dialect_from_scheme(_scheme)
             if _file_dialect:
                 result.type = _file_dialect
@@ -181,7 +182,7 @@ class ConfigBuilder:
         """
         if not overrides.get("url"):
             return None
-        _scheme = overrides["url"].strip().lower().split(":", 1)[0].split("+", 1)[0]
+        _scheme = _url_scheme(overrides["url"].strip())
         _file_dialect = _file_url_dialect_from_scheme(_scheme)
         if not _file_dialect:
             return None

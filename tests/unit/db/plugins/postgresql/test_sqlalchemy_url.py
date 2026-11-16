@@ -1,10 +1,9 @@
 """PostgreSQL plugin-owned SQLAlchemy URL construction."""
 
-from types import SimpleNamespace
-
 import pytest
 from sqlalchemy.engine import make_url
 
+from dblift.db.plugins.postgresql.config import PostgreSqlConfig
 from dblift.db.plugins.postgresql.plugin import PLUGIN
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -28,7 +27,7 @@ def test_postgresql_registry_builds_psycopg_sqlalchemy_url(_reset_registry) -> N
     """The registry delegates PostgreSQL SQLAlchemy URLs to the plugin."""
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = PostgreSqlConfig(
         type="postgresql",
         host="db.example.com",
         port=5433,
@@ -61,7 +60,7 @@ def test_postgresql_bare_sqlalchemy_url_uses_psycopg_driver(_reset_registry) -> 
     """Bare PostgreSQL URLs use the installed psycopg v3 driver."""
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = PostgreSqlConfig(
         type="postgresql",
         url="postgresql://db.example.com/app",
     )
@@ -77,7 +76,7 @@ def test_postgresql_postgres_alias_url_uses_psycopg_driver(_reset_registry) -> N
     """Common postgres:// aliases normalize to the installed psycopg v3 driver."""
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = PostgreSqlConfig(
         type="postgresql",
         url="postgres://db.example.com/app",
     )
@@ -93,7 +92,7 @@ def test_postgresql_url_merges_explicit_credentials(_reset_registry) -> None:
     """Split-secret configs keep username/password outside the URL."""
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = PostgreSqlConfig(
         type="postgresql",
         url="postgresql+psycopg://db.example.com/app",
         username="pg",
@@ -113,7 +112,7 @@ def test_postgresql_url_prefers_explicit_credentials_over_url_userinfo(
 ) -> None:
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = PostgreSqlConfig(
         type="postgresql",
         url="postgresql+psycopg://stale:old@db.example.com/app",
         username="pg",
@@ -130,7 +129,7 @@ def test_postgresql_sqlalchemy_url_includes_schema_search_path(_reset_registry) 
     """The plugin maps database.schema to PostgreSQL search_path options."""
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = PostgreSqlConfig(
         type="postgresql",
         host="db.example.com",
         port=5432,
@@ -151,7 +150,7 @@ def test_postgresql_sqlalchemy_url_does_not_repeat_public_schema(_reset_registry
     """A ``public`` target schema is not listed twice on the search path."""
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = PostgreSqlConfig(
         type="postgresql",
         host="db.example.com",
         port=5432,
@@ -172,7 +171,7 @@ def test_postgresql_raw_sqlalchemy_url_merges_schema_search_path(_reset_registry
     """Raw PostgreSQL SQLAlchemy URLs still honor plugin config options."""
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = PostgreSqlConfig(
         type="postgresql",
         url="postgresql://db.example.com/app?options=-cexisting%3D1",
         username="pg",
@@ -202,7 +201,7 @@ def test_postgresql_sqlalchemy_url_builder_rejects_database_url(_reset_registry)
     """PostgreSQL URLs must be native SQLAlchemy URLs."""
     ProviderRegistry._plugins["postgresql"] = PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = PostgreSqlConfig(
         type="postgresql",
         url="jdbc:postgresql://db.example.com:5432/app",
     )
