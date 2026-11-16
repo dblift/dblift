@@ -14,7 +14,6 @@ from dblift.cli._command_handlers import (  # noqa: F401
     _COMMAND_HANDLERS,
     PREMIUM_STUB_COMMANDS,
     CliCommandContext,
-    _extract_version_filters,
     _validate_migrate_options,
     _validate_target_version_option,
     execute_single_command,
@@ -56,10 +55,6 @@ from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.feature_loading import load_feature_extensions
 from dblift.core.seams.license_info import get_license_info
 from dblift.core.seams.tier_resolver import resolve_tier
-from dblift.core.utils.url_masking import mask_database_url
-
-# Backward compatibility alias (used by tests and re-exports)
-_mask_database_url = mask_database_url
 
 # Add project root to Python path when running as a script
 # This allows imports to work when running: python3 cli/main.py
@@ -68,9 +63,6 @@ _script_dir = Path(__file__).parent.absolute()
 _project_root = _script_dir.parent.absolute()
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
-
-# Module-level placeholder; main() uses a local 'log' variable (no global declaration)
-log = None
 
 # argv tokens that are owned by the top-level parser only. Used by phase 1 to
 # split the user-supplied argv between global flags and subcommand args. Lives
@@ -394,7 +386,7 @@ def _apply_config_backed_defaults(args: Any, config: Optional[Any]) -> None:
         return
 
     for spec in PROPERTY_REGISTRY:
-        if spec.cli_only or "." in spec.name:
+        if "." in spec.name:
             continue
         if not hasattr(args, spec.name):
             continue
@@ -526,7 +518,7 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
 
     if commands and commands[0] in terminal_commands:
         args = _build_terminal_args(commands[0], global_arguments, subcommand_args)
-        if hasattr(args, "version") and args.version:
+        if args.version:
             print(_format_version())  # lint: allow-print  --version terminal action
             sys.exit(0)
         sys.exit(terminal_commands[commands[0]](args))
@@ -548,7 +540,7 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
         print(_format_version())  # lint: allow-print  --version terminal action
         sys.exit(0)
 
-    if not commands and (not hasattr(args, "command") or not args.command):
+    if not commands and not args.command:
         create_parser().print_help()
         sys.exit(0)
     if not commands and hasattr(args, "command"):

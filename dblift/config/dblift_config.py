@@ -1257,7 +1257,7 @@ class DbliftConfig:
         from dblift.config.property_registry import PROPERTY_REGISTRY
 
         for spec in PROPERTY_REGISTRY:
-            if spec.cli_only or "." in spec.name:
+            if "." in spec.name:
                 continue  # nested database.* fields are handled by the DBLIFT_DB_* loop above
             raw = env.get(spec.env)
             if not raw:
@@ -1328,9 +1328,7 @@ class DbliftConfig:
         # Registry covers the persistent scalar properties; undo is arg-only
         # (subcommand-driven) and not modeled in the registry.
         _arg_only_keys = ("undo",)
-        registry_keys = [
-            spec.name for spec in PROPERTY_REGISTRY if not spec.cli_only and "." not in spec.name
-        ]
+        registry_keys = [spec.name for spec in PROPERTY_REGISTRY if "." not in spec.name]
         # Every flag backed by a property defaults to None, so None means "not
         # given" and the environment and the file keep their value. Any other
         # value was typed by the user and wins, even when it equals the property

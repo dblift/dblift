@@ -8,18 +8,11 @@ from typing import Any, Callable, Dict, List, NoReturn, Optional, Tuple
 
 from dblift.cli._constants import EXIT_LICENSE_REQUIRED, LICENSE_REQUIRED_FALLBACK_MESSAGE
 from dblift.cli.extensions import load_command_handlers, load_terminal_commands
-from dblift.cli.handlers._shared import (  # noqa: F401
-    _MIGRATION_FILENAME_RE,
-    CliCommandContext,
-    _extract_version_filters,
-    _is_migration_sql_file,
-    _minimal_result,
-    _set_command_completed,
-)
+from dblift.cli.handlers._shared import CliCommandContext, _extract_version_filters
 from dblift.cli.handlers.baseline import _handle_baseline
 from dblift.cli.handlers.clean import _handle_clean
 from dblift.cli.handlers.import_flyway import _handle_import_flyway
-from dblift.cli.handlers.info import _handle_info, _info_result_to_dict  # noqa: F401
+from dblift.cli.handlers.info import _handle_info
 from dblift.cli.handlers.mcp import _handle_mcp
 from dblift.cli.handlers.migrate import _handle_migrate
 from dblift.cli.handlers.repair import _handle_repair

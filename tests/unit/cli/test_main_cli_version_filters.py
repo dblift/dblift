@@ -8,10 +8,10 @@ import pytest
 pytestmark = [pytest.mark.unit]
 
 from dblift.cli.extensions import load_terminal_commands
+from dblift.cli.handlers._shared import _extract_version_filters
 from dblift.cli.main import (
     _AVAILABLE_COMMANDS,
     _COMMAND_HANDLERS,
-    _extract_version_filters,
     _validate_migrate_options,
 )
 

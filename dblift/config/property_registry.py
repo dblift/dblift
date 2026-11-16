@@ -37,7 +37,6 @@ class PropertySpec:
     name: str  # dotted config key; "database.<field>" for nested db config
     type: str  # "str" | "int" | "float" | "bool" | "dict" | "list"
     default: object = None
-    cli_only: bool = False  # runtime meta-flags (version/quiet/...) — no env/config
     cli_exempt: bool = False  # has env+config but intentionally no CLI flag
     cli_aliases: tuple = ()  # legacy flag names that already provide this CLI surface
     coerce: Optional[Callable[[str], object]] = None

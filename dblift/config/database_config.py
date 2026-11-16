@@ -488,16 +488,8 @@ class BaseDatabaseConfig(UrlBuilderMixin, ABC):
 
     def __post_init__(self) -> None:
         """Initialize the database config."""
-        if not hasattr(self, "type"):
-            raise ValueError("Database type is required")
-
         if self.schema and not self._configured_schema_allowed(self.schema):
             raise ValueError(self._invalid_schema_message())
-
-        # Convert port to int if needed
-        if isinstance(self.port, str):
-            # mypy unreachable workaround: do not attempt conversion here
-            pass
 
     def _configured_schema_allowed(self, schema: str) -> bool:
         """Unquoted names only. Oracle overrides this to allow one quoted form."""
