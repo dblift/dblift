@@ -60,12 +60,6 @@ class SqlserverQuirks(BaseQuirks):
     boolean_false_literal = "0"
     supports_go_batch_separator = True
 
-    def is_batch_separator(self, stmt: str) -> bool:
-        """Return ``True`` for T-SQL ``GO`` batch separators (SSMS / sqlcmd)."""
-        from dblift.db.plugins.sqlserver.parser.tsql_batch_separator import is_tsql_batch_separator
-
-        return is_tsql_batch_separator(stmt)
-
     def lexical_spec(self) -> "LexicalSpec":
         """The lexical specification the shared engine splits SQL Server scripts with."""
         from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC

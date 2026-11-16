@@ -4,8 +4,7 @@ Classifies a DML statement (table, events, updated columns, WHERE predicate) fro
 statement facts or, for a plugin with no reader, the sqlglot AST. A statement neither can read
 comes back unread; nothing is guessed from the text. Quote/comment/parenthesis scanning helpers
 live here too. No dialect names or vendor SQL literals: the plugin's
-:class:`~db.base_quirks.BaseQuirks` owns the dialect knowledge. The upsert-marker parameters and
-quirks attributes are kept for signature compatibility; nothing consumes them any more.
+:class:`~db.base_quirks.BaseQuirks` owns the dialect knowledge.
 """
 
 from __future__ import annotations
@@ -25,14 +24,6 @@ if TYPE_CHECKING:
 #: Union of every dialect's string/identifier quoting so the mechanics are
 #: safe regardless of dialect; plugins may narrow this via quirks.
 DEFAULT_QUOTE_PAIRS: Dict[str, str] = {"'": "'", '"': '"', "`": "`", "[": "]"}
-
-#: Default phrase whose presence makes an INSERT also take the UPDATE path
-#: without a following ``SET`` keyword (MySQL upsert).
-DEFAULT_UPSERT_SET_MARKERS: Tuple[str, ...] = ("ON DUPLICATE KEY UPDATE",)
-
-#: Default two-token upsert markers (both must appear) that introduce a
-#: standard ``... DO UPDATE SET`` clause (PostgreSQL / SQLite upsert).
-DEFAULT_UPSERT_MARKER_PAIRS: Tuple[Tuple[str, str], ...] = (("ON CONFLICT", "DO UPDATE"),)
 
 _DML_VERB = re.compile(r"(?:UPDATE|DELETE|INSERT)\b", re.IGNORECASE)
 _DML_MODIFIER_WORDS = MYSQL_DML_MODIFIER_WORDS
@@ -65,9 +56,6 @@ def analyze_dml(
     statement: str,
     *,
     quirks: Optional["BaseQuirks"] = None,
-    quote_pairs: Dict[str, str] = DEFAULT_QUOTE_PAIRS,
-    upsert_set_markers: Sequence[str] = DEFAULT_UPSERT_SET_MARKERS,
-    upsert_marker_pairs: Sequence[Tuple[str, str]] = DEFAULT_UPSERT_MARKER_PAIRS,
 ) -> DmlMutation:
     """Classify a DML statement for undo-safety: table, events, updated columns.
 
@@ -375,8 +363,6 @@ def updates_restore_key(
     restore_key_columns: Sequence[str],
     *,
     quirks: Optional["BaseQuirks"] = None,
-    quote_pairs: Dict[str, str] = DEFAULT_QUOTE_PAIRS,
-    upsert_set_markers: Sequence[str] = DEFAULT_UPSERT_SET_MARKERS,
 ) -> bool:
     """Whether the statement may assign any of ``restore_key_columns``.
 
@@ -385,12 +371,7 @@ def updates_restore_key(
     keys = {str(column).strip().strip('"`[]').lower() for column in restore_key_columns}
     if not keys:
         return False
-    mutation = analyze_dml(
-        statement,
-        quirks=quirks,
-        quote_pairs=quote_pairs,
-        upsert_set_markers=upsert_set_markers,
-    )
+    mutation = analyze_dml(statement, quirks=quirks)
     if mutation.events is None and statement.strip():
         return True  # unread: assume the key may be assigned
     return any(column.lower() in keys for column in mutation.updated_columns)
