@@ -11,7 +11,11 @@ from dblift.core.constants import (
 )
 from dblift.core.logger import NullLog
 from dblift.core.migration.journals.migration_journal import MigrationJournal
-from dblift.core.sql_model.base import SqlStatementType
+from dblift.core.sql_model.base import (
+    SqlObject,
+    SqlObjectType,
+    SqlStatementType,
+)
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import (
@@ -302,11 +306,6 @@ class SqlExecutionService:
                 table_name = self._extract_simple_table_name(table_ref) if table_ref else ""
                 qualifier = table_ref.rpartition(".")[0] if table_ref else ""
                 if table_name:
-                    from dblift.core.sql_model.base import (
-                        SqlObject,
-                        SqlObjectType,
-                    )
-
                     objects_affected = [
                         SqlObject(
                             name=table_name,

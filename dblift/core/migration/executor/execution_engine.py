@@ -52,6 +52,7 @@ from dblift.core.migration.sql.script_directives import opts_out_of_transaction
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.seams import runtime_checks
+from dblift.core.seams.runtime_checks import run_checks
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.base_provider import BaseProvider
 from dblift.db.base_quirks import BaseQuirks
@@ -197,8 +198,6 @@ class ExecutionEngine:
             migration: The migration to execute
             result: The migration result to update
         """
-        from dblift.core.seams.runtime_checks import run_checks
-
         run_checks("migration.pre_execution")
         self._reset_provider_schema_cache()
         self._apply_configured_schema()
@@ -689,7 +688,6 @@ class ExecutionEngine:
             s = str(raw).strip().lower()
             if not s:
                 return None
-            from dblift.db.provider_registry import ProviderRegistry
 
             return ProviderRegistry.canonical_dialect_name(s)
 

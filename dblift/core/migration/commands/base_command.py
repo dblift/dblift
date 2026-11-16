@@ -36,8 +36,9 @@ if TYPE_CHECKING:
 
 from dblift.core.exceptions import CallbackExecutionError
 from dblift.core.logger import Log, NullLog
-from dblift.core.logger.console import rich_available
+from dblift.core.logger.console import render_panel_to_str, rich_available
 from dblift.core.logger.log import LogFormat  # noqa: F401 - historical export
+from dblift.core.logger.log import ConsoleLog, MultiLog, TextFormatter
 from dblift.core.logger.results import CallbackExecution
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.migration_helpers import MigrationHelpers
@@ -47,6 +48,9 @@ from dblift.core.migration.migration_types import MigrationType
 from dblift.core.migration.presentation import presentation_for
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.sql.sql_execution_service import (
+    _format_execution_error,
+)
 from dblift.core.migration.state.migration_state import CallbackReadSnapshot, MigrationReadSnapshot
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.ui.migration_ui import MigrationUI
@@ -54,7 +58,12 @@ from dblift.core.seams.runtime_checks import SqlPreflightError, registered_check
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.core.utils.url_masking import mask_database_url
 from dblift.db.base_provider import BaseProvider
-from dblift.db.error import engine_error_message, redact_driver_error_text
+from dblift.db.error import (
+    engine_error_message,
+    format_connection_error,
+    redact_driver_error_text,
+    strip_sql_statement_block,
+)
 from dblift.db.provider_capabilities import (
     ensure_provider_connection,
     get_provider_display_url,
@@ -562,8 +571,6 @@ class BaseCommand:
         Returns:
             Formatted footer string (plain, for file logs).
         """
-        from dblift.core.logger.console import render_panel_to_str
-
         if not rich_available():
             lines = [
                 f"{command_name} {'completed successfully' if success else 'FAILED'}"
@@ -635,8 +642,6 @@ class BaseCommand:
             if not self.provider.is_connected():
                 self.provider.connect()
         except Exception as exc:
-            from dblift.db.error import format_connection_error
-
             db_type = getattr(self.provider, "canonical_dialect_key", "") or getattr(
                 getattr(self.config, "database", None), "type", ""
             )
@@ -836,11 +841,6 @@ class BaseCommand:
                     settling.note_caller_work()
                     settling.commit_caller_work()
             except Exception as exc:
-                from dblift.core.migration.sql.sql_execution_service import (
-                    _format_execution_error,
-                )
-                from dblift.db.error import strip_sql_statement_block
-
                 # Strip the generated DDL SQLAlchemy appends to
                 # statement-bound errors (see strip_sql_statement_block in
                 # dblift.db.error) so a schema/history-table setup failure
@@ -1052,8 +1052,6 @@ class BaseCommand:
             Formatted header string (plain, for file logs). Use
             ``_build_command_header_panel`` for the console-rendered version.
         """
-        from dblift.core.logger.console import render_panel_to_str
-
         if not rich_available():
             lines = [f"Command: {command_name}"]
             lines.extend(filters or [])
@@ -1203,8 +1201,6 @@ class BaseCommand:
 
         Used to decide whether to ``print()`` formatted headers/footers.
         """
-        from dblift.core.logger.log import ConsoleLog, MultiLog
-
         if isinstance(self.log, MultiLog):
             return any(isinstance(log, ConsoleLog) for log in self.log.logs)
         return isinstance(self.log, ConsoleLog)
@@ -1215,8 +1211,6 @@ class BaseCommand:
         Uses a module-level flag so that the header is not repeated when
         multiple commands run in the same process.
         """
-        from dblift.core.logger.log import TextFormatter
-
         current_module = sys.modules[__name__]
         if not hasattr(current_module, "_console_main_header_printed"):
             current_module._console_main_header_printed = False  # type: ignore[attr-defined]

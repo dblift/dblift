@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional, Type
 
 from dblift.core.exceptions import UnsupportedMigrationFormatError
 from dblift.core.logger import NullLog
-from dblift.core.migration.formats import MigrationFormat
+from dblift.core.migration.formats import MigrationFormat, MigrationFormatDetector
 from dblift.core.migration.migration import Migration
 
 from .base_executor import BaseMigrationExecutor, MigrationExecutionResult
@@ -146,7 +146,6 @@ class MigrationExecutorFactory:
             format = migration.format
         elif hasattr(migration, "path") and migration.path:
             # Detect format from file extension
-            from dblift.core.migration.formats import MigrationFormatDetector
 
             format = MigrationFormatDetector.detect_from_path(migration.path)
         else:

@@ -37,7 +37,7 @@ from dblift.cli._constants import EXIT_LICENSE_REQUIRED
 from dblift.cli._output import CommandOutput, from_args
 from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
 from dblift.cli.extensions import load_terminal_commands
-from dblift.cli.handlers._shared import reported_exception_name
+from dblift.cli.handlers._shared import ConfigOnlyClient, reported_exception_name
 from dblift.cli.premium_manifest import premium_root_flags_missing_from, render_upsell
 from dblift.config.property_registry import PROPERTY_REGISTRY
 from dblift.core.exceptions import InvalidTargetVersionError
@@ -50,6 +50,8 @@ from dblift.core.logger.console import (
     require_presentation_extras,
     rich_available,
 )
+from dblift.core.migration.commands import base_command
+from dblift.core.migration.commands.base_command import _render_main_header_panel
 from dblift.core.premium_manifest import ENTERPRISE_DISTRIBUTION, PRO_DISTRIBUTION
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.feature_loading import load_feature_extensions
@@ -670,7 +672,6 @@ def _build_command_client(ctx: "_CliContext") -> Any:
     ``dblift.client`` seam lets paid tiers substitute their DBLiftClient
     subclass so tier-provided handlers receive the methods they call.
     """
-    from dblift.cli.handlers._shared import ConfigOnlyClient
     from dblift.core.seams.client_factory import resolve_client_class
 
     config_only = len(ctx.commands) == 1 and bool(
@@ -823,11 +824,7 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         formatter.license_info = ctx.license_info
         main_header = formatter.format_header(schema_name, database_name)
 
-        from dblift.core.migration.commands import base_command
-
         if main_header:
-            from dblift.core.migration.commands.base_command import _render_main_header_panel
-
             command_output.banner(_render_main_header_panel(main_header))
         # Always mark the header as printed so that _print_main_header_once()
         # in base_command does not re-emit it (it also has no format awareness).

@@ -48,6 +48,7 @@ from dblift.core.migration.executor.migration_executor import (
     MigrationExecutor,
     require_analysis_support,
 )
+from dblift.core.migration.migration import _default_splitter_dialect
 from dblift.core.migration.target_version import (
     available_versions,
     merge_versions,
@@ -58,6 +59,7 @@ from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.event_listeners import attach_registered_listeners
 from dblift.core.seams.feature_loading import load_feature_extensions
 from dblift.db.base_provider import BaseProvider
+from dblift.db.error import format_connection_error
 from dblift.db.provider_interfaces import ConnectionProvider, TransactionalProvider
 
 __all__ = ["DBLiftClient"]
@@ -381,8 +383,6 @@ class DBLiftClient:
             try:
                 records = self.executor.history_manager.get_applied_migration_records()
             except (OSError, SQLAlchemyError) as exc:
-                from dblift.db.error import format_connection_error
-
                 raise PreflightConnectionError(
                     format_connection_error(exc, self.config.database.type or "")
                 ) from exc
@@ -450,7 +450,6 @@ class DBLiftClient:
         # Neither provider nor config supplied a dialect: fall back to the
         # registry-derived generic dialect rather than a hardcoded literal
         # (ADR-26 E5).
-        from dblift.core.migration.migration import _default_splitter_dialect
 
         return _default_splitter_dialect().lower()
 

@@ -10,6 +10,7 @@ from typing import Any, List, Optional
 
 from dblift.config import DbliftConfig
 from dblift.core.migration.clean_summary import CleanExecutionSummary
+from dblift.db.provider_registry import ProviderRegistry
 
 
 def ensure_provider_connection(provider: Any) -> bool:
@@ -68,8 +69,6 @@ def get_provider_driver_display(
         dialect = str(getattr(provider, "canonical_dialect_key", "") or "").strip().lower()
     if not dialect:
         return None
-
-    from dblift.db.provider_registry import ProviderRegistry
 
     registry_display = ProviderRegistry.get_quirks(dialect).native_driver_display
     return registry_display or None

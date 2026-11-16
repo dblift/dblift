@@ -39,6 +39,7 @@ from dblift.db.dml_analysis import (
     _sqlglot_events,
     _sqlglot_updated_columns,
 )
+from dblift.db.provider_registry import ProviderRegistry
 
 _NAME = rf"(?:{DOUBLE_QUOTED_IDENTIFIER}|{BRACKET_IDENTIFIER}|{BACKTICK_IDENTIFIER}|[\w$]+)"
 _TSQL_STATISTICS_ARGUMENTS = re.compile(
@@ -1930,7 +1931,6 @@ def _nests_block_comments(dialect: str) -> bool:
     # because the spec describes the sqlcmd client; the OR takes the server's reading.
     if not dialect:  # no engine named: sqlglot's base dialect nests, which no caller means
         return False
-    from dblift.db.provider_registry import ProviderRegistry
 
     spec = ProviderRegistry.get_quirks(dialect).lexical_spec()
     return bool(spec and spec.nested_comments) or bool(

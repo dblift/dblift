@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Callable, List, Optional, Tuple
 
-from dblift.core.exceptions import TransactionStatementError
+from dblift.core.exceptions import ParserError, TransactionStatementError
 from dblift.core.sql_parser.statement import Statement, executable_records, execution_strings
 from dblift.core.sql_parser.statement import execution_units as unit_texts
 from dblift.core.utils.row_access import strip_leading_comments
@@ -348,8 +348,6 @@ def _offender_refusal(
 
 def _without_comments(quirks: Any, statement: str, *, blanks: Optional[str] = None) -> str:
     """The statement with its comments gone, so ``COMMIT /* c */`` reads as ``COMMIT``."""
-    from dblift.core.exceptions import ParserError
-
     try:
         statement = quirks.blank_comments(statement)
     except ParserError:  # a scanner refusal belongs to the split, which already passed

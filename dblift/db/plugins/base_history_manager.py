@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log, NullLog
 from dblift.core.migration.migration import MigrationType
+from dblift.db.provider_registry import ProviderRegistry
 
 # History rows are written with ``migration.type.name`` and read back by
 # ``AppliedMigration.from_history_row`` through the name-based ``MigrationType[...]``
@@ -311,8 +312,6 @@ class BaseHistoryManager(ABC):
         Resolved from the plugin quirks so no command has to know that
         Oracle/SQL Server/SQLite spell it ``0``.
         """
-        from dblift.db.provider_registry import ProviderRegistry
-
         dialect = getattr(self.query_executor, "dialect_name", "") or ""
         if not dialect:
             config = getattr(

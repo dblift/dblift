@@ -17,6 +17,11 @@ from dblift.core.migration.state.migrate_plan import MigratePlan, StrictModeErro
 from dblift.core.migration.state.migration_state import MigrationReadSnapshot, MigrationState
 from dblift.core.migration.ui.progress import NullProgress
 from dblift.core.migration.version_utils import compare_versions
+from dblift.core.seams.runtime_checks import (
+    SqlPreflightError,
+    registered_checks,
+    run_checks,
+)
 from dblift.db.error import engine_error_message, redact_driver_error_text
 from dblift.db.provider_interfaces import TransactionalProvider
 
@@ -463,12 +468,6 @@ class MigrateCommand(BaseCommand):
         This will automatically create the schema history table if it doesn't exist,
         without requiring a separate baseline command.
         """
-        from dblift.core.seams.runtime_checks import (
-            SqlPreflightError,
-            registered_checks,
-            run_checks,
-        )
-
         if not dry_run and not mark_as_executed:
             self._prepare_required_analysis()
 

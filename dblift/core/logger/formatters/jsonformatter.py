@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from dblift.core.logger._formatters import _safe_name
+from dblift.core.logger._formatters import _safe_name, resolve_dblift_package_version
 from dblift.core.logger.results import (
     CleanResult,
     MigrationInfo,
@@ -137,8 +137,6 @@ class JsonFormatter:
 
     def _get_version_info(self) -> Dict[str, Any]:
         """Return a dict with log_format_version and dblift_version."""
-        from dblift.core.logger._formatters import resolve_dblift_package_version
-
         return {
             "log_format_version": "1.0",
             "dblift_version": resolve_dblift_package_version(),

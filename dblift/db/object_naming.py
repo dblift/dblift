@@ -9,6 +9,8 @@ it is derived from the dialect's quirks (``unquoted_identifier_case``),
 so framework code never needs to know dialect names.
 """
 
+from dblift.db.provider_registry import ProviderRegistry
+
 
 def get_normalized_object_name(object_name: str, dialect: str) -> str:
     """Return the correct object name for the given database dialect.
@@ -32,8 +34,6 @@ def get_normalized_object_name(object_name: str, dialect: str) -> str:
     """
     if not dialect:
         return object_name.lower()
-
-    from dblift.db.provider_registry import ProviderRegistry
 
     case = ProviderRegistry.get_quirks(dialect).unquoted_identifier_case
     return object_name.upper() if case == "uppercase" else object_name.lower()
