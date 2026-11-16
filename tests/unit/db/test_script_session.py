@@ -164,6 +164,45 @@ def test_begin_that_fails_to_open_its_transaction_leaves_the_connection_as_it_wa
     _assert_back_to_normal(provider)
 
 
+def test_a_failing_restore_at_the_end_leaves_the_provider_forgotten_and_raises(
+    provider, monkeypatch
+):
+    provider.begin_script_session()
+
+    def refuse(conn, previous):
+        raise RuntimeError("restore failed")
+
+    monkeypatch.setattr(_Provider, "_restore_isolation_level", staticmethod(refuse))
+
+    with pytest.raises(RuntimeError, match="restore failed"):
+        provider.end_script_session()
+
+    assert provider._tx is None
+    assert provider._script_session_options is None
+    assert not provider.has_explicit_transaction()
+
+
+def test_begin_whose_isolation_switch_raises_leaves_the_connection_as_it_was(provider, monkeypatch):
+    conn = provider._connection
+    before = conn.get_execution_options()
+    real = conn.execution_options
+
+    def fail_on_autocommit(**options):
+        real(**options)  # SQLAlchemy records the option before the dialect applies it
+        if options.get("isolation_level") == "AUTOCOMMIT":
+            raise SQLAlchemyError("switch failed")
+
+    monkeypatch.setattr(conn, "execution_options", fail_on_autocommit)
+
+    with pytest.raises(ExecutionError, match="could not be prepared"):
+        provider.begin_script_session()
+
+    monkeypatch.undo()
+    assert provider._tx is None
+    assert conn.get_execution_options() == before
+    _assert_back_to_normal(provider)
+
+
 def test_begin_whose_check_raises_changes_nothing(provider):
     provider.fail_check = True
 

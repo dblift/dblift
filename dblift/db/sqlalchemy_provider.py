@@ -527,9 +527,9 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
         if conn.in_transaction():  # the check may have autobegun one
             conn.rollback()
         previous = conn.get_execution_options()
-        conn.execution_options(isolation_level="AUTOCOMMIT")
         begun = False
         try:
+            conn.execution_options(isolation_level="AUTOCOMMIT")
             self._tx = conn.begin()
             begun = True
         finally:

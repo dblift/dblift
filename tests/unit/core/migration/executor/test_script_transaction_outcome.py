@@ -32,7 +32,9 @@ class _Provider(TransactionalProvider):
         fail_begin_session: bool = False,
         fail_end_session: bool = False,
         execute_error: Any = None,
+        caller_owned: bool = False,
     ) -> None:
+        self._caller_owned = caller_owned
         self._execute_error = execute_error
         self.events: List[str] = []
         self._script_session = script_session
@@ -87,6 +89,9 @@ class _Provider(TransactionalProvider):
 
     def supports_script_session(self) -> bool:
         return self._script_session
+
+    def is_caller_owned(self) -> bool:
+        return self._caller_owned
 
 
 class _History:
@@ -302,7 +307,7 @@ def test_opted_out_script_runs_in_a_session_then_records_history():
 
 @pytest.mark.unit
 def test_opted_out_script_that_left_a_transaction_open_fails_after_closing_the_session():
-    engine, migration, result, provider, _ = _nt_run(left_open=True)
+    engine, migration, result, provider, log = _nt_run(left_open=True)
     engine.execute_migration(migration, result)
     assert provider.events == [
         "session:begin",
@@ -314,6 +319,9 @@ def test_opted_out_script_that_left_a_transaction_open_fails_after_closing_the_s
         "commit",
     ]
     assert "the script left a transaction open; it was rolled back" in result.error_message
+    ran = "ran with no dblift transaction: work it committed before the failure"
+    assert sum(ran in m for m in result.warnings) == 1
+    assert sum(ran in m for m in log.warnings) == 1
 
 
 @pytest.mark.unit
@@ -388,7 +396,7 @@ def test_opted_out_callback_runs_in_a_session():
 
 @pytest.mark.unit
 def test_opted_out_callback_that_left_a_transaction_open_fails():
-    engine, callback, provider, _ = _callback(
+    engine, callback, provider, log = _callback(
         content=NT + "INSERT INTO t VALUES (1);", script_session=True, left_open=True
     )
     with pytest.raises(
@@ -396,6 +404,8 @@ def test_opted_out_callback_that_left_a_transaction_open_fails():
     ):
         engine.execute_callback(callback)
     assert provider.events == ["session:begin", "execute", "session:end"]
+    ran = "beforeMigrate__cb.sql ran with no dblift transaction: work it committed"
+    assert sum(ran in m for m in log.warnings) == 1
 
 
 @pytest.mark.unit
@@ -502,6 +512,19 @@ def test_refused_transaction_end_names_the_directive_when_the_provider_supports_
 @pytest.mark.unit
 def test_refused_transaction_end_has_no_hint_without_script_session_support():
     assert HINT not in _refused_run(script_session=False).error_message
+
+
+@pytest.mark.unit
+def test_refused_transaction_end_has_no_hint_on_a_caller_owned_connection():
+    engine, migration, result, _, _ = _run(
+        content="INSERT INTO t VALUES (1);",
+        script_session=True,
+        caller_owned=True,
+        execute_error=_Refused("2D000"),
+    )
+    engine.execute_migration(migration, result)
+    assert "invalid transaction termination" in result.error_message
+    assert HINT not in result.error_message
 
 
 @pytest.mark.unit

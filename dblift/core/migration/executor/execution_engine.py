@@ -267,6 +267,7 @@ class ExecutionEngine:
                     return
             elif policy.script_managed is True:
                 if self._close_script_session():
+                    self._warn_script_ran_unmanaged(migration.script_name, result)
                     self._fail_left_open(migration, statements, execution_time, result)
                     return
                 self._record_autocommit_migration_history(migration, execution_time)
@@ -322,13 +323,18 @@ class ExecutionEngine:
             return None
         head = f"{migration.script_name}: -- dblift:no-transaction"
         tail = "none of its statements were executed"
-        if (
-            not isinstance(self.provider, TransactionalProvider)
-            or not self.provider.supports_script_session()
-        ):
+        provider = self._script_session_provider()
+        if provider is None:
             return f"{head} is not supported on {self._probe_dialect_key()}; {tail}"
-        if self.provider.is_caller_owned():
+        if provider.is_caller_owned():
             return f"{head} cannot run on a connection passed to from_sqlalchemy; {tail}"
+        return None
+
+    def _script_session_provider(self) -> Optional[TransactionalProvider]:
+        """The provider when it can run a script session, else None."""
+        provider = self.provider
+        if isinstance(provider, TransactionalProvider) and provider.supports_script_session():
+            return provider
         return None
 
     def _start_script_session(self, migration: Migration) -> Optional[str]:
@@ -970,14 +976,27 @@ class ExecutionEngine:
 
     def _no_transaction_hint(self, migration: Migration, error: Exception) -> str:
         """Name the directive when the engine refused a transaction end it could be told about."""
+        provider = self._script_session_provider()
         if (
             _chained_sqlstate(error) == _INVALID_TRANSACTION_TERMINATION
-            and isinstance(self.provider, TransactionalProvider)
-            and self.provider.supports_script_session() is True
+            and provider is not None
+            and not provider.is_caller_owned()
             and not self._opts_out(migration)
         ):
             return _NO_TRANSACTION_HINT
         return ""
+
+    def _warn_script_ran_unmanaged(
+        self, script_name: str, result: Optional[OperationResult] = None
+    ) -> None:
+        """Say that a failed script may have committed work: it ran with no dblift transaction."""
+        warning = (
+            f"{script_name} ran with no dblift transaction: work it committed "
+            "before the failure remains applied."
+        )
+        self.log.warning(warning)
+        if result is not None:
+            result.add_warning(warning)
 
     def _handle_statement_failure(
         self,
@@ -1028,12 +1047,7 @@ class ExecutionEngine:
             )
 
         if self._script_session_open:
-            session_warning = (
-                f"{migration.script_name} ran with no dblift transaction: work it committed "
-                "before the failure remains applied."
-            )
-            self.log.warning(session_warning)
-            result.add_warning(session_warning)
+            self._warn_script_ran_unmanaged(migration.script_name, result)
 
         # Rollback transaction for failed migration FIRST
         try:
@@ -1475,6 +1489,7 @@ class ExecutionEngine:
         """Close the callback's session or transaction; raise when the script left one open."""
         if policy.script_managed is True:
             if self._close_script_session():
+                self._warn_script_ran_unmanaged(callback.script_name)
                 raise TransactionLeftOpenError(
                     f"{callback.script_name} left a transaction open; it was rolled back. "
                     "End every transaction the script opens with COMMIT or ROLLBACK"
