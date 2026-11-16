@@ -98,11 +98,7 @@ class SqlExecutionService:
 
     def prepare_analysis(self) -> None:
         """Prepare dependencies required by the active object-change journal."""
-        if self._analysis_prepared or not (
-            self.journal
-            and getattr(self.journal, "capture_objects", True)
-            and hasattr(self.journal, "record_object_changes")
-        ):
+        if self._analysis_prepared or self.journal is None or not self.journal.capture_objects:
             return
         if not self.quirks.supports_sql_migrations:
             return
@@ -161,7 +157,7 @@ class SqlExecutionService:
 
         # Record statement start in journal if enabled
         stmt_start_time = time.time()
-        if self.journal and hasattr(self.journal, "record_statement_start"):
+        if self.journal is not None:
             self.journal.record_statement_start(statement, stmt_index)
 
         try:
@@ -174,7 +170,7 @@ class SqlExecutionService:
                 row_count = len(result_set) if result_set else 0
 
                 # Record statement completion in journal
-                if self.journal and hasattr(self.journal, "record_statement_complete"):
+                if self.journal is not None:
                     execution_time = int((time.time() - stmt_start_time) * SECONDS_TO_MILLISECONDS)
                     self.journal.record_statement_complete(
                         statement, stmt_index, execution_time, {"rows_affected": row_count}
@@ -197,17 +193,16 @@ class SqlExecutionService:
                 rows_affected = self._provider_execute(statement, params, autocommit)
 
                 # Record statement completion in journal
-                if self.journal and hasattr(self.journal, "record_statement_complete"):
+                if self.journal is not None:
                     execution_time = int((time.time() - stmt_start_time) * SECONDS_TO_MILLISECONDS)
                     self.journal.record_statement_complete(
                         statement, stmt_index, execution_time, {"rows_affected": rows_affected}
                     )
 
                     # Record the objects DDL and DML statements act on
-                    if hasattr(self.journal, "record_object_changes"):
-                        objects_dict = self.affected_objects(statement, statement_type)
-                        if objects_dict:
-                            self.journal.record_object_changes(statement, stmt_index, objects_dict)
+                    objects_dict = self.affected_objects(statement, statement_type)
+                    if objects_dict:
+                        self.journal.record_object_changes(statement, stmt_index, objects_dict)
 
                 # Return affected row count
                 return False, rows_affected
@@ -221,7 +216,7 @@ class SqlExecutionService:
                 rows_affected = self._provider_execute(statement, params, autocommit)
 
                 # Record statement completion in journal
-                if self.journal and hasattr(self.journal, "record_statement_complete"):
+                if self.journal is not None:
                     execution_time = int((time.time() - stmt_start_time) * SECONDS_TO_MILLISECONDS)
                     self.journal.record_statement_complete(
                         statement, stmt_index, execution_time, {"rows_affected": rows_affected}
@@ -232,7 +227,7 @@ class SqlExecutionService:
 
         except Exception as e:
             # Record statement failure in journal if enabled
-            if self.journal and hasattr(self.journal, "record_statement_failed"):
+            if self.journal is not None:
                 execution_time = int((time.time() - stmt_start_time) * SECONDS_TO_MILLISECONDS)
                 error_message = redact_driver_error_text(
                     strip_sql_statement_block(
@@ -269,7 +264,7 @@ class SqlExecutionService:
         if statement_type not in (
             SqlStatementType.DDL.value,
             SqlStatementType.DML.value,
-        ) or not getattr(self.journal, "capture_objects", True):
+        ) or (self.journal is not None and not self.journal.capture_objects):
             return []
         try:
             return self._read_affected_objects(statement, statement_type)

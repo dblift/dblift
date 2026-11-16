@@ -19,6 +19,7 @@ from dblift.core.migration.commands._script_runner import ScriptRunner
 from dblift.core.migration.commands.base_command import BaseCommand
 from dblift.core.migration.commands.migrate_command import MIGRATE_POLICY
 from dblift.core.migration.commands.undo_command import UNDO_POLICY
+from dblift.core.migration.state.migration_state import MigrationState
 from dblift.db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
 
 _NOISE = ("(pymysql.err", "(ibm_db_dbi", "[SQL:", "sqlalche.me", "Background on this error")
@@ -334,7 +335,7 @@ def test_repair_failure_is_the_engine_message(failing, make_error, engine_text):
     result = RepairResult()
 
     with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-        command._execute_repair_loop(as_actions(repairs), result)
+        command._execute_repair_loop(as_actions(repairs), result, MigrationState())
 
     assert result.error_message.startswith("Repair")
     _assert_readable(result.error_message, engine_text)

@@ -24,6 +24,7 @@ import pytest
 from dblift.core.logger.results import RepairResult
 from dblift.core.migration.commands.base_command import PreflightConnectionError
 from dblift.core.migration.commands.repair_command import RepairCommand, RepairSafetyError
+from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.checksum_drift import ChecksumDrift
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.state.repair_plan import (
@@ -301,7 +302,7 @@ class TestDeleteFailedMigrationEntry(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            deleted = cmd._delete_failed_migration_entry(repair, result)
+            deleted = cmd._delete_failed_migration_entry(repair, result, MigrationState())
 
         self.assertTrue(deleted)
         self.assertEqual(result.failed_migrations_removed, 1)
@@ -313,7 +314,7 @@ class TestDeleteFailedMigrationEntry(unittest.TestCase):
         repair = {"script": "V1__a.sql", "version": "1"}
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            cmd._delete_failed_migration_entry(repair, RepairResult())
+            cmd._delete_failed_migration_entry(repair, RepairResult(), MigrationState())
 
         provider.execute_statement.assert_not_called()
 
@@ -332,7 +333,7 @@ class TestDeleteFailedMigrationEntry(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            deleted = cmd._delete_failed_migration_entry(repair, result)
+            deleted = cmd._delete_failed_migration_entry(repair, result, MigrationState())
 
         self.assertTrue(deleted)
         warning_text = " ".join(str(call.args[0]) for call in cmd.log.warning.call_args_list)
@@ -345,7 +346,7 @@ class TestDeleteFailedMigrationEntry(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            deleted = cmd._delete_failed_migration_entry(repair, result)
+            deleted = cmd._delete_failed_migration_entry(repair, result, MigrationState())
 
         self.assertFalse(deleted)
         self.assertEqual(result.failed_migrations_removed, 0)
@@ -367,7 +368,7 @@ class TestDeleteFailedMigrationEntry(unittest.TestCase):
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
             with self.assertRaises(RuntimeError):
-                cmd._delete_failed_migration_entry(repair, RepairResult())
+                cmd._delete_failed_migration_entry(repair, RepairResult(), MigrationState())
 
 
 # ---------------------------------------------------------------------------
@@ -400,7 +401,9 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
+            executed, had_error = cmd._execute_repair_loop(
+                as_actions(repairs), result, MigrationState()
+            )
 
         self.assertFalse(had_error)
         self.assertEqual(executed, 1)
@@ -412,7 +415,9 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
+            executed, had_error = cmd._execute_repair_loop(
+                as_actions(repairs), result, MigrationState()
+            )
 
         self.assertFalse(had_error)
         # repair_checksum should be called with int 200
@@ -424,7 +429,9 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
+            executed, had_error = cmd._execute_repair_loop(
+                as_actions(repairs), result, MigrationState()
+            )
 
         self.assertTrue(had_error)
         self.assertIsNotNone(result.error_message)
@@ -444,7 +451,9 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
+            executed, had_error = cmd._execute_repair_loop(
+                as_actions(repairs), result, MigrationState()
+            )
 
         self.assertTrue(had_error)
 
@@ -456,13 +465,15 @@ class TestExecuteRepairLoop(unittest.TestCase):
                 "script": "V1__a.sql",
                 "version": "1",
                 "description": "initial setup",
-                "original_type": None,
+                "original_type": MigrationType.SQL,
             }
         ]
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
+            executed, had_error = cmd._execute_repair_loop(
+                as_actions(repairs), result, MigrationState()
+            )
 
         self.assertFalse(had_error)
         self.assertEqual(executed, 1)
@@ -471,7 +482,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
 
     def test_missing_script_repair_with_original_type_object(self):
         cmd, provider = self._make_cmd_for_repair_loop()
-        original_type = SimpleNamespace(name="REPEATABLE")
+        original_type = MigrationType.REPEATABLE
         repairs = [
             {
                 "type": "MISSING_SCRIPT",
@@ -484,7 +495,9 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
+            executed, had_error = cmd._execute_repair_loop(
+                as_actions(repairs), result, MigrationState()
+            )
 
         self.assertFalse(had_error)
         self.assertEqual(executed, 1)
@@ -513,7 +526,9 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
+            executed, had_error = cmd._execute_repair_loop(
+                as_actions(repairs), result, MigrationState()
+            )
 
         self.assertFalse(had_error)
         self.assertEqual(executed, 1)
@@ -578,7 +593,9 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
+            executed, had_error = cmd._execute_repair_loop(
+                as_actions(repairs), result, MigrationState()
+            )
 
         self.assertTrue(had_error)
         provider.rollback_transaction.assert_called()
@@ -604,7 +621,9 @@ class TestExecuteRepairLoop(unittest.TestCase):
         result = RepairResult()
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
+            executed, had_error = cmd._execute_repair_loop(
+                as_actions(repairs), result, MigrationState()
+            )
 
         self.assertTrue(had_error)
         provider.rollback_transaction.assert_called()
@@ -618,7 +637,7 @@ class TestExecuteRepairLoop(unittest.TestCase):
         cmd = _make_cmd(provider=provider, history_manager=history_manager)
 
         with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-            executed, had_error = cmd._execute_repair_loop([], RepairResult())
+            executed, had_error = cmd._execute_repair_loop([], RepairResult(), MigrationState())
 
         self.assertEqual(executed, 0)
         self.assertFalse(had_error)

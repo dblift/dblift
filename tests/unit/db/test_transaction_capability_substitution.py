@@ -18,6 +18,7 @@ from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.execution_statement import ExecutionStatement
 from dblift.core.migration.sql.statement_reader import StatementReader
+from dblift.core.migration.state.migration_state import MigrationState
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.provider_interfaces import DroppableObject, TransactionalProvider
 from tests.unit._migration_factory import make_migration
@@ -173,8 +174,18 @@ def test_repair_records_delete_marker_without_transaction_methods():
     cmd = command(RepairCommand, provider)
     result = RepairResult()
     count, failed = cmd._execute_repair_loop(
-        as_actions([{"type": "MISSING_SCRIPT", "script": "V1__items.sql", "version": "1"}]),
+        as_actions(
+            [
+                {
+                    "type": "MISSING_SCRIPT",
+                    "script": "V1__items.sql",
+                    "version": "1",
+                    "original_type": MigrationType.SQL,
+                }
+            ]
+        ),
         result,
+        MigrationState(),
     )
     assert (count, failed) == (1, False)
     assert provider.records[0]["type"] == "DELETE"
