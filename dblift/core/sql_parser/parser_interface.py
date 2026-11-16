@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from dblift.core.sql_model.base import ParseResult, SqlObject, SqlStatement
+from dblift.core.sql_model.base import ParseResult, SqlObject
 
 
 class SqlParserInterface(ABC):
@@ -46,13 +46,6 @@ class SqlParserInterface(ABC):
         batches contribute none.
         """
 
-    def statement_sources(self, script: str, statements: List[str]) -> List[Optional[str]]:
-        """Each of ``statements`` as it stands in ``script``, blanks the split trimmed included.
-
-        ``None`` marks one that cannot be located. Parsers that read names override this.
-        """
-        return list(statements)
-
     @abstractmethod
     def split_for_analysis(self, sql_content: str) -> List[str]:
         """Scanner-derived executed constituents, once per execution unit.
@@ -85,21 +78,6 @@ class SqlParserInterface(ABC):
         Returns:
             List of extracted SQL objects
         """
-
-    def parse(self, sql: str, default_schema: Optional[str] = None) -> SqlStatement:
-        """Parse a single SQL statement.
-
-        Args:
-            sql: SQL statement to parse
-            default_schema: Default schema name
-
-        Returns:
-            SqlStatement object representing the parsed statement
-        """
-        result = self.parse_sql(sql, default_schema)
-        if result.success and result.statements:
-            return result.statements[0]
-        raise ValueError(f"Failed to parse SQL: {', '.join(result.errors or [])}")
 
     def get_affected_objects(
         self, sql: str, default_schema: Optional[str] = None
