@@ -18,10 +18,12 @@ from sqlalchemy.engine import Connection, Engine, Transaction
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from dblift.config import DbliftConfig
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.exceptions import ExecutionError, TransactionAbortedError
 from dblift.core.logger import Log
 from dblift.db.base_provider import NativeProvider
 from dblift.db.native_connection_manager import NativeConnectionManager
+from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE
 from dblift.db.provider_interfaces import TransactionalProvider
 
 
@@ -640,3 +642,55 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
             if dbapi_connection is not None:
                 conn.dialect.reset_isolation_level(dbapi_connection)
         conn._execution_options = previous  # type: ignore[assignment]
+
+    def create_migration_history_table_if_not_exists(
+        self,
+        schema: str,
+        create_schema: bool = False,
+        table_name: str = DEFAULT_HISTORY_TABLE,
+    ) -> None:
+        """Create the migration history table if it is missing."""
+        if create_schema:
+            self.create_schema_if_not_exists(schema)
+        if self.table_exists(schema, table_name):
+            if create_schema:
+                self._check_baseline_safety(schema, table_name)
+            return
+        self.execute_statement(self.create_history_table(schema, table_name))
+
+    def _check_baseline_safety(self, schema: str, table_name: str) -> None:
+        """Refuse baseline when the history table already contains migrations."""
+        qualified_table = self.get_schema_qualified_name(schema, table_name)
+        rows = self.execute_query(f"SELECT COUNT(1) as count FROM {qualified_table}")
+        migration_count = 0
+        if rows:
+            migration_count = int(rows[0].get("count", rows[0].get("COUNT", 0)) or 0)
+        if migration_count > 0:
+            raise RuntimeError(
+                f"Schema {schema} already contains a migration history table "
+                f"{table_name} with {migration_count} migration(s). "
+                "Baseline cannot be applied to a schema with existing migrations."
+            )
+
+    def record_undo(
+        self,
+        schema: str,
+        version: str,
+        table_name: Optional[str] = None,
+        script_name: Optional[str] = None,
+    ) -> bool:
+        """Record a successful undo operation in the migration history."""
+        undo_script = script_name or f"UNDO_{version}.sql"
+        self.record_migration(
+            schema,
+            {
+                "version": version,
+                "description": f"Undo migration {version}",
+                "type": UNDO_HISTORY_TYPE,
+                "script": undo_script,
+                "checksum": 0,
+                "success": True,
+            },
+            table_name or DEFAULT_HISTORY_TABLE,
+        )
+        return True

@@ -52,47 +52,6 @@ class TestValidationResult(unittest.TestCase):
         self.assertEqual(entry["filesystem_checksum"], 456)
 
 
-class TestLastSuccessfulRecord(unittest.TestCase):
-    def _make_migration(self, script_name, mtype, success=True):
-        from types import SimpleNamespace
-
-        return SimpleNamespace(script_name=script_name, type=mtype, success="1" if success else "0")
-
-    def test_returns_none_on_empty(self):
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
-
-        self.assertIsNone(_last_successful_non_delete_record([], "V1__test.sql"))
-
-    def test_finds_matching_successful_migration(self):
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
-
-        m = self._make_migration("V1__test.sql", "SQL")
-        result = _last_successful_non_delete_record([m], "V1__test.sql")
-        self.assertIs(result, m)
-
-    def test_skips_non_matching_script(self):
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
-
-        m = self._make_migration("V2__other.sql", "SQL")
-        result = _last_successful_non_delete_record([m], "V1__test.sql")
-        self.assertIsNone(result)
-
-    def test_skips_failed_migration(self):
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
-
-        m = self._make_migration("V1__test.sql", "SQL", success=False)
-        result = _last_successful_non_delete_record([m], "V1__test.sql")
-        self.assertIsNone(result)
-
-    def test_returns_latest_when_multiple(self):
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
-
-        m1 = self._make_migration("V1__test.sql", "SQL")
-        m2 = self._make_migration("V1__test.sql", "SQL")
-        result = _last_successful_non_delete_record([m1, m2], "V1__test.sql")
-        self.assertIs(result, m2)
-
-
 class TestMigrationValidatorInit(unittest.TestCase):
     def test_init_with_config(self):
         v, sm, hm, log = _make_validator()

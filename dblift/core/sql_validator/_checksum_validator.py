@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Dict, List, Mapping, Optional, Sequence, Set, 
 
 from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.scripting.migration_script_manager import (  # noqa: F401
-    _last_successful_non_delete_record,
     _successful_non_delete_records,
 )
 from dblift.core.migration.state.checksum_drift import ChecksumDrift

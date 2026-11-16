@@ -14,7 +14,6 @@ from dblift.core.migration.migration import (
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import (  # noqa: F401
     MigrationScriptManager,
-    _last_successful_non_delete_record,
 )
 from dblift.core.migration.state.checksum_drift import ChecksumDrift
 from dblift.core.migration.state.migration_state import MigrationValidationSnapshot

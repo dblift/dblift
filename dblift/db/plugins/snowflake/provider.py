@@ -12,7 +12,7 @@ from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
-from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
+from dblift.db.plugins.base_history_manager import installed_on_to_bind
 from dblift.db.plugins.sql_lease_store import (
     OWNER_COLUMN,
     OWNER_COLUMN_TYPE,
@@ -857,29 +857,6 @@ class SnowflakeProvider(SqlLeaseLockingProvider):
             """,
             params=params,
         )
-
-    def record_undo(
-        self,
-        schema: str,
-        version: str,
-        table_name: Optional[str] = None,
-        script_name: Optional[str] = None,
-    ) -> bool:
-        """Record a successful undo in Snowflake migration history."""
-        undo_script = script_name or f"UNDO_{version}.sql"
-        self.record_migration(
-            schema,
-            {
-                "version": version,
-                "description": f"Undo migration {version}",
-                "type": UNDO_HISTORY_TYPE,
-                "script": undo_script,
-                "checksum": 0,
-                "success": True,
-            },
-            table_name or DEFAULT_HISTORY_TABLE,
-        )
-        return True
 
     def repair_migration_history(
         self,

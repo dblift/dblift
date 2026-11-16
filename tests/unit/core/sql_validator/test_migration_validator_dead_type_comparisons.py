@@ -166,7 +166,6 @@ class TestCallbackHistoryRowsAreNotFatal(unittest.TestCase):
 
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = True
-        sm.has_script_changed.return_value = False
         hm.get_applied_migrations.return_value = [
             _history_row(MigrationType.CALLBACK, "afterMigrate__log.sql", version=None)
         ]
@@ -183,7 +182,6 @@ class TestCallbackHistoryRowsAreNotFatal(unittest.TestCase):
 
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = True
-        sm.has_script_changed.return_value = False
         hm.get_applied_migrations.return_value = [
             _history_row(MigrationType.CALLBACK, "afterMigrate__log.sql", version=None)
         ]
