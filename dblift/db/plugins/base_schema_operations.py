@@ -1,7 +1,7 @@
 """Base abstract class for database schema operations."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Callable, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, List, Optional, Set
 
 from dblift.core.logger import Log, NullLog
 from dblift.core.migration.clean_summary import CleanExecutionSummary
@@ -83,68 +83,6 @@ class BaseSchemaOperations(ABC):
         Args:
             connection: Active database connection (provided by Provider)
             schema: Schema name to set as current
-        """
-
-    @abstractmethod
-    def get_columns_query(self, schema: str, table: str) -> Union[str, Tuple[str, List[Any]]]:
-        """Get SQL query to retrieve column information for a table.
-
-        Args:
-            schema: Schema name
-            table: Table name
-
-        Returns:
-            str or (sql, params) tuple for parameterized queries
-        """
-
-    @abstractmethod
-    def get_add_column_sql(self, schema: str, table: str, column: str, type_def: str) -> str:
-        """Generate SQL to add a column to a table.
-
-        Args:
-            schema: Schema name
-            table: Table name
-            column: Column name to add
-            type_def: Column type definition
-
-        Returns:
-            SQL statement to add the column
-        """
-
-    @abstractmethod
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Generate parameter placeholders for prepared statements.
-
-        Most databases use '?' but some may use different formats.
-
-        Args:
-            count: Number of placeholders needed
-
-        Returns:
-            Comma-separated placeholder string (e.g., "?, ?, ?")
-        """
-
-    @abstractmethod
-    def get_tables(self, connection: Any, schema: str) -> List[str]:
-        """Get list of table names in the specified schema.
-
-        Args:
-            connection: Active database connection (provided by Provider)
-            schema: Schema name to query
-
-        Returns:
-            List of table names
-        """
-
-    @abstractmethod
-    def get_schemas(self, connection: Any) -> List[str]:
-        """Get list of all schema names in the database.
-
-        Args:
-            connection: Active database connection (provided by Provider)
-
-        Returns:
-            List of schema names
         """
 
     def _drop_objects_by_type(

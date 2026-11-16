@@ -282,15 +282,6 @@ class CosmosDbProvider(NativeProvider):
         # Cosmos DB is schema-less, so adding columns doesn't apply
         return "-- Cosmos DB is schema-less, no ALTER TABLE needed"
 
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Get positional placeholders for dblift SQL execution paths.
-
-        The Cosmos query executor inlines ``?`` parameters before translating
-        generic SQL into SDK calls. Keeping the provider contract positional
-        lets shared callers use the same INSERT and DELETE paths.
-        """
-        return ", ".join(["?" for _ in range(count)])
-
     def record_migration(
         self, schema: str, migration_info: Dict[str, Any], table_name: str = DEFAULT_HISTORY_TABLE
     ) -> None:

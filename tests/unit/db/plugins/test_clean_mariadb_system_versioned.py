@@ -63,11 +63,6 @@ class TestMariadbCleanSystemVersioned(unittest.TestCase):
             ],
         )
 
-    def test_get_tables_includes_system_versioned_table(self):
-        ops = MySqlSchemaOperations(query_executor=_qx(), log=MagicMock())
-
-        self.assertEqual(ops.get_tables(MagicMock(), "testdb"), ["orders", "prices"])
-
 
 if __name__ == "__main__":
     unittest.main()

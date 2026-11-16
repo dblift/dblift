@@ -111,34 +111,6 @@ class TestSqlServerSchemaOperations(unittest.TestCase):
         result = ops.get_database_version(conn)
         self.assertIn("Unknown", result)
 
-    def test_get_tables_returns_list(self):
-        ops, qe, log = self._make_ops()
-        conn, _, _ = _make_connection()
-        qe.execute_query.return_value = [{"table_name": "orders"}, {"table_name": "users"}]
-        result = ops.get_tables(conn, "dbo")
-        self.assertEqual(["orders", "users"], result)
-
-    def test_get_tables_returns_empty_on_exception(self):
-        ops, qe, log = self._make_ops()
-        conn, _, _ = _make_connection()
-        qe.execute_query.side_effect = RuntimeError("error")
-        result = ops.get_tables(conn, "dbo")
-        self.assertEqual([], result)
-
-    def test_get_schemas_returns_list(self):
-        ops, qe, log = self._make_ops()
-        conn, _, _ = _make_connection()
-        qe.execute_query.return_value = [{"schema_name": "dbo"}, {"schema_name": "app"}]
-        result = ops.get_schemas(conn)
-        self.assertIn("dbo", result)
-
-    def test_get_schemas_returns_empty_on_exception(self):
-        ops, qe, log = self._make_ops()
-        conn, _, _ = _make_connection()
-        qe.execute_query.side_effect = RuntimeError("error")
-        result = ops.get_schemas(conn)
-        self.assertEqual([], result)
-
     def test_set_current_schema_raises_not_implemented(self):
         """Real schema handling lives on SqlServerProvider, not here; a
         silent no-op would hide a future accidental call to this method.
@@ -147,24 +119,6 @@ class TestSqlServerSchemaOperations(unittest.TestCase):
         conn, _, _ = _make_connection()
         with self.assertRaises(NotImplementedError):
             ops.set_current_schema(conn, "dbo")
-
-    def test_get_columns_query_returns_tuple(self):
-        ops, qe, log = self._make_ops()
-        sql, params = ops.get_columns_query("dbo", "orders")
-        self.assertIn("INFORMATION_SCHEMA.COLUMNS", sql)
-        self.assertEqual(["dbo", "orders"], params)
-
-    def test_get_add_column_sql_generates_alter_table(self):
-        ops, qe, log = self._make_ops()
-        sql = ops.get_add_column_sql("dbo", "orders", "status", "NVARCHAR(50)")
-        self.assertIn("ALTER TABLE", sql)
-        self.assertIn("ADD", sql)
-        self.assertIn("[status]", sql)
-
-    def test_get_parameter_placeholders(self):
-        ops, qe, log = self._make_ops()
-        result = ops.get_parameter_placeholders(3)
-        self.assertEqual("?, ?, ?", result)
 
     def test_clean_schema_drops_tables(self):
         ops, qe, log = self._make_ops()

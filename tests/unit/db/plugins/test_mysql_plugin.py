@@ -115,68 +115,6 @@ class TestMySqlSchemaOperations(unittest.TestCase):
 
         self.assertIn("Unknown", result)
 
-    # --- get_tables ---
-
-    def test_get_tables_returns_list(self):
-        ops, qe, log = self._make_ops()
-        conn, _, _ = _make_connection()
-        qe.execute_query.return_value = [{"table_name": "orders"}, {"table_name": "users"}]
-
-        tables = ops.get_tables(conn, "mydb")
-
-        self.assertEqual(["orders", "users"], tables)
-
-    def test_get_tables_returns_empty_on_error(self):
-        ops, qe, log = self._make_ops()
-        conn, _, _ = _make_connection()
-        qe.execute_query.side_effect = RuntimeError("query failed")
-
-        tables = ops.get_tables(conn, "mydb")
-
-        self.assertEqual([], tables)
-
-    # --- get_schemas ---
-
-    def test_get_schemas_returns_list(self):
-        ops, qe, log = self._make_ops()
-        conn, _, _ = _make_connection()
-        qe.execute_query.return_value = [{"schema_name": "mydb"}]
-
-        schemas = ops.get_schemas(conn)
-
-        self.assertIn("mydb", schemas)
-
-    # --- get_columns_query ---
-
-    def test_get_columns_query_contains_schema_and_table(self):
-        ops, qe, log = self._make_ops()
-        sql = ops.get_columns_query("mydb", "orders")
-        self.assertIn("_utf8mb4 X'6d796462'", sql)
-        self.assertIn("_utf8mb4 X'6f7264657273'", sql)
-        self.assertIn("COLUMN_NAME", sql)
-
-    def test_get_columns_query_includes_column_type(self):
-        """BUG-01: COLUMN_TYPE must be included to get full ENUM member list."""
-        ops, qe, log = self._make_ops()
-        sql = ops.get_columns_query("mydb", "orders")
-        self.assertIn("COLUMN_TYPE", sql.upper())
-
-    # --- get_add_column_sql ---
-
-    def test_get_add_column_sql_uses_backtick(self):
-        ops, qe, log = self._make_ops()
-        sql = ops.get_add_column_sql("mydb", "orders", "status", "VARCHAR(50)")
-        self.assertIn("ALTER TABLE", sql)
-        self.assertIn("ADD COLUMN", sql)
-        self.assertIn("`status`", sql)
-
-    # --- get_parameter_placeholders ---
-
-    def test_get_parameter_placeholders(self):
-        ops, qe, log = self._make_ops()
-        result = ops.get_parameter_placeholders(3)
-        self.assertEqual("?, ?, ?", result)
-
     # --- clean_schema ---
 
     def test_clean_schema_disables_fk_checks(self):
