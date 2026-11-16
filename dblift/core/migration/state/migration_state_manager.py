@@ -413,9 +413,7 @@ class MigrationStateManager:
         applied_migrations = self.get_applied_migrations(read_snapshot)
         self.logger.debug(f"Loaded {len(applied_migrations)} applied migrations from history")
 
-        data_service = MigrationDataService(
-            self.logger, scripts_dir=scripts_dir, target_version=target_version
-        )
+        data_service = MigrationDataService(self.logger, target_version=target_version)
         analysis_context = data_service._build_analysis_context(applied_migrations)
 
         history = self._analyse_history(applied_migrations, analysis_context)

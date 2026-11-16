@@ -77,11 +77,11 @@ def _make_migration(
 
 
 # ---------------------------------------------------------------------------
-# Lines 56-80: _last_successful_non_delete_record edge cases
+# Lines 56-80: _successful_non_delete_records edge cases
 # ---------------------------------------------------------------------------
 
 
-class TestLastSuccessfulNonDeleteRecord(unittest.TestCase):
+class TestSuccessfulNonDeleteRecords(unittest.TestCase):
     def _make(self, script_name, mtype, success=True):
         return SimpleNamespace(
             script_name=script_name,
@@ -91,37 +91,31 @@ class TestLastSuccessfulNonDeleteRecord(unittest.TestCase):
 
     def test_skips_delete_type(self):
         from dblift.core.migration.migration import MigrationType
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.migration.scripting.migration_script_manager import (
+            _successful_non_delete_records,
+        )
 
         m = self._make("V1__test.sql", MigrationType.DELETE)
-        result = _last_successful_non_delete_record([m], "V1__test.sql")
-        self.assertIsNone(result)
+        self.assertEqual(list(_successful_non_delete_records([m])), [])
 
     def test_skips_undo_sql_type(self):
         from dblift.core.migration.migration import MigrationType
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.migration.scripting.migration_script_manager import (
+            _successful_non_delete_records,
+        )
 
         m = self._make("V1__test.sql", MigrationType.UNDO_SQL)
-        result = _last_successful_non_delete_record([m], "V1__test.sql")
-        self.assertIsNone(result)
-
-    def test_returns_latest_of_multiple_successful(self):
-        from dblift.core.migration.migration import MigrationType
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
-
-        m1 = self._make("V1__test.sql", MigrationType.SQL, success=True)
-        m2 = self._make("V1__test.sql", MigrationType.SQL, success=True)
-        result = _last_successful_non_delete_record([m1, m2], "V1__test.sql")
-        self.assertIs(result, m2)
+        self.assertEqual(list(_successful_non_delete_records([m])), [])
 
     def test_skips_failed_migration(self):
         from dblift.core.migration.migration import MigrationType
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.migration.scripting.migration_script_manager import (
+            _successful_non_delete_records,
+        )
 
         m_fail = self._make("V1__test.sql", MigrationType.SQL, success=False)
         m_ok = self._make("V1__test.sql", MigrationType.SQL, success=True)
-        result = _last_successful_non_delete_record([m_fail, m_ok], "V1__test.sql")
-        self.assertIs(result, m_ok)
+        self.assertEqual(list(_successful_non_delete_records([m_fail, m_ok])), [m_ok])
 
 
 # ---------------------------------------------------------------------------
@@ -533,7 +527,6 @@ class TestValidateResolvedMigrations(unittest.TestCase):
     def test_all_repeatable_returns_success(self):
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = False
-        sm.has_script_changed.return_value = False
         rep = self._repeatable_script()
         result = validate_snapshot_for(v, resolved_migrations=[rep])
         self.assertTrue(result.success)
@@ -558,7 +551,6 @@ class TestValidateResolvedMigrations(unittest.TestCase):
         hm.has_history_table = True
         hm.get_applied_migrations.side_effect = RuntimeError("boom")
         s1 = self._sql_script()
-        sm.has_script_changed.return_value = False
         result = validate_snapshot_for(v, resolved_migrations=[s1])
         # An unreadable history must not validate against an empty history
         self.assertFalse(result.success)
@@ -570,7 +562,6 @@ class TestValidateResolvedMigrations(unittest.TestCase):
         config = SimpleNamespace(strict_mode=True)
         hm.provider.config = config
         hm.get_applied_migrations.return_value = []
-        sm.has_script_changed.return_value = False
         s1 = self._sql_script()
         with patch.object(v, "_validate_strict_mode_rules", return_value=True) as mock_strict:
             result = validate_snapshot_for(v, command="migrate", resolved_migrations=[s1])
@@ -583,7 +574,6 @@ class TestValidateResolvedMigrations(unittest.TestCase):
         config = SimpleNamespace(strict_mode=False)
         hm.provider.config = config
         hm.get_applied_migrations.return_value = []
-        sm.has_script_changed.return_value = False
         s1 = self._sql_script()
         # Force issues by having strict mode validation fail
         with patch.object(v, "_validate_failed_migrations") as mock_fail:
@@ -734,7 +724,6 @@ class TestValidateMigrations(unittest.TestCase):
             path=None,
             tags=[],
         )
-        sm.has_script_changed.return_value = False
         with tempfile.TemporaryDirectory() as tmpdir:
             sm.get_migration_scripts.return_value = [rep]
             result = validate_snapshot_for(v, Path(tmpdir))
@@ -1028,7 +1017,6 @@ class TestValidateChecksums(unittest.TestCase):
         result = ValidationResult()
         issues = []
         applied = self._make_applied("V1__missing.sql", MigrationType.SQL, version="1")
-        sm.has_script_changed.return_value = False
         v._validate_checksums(
             [],
             [applied],
@@ -1048,7 +1036,6 @@ class TestValidateChecksums(unittest.TestCase):
         result = ValidationResult()
         issues = []
         applied = self._make_applied("V1__missing.sql", MigrationType.SQL, version="1")
-        sm.has_script_changed.return_value = False
         v._validate_checksums(
             [],
             [applied],
@@ -1070,7 +1057,6 @@ class TestValidateChecksums(unittest.TestCase):
         issues = []
         applied = self._make_applied("V1__deleted.sql", MigrationType.SQL, version="1")
         delete_record = self._make_applied("V1__deleted.sql", MigrationType.DELETE, version="1")
-        sm.has_script_changed.return_value = False
         v._validate_checksums(
             [],
             [applied, delete_record],
@@ -1099,7 +1085,6 @@ class TestValidateChecksums(unittest.TestCase):
             checksum=100,
             path=None,
         )
-        sm.has_script_changed.return_value = False
         v._validate_checksums(
             [alt_script],
             [applied],
@@ -1126,9 +1111,7 @@ class TestValidateChecksums(unittest.TestCase):
             checksum=200,
             path=None,
         )
-        sm.has_script_changed.return_value = True
         # applied record has checksum 100, but script checksum is 200
-        # _last_successful_non_delete_record will be called; we need applied to have script_name set
         applied.success = True
         applied.type = MigrationType.SQL
         v._validate_checksums(
@@ -1667,7 +1650,6 @@ class TestValidateMigrationsIssuesPaths(unittest.TestCase):
             installed_rank=1,
         )
         hm.get_applied_migrations.return_value = [failed]
-        sm.has_script_changed.return_value = False
         with tempfile.TemporaryDirectory() as tmpdir:
             sm.get_migration_scripts.return_value = [self._sql_script()]
             result = validate_snapshot_for(v, Path(tmpdir))
@@ -1692,7 +1674,6 @@ class TestValidateMigrationsIssuesPaths(unittest.TestCase):
             installed_rank=1,
         )
         hm.get_applied_migrations.return_value = [deleted]
-        sm.has_script_changed.return_value = False
         with tempfile.TemporaryDirectory() as tmpdir:
             sm.get_migration_scripts.return_value = [self._sql_script()]
             hm.schema = "public"

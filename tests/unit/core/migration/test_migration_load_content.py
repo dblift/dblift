@@ -120,34 +120,6 @@ class TestChecksumValidationIncludesPython:
         assert result.failed_scripts == ([script.script_name] if changed else [])
         assert any("has been modified" in issue for issue in issues) == changed
 
-    def test_has_script_changed_ignores_later_undo_row_for_same_script(self, tmp_path):
-        """Synthetic UNDO_SQL rows reuse the script name but must not own the checksum."""
-        from dblift.core.logger import NullLog
-        from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
-
-        script = tmp_path / "V7__python_migrate.py"
-        script.write_text("def migrate(ctx): ctx.execute('CREATE TABLE t (id INT)')\n")
-        applied = make_migration(script_path=script)
-        applied.success = True
-
-        undo = SimpleNamespace(
-            script_name="V7__python_migrate.py",
-            type=MigrationType.UNDO_SQL,
-            success=True,
-            checksum=0,
-        )
-
-        manager = MigrationScriptManager(NullLog())
-
-        assert (
-            manager.has_script_changed(
-                "V7__python_migrate.py",
-                applied_migrations=[applied, undo],
-                script_path=script,
-            )
-            is False
-        )
-
     def test_validate_checksums_ignores_undo_row_for_same_script(self, tmp_path):
         """Checksum validation should compare against the original row, not UNDO_SQL."""
         from dblift.core.logger import NullLog
