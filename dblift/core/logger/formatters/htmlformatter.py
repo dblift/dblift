@@ -620,64 +620,6 @@ when the operation completes.</p>
 
         return details
 
-    def _calculate_migration_stats(self, migrations):
-        """Calculate actual migration statistics from the migrations list.
-
-        Args:
-            migrations: List of migration dictionaries or objects
-
-        Returns:
-            Dictionary with migration statistics
-        """
-        stats = {
-            "total": len(migrations),
-            "success": 0,
-            "pending": 0,
-            "failed": 0,
-            "outdated": 0,
-            "undone": 0,
-        }
-
-        for migration in migrations:
-            # Try different approaches to get the status
-            status = None
-
-            # Method 1: Check if it's a dictionary (using get method)
-            if hasattr(migration, "get") and callable(migration.get):
-                status = str(migration.get("status", "")).upper()
-
-            # Method 2: Access attribute directly (for objects with attributes)
-            elif hasattr(migration, "status"):
-                status = str(migration.status).upper()
-
-            # Method 3: Look up __dict__ if available (for regular objects)
-            elif hasattr(migration, "__dict__") and "status" in migration.__dict__:
-                status = str(migration.__dict__["status"]).upper()
-
-            # For mock objects and special cases, try safe __getattribute__ access in a try/except
-            # block
-            if status is None:
-                try:
-                    status = str(getattr(migration, "status", "")).upper()
-                except Exception as e:
-                    _logger.debug(f"Could not read migration status: {e}")
-                    status = ""
-
-            # Update stats based on status — exact match where possible,
-            # startswith for FAILED to catch FAILED_MISSING / FAILED_FUTURE
-            if status in ("SUCCESS", "BASELINE"):
-                stats["success"] += 1
-            elif status == "PENDING":
-                stats["pending"] += 1
-            elif status.startswith("FAILED"):
-                stats["failed"] += 1
-            elif status == "OUTDATED":
-                stats["outdated"] += 1
-            elif status == "UNDONE":
-                stats["undone"] += 1
-
-        return stats
-
     def _extract_server_from_result(self, result: OperationResult) -> str:
         """Extract server name from result object."""
         # First, try to get server name directly from result
@@ -724,40 +666,3 @@ when the operation completes.</p>
             f"Dblift_{_safe_name(str(schema_name))}_{_safe_name(str(database_name))}_"
             f"{command_type}_{timestamp}.html"
         )
-
-    def _add_test_markers(self, html_output: str) -> str:
-        """Add test-specific markers to the HTML output.
-
-        This method adds hidden div elements with specific strings
-        that tests can look for to verify the content.
-
-        Args:
-            html_output: The HTML output to modify
-
-        Returns:
-            The modified HTML output
-        """
-        # Create a test marker section with required strings for test validation
-        test_markers = """
-            <!-- Test markers -->
-            <div style="display:none;">
-                <div id="migrate-command-details">MIGRATE Command Details</div>
-                <div id="migration-information">Migration Information</div>
-                <div id="version-marker">1.0.0</div>
-                <div id="current-version">Current Version: 1.0.0</div>
-                <div id="baseline-description">Initial baseline</div>
-                <div id="icons">
-                    <i class="bi bi-arrow-up-circle"></i>
-                    <i class="bi bi-database"></i>
-                    <i class="bi bi-check-circle"></i>
-                </div>
-            </div>
-            """
-
-        # Inject the markers before the closing body tag
-        if "</body>" in html_output:
-            html_output = html_output.replace("</body>", f"{test_markers}\n</body>")
-        else:
-            html_output += test_markers
-
-        return html_output
