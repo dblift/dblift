@@ -291,12 +291,6 @@ class MigrationScriptManager(MigrationMarkerMixin):
         migration_type, version, _, _ = self.parse_filename(script_name)
         return version
 
-    def extract_description(self, script_name: str) -> str:
-        """Extract description from script name."""
-        # Use the parse_filename method for consistency
-        _, _, description, _ = self.parse_filename(script_name)
-        return description
-
     def extract_tags(self, script_name: str) -> List[str]:
         """Extract tags from script name."""
         # Use the parse_filename method for consistency

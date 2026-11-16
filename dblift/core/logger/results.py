@@ -338,22 +338,6 @@ class CleanResult(OperationResult):
         if detail_entry:
             self._object_details[normalized_type][normalized_name] = detail_entry
 
-        # Maintain backward-compatible buckets
-        if normalized_type == "schema":
-            self._objects_by_type["schema"].add(normalized_name)
-        elif normalized_type == "table":
-            self._objects_by_type["table"].add(normalized_name)
-        elif normalized_type == "view":
-            self._objects_by_type["view"].add(normalized_name)
-        elif normalized_type == "function":
-            self._objects_by_type["function"].add(normalized_name)
-        elif normalized_type == "procedure":
-            self._objects_by_type["procedure"].add(normalized_name)
-        elif normalized_type == "sequence":
-            self._objects_by_type["sequence"].add(normalized_name)
-        elif normalized_type == "trigger":
-            self._objects_by_type["trigger"].add(normalized_name)
-
     def add_schema_dropped(self, schema: str) -> None:
         """Backward-compatible helper to add a dropped schema."""
         self.add_cleaned_object("schema", schema)

@@ -64,9 +64,6 @@ def _lock_row_present(connection: sqlite3.Connection, dialect: SqlLeaseDialect) 
 class SQLiteLockingManager(BaseLockingManager):
     """Manages SQLite migration locking operations."""
 
-    # SQLite is case-insensitive; we use lowercase by convention
-    DEFAULT_LOCK_TABLE = MIGRATION_LOCK_TABLE
-
     def __init__(self, query_executor: Any, log: Optional[Log] = None) -> None:
         """Initialize the locking manager.
 

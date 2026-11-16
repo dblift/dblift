@@ -359,21 +359,6 @@ def _add_diff_and_target_options(
     )
 
 
-def _register_builtin_command_parsers(
-    parser: argparse.ArgumentParser,
-) -> list[argparse.ArgumentParser]:
-    """Register first-party command parsers that remain in the OSS CLI."""
-    subparser_actions = [
-        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
-    ]
-    if not subparser_actions:
-        return []
-
-    registered: list[argparse.ArgumentParser] = []
-
-    return registered
-
-
 def _register_premium_stub_parsers(parser: argparse.ArgumentParser) -> None:
     """Add stub subparsers for paid commands with no registered extension.
 
@@ -645,7 +630,6 @@ def create_parser(
         default="flyway_schema_history",
         help="Source Flyway schema history table name (default: flyway_schema_history)",
     )
-    builtin_extension_parsers = _register_builtin_command_parsers(parser)
     # Configure arguments via extracted functions
     _add_baseline_options(baseline_parser)
     _add_diff_and_target_options(
@@ -756,7 +740,6 @@ def create_parser(
             repair_parser,
             import_flyway_parser,
             db_parser,
-            *builtin_extension_parsers,
         ]
 
         def silent_error(message: str) -> None:
