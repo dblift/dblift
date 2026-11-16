@@ -19,6 +19,7 @@ from dblift.core.exceptions import (
     CallbackExecutionError,
     StatementVerdictError,
     TransactionAbortedError,
+    TransactionLeftOpenError,
     TransactionStatementError,
     UnsafeStatementSplitError,
 )
@@ -58,7 +59,7 @@ from dblift.db.error import (
     redact_driver_error_text,
     strip_sql_statement_block,
 )
-from dblift.db.provider_interfaces import TransactionalProvider
+from dblift.db.provider_interfaces import TransactionalProvider, TransactionOutcome
 from dblift.db.provider_registry import ProviderRegistry
 from dblift.db.value_utils import to_python_string
 
@@ -229,8 +230,10 @@ class ExecutionEngine:
             migration.execution_time = execution_time
 
             if policy.transactional:
-                self._record_migration_history(migration, execution_time)  # may raise
-                self._commit_migration(migration)
+                if not self._settle_migration_transaction(
+                    migration, statements, execution_time, result
+                ):
+                    return
             else:
                 self._record_autocommit_migration_history(migration, execution_time)
 
@@ -982,6 +985,46 @@ class ExecutionEngine:
                         f"{migration.script_name}: {rollback_history_e}"
                     )
 
+    def _script_transaction_outcome(self) -> TransactionOutcome:
+        """Return the provider's ENDED or OPEN verdict, INTACT otherwise."""
+        if not isinstance(self.provider, TransactionalProvider):
+            return TransactionOutcome.INTACT
+        outcome = self.provider.transaction_outcome()
+        if outcome is TransactionOutcome.ENDED or outcome is TransactionOutcome.OPEN:
+            return outcome
+        return TransactionOutcome.INTACT
+
+    def _settle_migration_transaction(
+        self,
+        migration: Migration,
+        statements: List[str],
+        execution_time: int,
+        result: OperationResult,
+    ) -> bool:
+        """Close the migration's transaction per the script's outcome; False when it failed."""
+        outcome = self._script_transaction_outcome()
+        if outcome is TransactionOutcome.INTACT:
+            self._record_migration_history(migration, execution_time)  # may raise
+            self._commit_migration(migration)
+            return True
+        if outcome is TransactionOutcome.ENDED:
+            if isinstance(self.provider, TransactionalProvider):
+                self.provider.rollback_transaction()
+            self.log.warning(
+                f"{migration.script_name} ended its transaction itself (COMMIT or ROLLBACK in "
+                "the script); its history row is recorded in a separate transaction"
+            )
+            self._record_autocommit_migration_history(migration, execution_time)
+            return True
+        error = TransactionLeftOpenError(
+            "the script left a transaction open; it was rolled back. "
+            "End every transaction the script opens with COMMIT or ROLLBACK"
+        )
+        self._handle_statement_failure(
+            migration, error, max(len(statements) - 1, 0), execution_time, result
+        )
+        return False
+
     def _record_autocommit_migration_history(
         self, migration: Migration, execution_time: int
     ) -> None:
@@ -1001,7 +1044,8 @@ class ExecutionEngine:
         except Exception as history_error:
             self.log.error(
                 f"Failed to record migration history for {migration.script_name}: "
-                f"{engine_error_message(history_error)}"
+                f"{engine_error_message(history_error)} Statements of this script are already "
+                "committed: reconcile the history before retrying."
             )
             if transaction_started and isinstance(self.provider, TransactionalProvider):
                 try:
@@ -1285,8 +1329,7 @@ class ExecutionEngine:
             self._finish_statements(sql_statements)
 
             if transaction_started and isinstance(self.provider, TransactionalProvider):
-                # Commit transaction for successful callback execution
-                self._commit_callback_transaction(self.provider, callback)
+                self._settle_callback_transaction(self.provider, callback)
 
         except Exception:
             # Rollback safety net for callback execution. Same rationale as the
@@ -1296,6 +1339,25 @@ class ExecutionEngine:
                 self._rollback_callback_transaction(self.provider, callback)
             # Re-raise the original exception
             raise
+
+    def _settle_callback_transaction(
+        self, provider: TransactionalProvider, callback: Migration
+    ) -> None:
+        """Close the callback's transaction per the script's outcome; raise when left open."""
+        outcome = self._script_transaction_outcome()
+        if outcome is TransactionOutcome.INTACT:
+            self._commit_callback_transaction(provider, callback)
+            return
+        if outcome is TransactionOutcome.OPEN:
+            raise TransactionLeftOpenError(
+                f"{callback.script_name} left a transaction open; it was rolled back. "
+                "End every transaction the script opens with COMMIT or ROLLBACK"
+            )
+        provider.rollback_transaction()
+        self.log.warning(
+            f"{callback.script_name} ended its transaction itself "
+            "(COMMIT or ROLLBACK in the script)"
+        )
 
     def _execute_non_sql_callback(self, callback: Migration) -> None:
         """Run a non-SQL callback through the executor factory; raise when it fails."""

@@ -13,8 +13,8 @@ from dblift.core.migration.sql.execution_statement import classify_execution_sta
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.plugins.sqlserver.config import SqlServerConfig
 from dblift.db.plugins.sqlserver.sqlserver.schema_operations import SqlServerSchemaOperations
+from dblift.db.plugins.sqlserver.transaction_guard import SqlServerTransactionProvider
 from dblift.db.provider_interfaces import DroppableObject
-from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 def _q(name: str) -> str:
@@ -27,7 +27,7 @@ def _schema_object(schema: str, obj: str) -> str:
     return f"{_q(schema)}.{_q(obj)}"
 
 
-class SqlServerProvider(SqlAlchemyProvider):
+class SqlServerProvider(SqlServerTransactionProvider):
     """SQL Server provider implementation using native SQLAlchemy/pymssql."""
 
     canonical_dialect_key = "sqlserver"

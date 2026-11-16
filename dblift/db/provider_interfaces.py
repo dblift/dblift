@@ -8,6 +8,7 @@ isinstance(provider, TransactionalProvider) pour vérifier le support.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, List, Optional, cast
 
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
@@ -203,8 +204,20 @@ class SchemaProvider(ABC):
         return True
 
 
+class TransactionOutcome(Enum):
+    """What a script did to the transaction the engine opened for it."""
+
+    INTACT = "intact"
+    ENDED = "ended"
+    OPEN = "open"
+
+
 class TransactionalProvider(ABC):
     """Capacité de gestion des transactions."""
+
+    def transaction_outcome(self) -> TransactionOutcome:
+        """Report whether the script kept, ended or left open the engine's transaction."""
+        return TransactionOutcome.INTACT
 
     @abstractmethod
     def check_transaction_state(self) -> None:
