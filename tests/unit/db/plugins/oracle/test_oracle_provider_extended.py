@@ -527,30 +527,6 @@ class TestSchemaHelpers:
         assert p.get_parameter_placeholders(3) == "?, ?, ?"
 
 
-class TestGetTables:
-    def test_returns_table_names(self):
-        p = _Provider()
-        p.query_results["TABLE_NAME NOT LIKE 'BIN$%'"] = [
-            {"table_name": "ORDERS"},
-            {"table_name": "ITEMS"},
-        ]
-        assert p.get_tables("MYSCHEMA") == ["ORDERS", "ITEMS"]
-
-    def test_empty(self):
-        p = _Provider()
-        assert p.get_tables("MYSCHEMA") == []
-
-
-class TestGetSchemas:
-    def test_returns_usernames(self):
-        p = _Provider()
-        p.query_results["ALL_USERS ORDER BY USERNAME"] = [
-            {"username": "APP"},
-            {"username": "DBLIFT"},
-        ]
-        assert p.get_schemas() == ["APP", "DBLIFT"]
-
-
 class TestCreateMigrationLockTableIfNotExists:
     def test_skips_when_exists(self):
         p = _Provider(username="MYSCHEMA")

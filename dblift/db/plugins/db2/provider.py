@@ -298,10 +298,6 @@ class Db2Provider(SqlLeaseLockingProvider):
         """Return DB2 DDL to add a column."""
         return f"ALTER TABLE {_schema_object(schema, table)} ADD COLUMN {_q(column)} {type_def}"
 
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Return DB2 parameter placeholders."""
-        return ", ".join(["?" for _ in range(count)])
-
     def create_migration_lock_table_if_not_exists(self, schema: str) -> None:
         """Create the DB2 migration lock table if it is missing.
 

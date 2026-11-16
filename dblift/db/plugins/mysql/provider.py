@@ -433,10 +433,6 @@ class MySqlProvider(SqlAlchemyProvider, CleanTargetProvider):
             f"ADD COLUMN {_quote_identifier(column)} {type_def}"
         )
 
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Return DBLift positional placeholders."""
-        return ", ".join(["?"] * count)
-
     def is_connection_error(self, exception: Any) -> bool:
         """Check if exception indicates a connection error."""
         error_msg = str(exception).lower()

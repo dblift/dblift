@@ -131,10 +131,6 @@ class SqlServerProvider(SqlServerTransactionProvider):
         """Return SQL Server DDL to add a column."""
         return f"ALTER TABLE {_schema_object(schema, table)} ADD {_q(column)} {type_def}"
 
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Return SQL Server parameter placeholders."""
-        return ", ".join(["?" for _ in range(count)])
-
     def set_current_schema(self, schema: str) -> None:
         """Align the connecting user's default schema so unqualified DDL lands here.
 

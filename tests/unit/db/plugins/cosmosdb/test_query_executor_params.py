@@ -121,10 +121,3 @@ class TestCosmosParameterPlaceholderContract:
         provider = CosmosDbProvider.__new__(CosmosDbProvider)
 
         assert provider.get_parameter_placeholders(3) == "?, ?, ?"
-
-    def test_schema_operations_uses_question_mark_placeholders(self):
-        from dblift.db.plugins.cosmosdb.cosmosdb.schema_operations import CosmosDbSchemaOperations
-
-        operations = CosmosDbSchemaOperations.__new__(CosmosDbSchemaOperations)
-
-        assert operations.get_parameter_placeholders(2) == "?, ?"

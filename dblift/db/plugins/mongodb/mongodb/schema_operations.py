@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, List, Optional
 
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
@@ -46,8 +46,8 @@ class MongoDbSchemaOperations(BaseSchemaOperations):
     def list_collections(self) -> List[str]:
         """Return every collection name, dblift's own storage included.
 
-        Unfiltered on purpose: ``collection_exists``, ``get_tables`` and
-        ``create_collection_if_not_exists`` all need the true full list, not
+        Unfiltered on purpose: ``collection_exists`` and
+        ``create_collection_if_not_exists`` both need the true full list, not
         a clean-specific view of it. Clean itself enumerates through
         :meth:`list_droppable_collections`, which excludes collections whose
         name starts with the server-reserved ``system.`` prefix — see that
@@ -130,78 +130,6 @@ class MongoDbSchemaOperations(BaseSchemaOperations):
         except Exception as e:
             self.log.debug(f"Could not read MongoDB server version: {e}")
             return "unknown"
-
-    def get_tables(self, connection: Any, schema: str) -> List[str]:
-        """Return list of collections (tables in MongoDB's document model).
-
-        Args:
-            connection: Database connection (unused, uses internal connection manager)
-            schema: Schema name (unused, MongoDB has no schemas)
-
-        Returns:
-            List of collection names
-        """
-        return self.list_collections()
-
-    def get_schemas(self, connection: Any) -> List[str]:
-        """Return list of schemas (empty for MongoDB).
-
-        MongoDB has no schema layer. A database contains collections,
-        but no nested schema objects.
-
-        Args:
-            connection: Database connection (unused)
-
-        Returns:
-            Empty list
-        """
-        return []
-
-    def get_columns_query(self, schema: str, table: str) -> Union[str, Tuple[str, List[Any]]]:
-        """Return a MongoDB query to sample a collection's documents.
-
-        MongoDB is schema-less. This returns a find query that samples
-        documents from the collection to inspect their structure.
-
-        Args:
-            schema: Schema name (unused)
-            table: Collection name
-
-        Returns:
-            MongoDB find query string
-        """
-        return f"db.{table}.findOne()"
-
-    def get_add_column_sql(self, schema: str, table: str, column: str, type_def: str) -> str:
-        """Return a comment string; MongoDB needs no schema alterations.
-
-        MongoDB is schema-less. Adding a field to a document requires only
-        a write operation on documents that need it; no DDL is necessary.
-
-        Args:
-            schema: Schema name (unused)
-            table: Collection name
-            column: Field name
-            type_def: Type definition (unused)
-
-        Returns:
-            Comment string explaining why no SQL is needed
-        """
-        return f"-- MongoDB is schema-less; no ALTER needed for {table}.{column}"
-
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Return positional parameter placeholders for prepared statements.
-
-        MongoDB drivers use ? for parameter placeholders in SQL contexts
-        (e.g., when the plugin must interop with SQL-based tools).
-
-        Args:
-            count: Number of placeholders needed
-
-        Returns:
-            Comma-separated placeholder string (e.g., "?, ?, ?")
-        """
-        return ", ".join(["?" for _ in range(count)])
 
     def clean_schema(self, connection: Any, schema: str) -> CleanExecutionSummary:
         """Drop every droppable collection, dblift's own storage included.

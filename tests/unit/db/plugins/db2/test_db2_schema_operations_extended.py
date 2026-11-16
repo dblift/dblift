@@ -162,15 +162,3 @@ class TestCommitIfNeededExtended:
 
         debug_calls = [str(c) for c in log.debug.call_args_list]
         assert any("Could not commit after test op" in c for c in debug_calls)
-
-
-class TestGetSchemasExtended:
-    def test_query_exception_returns_empty_list(self):
-        ops, qe, log = _make_ops()
-        conn = MagicMock()
-        qe.execute_query.side_effect = RuntimeError("query failed")
-
-        result = ops.get_schemas(conn)
-
-        assert result == []
-        log.error.assert_called()

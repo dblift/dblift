@@ -3,7 +3,7 @@
 import os
 import sqlite3
 import tempfile
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -249,36 +249,6 @@ class TestSQLiteSchemaOperations:
 
         version = schema_ops.get_database_version(self.conn)
         assert "SQLite" in version
-
-    def test_get_tables(self):
-        """Test getting list of tables."""
-        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
-        from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
-
-        # Create some tables
-        self.conn.execute("CREATE TABLE table1 (id INTEGER PRIMARY KEY)")
-        self.conn.execute("CREATE TABLE table2 (id INTEGER PRIMARY KEY)")
-        self.conn.commit()
-
-        mock_connection_manager = MagicMock()
-        executor = SQLiteQueryExecutor(mock_connection_manager)
-        schema_ops = SQLiteSchemaOperations(executor)
-
-        tables = schema_ops.get_tables(self.conn, "main")
-        assert "table1" in tables
-        assert "table2" in tables
-
-    def test_get_schemas(self):
-        """Test getting list of schemas (should return ['main'])."""
-        from dblift.db.plugins.sqlite.sqlite.query_executor import SQLiteQueryExecutor
-        from dblift.db.plugins.sqlite.sqlite.schema_operations import SQLiteSchemaOperations
-
-        mock_connection_manager = MagicMock()
-        executor = SQLiteQueryExecutor(mock_connection_manager)
-        schema_ops = SQLiteSchemaOperations(executor)
-
-        schemas = schema_ops.get_schemas(self.conn)
-        assert schemas == ["main"]
 
 
 class TestSQLiteHistoryManager:
