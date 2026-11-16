@@ -10,6 +10,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from tests.unit._validation_snapshot import validate_snapshot_for
+
 
 def _make_validator(dialect="postgresql"):
     from dblift.core.sql_validator.migration_validator import MigrationValidator
@@ -60,7 +62,7 @@ class TestFailedRepeatableFiltering(unittest.TestCase):
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = True
         hm.get_applied_migrations.return_value = history
-        return v.validate_resolved_migrations(scripts)
+        return validate_snapshot_for(v, resolved_migrations=scripts)
 
     def test_failed_repeatable_scheduled_for_reapply_does_not_block_validation(self):
         """A repeatable that failed but has since changed is reapplied, not a blocking failure."""
@@ -168,12 +170,12 @@ class TestCallbackHistoryRowsAreNotFatal(unittest.TestCase):
         hm.get_applied_migrations.return_value = [
             _history_row(MigrationType.CALLBACK, "afterMigrate__log.sql", version=None)
         ]
-        result = v.validate_resolved_migrations(
-            [_script(MigrationType.SQL, "V1__a.sql", version="1")]
+        result = validate_snapshot_for(
+            v, resolved_migrations=[_script(MigrationType.SQL, "V1__a.sql", version="1")]
         )
         self.assertTrue(result.success, f"error_message={result.error_message!r}")
 
-    def test_callback_row_in_history_does_not_fail_validate_migrations(self):
+    def test_callback_row_in_history_does_not_fail_directory_validation(self):
         import tempfile
         from pathlib import Path
 
@@ -189,7 +191,7 @@ class TestCallbackHistoryRowsAreNotFatal(unittest.TestCase):
             sm.get_migration_scripts.return_value = [
                 _script(MigrationType.SQL, "V1__a.sql", version="1")
             ]
-            result = v.validate_migrations(Path(tmpdir))
+            result = validate_snapshot_for(v, Path(tmpdir))
         self.assertTrue(result.success, f"error_message={result.error_message!r}")
 
 

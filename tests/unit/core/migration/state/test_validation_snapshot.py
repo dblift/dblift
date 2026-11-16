@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
+from tests.unit._validation_snapshot import validate_snapshot_for
 
 
 @pytest.fixture
@@ -113,7 +114,7 @@ def test_snapshot_validation_never_collects(client, tmp_path):
 
 def test_missing_directory_and_empty_strict_catalog_preserve_public_results(client, tmp_path):
     missing = tmp_path / "missing"
-    result = client.executor.validator.validate_migrations(missing)
+    result = validate_snapshot_for(client.executor.validator, missing)
     assert not result.success
     assert result.error_message == f"Migration scripts directory not found: {missing}"
     assert result.issues == []

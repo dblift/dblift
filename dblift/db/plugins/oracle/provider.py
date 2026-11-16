@@ -658,28 +658,6 @@ class OracleProvider(SqlLeaseLockingProvider):
         """Return Oracle DDL to add a column."""
         return f"ALTER TABLE {_schema_object(schema, table)} ADD ({_q(column)} {type_def})"
 
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Return Oracle parameter placeholders."""
-        return ", ".join(["?" for _ in range(count)])
-
-    def get_tables(self, schema: str) -> List[str]:
-        """Return table names in an Oracle schema."""
-        rows = self.execute_query(
-            """
-            SELECT TABLE_NAME AS table_name
-            FROM ALL_TABLES
-            WHERE OWNER = ? AND TABLE_NAME NOT LIKE 'BIN$%'
-            ORDER BY TABLE_NAME
-            """,
-            [_oracle_dictionary_name(schema)],
-        )
-        return [str(_row_value(row, "table_name")) for row in rows]
-
-    def get_schemas(self) -> List[str]:
-        """Return available Oracle usernames/schemas."""
-        rows = self.execute_query("SELECT USERNAME AS username FROM ALL_USERS ORDER BY USERNAME")
-        return [str(_row_value(row, "username")) for row in rows]
-
     def create_migration_lock_table_if_not_exists(self, schema: str) -> None:
         """Create the fallback Oracle migration lock table if missing.
 

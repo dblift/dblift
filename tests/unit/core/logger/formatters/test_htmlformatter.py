@@ -500,95 +500,6 @@ class TestHtmlFormatter:
         assert details["icon"] == "wrench"
         assert "repairs the schema history table" in details["description"]
 
-    def test_calculate_migration_stats_with_dict_migrations(self):
-        """Test calculate_migration_stats with dictionary migrations."""
-        formatter = HtmlFormatter()
-
-        migrations = [
-            {"status": "SUCCESS"},
-            {"status": "PENDING"},
-            {"status": "FAILED"},
-            {"status": "SUCCESS"},
-            {"status": "OUTDATED"},
-            {"status": "UNDONE"},
-        ]
-
-        stats = formatter._calculate_migration_stats(migrations)
-
-        assert stats["total"] == 6
-        assert stats["success"] == 2
-        assert stats["pending"] == 1
-        assert stats["failed"] == 1
-        assert stats["outdated"] == 1
-        assert stats["undone"] == 1
-
-    def test_calculate_migration_stats_with_object_migrations(self):
-        """Test calculate_migration_stats with object migrations."""
-        formatter = HtmlFormatter()
-
-        # Create mock migration objects with proper status values
-        migrations = []
-        for status in ["SUCCESS", "PENDING", "FAILED"]:
-            migration = MigrationInfo(script="test.sql", status=status)
-            migrations.append(migration)
-
-        stats = formatter._calculate_migration_stats(migrations)
-
-        assert stats["total"] == 3
-        assert stats["success"] == 1
-        assert stats["pending"] == 1
-        assert stats["failed"] == 1
-        assert stats["outdated"] == 0
-        assert stats["undone"] == 0
-
-    def test_calculate_migration_stats_with_dict_attribute_migrations(self):
-        """Test calculate_migration_stats with __dict__ attribute migrations."""
-        formatter = HtmlFormatter()
-
-        # Create simple objects using a basic class instead of Mock
-        class SimpleMigration:
-            def __init__(self, status):
-                self.__dict__ = {"status": status}
-
-        migration1 = SimpleMigration("SUCCESS")
-        migration2 = SimpleMigration("PENDING")
-
-        migrations = [migration1, migration2]
-
-        stats = formatter._calculate_migration_stats(migrations)
-
-        assert stats["total"] == 2
-        assert stats["success"] == 1
-        assert stats["pending"] == 1
-
-    def test_calculate_migration_stats_with_unknown_status(self):
-        """Test calculate_migration_stats with unknown status."""
-        formatter = HtmlFormatter()
-
-        # Create migration with no status information
-        migration1 = Mock(spec=[])  # No attributes
-        migrations = [migration1]
-
-        stats = formatter._calculate_migration_stats(migrations)
-
-        assert stats["total"] == 1
-        assert stats["success"] == 0
-        assert stats["pending"] == 0
-        assert stats["failed"] == 0
-
-    def test_calculate_migration_stats_baseline_vs_below_baseline(self):
-        """BASELINE counts as success; BELOW BASELINE must not match BASELINE substring."""
-        formatter = HtmlFormatter()
-        migrations = [
-            {"status": "BASELINE"},
-            {"status": "Below baseline"},
-            {"status": "SUCCESS"},
-        ]
-        stats = formatter._calculate_migration_stats(migrations)
-        assert stats["total"] == 3
-        assert stats["success"] == 2
-        assert stats["pending"] == 0
-
     def test_get_output_filename(self):
         """Test get_output_filename generation."""
         formatter = HtmlFormatter()
@@ -608,36 +519,6 @@ class TestHtmlFormatter:
         assert len(filename) <= 255
         assert "app.db" in filename
         assert filename.endswith(".html")
-
-    def test_add_test_markers(self):
-        """Test adding test markers to HTML output."""
-        formatter = HtmlFormatter()
-
-        html_input = "<html><body><h1>Test</h1></body></html>"
-
-        result = formatter._add_test_markers(html_input)
-
-        assert "<!-- Test markers -->" in result
-        assert "migrate-command-details" in result
-        assert "MIGRATE Command Details" in result
-        assert "migration-information" in result
-        assert "version-marker" in result
-        assert "Current Version: 1.0.0" in result
-        assert "baseline-description" in result
-        assert "bi bi-arrow-up-circle" in result
-
-    def test_add_test_markers_no_body_tag(self):
-        """Test adding test markers when no body tag exists."""
-        formatter = HtmlFormatter()
-
-        html_input = "<html><h1>Test</h1></html>"
-
-        result = formatter._add_test_markers(html_input)
-
-        assert "<!-- Test markers -->" in result
-        assert result.endswith(
-            '<!-- Test markers -->\n            <div style="display:none;">\n                <div id="migrate-command-details">MIGRATE Command Details</div>\n                <div id="migration-information">Migration Information</div>\n                <div id="version-marker">1.0.0</div>\n                <div id="current-version">Current Version: 1.0.0</div>\n                <div id="baseline-description">Initial baseline</div>\n                <div id="icons">\n                    <i class="bi bi-arrow-up-circle"></i>\n                    <i class="bi bi-database"></i>\n                    <i class="bi bi-check-circle"></i>\n                </div>\n            </div>\n            '
-        )
 
     @patch("jinja2.Environment.get_template")
     def test_format_result_with_journal_data(self, mock_get_template):

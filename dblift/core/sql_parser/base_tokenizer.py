@@ -183,9 +183,8 @@ class BaseTokenizer:
     def _handle_unknown_char(self, char: str) -> Optional[Token]:
         """Handle a character that no dialect rule claimed — by preserving it.
 
-        The token stream produced here is reserialized by
-        ``BaseStatementParser._tokens_to_string`` into the text that is
-        actually sent to the database. Discarding a character therefore
+        The token stream produced here is what the text sent to the database
+        is built from. Discarding a character therefore
         rewrites the user's SQL, and a rewritten statement is frequently
         still *valid* — ``SELECT a % b`` without the ``%`` reads as
         ``SELECT a AS b`` — so the migration succeeds and writes wrong data

@@ -7,12 +7,12 @@
     "cli/_config_helpers.py::_resolve_scripts_directories": 23,
     "cli/_config_helpers.py::_validate_db_config": 30,
     "cli/main.py::_dispatch_command": 26,
-    "cli/main.py::_parse_argv_and_load_config": 24,
+    "cli/main.py::_parse_argv_and_load_config": 22,
     "cli/mcp/runner.py::_run_command_locked": 25,
     "config/database_config.py::_hydrate_from_native_url": 35,
-    "config/dblift_config.py::DbliftConfig.from_args_dict": 26,
+    "config/dblift_config.py::DbliftConfig.from_args_dict": 25,
     "config/dblift_config.py::DbliftConfig.from_dict": 36,
-    "config/dblift_config.py::DbliftConfig.from_env_dict": 24,
+    "config/dblift_config.py::DbliftConfig.from_env_dict": 23,
     "config/dblift_config.py::DbliftConfig.merge": 28,
     "config/dblift_config.py::DbliftConfig.validate_complete_data": 23,
     "config/dblift_config.py::load_config": 30,
@@ -58,7 +58,6 @@
     "db/plugins/postgresql/foreign_table_dialect.py::_foreign_definition_supported": 25,
     "db/plugins/postgresql/postgresql/schema_operations.py::PostgreSqlSchemaOperations.clean_schema": 23,
     "db/plugins/sqlserver/provider.py::SqlServerProvider.clean_schema": 21,
-    "db/plugins/sqlserver/sqlserver/schema_operations.py::SqlServerSchemaOperations.enumerate_clean_candidates": 26,
-    "db/provider_registry.py::ProviderRegistry._load_plugin": 21
+    "db/plugins/sqlserver/sqlserver/schema_operations.py::SqlServerSchemaOperations.enumerate_clean_candidates": 26
   }
 }

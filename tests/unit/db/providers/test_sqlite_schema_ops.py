@@ -103,52 +103,6 @@ class TestGetAddColumnSql(unittest.TestCase):
         self.assertIn("TEXT", sql)
 
 
-class TestGetParameterPlaceholders(unittest.TestCase):
-    def test_single_placeholder(self):
-        ops, *_ = _make_ops()
-        self.assertEqual(ops.get_parameter_placeholders(1), "?")
-
-    def test_multiple_placeholders(self):
-        ops, *_ = _make_ops()
-        result = ops.get_parameter_placeholders(3)
-        self.assertEqual(result.count("?"), 3)
-
-
-class TestGetTables(unittest.TestCase):
-    def test_returns_user_tables(self):
-        ops, qe, _ = _make_ops()
-        qe.execute_query.return_value = [
-            {"name": "users", "type": "table"},
-            {"name": "orders", "type": "table"},
-        ]
-        conn = MagicMock()
-        tables = ops.get_tables(conn, "main")
-        self.assertIsInstance(tables, list)
-
-    def test_returns_names_as_list(self):
-        ops, qe, _ = _make_ops()
-        qe.execute_query.return_value = [{"name": "users"}]
-        conn = MagicMock()
-        tables = ops.get_tables(conn, "main")
-        self.assertIsInstance(tables, list)
-
-    def test_handles_exception(self):
-        ops, qe, _ = _make_ops()
-        qe.execute_query.side_effect = Exception("query failed")
-        conn = MagicMock()
-        tables = ops.get_tables(conn, "main")
-        self.assertEqual(tables, [])
-
-
-class TestGetSchemas(unittest.TestCase):
-    def test_returns_main_schema(self):
-        ops, qe, _ = _make_ops()
-        qe.execute_query.return_value = [{"name": "main"}, {"name": "temp"}]
-        conn = MagicMock()
-        schemas = ops.get_schemas(conn)
-        self.assertIsInstance(schemas, list)
-
-
 class TestEnumerateCleanCandidates(unittest.TestCase):
     def test_returns_tables(self):
         ops, qe, _ = _make_ops()

@@ -119,63 +119,6 @@ class TestPostgreSqlSchemaOperations(unittest.TestCase):
         result = ops.get_database_version(conn)
         self.assertIn("Unknown", result)
 
-    # --- get_tables ---
-
-    def test_get_tables_returns_list_of_table_names(self):
-        ops, qe, log = self._make_ops()
-        conn, _, _ = _make_connection()
-        qe.execute_query.return_value = [{"table_name": "orders"}, {"table_name": "users"}]
-        result = ops.get_tables(conn, "public")
-        self.assertEqual(["orders", "users"], result)
-
-    def test_get_tables_returns_empty_on_exception(self):
-        ops, qe, log = self._make_ops()
-        conn, _, _ = _make_connection()
-        qe.execute_query.side_effect = RuntimeError("query failed")
-        result = ops.get_tables(conn, "public")
-        self.assertEqual([], result)
-
-    # --- get_schemas ---
-
-    def test_get_schemas_returns_list(self):
-        ops, qe, log = self._make_ops()
-        conn, _, _ = _make_connection()
-        qe.execute_query.return_value = [{"schema_name": "public"}, {"schema_name": "app"}]
-        result = ops.get_schemas(conn)
-        self.assertIn("public", result)
-        self.assertIn("app", result)
-
-    def test_get_schemas_returns_empty_on_exception(self):
-        ops, qe, log = self._make_ops()
-        conn, _, _ = _make_connection()
-        qe.execute_query.side_effect = RuntimeError("query failed")
-        result = ops.get_schemas(conn)
-        self.assertEqual([], result)
-
-    # --- get_columns_query ---
-
-    def test_get_columns_query_returns_tuple(self):
-        ops, qe, log = self._make_ops()
-        sql, params = ops.get_columns_query("public", "orders")
-        self.assertIn("information_schema.columns", sql.lower())
-        self.assertEqual(["public", "orders"], params)
-
-    # --- get_add_column_sql ---
-
-    def test_get_add_column_sql_generates_alter_table(self):
-        ops, qe, log = self._make_ops()
-        sql = ops.get_add_column_sql("public", "orders", "status", "VARCHAR(50)")
-        self.assertIn("ALTER TABLE", sql)
-        self.assertIn("ADD COLUMN", sql)
-        self.assertIn('"status"', sql)
-
-    # --- get_parameter_placeholders ---
-
-    def test_get_parameter_placeholders(self):
-        ops, qe, log = self._make_ops()
-        result = ops.get_parameter_placeholders(3)
-        self.assertEqual("?, ?, ?", result)
-
     # --- clean_schema ---
 
     def test_clean_schema_drops_tables(self):

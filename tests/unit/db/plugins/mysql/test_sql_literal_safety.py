@@ -5,15 +5,13 @@ from types import SimpleNamespace
 import pytest
 from sqlalchemy.engine import make_url
 
-from dblift.db.plugins.mysql.mysql.schema_operations import MySqlSchemaOperations
 from dblift.db.plugins.mysql.provider import MySqlProvider
 from dblift.db.plugins.mysql.sqlalchemy_url import build_sqlalchemy_url
 
 
-@pytest.mark.parametrize("owner", [MySqlProvider, MySqlSchemaOperations])
 @pytest.mark.parametrize("value", ["quote'", "back\\slash'", "é漢", "x'; SELECT 123; -- ", ""])
-def test_column_lookup_names_are_mode_independent_literals(owner, value):
-    sql = owner.get_columns_query(None, value, value)
+def test_column_lookup_names_are_mode_independent_literals(value):
+    sql = MySqlProvider.get_columns_query(None, value, value)
     literal = f"_utf8mb4 X'{value.encode('utf-8').hex()}'"
     assert f"TABLE_SCHEMA = {literal}" in sql
     assert f"TABLE_NAME = {literal}" in sql

@@ -247,84 +247,31 @@ class _PlainStderr:
         print(renderable, file=sys.stderr)  # lint: allow-print  plain-text sink
 
 
-def _take_performance_line(
-    line: str, in_performance_section: bool, performance_lines: list[str]
-) -> Optional[bool]:
-    """Apply one report line to the performance capture and return the new capture state.
+def _sql_section_lines(lines: list[str]) -> list[str]:
+    """Return the report lines of the "SQL Statements:" section the console shows.
 
-    A line containing "Performance Summary:" or "Performance by Object Type:" appends a blank
-    line and itself to performance_lines and returns True. Any other line returns False when
-    in_performance_section is falsy. Otherwise a line starting with "Warnings:" or "Error
-    Details:" once stripped returns None without being appended. Any other line is appended,
-    then None is returned when performance_lines holds more than 10 lines, this line is blank
-    once stripped and more than 5 lines of performance_lines are not; True otherwise.
-    None means the capture is over.
+    A line equal to "SQL Statements:" once stripped opens the section and is kept, after an
+    added blank line when a kept line exists and the last one is not blank once stripped.
+    Every line of the open section is kept until a line equal to "Query Results:" once
+    stripped closes it. Lines outside the section are dropped.
     """
-    # Start capturing when we hit performance sections
-    if "Performance Summary:" in line or "Performance by Object Type:" in line:
-        performance_lines.append("")  # Add spacing
-        performance_lines.append(line)
-        return True
-    if not in_performance_section:
-        return False
-    # Stop capturing when we hit warnings or a section after performance
-    if line.strip().startswith("Warnings:") or line.strip().startswith("Error Details:"):
-        return None
-    # Continue capturing unless we hit two consecutive empty lines
-    performance_lines.append(line)
-
-    # If we have enough content and hit an empty line followed by non-
-    # performance content, stop
-    if (
-        len(performance_lines) > 10
-        and line.strip() == ""
-        and len([ln for ln in performance_lines if ln.strip()]) > 5
-    ):
-        # Look ahead to see if next non-empty line is not performance related
-        return None
-    return True
-
-
-def _summary_section_lines(
-    lines: list[str], has_visible_sql: object, has_journal: object
-) -> list[str]:
-    """Return the report lines the console shows: the SQL section and the performance summary.
-
-    When has_visible_sql is truthy, a line equal to "SQL Statements:" once stripped opens the
-    SQL section and is kept, after an added blank line when a kept line exists and the last
-    one is not blank once stripped. Every line of the open SQL section is kept until a line
-    equal to "Query Results:" once stripped closes it; that line is then handled as a line
-    outside the section. Lines outside the SQL section are dropped when has_journal is falsy
-    and otherwise go through _take_performance_line; the first one it answers None for ends
-    the scan.
-    """
-    in_performance_section = False
     in_sql_section = False
-    performance_lines: list[str] = []
+    sql_lines: list[str] = []
 
     for line in lines:
-        if has_visible_sql and line.strip() == "SQL Statements:":
+        if line.strip() == "SQL Statements:":
             in_sql_section = True
-            if performance_lines and performance_lines[-1].strip():
-                performance_lines.append("")
-            performance_lines.append(line)
+            if sql_lines and sql_lines[-1].strip():
+                sql_lines.append("")
+            sql_lines.append(line)
             continue
 
         if in_sql_section and line.strip() == "Query Results:":
             in_sql_section = False
 
         if in_sql_section:
-            performance_lines.append(line)
-            continue
-
-        if not has_journal:
-            continue
-
-        capturing = _take_performance_line(line, in_performance_section, performance_lines)
-        if capturing is None:
-            break
-        in_performance_section = capturing
-    return performance_lines
+            sql_lines.append(line)
+    return sql_lines
 
 
 # ConsoleLog implementation
@@ -431,45 +378,32 @@ class ConsoleLog(AbstractLog):
             self._display_result_summary(result)
 
     def _display_result_summary(self, result) -> None:
-        """Display detailed result summary with journal data if available."""
+        """Display the SQL statements collected by --show-sql, if any."""
         has_visible_sql = getattr(result, "show_sql", False) and getattr(result, "sql", None)
-        # Only show detailed summaries for successful operations unless
-        # --show-sql explicitly collected SQL before the failure.
-        if not getattr(result, "success", True) and not has_visible_sql:
+        if not has_visible_sql:
             return
 
         try:
             # Import here to avoid circular imports
             from .formatters.formatter import OutputFormatter
 
-            has_journal = (
-                getattr(result, "success", True) and hasattr(result, "journal") and result.journal
-            )
-            if has_journal or has_visible_sql:
-                formatter = OutputFormatter()
+            formatter = OutputFormatter()
 
-                # Get schema name from result if available
-                schema_name = getattr(result, "target_schema", None) or "default"
+            # Get schema name from result if available
+            schema_name = getattr(result, "target_schema", None) or "default"
 
-                # Format the result as text and display it
-                formatted_result = formatter.format(
-                    result, format_type="text", schema_name=schema_name
-                )
+            # Format the result as text and display only the SQL section, not the
+            # full report.
+            formatted_result = formatter.format(result, format_type="text", schema_name=schema_name)
+            sql_lines = _sql_section_lines(formatted_result.split("\n"))
 
-                # Only display the performance and explicit SQL visibility
-                # sections, not the full report.
-                lines = formatted_result.split("\n")
-                performance_lines = _summary_section_lines(lines, has_visible_sql, has_journal)
-
-                # Display the performance summary if we found any. This is
-                # human-facing console output, so keep stdout reserved for
-                # command payloads.
-                if performance_lines:
-                    for line in performance_lines:
-                        self._console.print(line, markup=False, highlight=False)
+            # This is human-facing console output, so keep stdout reserved for
+            # command payloads.
+            for line in sql_lines:
+                self._console.print(line, markup=False, highlight=False)
 
         except Exception as e:
-            # Don't let journal display errors break the console output
+            # Don't let display errors break the console output
             # Just log debug message if debug is enabled
             if self.is_debug_enabled():
                 self.debug(f"Could not display result summary: {e}")

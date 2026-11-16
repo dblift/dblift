@@ -145,7 +145,7 @@ def collect_option_strings(parser: argparse.ArgumentParser) -> "set[str]":
 def _add_registry_flags(parser: argparse.ArgumentParser) -> None:
     """Emit a --flag for every registry property that lacks one.
 
-    Skips properties that are cli_only, cli_exempt, nested (database.*), or
+    Skips properties that are cli_exempt, nested (database.*), or
     already covered by a legacy flag recorded in cli_aliases. Ensures any NEW
     persistent property added to the registry automatically gets a CLI flag,
     so the CLI surface can never silently drift from config/env again.
@@ -162,7 +162,7 @@ def _add_registry_flags(parser: argparse.ArgumentParser) -> None:
     # therefore runs AFTER subparsers are registered so the tree walk sees them.
     existing = collect_option_strings(parser)
     for spec in PROPERTY_REGISTRY:
-        if spec.cli_only or spec.cli_exempt or "." in spec.name:
+        if spec.cli_exempt or "." in spec.name:
             continue
         if spec.name in deferred_specs:
             continue
@@ -741,9 +741,6 @@ def create_parser(
             import_flyway_parser,
             db_parser,
         ]
-
-        def silent_error(message: str) -> None:
-            pass
 
         for subparser in all_subparsers:
             subparser.error = silent_error  # type: ignore[method-assign,assignment]
