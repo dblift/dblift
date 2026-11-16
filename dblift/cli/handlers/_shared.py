@@ -15,14 +15,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from dblift.api._preflight import reraise_preflight_failure
 from dblift.core.migration.commands.base_command import reported_exception_name
-from dblift.core.migration.scripting.filename_parser import (
-    MIGRATION_SQL_FILENAME_RE,
-    is_migration_sql_file,
-)
 
-# The migration SQL filename rule lives in core; these names stay for existing importers.
-_MIGRATION_FILENAME_RE = MIGRATION_SQL_FILENAME_RE
-_is_migration_sql_file = is_migration_sql_file
 # The preflight re-raise helper lives on the API layer; this name stays for CLI handlers.
 _reraise_preflight_failure = reraise_preflight_failure
 
