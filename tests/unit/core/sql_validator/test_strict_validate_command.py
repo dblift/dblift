@@ -15,6 +15,7 @@ from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_quirks import BaseQuirks
+from tests.unit._validation_snapshot import validate_snapshot_for
 
 
 def _validator(strict_result: bool) -> MigrationValidator:
@@ -51,7 +52,6 @@ def _validator(strict_result: bool) -> MigrationValidator:
             )
         ]
     )
-    validator._handle_baseline_filtering = MagicMock(side_effect=lambda scripts: scripts)
     validator._validate_no_scripts_case = MagicMock(return_value=(False, True))
     validator._check_repeatable_migrations = MagicMock()
     validator._validate_duplicate_versions = MagicMock(return_value=True)
@@ -66,7 +66,7 @@ def _validator(strict_result: bool) -> MigrationValidator:
 def test_validate_command_runs_strict_mode_rules(tmp_path: Path):
     validator = _validator(strict_result=False)
 
-    result = validator.validate_migrations(tmp_path, command="validate")
+    result = validate_snapshot_for(validator, tmp_path, "validate")
 
     assert result.success is True  # helper controls detailed mutation; this test pins invocation
     validator._validate_strict_mode_rules.assert_called_once()
@@ -76,7 +76,7 @@ def test_validate_command_runs_strict_mode_rules(tmp_path: Path):
 def test_non_migrate_validate_commands_do_not_run_strict_mode_rules(tmp_path: Path):
     validator = _validator(strict_result=True)
 
-    validator.validate_migrations(tmp_path, command="info")
+    validate_snapshot_for(validator, tmp_path, "info")
 
     validator._validate_strict_mode_rules.assert_not_called()
 
@@ -93,7 +93,6 @@ def _filtering_validator() -> MigrationValidator:
         provider=SimpleNamespace(config=SimpleNamespace(strict_mode=False)),
         get_applied_migrations=MagicMock(return_value=[]),
     )
-    validator._handle_baseline_filtering = MagicMock(side_effect=lambda scripts: scripts)
     validator._validate_no_scripts_case = MagicMock(
         side_effect=lambda scripts, issues: (not scripts, True)
     )
@@ -133,7 +132,7 @@ def test_target_version_filter_skips_out_of_scope_placeholder_warnings(tmp_path:
         ]
     )
 
-    result = validator.validate_migrations(tmp_path, command="validate", target_version="1")
+    result = validate_snapshot_for(validator, tmp_path, "validate", target_version="1")
 
     assert result.success is True
     warnings = [call.args[0] for call in validator.log.warning.call_args_list]
@@ -154,7 +153,7 @@ def test_validate_does_not_parse_in_scope_placeholder_script(tmp_path: Path):
         ]
     )
 
-    result = validator.validate_migrations(tmp_path, command="validate", target_version="3")
+    result = validate_snapshot_for(validator, tmp_path, "validate", target_version="3")
 
     assert result.success is True
     warnings = [call.args[0] for call in validator.log.warning.call_args_list]
@@ -175,7 +174,7 @@ def test_validate_ignores_unresolved_placeholder_outside_sql_literal(tmp_path: P
         ]
     )
 
-    result = validator.validate_migrations(tmp_path, command="validate")
+    result = validate_snapshot_for(validator, tmp_path, "validate")
 
     assert result.success is True
     warnings = [call.args[0] for call in validator.log.warning.call_args_list]
@@ -183,7 +182,7 @@ def test_validate_ignores_unresolved_placeholder_outside_sql_literal(tmp_path: P
 
 
 @pytest.mark.unit
-def test_validate_resolved_migrations_does_not_parse_pending_sql():
+def test_resolved_catalog_validation_does_not_parse_pending_sql():
     validator = _filtering_validator()
     scripts = [
         SimpleNamespace(
@@ -194,7 +193,7 @@ def test_validate_resolved_migrations_does_not_parse_pending_sql():
         )
     ]
 
-    result = validator.validate_resolved_migrations(scripts, command="migrate")
+    result = validate_snapshot_for(validator, command="migrate", resolved_migrations=scripts)
 
     assert result.success is True
 
@@ -230,7 +229,7 @@ def test_metadata_validation_does_not_construct_analyzer_or_read_sql(monkeypatch
     )
 
     migration = UnreadableSqlMigration()
-    result = validator.validate_resolved_migrations([migration])
+    result = validate_snapshot_for(validator, resolved_migrations=[migration])
 
     assert result.success is True
     assert result.migrations == [migration]
@@ -275,7 +274,7 @@ def test_target_version_filter_keeps_applied_scripts_in_checksum_scope(tmp_path:
 
     validator._validate_checksums = MagicMock(side_effect=capture_checksum_scope)
 
-    result = validator.validate_migrations(tmp_path, command="migrate", target_version="4")
+    result = validate_snapshot_for(validator, tmp_path, "migrate", target_version="4")
 
     assert result.success is True
     assert "V3__applied.sql" in checksum_scope

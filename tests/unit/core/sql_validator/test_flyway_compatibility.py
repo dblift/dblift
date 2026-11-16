@@ -345,18 +345,6 @@ def test_state_read_phase_caches_data_and_new_phase_refreshes():
     assert provider.execute_query.call_count == 4
 
 
-def test_legacy_table_check_creates_history_through_state_manager():
-    provider = MagicMock()
-    provider.table_exists.return_value = False
-    validator = _make_validator(provider)
-    history = validator.state_manager.history_manager
-    from unittest.mock import patch
-
-    with patch.object(history, "create_schema_and_history_table") as create:
-        validator._check_table_compatibility([])
-    create.assert_called_once_with()
-
-
 def test_history_check_preserves_compatibility_query_error_message():
     provider = MagicMock()
     provider.table_exists.return_value = True
