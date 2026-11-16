@@ -16,19 +16,15 @@ from dblift.cli.handlers._shared import (
 def _validate_result_to_dict(result: Any) -> Dict[str, Any]:
     """Serialize a ValidateResult to a JSON-compatible dict."""
     return {
-        "success": bool(getattr(result, "success", True)),
+        "success": bool(result.success),
         # A clean validate leaves error_message empty (""); emit null, as info
         # and migrate do, so the three read tools share one error contract.
-        "error": getattr(result, "error_message", None) or None,
-        "target_schema": getattr(result, "target_schema", ""),
-        "error_count": getattr(result, "error_count", 0),
-        "issues": list(getattr(result, "issues", [])),
-        "validated_migrations": [
-            _migration_info_to_dict(m) for m in getattr(result, "validated_migrations", [])
-        ],
-        "failed_migrations": [
-            _migration_info_to_dict(m) for m in getattr(result, "failed_migrations", [])
-        ],
+        "error": result.error_message or None,
+        "target_schema": result.target_schema,
+        "error_count": result.error_count,
+        "issues": list(result.issues),
+        "validated_migrations": [_migration_info_to_dict(m) for m in result.validated_migrations],
+        "failed_migrations": [_migration_info_to_dict(m) for m in result.failed_migrations],
     }
 
 

@@ -17,11 +17,11 @@ import pytest
 
 from dblift.api.events import EventType
 from dblift.config import DbliftConfig
+from tests.unit._client_factory import bare_client
 
 
 def _make_client(import_flyway_result):
     """Build a minimal Client stub for event-emission tests."""
-    from dblift.api.client import DBLiftClient
 
     provider = MagicMock()
     provider.supports_transactions.return_value = False
@@ -29,7 +29,7 @@ def _make_client(import_flyway_result):
     executor = MagicMock()
     executor.import_flyway.return_value = import_flyway_result
 
-    client = DBLiftClient.__new__(DBLiftClient)
+    client = bare_client()
     client.config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
     client.provider = provider
     client.executor = executor

@@ -12,12 +12,12 @@ from dblift.cli.handlers._shared import (
 
 
 def _handle_baseline(ctx: CliCommandContext) -> Tuple[bool, Any]:
-    baseline_description = getattr(ctx.args, "baseline_description", None) or ""
+    baseline_description = ctx.args.baseline_description or ""
     result = _reraise_preflight_failure(
         ctx.client.baseline(
             ctx.args.baseline_version,
             baseline_description,
-            dry_run=bool(getattr(ctx.args, "dry_run", False)),
+            dry_run=bool(ctx.args.dry_run),
         )
     )
     _set_command_completed(ctx.log, result, "BASELINE")
