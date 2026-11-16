@@ -215,24 +215,6 @@ class MigrationQueryResultInfo:
 
 
 # Result classes for different operations
-class CommandResult(OperationResult):
-    """Result of a command operation."""
-
-    def __init__(self) -> None:
-        """Initialize an empty command result (command type + captured output lines)."""
-        super().__init__()
-        self.command_type: str = ""
-        self.output: List[str] = []
-
-    def add_output(self, output: str) -> None:
-        """Add output to the result."""
-        self.output.append(output)
-
-    def get_output(self) -> List[str]:
-        """Get the command output."""
-        return self.output
-
-
 class MigrateResult(OperationResult):
     """Result of a migrate operation."""
 
@@ -240,7 +222,6 @@ class MigrateResult(OperationResult):
         """Initialize empty migration list and the schema/version/dry-run bookkeeping."""
         super().__init__()
         self.migrations: List[MigrationInfo] = []
-        self.target_schema: str = ""
         self.init_schema: bool = False
         self.init_version: Optional[str] = None
         self.success = True
@@ -306,7 +287,6 @@ class CleanResult(OperationResult):
         """Initialize empty per-type object buckets and detail metadata."""
         super().__init__()
         self.dry_run: bool = False
-        self.target_schema: str = ""
         # ``schema_name`` comes from OperationResult as a property.
         self._objects_by_type: Dict[str, Set[str]] = defaultdict(set)
         self._object_details: Dict[str, Dict[str, Dict[str, str]]] = defaultdict(dict)
@@ -417,7 +397,6 @@ class ValidateResult(OperationResult):
     def __init__(self) -> None:
         """Initialize empty validated/failed migration lists and error counter."""
         super().__init__()
-        self.target_schema: str = ""
         self.migration_data: Optional[Any] = None
         self.error_count: int = 0
         self.validated_migrations: List[MigrationInfo] = []
@@ -468,7 +447,6 @@ class InfoResult(OperationResult):
     def __init__(self) -> None:
         """Initialize an empty info result (migration list + current schema version)."""
         super().__init__()
-        self.target_schema: str = ""
         self.migration_data: Optional[Any] = None
         self.current_schema_version: Optional[str] = None
         # False when the schema-history table is missing, so nothing is recorded as applied.
@@ -541,7 +519,6 @@ class BaselineResult(OperationResult):
     def __init__(self) -> None:
         """Initialize an empty baseline result with placeholder schema/version fields."""
         super().__init__()
-        self.target_schema: str = ""
         self.baseline_version: str = ""
         # ``schema_name`` comes from OperationResult as a property.
 
@@ -567,7 +544,6 @@ class RepairResult(OperationResult):
         """Initialize empty repaired/removed/aligned migration lists and repair counters."""
         super().__init__()
         self.dry_run: bool = False
-        self.target_schema: str = ""
         # ``schema_name`` comes from OperationResult as a property.
         self.repaired_migrations: List[MigrationInfo] = []
         self.removed_migrations: List[MigrationInfo] = []
@@ -597,7 +573,6 @@ class UndoResult(OperationResult):
         super().__init__()
         self.dry_run: bool = False
         self.target_version: str = ""
-        self.target_schema: str = ""
         # ``schema_name`` comes from OperationResult as a property.
         self.current_schema_version: Optional[str] = None
         self.undone_migrations: List[MigrationInfo] = []
