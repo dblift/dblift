@@ -155,6 +155,12 @@ class SqlObject:
         """
         self.dialect_options.setdefault(plugin, {})[key] = value
 
+    def _restore_dialect_options(self, data: Dict[str, Any]) -> None:
+        """Merge ``data["dialect_options"]`` into this object's options."""
+        for plugin, opts in (data.get("dialect_options") or {}).items():
+            for key, value in opts.items():
+                self.set_dialect_option(plugin, key, value)
+
     def _set_plugin_option(self, plugin: str, key: str, value: Any, *, default: Any = None) -> None:
         """Setter helper for legacy property aliases.
 

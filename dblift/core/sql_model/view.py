@@ -252,9 +252,7 @@ class View(SqlObject):
             comment=data.get("comment"),
         )
         # Restore plugin-owned dialect options (mirrors Table.from_dict).
-        for plugin, opts in (data.get("dialect_options") or {}).items():
-            for key, value in opts.items():
-                view.set_dialect_option(plugin, key, value)
+        view._restore_dialect_options(data)
         return view
 
     def to_dict(self) -> Dict[str, Any]:
@@ -318,24 +316,3 @@ class View(SqlObject):
             result["dialect_options"] = self.dialect_options
 
         return result
-
-    @staticmethod
-    def _format_mysql_definer(definer: str) -> str:
-        """Return a properly quoted MySQL DEFINER clause."""
-        if not definer:
-            return definer
-
-        trimmed = definer.strip()
-        # If already quoted (contains backticks and @), return as-is
-        if "`" in trimmed or trimmed.upper() == "CURRENT_USER":
-            return trimmed
-
-        if "@" in trimmed:
-            user_part, host_part = trimmed.split("@", 1)
-        else:
-            user_part, host_part = trimmed, "%"
-
-        user_part = user_part.strip("`\"'")
-        host_part = host_part.strip("`\"'") or "%"
-
-        return f"`{user_part}`@`{host_part}`"
