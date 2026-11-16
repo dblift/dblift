@@ -8,6 +8,7 @@ import pytest
 
 from dblift.core.logger import NullLog
 from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_state import (
     CatalogMigration,
     MigrationEligibility,
@@ -44,11 +45,10 @@ def test_skips_pending_undo_sql_rows_and_keeps_undoable_from_companion():
             CatalogMigration(undo, MigrationEligibility.UNDO_AVAILABLE),
         ),
     )
-    collector = MigrationDataCollector(NullLog())
+    collector = MigrationDataCollector(NullLog(), MigrationScriptManager(NullLog()))
 
-    rows = collector._get_migration_data_from_state(
+    rows = collector.get_migration_data(
         migration_state=state,
-        all_applied_migrations=[],
     )
 
     scripts = [row["script"] for row in rows]
@@ -69,11 +69,10 @@ def test_skips_applied_undo_sql_rows():
             MigrationEntry.from_migration(undo, status="Success"),
         ],
     )
-    collector = MigrationDataCollector(NullLog())
+    collector = MigrationDataCollector(NullLog(), MigrationScriptManager(NullLog()))
 
-    rows = collector._get_migration_data_from_state(
+    rows = collector.get_migration_data(
         migration_state=state,
-        all_applied_migrations=[sql, undo],
     )
 
     scripts = [row["script"] for row in rows]

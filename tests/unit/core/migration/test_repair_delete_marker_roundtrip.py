@@ -118,7 +118,9 @@ class TestDeleteMarkerRoundTrip(unittest.TestCase):
                 self.assertIn(f"[DELETE:{member.name}]", written.description)
 
     def test_written_marker_round_trips_through_data_collector(self) -> None:
-        collector = MigrationDataCollector(log=MagicMock())
+        collector = MigrationDataCollector(
+            log=MagicMock(), script_manager=MigrationScriptManager(MagicMock())
+        )
 
         for member, expected_category in EXPECTED_CATEGORY_BY_MEMBER.items():
             with self.subTest(member=member.name):

@@ -313,7 +313,6 @@ class CommandPresentation:
         ui = context.migration_ui
         if ui is None:
             ui = MigrationUI(context.log)
-            ui.script_manager = context.script_manager
         ui.display_migration_info(**parameters)
 
     @contextmanager

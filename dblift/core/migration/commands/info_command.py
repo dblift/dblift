@@ -8,7 +8,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, cast
 if TYPE_CHECKING:
     pass
 from dblift.core.logger.results import InfoResult, MigrationInfo, is_failed_migration_status
-from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, MigrationType
+from dblift.core.migration._type_match import migration_type_name
+from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES
 from dblift.core.migration.presentation import presentation_for
 from dblift.core.migration.sql.lint import lint_pending_scripts
 from dblift.core.migration.sql.script_analysis import dialect_of
@@ -34,12 +35,6 @@ def normalize_migration_info_status(ui_state: Optional[str]) -> str:
     if status_upper == "BASELINE":
         return "BASELINE"
     return status_upper
-
-
-def _migration_type_name(migration_type: object) -> str:
-    if isinstance(migration_type, MigrationType):
-        return migration_type.value
-    return str(migration_type or "").upper()
 
 
 def _normalize_filter(value: Optional[str]) -> Optional[List[str]]:
@@ -109,7 +104,7 @@ class InfoCommand(BaseCommand):
             _seen_versions: Dict[str, str] = {}
             for _script in all_script_objects:
                 if (
-                    _migration_type_name(getattr(_script, "type", None))
+                    migration_type_name(getattr(_script, "type", None))
                     not in VERSIONED_SCRIPT_TYPES
                 ):
                     continue
@@ -133,50 +128,24 @@ class InfoCommand(BaseCommand):
             result.current_schema_version = migration_state.current_version
             self._flag_missing_history(result, all_applied_migrations)
 
-            # Use the migration UI to display the information properly
-            # Pass the full state so UI can access undone_versions and other state info
-            if display_human:
-                presenter = presentation_for(self.execution_engine, self.log, requested=True)
-                if presenter is not None:
-                    presenter.present_migration_info(
-                        self,
-                        migration_state=migration_state,
-                        all_applied_migrations=all_applied_migrations,
-                        scripts_dir=scripts_dir,
-                        target_version=None,
-                        tags=normalized_tags,
-                        exclude_tags=normalized_exclude_tags,
-                        versions=normalized_versions,
-                        exclude_versions=normalized_exclude_versions,
-                    )
-
-            # Use the same data processing pipeline as the console output
-            # Get structured migration data using the UI data collector
-            collector = self.migration_ui
-            if collector is None:
-                collector = MigrationDataCollector(self.log, self.script_manager)
-            migrations_data = collector.get_migration_data(
+            # Compute the rows once; the console table and the result share them.
+            migrations_data = MigrationDataCollector(
+                self.log, self.script_manager
+            ).get_migration_data(
                 migration_state=migration_state,
-                all_applied_migrations=all_applied_migrations,
-                scripts_dir=scripts_dir,
-                target_version=None,
                 tags=normalized_tags,
                 exclude_tags=normalized_exclude_tags,
                 versions=normalized_versions,
                 exclude_versions=normalized_exclude_versions,
             )
 
+            if display_human:
+                presenter = presentation_for(self.execution_engine, self.log, requested=True)
+                if presenter is not None:
+                    presenter.present_migration_info(self, migrations_data=migrations_data)
+
             # Convert the UI data to MigrationInfo objects for the HTML formatter
             all_migration_infos = []
-            # Handle case where migrations_data might be a Mock or not iterable
-            if not hasattr(migrations_data, "__iter__"):
-                migrations_data = []
-            else:
-                try:
-                    migrations_data = list(migrations_data)
-                except (TypeError, AttributeError):
-                    migrations_data = []
-
             for migration_data in migrations_data:
                 # Map UI data format to MigrationInfo format
                 status = normalize_migration_info_status(migration_data.get("state", "UNKNOWN"))

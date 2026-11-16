@@ -11,7 +11,7 @@ pytestmark = pytest.mark.unit
 
 
 def test_migration_data_from_state_successful_baseline_uses_baseline_state():
-    collector = MigrationDataCollector(NullLog())
+    collector = MigrationDataCollector(NullLog(), MigrationScriptManager(NullLog()))
     baseline = MigrationScriptManager(NullLog()).baseline_marker("1.0.0", "Production baseline")
     baseline.success = True
     baseline.installed_rank = 1
@@ -22,10 +22,8 @@ def test_migration_data_from_state_successful_baseline_uses_baseline_state():
         all_applied_objects=[baseline],
         applied=[MigrationEntry.from_migration(baseline, status="Baseline")],
     )
-    rows = collector._get_migration_data_from_state(
+    rows = collector.get_migration_data(
         migration_state=state,
-        all_applied_migrations=[baseline],
-        scripts_dir=None,
     )
     assert len(rows) == 1
     assert rows[0]["state"] == "Baseline"

@@ -28,7 +28,6 @@ from tests.unit.core.migration.commands._plan_undo_wiring import wire_plan_undo
 def _make_info_command(
     script_objects=None,
     applied_objects=None,
-    migration_data=None,
     all_applied_migrations=None,
     state_manager_raises=False,
 ):
@@ -55,7 +54,6 @@ def _make_info_command(
     history_manager.get_applied_migrations.return_value = all_applied_migrations or []
 
     migration_ui = MagicMock()
-    migration_ui.get_migration_data.return_value = migration_data or []
 
     command = InfoCommand(
         config=config,
@@ -199,12 +197,20 @@ class TestNormalizeMigrationInfoStatus(unittest.TestCase):
 # ===========================================================================
 
 
+_COLLECTOR = "dblift.core.migration.commands.info_command.MigrationDataCollector"
+
+
 class TestInfoCommandMigrationData(unittest.TestCase):
     """Test InfoCommand.execute population of migrations list."""
 
+    def _execute_with_rows(self, rows):
+        cmd, _ = _make_info_command()
+        with patch(_COLLECTOR) as collector_cls:
+            collector_cls.return_value.get_migration_data.return_value = rows
+            return cmd.execute(Path("/tmp"))
+
     def test_migrations_empty_when_no_data(self):
-        cmd, _ = _make_info_command(migration_data=[])
-        result = cmd.execute(Path("/tmp"))
+        result = self._execute_with_rows([])
         self.assertEqual(result.migrations, [])
 
     def test_migrations_populated_from_migration_data(self):
@@ -221,22 +227,13 @@ class TestInfoCommandMigrationData(unittest.TestCase):
                 "installed_by": "user",
             }
         ]
-        cmd, _ = _make_info_command(migration_data=data)
-        result = cmd.execute(Path("/tmp"))
+        result = self._execute_with_rows(data)
         self.assertEqual(len(result.migrations), 1)
         self.assertEqual(result.migrations[0].script, "V1__init.sql")
         self.assertEqual(result.migrations[0].status, "SUCCESS")
 
-    def test_migration_data_non_iterable_handled_gracefully(self):
-        """get_migration_data returning a non-iterable is handled without crash."""
-        cmd, _ = _make_info_command()
-        cmd.migration_ui.get_migration_data.return_value = 42  # not iterable
-        result = cmd.execute(Path("/tmp"))
-        self.assertEqual(result.migrations, [])
-
-    def test_migration_data_not_list_but_iterable_is_handled(self):
-        """Generator-like objects are accepted and consumed."""
-        data = (
+    def test_pending_row_maps_to_pending_status(self):
+        data = [
             {
                 "state": "Pending",
                 "script": "V2__add.sql",
@@ -244,11 +241,8 @@ class TestInfoCommandMigrationData(unittest.TestCase):
                 "description": "Add",
                 "type": "SQL",
             }
-            for _ in range(1)
-        )
-        cmd, _ = _make_info_command()
-        cmd.migration_ui.get_migration_data.return_value = data
-        result = cmd.execute(Path("/tmp"))
+        ]
+        result = self._execute_with_rows(data)
         self.assertEqual(len(result.migrations), 1)
         self.assertEqual(result.migrations[0].status, "PENDING")
 
