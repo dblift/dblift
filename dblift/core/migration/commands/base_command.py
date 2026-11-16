@@ -394,7 +394,7 @@ class BaseCommand:
         Raises:
             Exception: If any callback fails (except for error callbacks which only log warnings)
         """
-        read_snapshot = getattr(self, "_callback_snapshot", None)
+        read_snapshot = self._callback_snapshot
         if read_snapshot is None:
             read_snapshot = self.state_manager.new_callback_snapshot()
             self._callback_snapshot = read_snapshot
@@ -416,22 +416,15 @@ class BaseCommand:
             # deduplication otherwise silently swallows these lines for every
             # migration but the first, even though the callbacks themselves
             # execute for every migration.
-            try:
-                callback_count = len(callbacks) if hasattr(callbacks, "__len__") else None
-                self.log.info(
-                    f"Executing {callback_count if callback_count is not None else 'some'} "
-                    f"{event_prefix} callback(s)",
-                    dedupe=False,
-                )
-            except (TypeError, AttributeError):
-                callback_count = None
-                self.log.info(f"Executing {event_prefix} callback(s)", dedupe=False)
+            callback_count = len(callbacks)
+            self.log.info(
+                f"Executing {callback_count} {event_prefix} callback(s)",
+                dedupe=False,
+            )
 
             lifecycle_event = _CALLBACK_LIFECYCLE_EVENTS.get(event_prefix)
             if lifecycle_event:
-                _emit_script_event(
-                    lifecycle_event, {"count": callback_count} if callback_count is not None else {}
-                )
+                _emit_script_event(lifecycle_event, {"count": callback_count})
 
             for callback in callbacks:
                 script_name = getattr(callback, "script_name", "")
@@ -491,16 +484,7 @@ class BaseCommand:
             # Get applied migrations to determine current version
             applied_migrations = self.state_manager.get_applied_migrations()
 
-            # Check if applied_migrations is empty (handle Mock objects in tests)
-            try:
-                is_empty = not applied_migrations or (
-                    hasattr(applied_migrations, "__len__") and len(applied_migrations) == 0
-                )
-            except (TypeError, AttributeError):
-                # If we can't determine, assume it's not empty and continue
-                is_empty = False
-
-            if is_empty:
+            if not applied_migrations:
                 # Only log to debug, not info (header will show it)
                 self.log.debug("Current schema version: <none> (no migrations applied)")
                 return
@@ -527,7 +511,7 @@ class BaseCommand:
         """
         if result.end_time is None:
             result.complete()
-        presenter = presentation_for(getattr(self, "execution_engine", None), self.log)
+        presenter = presentation_for(self.execution_engine, self.log)
         if presenter is not None:
             presenter.present_command_result(self, command_name, result)
 
@@ -1036,11 +1020,7 @@ class BaseCommand:
                 result.native_driver = get_provider_driver_display(self.provider, self.config)
             except (AttributeError, RuntimeError) as e:
                 # Driver info not available - log at debug level if enabled
-                if (
-                    hasattr(self, "log")
-                    and hasattr(self.log, "is_debug_enabled")
-                    and self.log.is_debug_enabled()
-                ):
+                if self.log.is_debug_enabled():
                     self.log.debug(f"Could not retrieve native driver info: {e}")
                 result.native_driver = None  # Don't set "Unknown Native Driver"
 
@@ -1193,11 +1173,7 @@ class BaseCommand:
             if display_url:
                 return mask_database_url(display_url)
         except (AttributeError, RuntimeError, ValueError) as e:
-            if (
-                hasattr(self, "log")
-                and hasattr(self.log, "is_debug_enabled")
-                and self.log.is_debug_enabled()
-            ):
+            if self.log.is_debug_enabled():
                 self.log.debug(f"Could not retrieve database URL: {e}")
         return None
 
@@ -1218,11 +1194,7 @@ class BaseCommand:
                 if version_info:
                     return f"Connected to database {db_name} ({version_info})"
         except (AttributeError, RuntimeError, ValueError) as e:
-            if (
-                hasattr(self, "log")
-                and hasattr(self.log, "is_debug_enabled")
-                and self.log.is_debug_enabled()
-            ):
+            if self.log.is_debug_enabled():
                 self.log.debug(f"Could not retrieve connection info: {e}")
         return None
 
@@ -1301,7 +1273,7 @@ class BaseCommand:
             exclude_versions: Exclude versions filter
             **kwargs: Additional command-specific filters
         """
-        presenter = presentation_for(getattr(self, "execution_engine", None), self.log)
+        presenter = presentation_for(self.execution_engine, self.log)
         if presenter is not None:
             presenter.present_command_start(
                 self,

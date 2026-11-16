@@ -20,10 +20,8 @@ from dblift.core.migration.commands.base_command import BaseCommand
 
 
 def _make_base_command_stub() -> BaseCommand:
-    """Build a BaseCommand bypassing __init__ (we only need its methods)."""
-    cmd = BaseCommand.__new__(BaseCommand)
-    cmd.log = MagicMock()
-    return cmd
+    """Build a BaseCommand with only a logger (we only need its methods)."""
+    return BaseCommand(log=MagicMock())
 
 
 @pytest.mark.unit

@@ -8,6 +8,7 @@ import pytest
 from dblift.core.migration.commands.base_command import BaseCommandContext
 from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.commands.undo_command import UndoCommand
+from dblift.core.migration.journals.migration_journal import MigrationJournal
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.plugins.cosmosdb.quirks import CosmosdbQuirks
@@ -28,7 +29,7 @@ def test_default_command_passes_analysis_preparation_without_sql_parser(
     service = SqlExecutionService(
         Mock(quirks=quirks),
         analyzer,
-        journal=Mock(spec=["record_object_changes"]),
+        journal=MigrationJournal(),
     )
     context = BaseCommandContext(
         config=MagicMock(),

@@ -4,11 +4,12 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, create_autospec
 
 import pytest
 
 from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCommandError
+from dblift.core.migration.journals.migration_journal import MigrationJournal
 from dblift.core.migration.sql.lint import lint_script
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
@@ -317,9 +318,8 @@ def test_replace_into_keeps_its_kind_and_dml_result():
 def test_executing_a_trigger_does_not_log_a_warning():
     provider = Mock(spec=["execute_statement"])
     provider.execute_statement.return_value = 0
-    journal = Mock(
-        spec=["record_statement_start", "record_statement_complete", "record_object_changes"]
-    )
+    journal = create_autospec(MigrationJournal, instance=True)
+    journal.capture_objects = True
     service = SqlExecutionService(
         provider, StatementReader("sqlite"), journal=journal, quirks=SqliteQuirks()
     )

@@ -991,6 +991,7 @@ def test_repair_delete_record_never_uses_model_filename_inference(
             ]
         ),
         result,
+        MigrationState(),
     )
     assert not failed, result.error_message
     assert count == 1

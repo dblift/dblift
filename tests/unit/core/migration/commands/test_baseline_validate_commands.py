@@ -47,6 +47,7 @@ def _make_baseline_cmd(
     """Build a BaselineCommand with minimal mocked collaborators."""
     _config = config or SimpleNamespace(
         database=SimpleNamespace(schema="public", type="postgresql"),
+        strict_mode=False,
     )
     _log = log or MagicMock()
     _provider = provider or MagicMock()
@@ -84,6 +85,7 @@ def _make_validate_cmd(
     """Build a ValidateCommand with minimal mocked collaborators."""
     _config = config or SimpleNamespace(
         database=SimpleNamespace(schema="public", type="postgresql"),
+        strict_mode=False,
     )
     _log = log or MagicMock()
     _provider = provider or MagicMock()

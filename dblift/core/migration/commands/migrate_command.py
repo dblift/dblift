@@ -9,7 +9,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 from dblift.core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS
 from dblift.core.logger.results import MigrateResult, MigrationInfo, MigrationSqlInfo
-from dblift.core.migration.executor.migration_helpers import MigrationHelpers
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration, MigrationType
 from dblift.core.migration.presentation import presentation_for
 from dblift.core.migration.sql.lint import SAFE, lint_pending_scripts
@@ -488,8 +487,6 @@ class MigrateCommand(BaseCommand):
         result.show_query_results = show_query_results
         result.target_schema = self.config.database.schema
         result.journal = self.journal
-        if not getattr(self, "migration_helpers", None):
-            self.migration_helpers = MigrationHelpers(self.config, self.log)
 
         read_snapshot = self.state_manager.new_read_snapshot()
 

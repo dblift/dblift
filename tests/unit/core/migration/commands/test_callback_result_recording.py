@@ -16,15 +16,15 @@ from dblift.core.migration.state.migration_state_manager import MigrationStateMa
 
 
 def _command_with_callbacks(callbacks):
-    command = MigrateCommand.__new__(MigrateCommand)
-    command.log = MagicMock()
-    command.execution_engine = MagicMock()
-    command.script_manager = MagicMock()
-    command.script_manager.get_callbacks_by_event.return_value = callbacks
-    command.state_manager = MigrationStateManager(
-        command.log, MagicMock(), command.script_manager, MagicMock()
+    log = MagicMock()
+    script_manager = MagicMock()
+    script_manager.get_callbacks_by_event.return_value = callbacks
+    return MigrateCommand(
+        log=log,
+        execution_engine=MagicMock(),
+        script_manager=script_manager,
+        state_manager=MigrationStateManager(log, MagicMock(), script_manager, MagicMock()),
     )
-    return command
 
 
 @pytest.mark.unit

@@ -22,6 +22,7 @@ import pytest
 from dblift.core.logger.results import RepairResult
 from dblift.core.migration.commands.repair_command import RepairCommand
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
+from dblift.core.migration.state.migration_state import MigrationState
 from dblift.db.plugins.base_history_manager import BaseHistoryManager
 
 
@@ -112,7 +113,7 @@ class TestRepairUsesNormalizedHistoryTableForOracle:
             "original_type": None,
         }
 
-        cmd._delete_failed_migration_entry(repair, RepairResult())
+        cmd._delete_failed_migration_entry(repair, RepairResult(), MigrationState())
 
         assert query_executor.statements, "expected a DELETE statement to be executed"
         delete_sql, params = query_executor.statements[0]
@@ -130,6 +131,7 @@ class TestRepairUsesNormalizedHistoryTableForOracle:
         cmd._delete_failed_migration_entry(
             {"script": "V1__create_users.sql", "version": "1", "original_type": None},
             RepairResult(),
+            MigrationState(),
         )
 
         delete_sql, _params = query_executor.statements[0]
