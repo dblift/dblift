@@ -295,6 +295,14 @@ class TransactionalProvider(ABC):
         """Return True if a script may manage its own transactions on this provider."""
         return False
 
+    def begin_script_session(self) -> None:
+        """Put the connection in a state where a script's own transactions are real."""
+        raise NotImplementedError
+
+    def end_script_session(self) -> bool:
+        """Roll back what the script left open, restore the connection, say whether any was."""
+        raise NotImplementedError
+
     def caller_transaction_active(self) -> Optional[bool]:
         """Return transaction state for an explicitly supplied connection, else None."""
         return None

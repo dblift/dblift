@@ -127,6 +127,7 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
         )
         self._connection: Optional[Connection] = None
         self._tx: Optional[Transaction] = None
+        self._script_session_options: Optional[Mapping[str, object]] = None
         self.query_executor = _SqlAlchemyQueryExecutor(self)
         # A single Connection is cached on this provider (see create_connection)
         # and reused across calls. SQLAlchemy Connections are not safe for
@@ -503,6 +504,37 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
             self._tx = None
         if conn.in_transaction():
             conn.rollback()
+
+    def _script_transaction_open(self, conn: Connection) -> bool:
+        """Whether the server holds a transaction the script left open."""
+        raise NotImplementedError
+
+    def _roll_back_script_transaction(self, conn: Connection) -> None:
+        """Roll back the transaction a script left open, where ending the connection's does not."""
+
+    def begin_script_session(self) -> None:
+        """Autocommit every statement, with the provider's transaction object held open."""
+        with self._lock:
+            conn = self._ensure_connection()
+            self._end_open_transaction(conn)
+            self._script_transaction_open(conn)
+            self._script_session_options = conn.get_execution_options()
+            conn.execution_options(isolation_level="AUTOCOMMIT")
+            self._tx = conn.begin()
+
+    def end_script_session(self) -> bool:
+        """Roll back a transaction the script left open, restore the connection, report it."""
+        with self._lock:
+            conn, previous = self._connection, self._script_session_options
+            self._script_session_options = None
+            if conn is None or conn.closed or previous is None:
+                self._tx = None
+                return False
+            left_open = self._script_transaction_open(conn)
+            self._roll_back_script_transaction(conn)
+            self._end_open_transaction(conn)
+            self._restore_isolation_level(conn, previous)
+            return left_open
 
     def execute_autocommit_statement(
         self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None

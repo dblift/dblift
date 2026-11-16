@@ -2,6 +2,7 @@
 
 from typing import Optional, Tuple
 
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 
 from dblift.db.provider_interfaces import TransactionOutcome
@@ -18,6 +19,14 @@ class SqlServerTransactionProvider(SqlAlchemyProvider):
             "SELECT @@TRANCOUNT AS transaction_count, CURRENT_TRANSACTION_ID() AS transaction_id"
         )
         return int(rows[0]["transaction_count"]), int(rows[0]["transaction_id"])
+
+    def _script_transaction_open(self, conn: Connection) -> bool:
+        """Whether a transaction is open on the server."""
+        return int(self._exec_unbound(conn, "SELECT @@TRANCOUNT").scalar()) > 0
+
+    def _roll_back_script_transaction(self, conn: Connection) -> None:
+        """Roll back; the driver ignores a rollback while the connection autocommits."""
+        self._exec_unbound(conn, "IF @@TRANCOUNT > 0 ROLLBACK")
 
     def begin_transaction(self) -> None:
         """Begin, then capture the server transaction depth and identity."""
