@@ -11,30 +11,13 @@ from dblift.core.logger import Log, NullLog
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.exceptions import DB_OPERATION_EXCEPTIONS
 from dblift.db.plugins.base_schema_operations import BaseSchemaOperations
-
-
-def _clean_identifier(name: str) -> str:
-    """Return a bare DB2 identifier for catalog lookups."""
-    return name.replace('"', "").strip()
+from dblift.db.value_utils import clean_identifier as _clean_identifier
+from dblift.db.value_utils import row_value as _row_value
 
 
 def _quote_identifier(name: str) -> str:
     """Return a double-quoted DB2 identifier."""
     return '"' + str(name).replace('"', '""') + '"'
-
-
-def _row_value(row: Dict[str, Any], *names: str, default: Any = None) -> Any:
-    """Read a value from a DB2 row mapping with case tolerance."""
-    for name in names:
-        if name in row:
-            return row[name]
-        upper = name.upper()
-        if upper in row:
-            return row[upper]
-        lower = name.lower()
-        if lower in row:
-            return row[lower]
-    return default
 
 
 class Db2SchemaOperations(BaseSchemaOperations):

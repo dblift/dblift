@@ -353,21 +353,6 @@ class SqlServerProvider(SqlServerTransactionProvider):
             )
         """
 
-    def create_migration_history_table_if_not_exists(
-        self,
-        schema: str,
-        create_schema: bool = False,
-        table_name: str = DEFAULT_HISTORY_TABLE,
-    ) -> None:
-        """Create the migration history table if it is missing."""
-        if create_schema:
-            self.create_schema_if_not_exists(schema)
-        if self.table_exists(schema, table_name):
-            if create_schema:
-                self._check_baseline_safety(schema, table_name)
-            return
-        self.execute_statement(self.create_history_table(schema, table_name))
-
     def _check_baseline_safety(self, schema: str, table_name: str) -> None:
         """Refuse baseline when the history table already has migrations."""
         qualified = _schema_object(schema, table_name)
