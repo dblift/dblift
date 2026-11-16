@@ -209,7 +209,7 @@ class ExecutionEngine:
             return
 
         transaction_started = False
-        if policy.script_managed:
+        if policy.script_managed is True:
             start_error = self._start_script_session(migration)
             if start_error:
                 result.set_error(start_error)
@@ -243,7 +243,7 @@ class ExecutionEngine:
                     migration, statements, execution_time, result
                 ):
                     return
-            elif policy.script_managed:
+            elif policy.script_managed is True:
                 if self._close_script_session():
                     self._fail_left_open(migration, statements, execution_time, result)
                     return
@@ -319,7 +319,7 @@ class ExecutionEngine:
             return f"Could not start {migration.script_name} without a transaction"
         try:
             self.provider.begin_script_session()
-        except (DbliftError, RuntimeError, OSError) as error:
+        except DbliftError as error:
             return f"Could not start {migration.script_name} without a transaction: {error}"
         self._script_session_open = True
         return None
@@ -1396,7 +1396,7 @@ class ExecutionEngine:
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)
 
-        if policy.script_managed:
+        if policy.script_managed is True:
             start_error = self._start_script_session(callback)
             if start_error:
                 raise CallbackExecutionError(start_error)
@@ -1439,7 +1439,7 @@ class ExecutionEngine:
         self, callback: Migration, policy: TransactionPolicyDecision, transaction_started: bool
     ) -> None:
         """Close the callback's session or transaction; raise when the script left one open."""
-        if policy.script_managed:
+        if policy.script_managed is True:
             if self._close_script_session():
                 raise TransactionLeftOpenError(
                     f"{callback.script_name} left a transaction open; it was rolled back. "

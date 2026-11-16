@@ -5,7 +5,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.exceptions import TransactionLeftOpenError
+from dblift.core.exceptions import (
+    CallbackExecutionError,
+    ExecutionError,
+    TransactionLeftOpenError,
+)
 from dblift.core.logger import NullLog
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
@@ -26,12 +30,14 @@ class _Provider(TransactionalProvider):
         left_open: bool = False,
         fail_execute: bool = False,
         fail_begin_session: bool = False,
+        fail_end_session: bool = False,
     ) -> None:
         self.events: List[str] = []
         self._script_session = script_session
         self._left_open = left_open
         self._fail_execute = fail_execute
         self._fail_begin_session = fail_begin_session
+        self._fail_end_session = fail_end_session
         self._outcome = outcome
         self.connection = MagicMock()
 
@@ -60,11 +66,13 @@ class _Provider(TransactionalProvider):
 
     def begin_script_session(self) -> None:
         if self._fail_begin_session:
-            raise RuntimeError("no session")
+            raise ExecutionError("the connection could not be prepared: boom")
         self.events.append("session:begin")
 
     def end_script_session(self) -> bool:
         self.events.append("session:end")
+        if self._fail_end_session:
+            raise ExecutionError("close failed")
         return self._left_open
 
     def execute_query(self, sql: str, params=None):
@@ -359,7 +367,10 @@ def test_session_that_cannot_start_runs_nothing():
     engine, migration, result, provider, _ = _nt_run(fail_begin_session=True)
     engine.execute_migration(migration, result)
     assert provider.events == []
-    assert result.error_message == "Could not start V1__x.sql without a transaction: no session"
+    assert result.error_message == (
+        "Could not start V1__x.sql without a transaction: "
+        "the connection could not be prepared: boom"
+    )
 
 
 @pytest.mark.unit
@@ -410,4 +421,48 @@ def test_unexpected_error_in_an_opted_out_callback_closes_the_session_once():
     engine._finish_statements = MagicMock(side_effect=ValueError("boom"))
     with pytest.raises(ValueError, match="boom"):
         engine.execute_callback(callback)
+    assert provider.events == ["session:begin", "execute", "session:end"]
+
+
+@pytest.mark.unit
+def test_callback_that_cannot_start_a_session_raises_with_the_reason():
+    engine, callback, provider, _ = _callback(
+        content=NT + "INSERT INTO t VALUES (1);", script_session=True, fail_begin_session=True
+    )
+    with pytest.raises(CallbackExecutionError) as caught:
+        engine.execute_callback(callback)
+    assert str(caught.value) == (
+        "Could not start beforeMigrate__cb.sql without a transaction: "
+        "the connection could not be prepared: boom"
+    )
+    assert provider.events == []
+
+
+@pytest.mark.unit
+def test_a_policy_double_that_knows_nothing_of_the_feature_takes_the_transactional_path():
+    engine, migration, result, provider, _ = _run(script_session=True)
+    provider.begin_script_session = MagicMock()
+    engine.transaction_policy = MagicMock()
+    engine.transaction_policy.decide.return_value = MagicMock(
+        transactional=True, autocommit_required=False, unsupported_mixed_mode=False
+    )
+    engine.execute_migration(migration, result)
+    assert provider.events == ["begin", "execute", "history:True", "commit"]
+    provider.begin_script_session.assert_not_called()
+
+
+@pytest.mark.unit
+def test_failing_close_after_a_failed_statement_keeps_the_statement_error():
+    engine, migration, result, provider, log = _nt_run(fail_execute=True, fail_end_session=True)
+    engine.execute_migration(migration, result)
+    assert "statement failed" in result.error_message
+    assert any("close failed" in m for m in log.warnings)
+    assert provider.events == ["session:begin", "session:end", "begin", "history:False", "commit"]
+
+
+@pytest.mark.unit
+def test_failing_close_after_success_propagates_and_records_no_history():
+    engine, migration, result, provider, _ = _nt_run(fail_end_session=True)
+    with pytest.raises(ExecutionError, match="close failed"):
+        engine.execute_migration(migration, result)
     assert provider.events == ["session:begin", "execute", "session:end"]
