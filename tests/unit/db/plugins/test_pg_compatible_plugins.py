@@ -105,11 +105,11 @@ def test_factory_engines_resolve_classes_from_declared_plugin(
 ):
     """Factory-built PG-compatible engines ship no ``provider.py`` / ``quirks.py``.
 
-    ``ProviderRegistry._load_plugin`` must therefore resolve their provider and
-    quirks classes from the ``PLUGIN`` declared in ``plugin.py``. This guards
-    the discovery fallback that lets the shared factory replace the per-engine
-    boilerplate files — a regression here would silently strip these engines of
-    their PostgreSQL quirks (and re-break the single ANSI-reference invariant).
+    Their provider and quirks classes therefore come from the ``PLUGIN``
+    declared in ``plugin.py``. This guards the shared factory that replaces the
+    per-engine boilerplate files — a regression here would silently strip these
+    engines of their PostgreSQL quirks (and re-break the single ANSI-reference
+    invariant).
     """
     package = importlib.import_module(f"dblift.db.plugins.{module_dir}")
     plugin_dir = Path(package.__file__).resolve().parent
@@ -118,8 +118,7 @@ def test_factory_engines_resolve_classes_from_declared_plugin(
     assert not (plugin_dir / "provider.py").exists()
     assert not (plugin_dir / "quirks.py").exists()
 
-    info = ProviderRegistry._load_plugin(plugin_dir)
-    assert info is not None
+    info = _plugin(module_dir)
     assert info.provider_class.__name__ == provider_name
     assert issubclass(info.provider_class, PostgreSqlProvider)
     assert info.provider_class.canonical_dialect_key == dialect
@@ -145,37 +144,6 @@ def test_yugabytedb_does_not_claim_transactional_ddl() -> None:
     # Provider API must match quirks/matrix (test_provider_contract_matrix).
     provider = plugin.provider_class.__new__(plugin.provider_class)
     assert provider.supports_transactional_ddl() is False
-
-
-@pytest.mark.unit
-def test_broken_plugin_py_is_logged_not_silently_dropped(monkeypatch, caplog):
-    """A ``plugin.py`` that raises on import must be logged loudly.
-
-    For a factory-built engine, ``PLUGIN`` is the only source of the
-    provider/quirks classes, so a failed import drops the engine from
-    discovery — that must be visible, not swallowed.
-    """
-    import importlib
-    import logging
-
-    from dblift.db import provider_registry
-
-    package = importlib.import_module("dblift.db.plugins.neon")
-    plugin_dir = Path(package.__file__).resolve().parent
-    real_import_module = importlib.import_module
-
-    def _fail_on_plugin(name, *args, **kwargs):
-        if name.endswith(".plugin"):
-            raise RuntimeError("boom in plugin.py")
-        return real_import_module(name, *args, **kwargs)
-
-    monkeypatch.setattr(importlib, "import_module", _fail_on_plugin)
-
-    with caplog.at_level(logging.WARNING, logger=provider_registry.__name__):
-        info = provider_registry.ProviderRegistry._load_plugin(plugin_dir)
-
-    assert info is None  # no provider.py to fall back to → engine drops
-    assert any("dblift.db.plugins.neon.plugin" in rec.message for rec in caplog.records)
 
 
 @pytest.mark.unit

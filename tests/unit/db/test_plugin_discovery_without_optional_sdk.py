@@ -126,13 +126,13 @@ def test_discovery_registers_every_dialect_without_the_azure_sdk():
 def test_the_cosmosdb_plugin_module_itself_imports_without_the_azure_sdk():
     """Registering is not proof that ``plugin.py`` imported — check the metadata.
 
-    ``discover_plugins`` has a filesystem pass that reconstructs a
-    ``PluginInfo`` from the package layout when ``plugin.py:PLUGIN`` cannot be
-    read. It logs and continues, so a hard ``from azure.cosmos import ...`` at
-    the top of ``db/plugins/cosmosdb/plugin.py`` leaves the set above complete
-    and the test green — while every field only ``plugin.py`` declares
-    (``install_extra``, ``native_driver_module``, ``config_class``) is silently
-    lost, taking the driver report and the install hint with it.
+    ``discover_plugins`` indexes descriptors first and loads ``plugin.py:PLUGIN``
+    lazily. A hard ``from azure.cosmos import ...`` at the top of
+    ``db/plugins/cosmosdb/plugin.py`` would only surface when that plugin is
+    resolved, so the set above stays complete and the test green — while every
+    field only ``plugin.py`` declares (``install_extra``,
+    ``native_driver_module``, ``config_class``) is lost, taking the driver
+    report and the install hint with it.
 
     Asserting a declared-only field survived is what distinguishes "cosmosdb
     was registered" from "``plugin.py`` was actually importable".
