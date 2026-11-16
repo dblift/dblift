@@ -1,9 +1,7 @@
 """Migration-validator entry point — verifies migration scripts against applied history."""
 
-from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Union
 
-from dblift.core.constants import TEST_PLACEHOLDER_TIME_MS
 from dblift.core.exceptions import UnsupportedMigrationFormatError
 from dblift.core.logger import Log, NullLog
 from dblift.core.migration._type_match import is_migration_type
@@ -19,16 +17,7 @@ from dblift.core.migration.scripting.migration_script_manager import (  # noqa: 
     _last_successful_non_delete_record,
 )
 from dblift.core.migration.state.checksum_drift import ChecksumDrift
-from dblift.core.migration.state.migration_selector import (
-    normalize_filter,
-    passes_filters,
-    prune_baseline_migrations,
-    select_migrations,
-)
-from dblift.core.migration.state.migration_state import (
-    MigrationReadSnapshot,
-    MigrationValidationSnapshot,
-)
+from dblift.core.migration.state.migration_state import MigrationValidationSnapshot
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.state.ordering import OutOfOrder
 from dblift.core.migration.state.repeatable_status import RepeatableRun
@@ -44,7 +33,6 @@ class ValidationResult:
         error_message: Error message if validation failed
         repeatable_migrations_to_reapply: List of repeatable migrations that need to be reapplied
         migrations: List of migration objects (populated by validator)
-        execution_time: Time taken for validation (ms)
         issues: List of issues found during validation
         failed_scripts: Script names an issue was raised against
     """
@@ -55,7 +43,6 @@ class ValidationResult:
         self.error_message = ""
         self.repeatable_migrations_to_reapply: List[Dict[str, Union[str, int]]] = []
         self.migrations: List[Migration] = []
-        self.execution_time = 0
         self.issues: List[str] = []
         self.failed_scripts: List[str] = []
         self.checked_scripts: List[str] = []
@@ -151,15 +138,6 @@ class MigrationValidator:
 
         return check_flyway_history_table(self.state_manager.get_flyway_compatibility_snapshot())
 
-    def _check_table_compatibility(self, issues: List[str]) -> None:
-        """Preserve the 4.x history initialization entry point."""
-        self.state_manager.ensure_history_table()
-
-    _normalize_filter = staticmethod(normalize_filter)
-    _passes_filters = staticmethod(passes_filters)
-    _apply_filters = staticmethod(select_migrations)
-    _handle_baseline_filtering = staticmethod(prune_baseline_migrations)
-
     def _validate_format_supported(
         self, scripts: List[Migration], result: ValidationResult, issues: List[str]
     ) -> bool:
@@ -223,7 +201,6 @@ class MigrationValidator:
                 validation_result.success = True
                 validation_result.error_message = ""
             validation_result.migrations = valid_scripts
-            validation_result.execution_time = TEST_PLACEHOLDER_TIME_MS
             validation_result.issues = issues
             return validation_result
 
@@ -260,7 +237,6 @@ class MigrationValidator:
             validation_result.success = False
             if not validation_result.error_message:
                 validation_result.error_message = issues[0]
-            validation_result.execution_time = TEST_PLACEHOLDER_TIME_MS
             validation_result.issues = issues
             return validation_result
 
@@ -296,12 +272,10 @@ class MigrationValidator:
         try:
             scripts = list(snapshot.selected_migrations)
             if not self._validate_format_supported(scripts, result, issues):
-                result.execution_time = TEST_PLACEHOLDER_TIME_MS
                 result.issues = issues
                 return result
             if not scripts:
                 result.success = not (snapshot.strict_mode and snapshot.all_applied_migrations)
-                result.execution_time = TEST_PLACEHOLDER_TIME_MS
                 return result
             return self._validate_prepared_migrations(
                 valid_scripts=scripts,
@@ -321,66 +295,6 @@ class MigrationValidator:
             result.success = False
             result.error_message = f"Validation failed: {error}"
             result.issues = issues
-            return result
-
-    def validate_resolved_migrations(
-        self, migrations: List[Migration], command: str = "migrate"
-    ) -> ValidationResult:
-        """Adapt the public 4.x resolved-list entry point through StateManager."""
-        try:
-            return self.validate_snapshot(
-                self.state_manager.build_validation_snapshot(
-                    None,
-                    command,
-                    resolved_migrations=migrations,
-                ),
-                command,
-            )
-        except Exception as error:
-            result = ValidationResult()
-            result.success = False
-            result.error_message = f"Validation failed: {error}"
-            return result
-
-    def validate_migrations(
-        self,
-        scripts_dir: Path,
-        command: str = "migrate",
-        recursive: bool = True,
-        additional_dirs: Optional[List[Path]] = None,
-        target_version: Optional[str] = None,
-        tags: Optional[Sequence[str]] = None,
-        exclude_tags: Optional[Sequence[str]] = None,
-        versions: Optional[Sequence[str]] = None,
-        exclude_versions: Optional[Sequence[str]] = None,
-        *,
-        resolved_migrations: Optional[List[Migration]] = None,
-        preloaded_records: Optional[List[Migration]] = None,
-        read_snapshot: Optional[MigrationReadSnapshot] = None,
-    ) -> ValidationResult:
-        """Adapt the public 4.x directory entry point through StateManager."""
-        try:
-            return self.validate_snapshot(
-                self.state_manager.build_validation_snapshot(
-                    scripts_dir,
-                    command,
-                    recursive,
-                    additional_dirs,
-                    target_version,
-                    tags,
-                    exclude_tags,
-                    versions,
-                    exclude_versions,
-                    resolved_migrations=resolved_migrations,
-                    applied_migrations=preloaded_records,
-                    read_snapshot=read_snapshot,
-                ),
-                command,
-            )
-        except Exception as error:
-            result = ValidationResult()
-            result.success = False
-            result.error_message = f"Validation failed: {error}"
             return result
 
     def _validate_duplicate_versions(
