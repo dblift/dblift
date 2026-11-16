@@ -86,14 +86,14 @@ class Table(SqlObject):
 
     Tier-3 plugin isolation (current):
     Dialect-specific options are stored in :attr:`dialect_options` keyed by
-    plugin name, e.g. ``{"mysql": {"storage_engine": "InnoDB"}}``. Historical
-    flat attributes (``storage_engine``, ``filegroup``, ``row_security``,
-    ``pctfree``, ...) remain as property aliases that read/write the same
-    dict, so legacy ``table.storage_engine = ...`` call sites keep working.
+    plugin name, e.g. ``{"mysql": {"storage_engine": "InnoDB"}}``. There are
+    no flat attributes (``storage_engine``, ``filegroup``, ...) on the table;
+    read and write these options with :meth:`get_dialect_option` /
+    :meth:`set_dialect_option`.
 
     The legacy :class:`dblift.core.sql_model.table_options.TableOptions` typed
     surface (``Table.from_options`` / ``Table.to_options``) still works and
-    feeds through the same property aliases. New code should prefer
+    maps onto the same ``dialect_options`` dict. New code should prefer
     :meth:`set_dialect_option` so the field is owned by the plugin namespace
     rather than the named-slot dataclass.
     """
@@ -138,14 +138,14 @@ class Table(SqlObject):
 
         # Ensure columns inherit the dialect
         for col in self.columns:
-            if not hasattr(col, "dialect") or not col.dialect:
+            if not col.dialect:
                 col.dialect = dialect
 
         self.constraints = constraints or []
 
         # Ensure constraints inherit the dialect
         for constraint in self.constraints:
-            if not hasattr(constraint, "dialect") or not constraint.dialect:
+            if not constraint.dialect:
                 constraint.dialect = dialect
 
         self.temporary = temporary
@@ -396,7 +396,7 @@ class Table(SqlObject):
             column: The column to add
         """
         # Inherit dialect if needed
-        if not hasattr(column, "dialect") or not column.dialect:
+        if not column.dialect:
             column.dialect = self.dialect
 
         self._columns.append(column)
@@ -420,7 +420,7 @@ class Table(SqlObject):
             constraint: The constraint to add
         """
         # Inherit dialect if needed
-        if not hasattr(constraint, "dialect") or not constraint.dialect:
+        if not constraint.dialect:
             constraint.dialect = self.dialect
 
         self.constraints.append(constraint)
@@ -754,9 +754,7 @@ class Table(SqlObject):
         # via the legacy flat-field aliases; restoring an explicit value here
         # (e.g. from a newer serialization that includes the dict directly)
         # must take precedence but absence must not wipe what was just set.
-        for plugin, opts in (data.get("dialect_options") or {}).items():
-            for key, value in opts.items():
-                table.set_dialect_option(plugin, key, value)
+        table._restore_dialect_options(data)
 
         # Restore the serialized explicit-property state when present. An
         # empty mapping is meaningful and must clear flags inferred while

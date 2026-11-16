@@ -4,39 +4,16 @@ Identifier-quoting dispatch is centralized here: the module-level
 ``quote_identifier`` / ``quote_qualified`` functions hold the canonical
 quoting rules, so callers use them instead of branching on dialect name.
 
-This module also holds the ``DialectGroup`` frozensets and
-``SQLGLOT_DIALECT_MAP``, so callers can import them instead of repeating
-inline string comparisons.
+This module also holds ``SQLGLOT_DIALECT_MAP``, so callers can import it
+instead of repeating inline string comparisons.
 
 Canonical-name resolution lives in ``ProviderRegistry.canonical_dialect_name``;
 per-dialect behaviour is dispatched through each plugin's Quirks class rather
 than hardcoded here.
 """
 
-from typing import TYPE_CHECKING, Any, Callable, Dict, FrozenSet, Optional
-
-if TYPE_CHECKING:
-    # Lazy module-level constants resolved via ``__getattr__`` (PEP 562).
-    # Declare them here so mypy infers ``FrozenSet[str]`` instead of ``Any?``
-    # at import sites. Without these stubs, mypy's cache occasionally widens
-    # the inferred type to ``Any | None``, breaking ``x in SCHEMA_OPTIONAL_DIALECTS``.
-    SCHEMA_OPTIONAL_DIALECTS: FrozenSet[str]
-
-# ---------------------------------------------------------------------------
-# DialectGroup frozensets
-#
-# These constants replace scattered `dialect == "x"` comparisons with
-# membership tests (`dialect in SOME_DIALECTS`).  Import them in any module
-# that needs to branch on dialect groups rather than individual values.
-# ---------------------------------------------------------------------------
-
-# Dialect-group sets are now derived lazily from plugin Quirks. Module
-# load no longer hardcodes a single name. ``__getattr__`` (PEP 562) at
-# the bottom of this module resolves each well-known set on first
-# access. Listed here for ``grep``-ability:
-#
-#   SCHEMA_OPTIONAL_DIALECTS      -> not quirks.schema_required
-
+from dataclasses import dataclass
+from typing import Dict, Optional
 
 # ---------------------------------------------------------------------------
 # PR-07 — DialectCapabilities (canonical capability matrix per dialect)
@@ -49,8 +26,6 @@ if TYPE_CHECKING:
 # matrix; a conformance test asserts it in tests/unit/core/sql_model/.
 # See docs/adr/0007-dialect-capabilities-matrix.md.
 # ---------------------------------------------------------------------------
-
-from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -145,90 +120,9 @@ def get_dialect_capabilities(dialect: Optional[str]) -> DialectCapabilities:
     return _CAPABILITIES.get(dialect.lower().strip(), _CAPABILITIES_UNKNOWN)
 
 
-def dialect_supports_transactions(dialect: Optional[str]) -> bool:
-    """``True`` iff the named dialect supports begin/commit/rollback."""
-    return get_dialect_capabilities(dialect).supports_transactions
-
-
-def dialect_supports_transactional_ddl(dialect: Optional[str]) -> bool:
-    """``True`` iff DDL participates in transactions and can be rolled back."""
-    return get_dialect_capabilities(dialect).supports_transactional_ddl
-
-
 def dialect_requires_schema(dialect: Optional[str]) -> bool:
     """``True`` iff the dialect's config must carry a non-empty ``database.schema``."""
     return get_dialect_capabilities(dialect).schema_required
-
-
-def dialect_uses_uppercase_identifiers(dialect: Optional[str]) -> bool:
-    """``True`` iff unquoted identifiers fold to uppercase in the catalogue."""
-    return get_dialect_capabilities(dialect).uppercase_identifiers
-
-
-def dialect_clean_strategy(dialect: Optional[str]) -> str:
-    """``"native"`` (provider-enumerated) or ``"introspector"`` (query-walked)."""
-    return get_dialect_capabilities(dialect).clean_strategy
-
-
-# Derived frozenset of schema-optional dialects. Computed lazily from
-# the plugin-driven matrix so module load doesn't pay the registry
-# import cost. Callers that compare membership go through
-# :func:`schema_optional_dialects_from_matrix`.
-def schema_optional_dialects_from_matrix() -> FrozenSet[str]:
-    """Return dialect names whose ``schema_required`` is False."""
-    _ensure_capabilities()
-    return frozenset(d for d, caps in _CAPABILITIES.items() if not caps.schema_required)
-
-
-# Backwards-compat module attribute. Resolved on first access so old
-# ``from core.sql_model.dialect import SCHEMA_OPTIONAL_DIALECTS_FROM_MATRIX``
-# imports keep working without an upfront registry import. ``__getattr__``
-# at module scope (PEP 562) gives us deferred attribute resolution.
-def _dialects_where(predicate: Callable[[Any], bool]) -> FrozenSet[str]:
-    """Return the frozen set of dialect aliases whose quirks satisfy
-    ``predicate(quirks)``. Used by the lazy module-level constants."""
-    from dblift.db.provider_registry import ProviderRegistry
-
-    ProviderRegistry.discover_plugins()
-    out: "set[str]" = set()
-    for plugin_info in ProviderRegistry.list_plugins():
-        quirks = ProviderRegistry.get_quirks(plugin_info.name)
-        if predicate(quirks):
-            out.update(d.lower() for d in plugin_info.dialects)
-    return frozenset(out)
-
-
-_LAZY_DIALECT_SETS = {
-    "SCHEMA_OPTIONAL_DIALECTS": lambda q: not q.schema_required,
-}
-
-# Cache of resolved sets. Filled on first access; auto-invalidated when
-# the registry's plugin count changes (tests resetting ``_plugins``).
-# Using a count-based invalidator beats a static cache because callers
-# reading these constants in hot loops would otherwise rebuild every
-# call. (PR #241 Bugbot.)
-_LAZY_DIALECT_SET_CACHE: Dict[str, FrozenSet[str]] = {}
-_lazy_dialect_set_seen: int = 0
-
-
-def __getattr__(name: str) -> Any:  # noqa: D401 - module-level dunder
-    global _lazy_dialect_set_seen
-    if name == "SCHEMA_OPTIONAL_DIALECTS_FROM_MATRIX":
-        return schema_optional_dialects_from_matrix()
-    if name in _LAZY_DIALECT_SETS:
-        from dblift.db.provider_registry import ProviderRegistry
-
-        ProviderRegistry.discover_plugins()
-        expected = sum(len(p.dialects) for p in ProviderRegistry.list_plugins())
-        if expected != _lazy_dialect_set_seen:
-            _LAZY_DIALECT_SET_CACHE.clear()
-            _lazy_dialect_set_seen = expected
-        cached = _LAZY_DIALECT_SET_CACHE.get(name)
-        if cached is None:
-            cached = _dialects_where(_LAZY_DIALECT_SETS[name])
-            _LAZY_DIALECT_SET_CACHE[name] = cached
-        return cached
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # SQLGLOT_DIALECT_MAP starts empty; consumers either call ``_ensure_*``

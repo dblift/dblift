@@ -94,9 +94,7 @@ class Sequence(SqlObject):
             data_type=data.get("data_type"),
             comment=data.get("comment"),
         )
-        for plugin, options in (data.get("dialect_options") or {}).items():
-            for key, value in options.items():
-                sequence.set_dialect_option(plugin, key, value)
+        sequence._restore_dialect_options(data)
         return sequence
 
     def to_dict(self) -> Dict[str, Any]:
