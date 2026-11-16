@@ -514,3 +514,12 @@ def test_script_already_carrying_the_directive_gets_no_hint():
     result = _refused_run(content=NT + "INSERT INTO t VALUES (1);")
     assert "invalid transaction termination" in result.error_message
     assert HINT not in result.error_message
+
+
+@pytest.mark.unit
+def test_sqlstate_on_the_cause_of_a_wrapper_still_gets_the_hint():
+    wrapper = RuntimeError("invalid transaction termination")
+    wrapper.__cause__ = _Refused("2D000")
+    engine, migration, result, _, _ = _run(script_session=True, execute_error=wrapper)
+    engine.execute_migration(migration, result)
+    assert result.error_message.endswith(HINT)

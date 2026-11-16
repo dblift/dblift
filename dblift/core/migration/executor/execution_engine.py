@@ -104,6 +104,19 @@ _NO_TRANSACTION_HINT = (
 )
 
 
+def _chained_sqlstate(error: BaseException) -> Optional[str]:
+    """First SQLSTATE found on the error, then along its cause and context chain."""
+    seen = set()
+    current: Optional[BaseException] = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        sqlstate = extract_sqlstate(current)
+        if sqlstate:
+            return sqlstate
+        current = current.__cause__ or current.__context__
+    return None
+
+
 class ExecutionEngine:
     """Handles the core execution of migrations and SQL statements."""
 
@@ -958,7 +971,7 @@ class ExecutionEngine:
     def _no_transaction_hint(self, migration: Migration, error: Exception) -> str:
         """Name the directive when the engine refused a transaction end it could be told about."""
         if (
-            extract_sqlstate(error) == _INVALID_TRANSACTION_TERMINATION
+            _chained_sqlstate(error) == _INVALID_TRANSACTION_TERMINATION
             and isinstance(self.provider, TransactionalProvider)
             and self.provider.supports_script_session() is True
             and not self._opts_out(migration)
