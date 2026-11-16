@@ -2,10 +2,12 @@
 
 import pytest
 
-from dblift.core.sql_parser.base_statement_parser import BaseStatementParser
 from dblift.core.sql_parser.base_tokenizer import BaseTokenizer
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.tokens import Token, TokenType
+from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
+from dblift.db.plugins.sqlserver.parser.lexical_spec import SQLSERVER_SPEC
 
 
 class TestBaseTokenizer:
@@ -78,7 +80,6 @@ class TestParserContext:
         context = ParserContext()
 
         assert context.block_depth == 0
-        assert context.delimiter == ";"
         assert context.parens_depth == 0
 
     def test_block_depth_management(self):
@@ -87,7 +88,7 @@ class TestParserContext:
 
         context.increase_block_depth("BEGIN")
         assert context.block_depth == 1
-        assert context.block_initiator == "BEGIN"
+        assert context.get_block_initiator() == "BEGIN"
 
         context.increase_block_depth("IF")
         assert context.block_depth == 2
@@ -100,13 +101,11 @@ class TestParserContext:
         context = ParserContext()
         context.increase_block_depth("BEGIN")
         context.parens_depth = 2
-        context.delimiter = "/"
 
         context.reset_for_new_statement()
 
         assert context.block_depth == 0
         assert context.parens_depth == 0
-        assert context.delimiter == "/"  # Delimiter persists
 
 
 class TestBaseStatementParser:
@@ -115,43 +114,23 @@ class TestBaseStatementParser:
     def test_simple_statement_split(self):
         """Test splitting simple statements."""
         sql = "SELECT * FROM table1; SELECT * FROM table2;"
-        tokenizer = BaseTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = BaseStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = LexicalEngine(POSTGRESQL_SPEC).split_statements(sql)
 
         assert len(statements) == 2
 
     def test_block_depth_prevents_split(self):
         """Test that statements in blocks aren't split."""
         sql = "BEGIN SELECT * FROM table1; SELECT * FROM table2; END;"
-        tokenizer = BaseTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = BaseStatementParser(tokens)
-        statements = parser.split_statements()
+        statements = LexicalEngine(SQLSERVER_SPEC).split_statements(sql)
 
         # Should be one statement (the entire BEGIN/END block)
         assert len(statements) == 1
 
     def test_empty_sql_handling(self):
         """Test handling of empty SQL."""
-        tokenizer = BaseTokenizer("")
-        tokens = tokenizer.tokenize()
-
-        parser = BaseStatementParser(tokens)
-        statements = parser.split_statements()
-
-        assert len(statements) == 0
+        assert LexicalEngine(SQLSERVER_SPEC).split_statements("") == []
 
     def test_whitespace_only_handling(self):
         """Test handling of whitespace-only SQL."""
         sql = "   \n\n   \t   "
-        tokenizer = BaseTokenizer(sql)
-        tokens = tokenizer.tokenize()
-
-        parser = BaseStatementParser(tokens)
-        statements = parser.split_statements()
-
-        assert len(statements) == 0
+        assert LexicalEngine(SQLSERVER_SPEC).split_statements(sql) == []
