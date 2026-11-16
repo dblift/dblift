@@ -58,7 +58,6 @@
     "db/plugins/postgresql/foreign_table_dialect.py::_foreign_definition_supported": 25,
     "db/plugins/postgresql/postgresql/schema_operations.py::PostgreSqlSchemaOperations.clean_schema": 23,
     "db/plugins/sqlserver/provider.py::SqlServerProvider.clean_schema": 21,
-    "db/plugins/sqlserver/sqlserver/schema_operations.py::SqlServerSchemaOperations.enumerate_clean_candidates": 26,
-    "db/provider_registry.py::ProviderRegistry._load_plugin": 21
+    "db/plugins/sqlserver/sqlserver/schema_operations.py::SqlServerSchemaOperations.enumerate_clean_candidates": 26
   }
 }
