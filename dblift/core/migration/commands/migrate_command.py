@@ -5,39 +5,24 @@ Migrate command implementation.
 from contextlib import ExitStack, nullcontext
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union, cast
-
-from dblift.config import DbliftConfig
-from dblift.db.provider_interfaces import TransactionalProvider
-
-if TYPE_CHECKING:
-    from dblift.core.migration.journals.migration_journal import MigrationJournal
-    from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 from dblift.core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS
-from dblift.core.logger import Log
 from dblift.core.logger.results import MigrateResult, MigrationInfo, MigrationSqlInfo
-from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.migration_helpers import MigrationHelpers
-from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration, MigrationType
 from dblift.core.migration.presentation import presentation_for
-from dblift.core.migration.rules.migration_rules import MigrationRules
-from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.lint import SAFE, lint_pending_scripts
 from dblift.core.migration.sql.script_analysis import dialect_of
 from dblift.core.migration.state.migrate_plan import MigratePlan, StrictModeError
 from dblift.core.migration.state.migration_state import MigrationReadSnapshot, MigrationState
-from dblift.core.migration.state.migration_state_manager import MigrationStateManager
-from dblift.core.migration.ui.migration_ui import MigrationUI
 from dblift.core.migration.ui.progress import NullProgress
 from dblift.core.migration.version_utils import compare_versions
-from dblift.core.sql_validator.migration_validator import MigrationValidator
-from dblift.db.base_provider import BaseProvider
 from dblift.db.error import engine_error_message, redact_driver_error_text
+from dblift.db.provider_interfaces import TransactionalProvider
 
 from ._script_runner import ScriptRunner, ScriptRunPolicy
-from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand, BaseCommandContext
+from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand
 
 MIGRATE_POLICY = ScriptRunPolicy(
     before_events=("beforeEach", "beforeEachMigrate"),
@@ -51,47 +36,6 @@ class MigrateCommand(BaseCommand):
     """Handles the 'migrate' command execution."""
 
     _check_callback_sql_preflight = True
-
-    def __init__(
-        self,
-        ctx_or_config: Optional[Union[BaseCommandContext, DbliftConfig]] = None,
-        log: Optional[Log] = None,
-        provider: Optional[BaseProvider] = None,
-        script_manager: Optional[MigrationScriptManager] = None,
-        history_manager: Optional[MigrationHistoryManager] = None,
-        validator: Optional[MigrationValidator] = None,
-        execution_engine: Optional[ExecutionEngine] = None,
-        migration_helpers: Optional[MigrationHelpers] = None,
-        state_manager: Optional[MigrationStateManager] = None,
-        migration_ui: Optional[MigrationUI] = None,
-        migration_rules: Optional[MigrationRules] = None,
-        journal: Optional["MigrationJournal"] = None,
-        placeholder_service: Optional["PlaceholderService"] = None,
-        config: Optional[DbliftConfig] = None,
-    ):
-        """Initialize migrate command.
-
-        Args:
-            ctx_or_config: A :class:`~.base_command.BaseCommandContext` (preferred)
-                or the application config (legacy).
-            (remaining args are legacy; ignored when ctx provided)
-        """
-        super().__init__(
-            ctx_or_config,
-            log=log,
-            provider=provider,
-            script_manager=script_manager,
-            history_manager=history_manager,
-            validator=validator,
-            execution_engine=execution_engine,
-            migration_helpers=migration_helpers,
-            state_manager=state_manager,
-            migration_ui=migration_ui,
-            migration_rules=migration_rules,
-            journal=journal,
-            placeholder_service=placeholder_service,
-            config=config,
-        )
 
     def _collect_visible_sql(
         self, migrations: List[Migration], result: MigrateResult, record: bool = True
