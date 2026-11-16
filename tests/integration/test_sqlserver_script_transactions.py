@@ -510,10 +510,9 @@ def test_no_transaction_outcome(account, tmp_path, name, script, ok, t, h, histo
 
 def _success_rows(account) -> list:
     """History rows with success true; a history table that was never created has none."""
-    try:
-        return [row for row in _history(account) if row[1]]
-    except Exception:
+    if _rows(account, f"SELECT OBJECT_ID('{SCHEMA}.dblift_schema_history')")[0][0] is None:
         return []
+    return [row for row in _history(account) if row[1]]
 
 
 def test_no_transaction_then_ordinary_failure(account, tmp_path):

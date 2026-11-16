@@ -146,6 +146,27 @@ ENGINE_FRAGMENTS = {
         "PROC_ROLLBACK": ORACLE_BLOCK.format(rows=100),
     },
 }
+# Catalog query per engine: one row when the history table exists in the place.
+HISTORY_TABLE_EXISTS = {
+    **dict.fromkeys(
+        PG_FAMILY,
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_name = 'dblift_schema_history' AND table_schema = '{place.schema}'",
+    ),
+    **dict.fromkeys(
+        ("mysql", "mariadb"),
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_name = 'dblift_schema_history' AND table_schema = '{place.name}'",
+    ),
+    "oracle": (
+        "SELECT 1 FROM all_tables "
+        "WHERE LOWER(table_name) = 'dblift_schema_history' AND owner = '{place.name}'"
+    ),
+    "db2": (
+        "SELECT 1 FROM syscat.tables "
+        "WHERE LOWER(tabname) = 'dblift_schema_history' AND tabschema = '{place.name}'"
+    ),
+}
 T_START = [(1, 2)]
 T_DONE = [(2, 2)]
 
@@ -556,10 +577,9 @@ class Place:
 
     def success_rows(self) -> list:
         """History rows with success true; a history table that was never created has none."""
-        try:
-            return [row for row in self.history() if row[1]]
-        except Exception:
+        if not self.query(HISTORY_TABLE_EXISTS[self.engine].format(place=self)):
             return []
+        return [row for row in self.history() if row[1]]
 
     def history(self) -> list:
         sql = (
