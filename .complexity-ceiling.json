@@ -37,7 +37,6 @@
     "core/migration/state/migration_state_manager.py::MigrationStateManager._analyse_history": 28,
     "core/migration/state/migration_state_service.py::MigrationStateService.determine_state": 29,
     "core/migration/state/undo_plan.py::plan_undo": 22,
-    "core/migration/ui/data_collector.py::MigrationDataCollector._get_migration_data_from_state": 24,
     "core/sql_model/constraint_validator.py::ConstraintValidator._validate_primary_keys": 22,
     "core/sql_parser/batch_commands.py::read_command": 28,
     "core/sql_parser/batch_division.py::divide": 30,
