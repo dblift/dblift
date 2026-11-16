@@ -394,9 +394,8 @@ def is_full_table_dml(
     """
     if quirks is not None and quirks.supports_statement_facts:
         facts = quirks.statement_facts(statement)
-        return (facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)) or any(
-            write.operation in ("UPDATE", "DELETE") and not write.predicate
-            for write in facts.cte_writes
+        return facts.rewrites_every_row or any(
+            write.rewrites_every_row for write in facts.cte_writes
         )
     dialect = quirks.sqlglot_dialect if quirks is not None else None
 

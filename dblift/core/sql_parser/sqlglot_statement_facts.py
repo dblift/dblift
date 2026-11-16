@@ -22,7 +22,7 @@ from dblift.core.sql_parser.dialects.identifier_tokens import (
     DOUBLE_QUOTED_IDENTIFIER,
     strip_identifier_quotes,
 )
-from dblift.core.sql_parser.dml_modifiers import (  # noqa: F401  (re-exported)
+from dblift.core.sql_parser.dml_modifiers import (
     MYSQL_DML_MODIFIER,
     MYSQL_DML_MODIFIER_WORDS,
 )
@@ -293,6 +293,12 @@ def readable_dml_target(sql: str, *, dialect: str) -> Optional[str]:
     if ascii_trimmed != ascii_trimmed.rstrip():
         return None  # a non-ASCII blank ends the text: the engine may read it as part of the name
     return _head_facts(sql, "", dialect=dialect).target
+
+
+def _operation_and_kind(sql: str, dialect: str, diagnostic: str) -> StatementFacts:
+    """The statement's operation and kind, and nothing it names, with ``diagnostic`` saying why."""
+    head = _head_facts(sql, "", dialect=dialect)
+    return StatementFacts(head.operation, head.kind, diagnostic=diagnostic)
 
 
 def _unread_name_facts(sql: str, dialect: str, at: int) -> StatementFacts:
@@ -2463,13 +2469,15 @@ def _select_into_table(ast: exp.Expr) -> Optional[exp.Expression]:
     return into.this if isinstance(into, exp.Into) else None
 
 
-_MYSQL_QUALIFIED = rf"({_NAME})(?:\s*\.\s*({_NAME}))?"
-_MYSQL_RENAME_PAIR = rf"{_MYSQL_QUALIFIED}\s+TO\s+{_MYSQL_QUALIFIED}"
+_MYSQL_QUALIFIED_PARTS = rf"({_NAME})(?:\s*\.\s*({_NAME}))?"
+_MYSQL_RENAME_PAIR = rf"{_MYSQL_QUALIFIED_PARTS}\s+TO\s+{_MYSQL_QUALIFIED_PARTS}"
 _MYSQL_RENAME = re.compile(
     rf"^\s*RENAME\s+TABLE\s+{_MYSQL_RENAME_PAIR}(?:\s*,\s*{_MYSQL_RENAME_PAIR})*\s*;?\s*$",
     re.IGNORECASE,
 )
-_MYSQL_RENAME_SOURCE = re.compile(rf"{_MYSQL_QUALIFIED}\s+TO\s+{_MYSQL_QUALIFIED}", re.IGNORECASE)
+_MYSQL_RENAME_SOURCE = re.compile(
+    rf"{_MYSQL_QUALIFIED_PARTS}\s+TO\s+{_MYSQL_QUALIFIED_PARTS}", re.IGNORECASE
+)
 _MYSQL_DEFINER_USER = r"(?:`(?:``|[^`])*`|'(?:''|[^'])*'|[\w$]+)"
 _MYSQL_PROGRAM = re.compile(
     rf"^\s*(?:(CREATE)\s+(?:OR\s+REPLACE\s+)?"
@@ -2477,8 +2485,8 @@ _MYSQL_PROGRAM = re.compile(
     rf"(?:\s*@\s*(?:{_MYSQL_DEFINER_USER}|[\w$.%-]+))?)\s+)?"
     rf"(FUNCTION|PROCEDURE|EVENT|TRIGGER)\s+(?:IF\s+NOT\s+EXISTS\s+)?"
     rf"|(DROP)\s+(EVENT)\s+(?:IF\s+EXISTS\s+)?)"
-    rf"{_MYSQL_QUALIFIED}"
-    rf"(?:\s+(?:BEFORE|AFTER)\s+(?:INSERT|UPDATE|DELETE)\s+ON\s+{_MYSQL_QUALIFIED})?",
+    rf"{_MYSQL_QUALIFIED_PARTS}"
+    rf"(?:\s+(?:BEFORE|AFTER)\s+(?:INSERT|UPDATE|DELETE)\s+ON\s+{_MYSQL_QUALIFIED_PARTS})?",
     re.IGNORECASE,
 )
 
@@ -2534,7 +2542,7 @@ def _mysql_program_facts(sql: str, diagnostic: str) -> Optional[StatementFacts]:
 
 
 _MYSQL_SPECIAL_INDEX = re.compile(
-    rf"^\s*CREATE\s+(?:FULLTEXT|SPATIAL)\s+INDEX\s+({_NAME})\s+ON\s+{_MYSQL_QUALIFIED}\s*\(",
+    rf"^\s*CREATE\s+(?:FULLTEXT|SPATIAL)\s+INDEX\s+({_NAME})\s+ON\s+{_MYSQL_QUALIFIED_PARTS}\s*\(",
     re.IGNORECASE,
 )
 
@@ -2731,10 +2739,7 @@ def _redshift_bracketed_name(sql: str, dialect: str) -> Optional[StatementFacts]
         if token.token_type == TokenType.L_BRACKET and (
             before.token_type == TokenType.DOT or before.token_type.name in _REDSHIFT_NAME_LEADERS
         ):
-            head = _head_facts(sql, "", dialect=dialect)
-            return StatementFacts(
-                head.operation, head.kind, diagnostic="redshift bracketed name is not modelled"
-            )
+            return _operation_and_kind(sql, dialect, "redshift bracketed name is not modelled")
     return None
 
 
@@ -2988,11 +2993,10 @@ def _unread_text_facts(sql: str, dialect: str) -> Optional[StatementFacts]:
         else None
     )
     if wide:
-        head = _head_facts(sql, "", dialect=dialect)
-        return StatementFacts(
-            head.operation,
-            head.kind,
-            diagnostic=(
+        return _operation_and_kind(
+            sql,
+            dialect,
+            (
                 f"mysql statement holds U+{ord(wide):04X} in a name, which MySQL stores as ? "
                 "and MariaDB rejects; its objects are not named"
             ),
@@ -3040,18 +3044,14 @@ def _folded_name_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[Statem
             )
         )
         if unread_reason is not None:
-            head = _head_facts(sql, "", dialect=dialect)
-            return StatementFacts(head.operation, head.kind, diagnostic=unread_reason)
+            return _operation_and_kind(sql, dialect, unread_reason)
     if (
         dialect == "snowflake"  # lint: allow-dialect-string: Snowflake stores upper case
         and ast is not None
         and _fold_unquoted_names(ast, ascii_only=True)
     ):
-        head = _head_facts(sql, "", dialect=dialect)
-        return StatementFacts(
-            head.operation,
-            head.kind,
-            diagnostic="snowflake unquoted name holds a non-ASCII letter (rejected natively)",
+        return _operation_and_kind(
+            sql, dialect, "snowflake unquoted name holds a non-ASCII letter (rejected natively)"
         )
     return None
 
@@ -3072,8 +3072,7 @@ def _unparsed_facts(exc: ParseError | TokenError, sql: str, dialect: str) -> Sta
         dialect == "snowflake"  # lint: allow-dialect-string: unread names
         and _snowflake_tokens_hold_dynamic_name(sql)
     ):
-        head = _head_facts(sql, "", dialect=dialect)
-        return StatementFacts(head.operation, head.kind, diagnostic=_SNOWFLAKE_DYNAMIC_NAMES)
+        return _operation_and_kind(sql, dialect, _SNOWFLAKE_DYNAMIC_NAMES)
     if (
         dialect == "mysql"  # lint: allow-dialect-string: MySQL stored programs and events
         and (program := _mysql_program_facts(sql, reason)) is not None
@@ -3175,8 +3174,7 @@ def _snowflake_dynamic_command_facts(
         and isinstance(ast, exp.Command)
         and _snowflake_tokens_hold_dynamic_name(sql)
     ):
-        head = _head_facts(sql, "", dialect=dialect)
-        return StatementFacts(head.operation, head.kind, diagnostic=_SNOWFLAKE_DYNAMIC_NAMES)
+        return _operation_and_kind(sql, dialect, _SNOWFLAKE_DYNAMIC_NAMES)
     return None
 
 
@@ -3251,11 +3249,8 @@ def _qualified_relation_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional
         )
         and any(len(table.parts) > 3 for table in ast.find_all(exp.Table))
     ):
-        head = _head_facts(sql, "", dialect=dialect)
-        return StatementFacts(
-            head.operation,
-            head.kind,
-            diagnostic=f"{dialect} relation qualification is not fully represented",
+        return _operation_and_kind(
+            sql, dialect, f"{dialect} relation qualification is not fully represented"
         )
     return None
 
@@ -4599,17 +4594,8 @@ def _dml_facts(ast: exp.Expr, sql: str, dialect: str) -> Optional[StatementFacts
 
 
 def _oracle_restricted_alias(alias: Optional[exp.Expression]) -> bool:
-    """An alias that carries columns or restricts the target to a partition."""
-    return bool(
-        alias is not None
-        and (
-            alias.args.get("columns")
-            or (
-                alias.name.upper() in {"PARTITION", "SUBPARTITION"}
-                and not alias.this.args.get("quoted")
-            )
-        )
-    )
+    """An alias that carries columns."""
+    return bool(alias is not None and alias.args.get("columns"))
 
 
 def _oracle_mutation_target_facts(
@@ -4625,8 +4611,6 @@ def _oracle_mutation_target_facts(
         targets = ast.args.get("tables") or []
         subject = targets[0] if len(targets) == 1 else None
     alias = subject.args.get("alias") if isinstance(subject, exp.Table) else None
-    # Older sqlglot reads partition restrictions as aliases (INSERT loses the arguments),
-    # newer versions as a `partition` argument: prove the target by its shape instead.
     restricted_alias = _oracle_restricted_alias(alias)
     plain_table = isinstance(subject, exp.Table) and not any(
         value
@@ -4883,8 +4867,7 @@ def read_statement_facts(
             return facts
     unread_names = _unread_names(ast, dialect, sql, allow_leading_dot)
     if unread_names is not None:
-        head = _head_facts(sql, "", dialect=dialect)
-        return StatementFacts(head.operation, head.kind, diagnostic=unread_names)
+        return _operation_and_kind(sql, dialect, unread_names)
     for rule in _STATEMENT_RULES:
         facts = rule(ast, sql, dialect)
         if facts is not None:

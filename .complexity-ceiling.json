@@ -30,7 +30,7 @@
     "core/migration/scripting/migration_script_manager.py::MigrationScriptManager.get_all_scripts": 24,
     "core/migration/scripting/migration_script_manager.py::MigrationScriptManager.load_migration_scripts": 24,
     "core/migration/sql/lint_rules.py::_statement_codes": 26,
-    "core/migration/sql/script_analysis.py::_analyse": 30,
+    "core/migration/sql/script_analysis.py::_analyse": 29,
     "core/migration/sql/script_analysis.py::_caution_for": 24,
     "core/migration/sql/sql_execution_service.py::SqlExecutionService.execute_statement": 24,
     "core/migration/state/migration_selector.py::passes_filters": 27,
