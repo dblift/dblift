@@ -272,6 +272,43 @@ dblift migrate --analysis-mode execution
   be classified without that analysis stops the migration before it is applied; use `full` for
   that SQL.
 
+### Scripts That Manage Their Own Transactions
+
+By default `migrate` runs a SQL script inside a transaction of its own and commits it when the
+script succeeds. A script that must commit or roll back by itself, such as a PostgreSQL `DO`
+block that decides on a condition, can opt out with a directive in its leading comments:
+
+```sql
+-- dblift:no-transaction
+DO $$
+BEGIN
+  INSERT INTO audit_log (note) VALUES ('started');
+  COMMIT;
+  IF (SELECT count(*) FROM accounts) = 0 THEN
+    ROLLBACK;
+  END IF;
+END
+$$;
+```
+
+- **Where it stands.** In a `--` line comment before the script's first statement. It is read
+  from the file as written, case-insensitively, before placeholders are substituted. A
+  directive in a block comment or after the first statement is not read, and the script runs
+  as an ordinary one.
+- **Engines.** PostgreSQL and SQL Server. Engines that use PostgreSQL's provider (Neon,
+  Supabase, Aurora PostgreSQL, AlloyDB, YugabyteDB, TimescaleDB, Citus) and CockroachDB are not
+  supported.
+- **What it changes.** `migrate` opens no transaction for the script. Its own `BEGIN` and
+  `COMMIT` (`BEGIN TRAN` on SQL Server), and `ROLLBACK`, take effect across statements. It
+  applies to versioned and repeatable migrations, undo scripts and SQL callbacks.
+- **Failures.** A transaction the script leaves open is rolled back and the script fails. A
+  failure after the script committed something leaves that work applied, and `migrate` warns
+  of it. The history row is written in a transaction of its own once the connection is back to
+  normal, and records the failure.
+- **Refusals.** On any other engine, or on a connection passed to
+  `DBLiftClient.from_sqlalchemy`, a script that carries the directive is refused before any
+  script or callback of the command runs: `none of its statements were executed`.
+
 ### Rolling Back Changes
 
 If you need to undo a migration:

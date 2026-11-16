@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A SQL script whose leading `--` comments contain `-- dblift:no-transaction` runs with no
+  transaction opened by DBLift, on PostgreSQL and SQL Server: its own `BEGIN`, `COMMIT` and
+  `ROLLBACK` take effect across statements. A transaction the script leaves open is rolled
+  back and the script fails; a failure after the script committed leaves that work applied.
+  It applies to versioned and repeatable migrations, undo scripts and SQL callbacks. On any
+  other engine, or on a connection passed to `DBLiftClient.from_sqlalchemy`, such a script is
+  refused before any script or callback of the command runs. On PostgreSQL, `invalid
+  transaction termination` now suggests the directive.
 - Trigger models can retain a subject table schema distinct from the trigger's schema through
   qualification, comparison and dictionary/JSON round trips. Older dictionaries keep their
   same-schema meaning; an explicit null subject schema remains unqualified.
