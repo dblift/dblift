@@ -133,6 +133,10 @@ class PostgreSqlProvider(SqlAlchemyProvider):
             if undoes_set:
                 self._schema_applied_for = None
 
+    def supports_script_session(self) -> bool:
+        """Only PostgreSQL itself: engines built on this class are not enabled by inheriting."""
+        return self.canonical_dialect_key == "postgresql"
+
     def _script_transaction_open(self, conn: Connection) -> bool:
         """Whether the driver reports a transaction, in progress or failed."""
         try:

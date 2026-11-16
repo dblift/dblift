@@ -518,6 +518,8 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
             conn = self._ensure_connection()
             self._end_open_transaction(conn)
             self._script_transaction_open(conn)
+            if conn.in_transaction():  # the check may have autobegun one
+                conn.rollback()
             self._script_session_options = conn.get_execution_options()
             conn.execution_options(isolation_level="AUTOCOMMIT")
             self._tx = conn.begin()

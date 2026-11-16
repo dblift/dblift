@@ -114,6 +114,7 @@ class TestExecuteMigrationMainFlow(unittest.TestCase):
         policy.transactional = transactional
         policy.autocommit_required = autocommit_required
         policy.unsupported_mixed_mode = mixed
+        policy.script_managed = False
         policy.reason = "test reason"
         engine.transaction_policy = MagicMock()
         engine.transaction_policy.decide.return_value = policy
@@ -469,7 +470,10 @@ class TestSchemaStatementIssuedOnce(unittest.TestCase):
             history_manager=None,
         )
         policy = MagicMock(
-            transactional=True, autocommit_required=False, unsupported_mixed_mode=False
+            transactional=True,
+            autocommit_required=False,
+            unsupported_mixed_mode=False,
+            script_managed=False,
         )
         engine.transaction_policy = MagicMock()
         engine.transaction_policy.decide.return_value = policy
@@ -605,7 +609,10 @@ class TestSqlServerSchemaCacheResetsAtMigrationBoundary(unittest.TestCase):
             history_manager=None,
         )
         policy = MagicMock(
-            transactional=True, autocommit_required=False, unsupported_mixed_mode=False
+            transactional=True,
+            autocommit_required=False,
+            unsupported_mixed_mode=False,
+            script_managed=False,
         )
         engine.transaction_policy = MagicMock()
         engine.transaction_policy.decide.return_value = policy

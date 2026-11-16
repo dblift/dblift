@@ -20,6 +20,10 @@ class SqlServerTransactionProvider(SqlAlchemyProvider):
         )
         return int(rows[0]["transaction_count"]), int(rows[0]["transaction_id"])
 
+    def supports_script_session(self) -> bool:
+        """Only SQL Server itself, not a provider that subclasses this one."""
+        return self.canonical_dialect_key == "sqlserver"
+
     def _script_transaction_open(self, conn: Connection) -> bool:
         """Whether a transaction is open on the server."""
         return int(self._exec_unbound(conn, "SELECT @@TRANCOUNT").scalar()) > 0

@@ -19,9 +19,19 @@ from tests.unit._migration_factory import make_migration
 class _Provider(TransactionalProvider):
     canonical_dialect_key = "sqlite"
 
-    def __init__(self, outcome: Any = None, script_session: bool = False) -> None:
+    def __init__(
+        self,
+        outcome: Any = None,
+        script_session: bool = False,
+        left_open: bool = False,
+        fail_execute: bool = False,
+        fail_begin_session: bool = False,
+    ) -> None:
         self.events: List[str] = []
         self._script_session = script_session
+        self._left_open = left_open
+        self._fail_execute = fail_execute
+        self._fail_begin_session = fail_begin_session
         self._outcome = outcome
         self.connection = MagicMock()
 
@@ -43,8 +53,19 @@ class _Provider(TransactionalProvider):
         return None
 
     def execute_statement(self, sql: str, schema=None, params=None) -> int:
+        if self._fail_execute:
+            raise RuntimeError("statement failed")
         self.events.append("execute")
         return 1
+
+    def begin_script_session(self) -> None:
+        if self._fail_begin_session:
+            raise RuntimeError("no session")
+        self.events.append("session:begin")
+
+    def end_script_session(self) -> bool:
+        self.events.append("session:end")
+        return self._left_open
 
     def execute_query(self, sql: str, params=None):
         return []
@@ -86,8 +107,9 @@ def _run(
     content: str = "INSERT INTO t VALUES (1);",
     script_session: bool = False,
     placeholder_service: Any = None,
+    **session_flags: bool,
 ):
-    provider = _Provider(outcome, script_session)
+    provider = _Provider(outcome, script_session, **session_flags)
     log = _Log()
     engine = ExecutionEngine(
         provider,
@@ -155,11 +177,11 @@ def test_script_with_no_statement_does_not_fail():
     assert "left a transaction open" in result.error_message
 
 
-def _callback(outcome: Any = None):
-    engine, _, _, provider, log = _run(outcome)
+def _callback(outcome: Any = None, content: str = "INSERT INTO t VALUES (1);", **flags: bool):
+    engine, _, _, provider, log = _run(outcome, **flags)
     callback = make_migration(
         script_name="beforeMigrate__cb.sql",
-        content="INSERT INTO t VALUES (1);",
+        content=content,
         sql_statements=["INSERT INTO t VALUES (1);"],
     )
     return engine, callback, provider, log
@@ -244,3 +266,148 @@ def test_directive_is_read_from_the_original_text_not_the_substituted_one():
     )
     engine.execute_migration(migration, result)
     assert provider.events == ["begin", "execute", "history:True", "commit"]
+
+
+def _nt_run(**flags: bool):
+    return _run(content=NT + "INSERT INTO t VALUES (1);", script_session=True, **flags)
+
+
+@pytest.mark.unit
+def test_opted_out_script_runs_in_a_session_then_records_history():
+    engine, migration, result, provider, log = _nt_run()
+    engine.execute_migration(migration, result)
+    assert provider.events == [
+        "session:begin",
+        "execute",
+        "session:end",
+        "begin",
+        "history:True",
+        "commit",
+    ]
+    assert result.error_message is None
+    assert any("runs with no dblift transaction (dblift:no-transaction)" in m for m in log.warnings)
+
+
+@pytest.mark.unit
+def test_opted_out_script_that_left_a_transaction_open_fails_after_closing_the_session():
+    engine, migration, result, provider, _ = _nt_run(left_open=True)
+    engine.execute_migration(migration, result)
+    assert provider.events == [
+        "session:begin",
+        "execute",
+        "session:end",
+        "rollback",
+        "begin",
+        "history:False",
+        "commit",
+    ]
+    assert "the script left a transaction open; it was rolled back" in result.error_message
+
+
+@pytest.mark.unit
+def test_opted_out_script_whose_statement_fails_closes_the_session_before_history():
+    engine, migration, result, provider, log = _nt_run(fail_execute=True)
+    engine.execute_migration(migration, result)
+    assert provider.events == [
+        "session:begin",
+        "session:end",
+        "rollback",
+        "begin",
+        "history:False",
+        "commit",
+    ]
+    assert any("work it committed before the failure remains applied" in m for m in log.warnings)
+    assert any("work it committed before the failure remains applied" in m for m in result.warnings)
+
+
+@pytest.mark.unit
+def test_opted_out_script_with_a_history_failure_says_work_is_committed():
+    engine, migration, result, provider, log = _nt_run()
+    engine.history_manager = _History(provider.events, fail=True)
+    with pytest.raises(RuntimeError, match="history down"):
+        engine.execute_migration(migration, result)
+    assert provider.events[-3:] == ["session:end", "begin", "rollback"]
+    assert provider.events.count("session:end") == 1
+    assert any("already committed: reconcile the history before retrying" in m for m in log.errors)
+
+
+@pytest.mark.unit
+def test_a_plain_script_after_an_opted_out_one_is_unchanged():
+    engine, migration, result, provider, _ = _nt_run()
+    engine.execute_migration(migration, result)
+    before = len(provider.events)
+    plain = Migration(
+        script_name="V2__y.sql",
+        content="INSERT INTO t VALUES (2);",
+        version="2",
+        type=MigrationType.SQL,
+        checksum=2,
+    )
+    engine.execute_migration(plain, MigrateResult())
+    assert provider.events[before:] == ["begin", "execute", "history:True", "commit"]
+
+
+@pytest.mark.unit
+def test_plain_script_never_touches_the_session_even_when_supported():
+    engine, migration, result, provider, _ = _run(script_session=True)
+    engine.execute_migration(migration, result)
+    assert provider.events == ["begin", "execute", "history:True", "commit"]
+
+
+@pytest.mark.unit
+def test_session_that_cannot_start_runs_nothing():
+    engine, migration, result, provider, _ = _nt_run(fail_begin_session=True)
+    engine.execute_migration(migration, result)
+    assert provider.events == []
+    assert result.error_message == "Could not start V1__x.sql without a transaction: no session"
+
+
+@pytest.mark.unit
+def test_opted_out_callback_runs_in_a_session():
+    engine, callback, provider, _ = _callback(
+        content=NT + "INSERT INTO t VALUES (1);", script_session=True
+    )
+    engine.execute_callback(callback)
+    assert provider.events == ["session:begin", "execute", "session:end"]
+
+
+@pytest.mark.unit
+def test_opted_out_callback_that_left_a_transaction_open_fails():
+    engine, callback, provider, _ = _callback(
+        content=NT + "INSERT INTO t VALUES (1);", script_session=True, left_open=True
+    )
+    with pytest.raises(
+        TransactionLeftOpenError, match="beforeMigrate__cb.sql left a transaction open"
+    ):
+        engine.execute_callback(callback)
+    assert provider.events == ["session:begin", "execute", "session:end"]
+
+
+@pytest.mark.unit
+def test_opted_out_callback_whose_statement_fails_closes_the_session_once():
+    engine, callback, provider, _ = _callback(
+        content=NT + "INSERT INTO t VALUES (1);", script_session=True, fail_execute=True
+    )
+    with pytest.raises(RuntimeError, match="statement failed"):
+        engine.execute_callback(callback)
+    assert provider.events == ["session:begin", "session:end"]
+
+
+@pytest.mark.unit
+def test_unexpected_error_in_an_opted_out_migration_closes_the_session_once():
+    engine, migration, result, provider, _ = _nt_run()
+    engine._execute_statements = MagicMock(side_effect=ValueError("boom"))
+    with pytest.raises(ValueError, match="boom"):
+        engine.execute_migration(migration, result)
+    assert provider.events == ["session:begin", "session:end"]
+
+
+@pytest.mark.unit
+def test_unexpected_error_in_an_opted_out_callback_closes_the_session_once():
+    engine, callback, provider, _ = _callback(
+        content=NT + "INSERT INTO t VALUES (1);", script_session=True
+    )
+    engine._finish_statements = MagicMock(side_effect=ValueError("boom"))
+    with pytest.raises(ValueError, match="boom"):
+        engine.execute_callback(callback)
+    assert provider.events == ["session:begin", "execute", "session:end"]

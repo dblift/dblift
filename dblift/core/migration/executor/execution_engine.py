@@ -17,6 +17,7 @@ from dblift.core.constants import (
 )
 from dblift.core.exceptions import (
     CallbackExecutionError,
+    DbliftError,
     StatementVerdictError,
     TransactionAbortedError,
     TransactionLeftOpenError,
@@ -96,6 +97,8 @@ def _record_callback_result_set(
 
 class ExecutionEngine:
     """Handles the core execution of migrations and SQL statements."""
+
+    _script_session_open = False
 
     def __init__(
         self,
@@ -206,7 +209,12 @@ class ExecutionEngine:
             return
 
         transaction_started = False
-        if policy.transactional:
+        if policy.script_managed:
+            start_error = self._start_script_session(migration)
+            if start_error:
+                result.set_error(start_error)
+                return
+        elif policy.transactional:
             transaction_started = self._prepare_transaction(migration)
             if not transaction_started:
                 result.set_error(
@@ -235,6 +243,11 @@ class ExecutionEngine:
                     migration, statements, execution_time, result
                 ):
                     return
+            elif policy.script_managed:
+                if self._close_script_session():
+                    self._fail_left_open(migration, statements, execution_time, result)
+                    return
+                self._record_autocommit_migration_history(migration, execution_time)
             else:
                 self._record_autocommit_migration_history(migration, execution_time)
 
@@ -248,9 +261,13 @@ class ExecutionEngine:
             # transaction open. The re-raise on the last line preserves the original
             # type for upstream classification — broad catch here, typed handling
             # happens at the call site.
-            if transaction_started and isinstance(self.provider, TransactionalProvider):
+            if (transaction_started or self._script_session_open) and isinstance(
+                self.provider, TransactionalProvider
+            ):
                 try:
-                    self.provider.rollback_transaction()
+                    self._close_script_session()
+                    if transaction_started:
+                        self.provider.rollback_transaction()
                     self.log.debug(
                         "Rolled back transaction due to unexpected error in "
                         f"{migration.script_name}"
@@ -291,6 +308,28 @@ class ExecutionEngine:
         if self.provider.is_caller_owned():
             return f"{head} cannot run on a connection passed to from_sqlalchemy; {tail}"
         return None
+
+    def _start_script_session(self, migration: Migration) -> Optional[str]:
+        """Open the script session; return why it could not be opened, else None."""
+        self.log.warning(
+            f"{migration.script_name} runs with no dblift transaction (dblift:no-transaction): "
+            "the script commits by itself, so a later failure leaves earlier work applied."
+        )
+        if not isinstance(self.provider, TransactionalProvider):
+            return f"Could not start {migration.script_name} without a transaction"
+        try:
+            self.provider.begin_script_session()
+        except (DbliftError, RuntimeError, OSError) as error:
+            return f"Could not start {migration.script_name} without a transaction: {error}"
+        self._script_session_open = True
+        return None
+
+    def _close_script_session(self) -> bool:
+        """Close the open script session once; say whether the script left a transaction open."""
+        if not self._script_session_open or not isinstance(self.provider, TransactionalProvider):
+            return False
+        self._script_session_open = False
+        return self.provider.end_script_session()
 
     def _classify_execution_statements(self, statements: List[str]) -> List[ExecutionStatement]:
         """Attach transaction metadata to executable SQL statements."""
@@ -954,8 +993,17 @@ class ExecutionEngine:
                 f"Could not add failed migration {migration.script_name} to result: {record_e}"
             )
 
+        if self._script_session_open:
+            session_warning = (
+                f"{migration.script_name} ran with no dblift transaction: work it committed "
+                "before the failure remains applied."
+            )
+            self.log.warning(session_warning)
+            result.add_warning(session_warning)
+
         # Rollback transaction for failed migration FIRST
         try:
+            self._close_script_session()
             if isinstance(self.provider, TransactionalProvider):
                 self.provider.rollback_transaction()
                 self.log.debug(
@@ -1047,6 +1095,17 @@ class ExecutionEngine:
             )
             self._record_autocommit_migration_history(migration, execution_time)
             return True
+        self._fail_left_open(migration, statements, execution_time, result)
+        return False
+
+    def _fail_left_open(
+        self,
+        migration: Migration,
+        statements: List[str],
+        execution_time: int,
+        result: OperationResult,
+    ) -> None:
+        """Fail a migration whose script left a transaction open."""
         error = TransactionLeftOpenError(
             "the script left a transaction open; it was rolled back. "
             "End every transaction the script opens with COMMIT or ROLLBACK"
@@ -1054,7 +1113,6 @@ class ExecutionEngine:
         self._handle_statement_failure(
             migration, error, max(len(statements) - 1, 0), execution_time, result
         )
-        return False
 
     def _record_autocommit_migration_history(
         self, migration: Migration, execution_time: int
@@ -1338,6 +1396,11 @@ class ExecutionEngine:
         dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
         quirks = ProviderRegistry.get_quirks(dialect)
 
+        if policy.script_managed:
+            start_error = self._start_script_session(callback)
+            if start_error:
+                raise CallbackExecutionError(start_error)
+
         # Execute SQL statements in the callback
         try:
             for statement in sql_statements:
@@ -1359,17 +1422,31 @@ class ExecutionEngine:
 
             self._finish_statements(sql_statements)
 
-            if transaction_started and isinstance(self.provider, TransactionalProvider):
-                self._settle_callback_transaction(self.provider, callback)
+            self._end_callback_unit(callback, policy, transaction_started)
 
         except Exception:
             # Rollback safety net for callback execution. Same rationale as the
             # migration-execution path above: ANY uncaught error here must rollback
             # before re-raise, narrowing would let unexpected types skip rollback.
-            if transaction_started and isinstance(self.provider, TransactionalProvider):
+            if (transaction_started or self._script_session_open) and isinstance(
+                self.provider, TransactionalProvider
+            ):
                 self._rollback_callback_transaction(self.provider, callback)
             # Re-raise the original exception
             raise
+
+    def _end_callback_unit(
+        self, callback: Migration, policy: TransactionPolicyDecision, transaction_started: bool
+    ) -> None:
+        """Close the callback's session or transaction; raise when the script left one open."""
+        if policy.script_managed:
+            if self._close_script_session():
+                raise TransactionLeftOpenError(
+                    f"{callback.script_name} left a transaction open; it was rolled back. "
+                    "End every transaction the script opens with COMMIT or ROLLBACK"
+                )
+        elif transaction_started and isinstance(self.provider, TransactionalProvider):
+            self._settle_callback_transaction(self.provider, callback)
 
     def _settle_callback_transaction(
         self, provider: TransactionalProvider, callback: Migration
@@ -1579,7 +1656,10 @@ class ExecutionEngine:
     ) -> None:
         """Roll back a failed callback's transaction; a failure is logged, not raised."""
         try:
-            provider.rollback_transaction()
+            if self._script_session_open:
+                self._close_script_session()
+            else:
+                provider.rollback_transaction()
             self.log.debug(f"Rolled back transaction for failed callback {callback.script_name}")
         except Exception as rollback_e:
             self.log.warning(

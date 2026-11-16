@@ -373,3 +373,14 @@ def test_sqlserver_script_rollback_sends_the_guarded_rollback_unbound():
     with patch.object(SqlAlchemyProvider, "_exec_unbound") as run:
         p._roll_back_script_transaction(conn)
     run.assert_called_once_with(conn, "IF @@TRANCOUNT > 0 ROLLBACK")
+
+
+def test_sqlserver_supports_a_script_session():
+    assert object.__new__(SqlServerProvider).supports_script_session() is True
+
+
+def test_a_sqlserver_subclass_with_another_dialect_key_is_not_enabled():
+    class Other(SqlServerProvider):
+        canonical_dialect_key = "other"
+
+    assert object.__new__(Other).supports_script_session() is False
