@@ -31,8 +31,8 @@ class LexicalStatementParser(BaseStatementParser):
         self,
         tokens: Iterable[Token],
         context: Optional[ParserContext] = None,
-        source: Optional[str] = None,
         *,
+        source: str,
         spec: LexicalSpec,
         comments: Optional[Sequence[Tuple[int, int]]] = None,
         delimiter_script: Optional[DelimiterScript] = None,
@@ -40,7 +40,7 @@ class LexicalStatementParser(BaseStatementParser):
         segment_records: Optional[List[Statement]] = None,
     ):
         """Bind token boundaries to their original source and plugin rules."""
-        super().__init__(tokens, context, source)
+        super().__init__(tokens, context, source=source)
         self.spec = spec
         self.TERMINATOR_RESPECTS_PARENS = spec.terminator_respects_parens
         self.text_blanks = spec.text_blanks
@@ -59,7 +59,7 @@ class LexicalStatementParser(BaseStatementParser):
         self.notices: List[str] = []
         self._batches: Optional[BatchScript] = None
         if spec.batch_script is not None:
-            assert source is not None and comments is not None  # batches are cut from their text
+            assert comments is not None  # batches are cut from their text
             self._batches = BatchScript(
                 spec.batch_script,
                 source,
@@ -80,7 +80,6 @@ class LexicalStatementParser(BaseStatementParser):
         self._segment_records = segment_records
         self._script: Optional[ClientScript] = None
         if spec.client_script is not None:
-            assert source is not None  # a client script is read line by line from its text
             self._script = ClientScript(
                 spec.client_script, source, spec.client_name, text_blanks=spec.text_blanks
             )
@@ -88,7 +87,7 @@ class LexicalStatementParser(BaseStatementParser):
     def _adjust_context(self, token: Token) -> None:
         if self.spec.sqlite_shell:
             if token.type == TokenType.COMMENT:
-                if self.source is not None and self.source.startswith("--", token.pos):
+                if self.source.startswith("--", token.pos):
                     self._sqlite_last_line_comment = token.line
                 return
             if token.type == TokenType.DELIMITER:
@@ -205,7 +204,7 @@ class LexicalStatementParser(BaseStatementParser):
                     first = next((t for t in current if t.type != TokenType.COMMENT), None)
                     if self._script is not None and first is not None:
                         text = self._script.substitute(text, first.line)
-                        if self._script.rules.driver_strips_edges and self.source is not None:
+                        if self._script.rules.driver_strips_edges:
                             refuse_edges_the_driver_strips(
                                 self.source,
                                 current,
@@ -230,8 +229,7 @@ class LexicalStatementParser(BaseStatementParser):
             if self._script is not None:
                 self._script.reset_statement()
 
-        for idx, (token, following) in enumerate(_with_following(self.tokens)):
-            self.current_idx = idx
+        for token, following in _with_following(self.tokens):
             self._following = following
 
             if token.type == TokenType.EOF:
@@ -267,7 +265,7 @@ class LexicalStatementParser(BaseStatementParser):
                         terminator=None,
                         kind="directive",
                         execution_text=token.text if self._script is not None else None,
-                        source_start=token.pos if self.source is not None else None,
+                        source_start=token.pos,
                         source_end=self._line_end(token.pos),
                     )
                 )
@@ -336,7 +334,7 @@ class LexicalStatementParser(BaseStatementParser):
         terminator: Optional[Token],
         dropped_terminator_pos: Optional[int],
     ) -> str:
-        if self.spec.raw_segment_records and self.source is not None:
+        if self.spec.raw_segment_records:
             end = (
                 dropped_terminator_pos
                 if dropped_terminator_pos is not None
@@ -347,7 +345,7 @@ class LexicalStatementParser(BaseStatementParser):
                 )
             )
             return self.source[self._raw_segment_start : end].strip(self.text_blanks)
-        if not self.spec.sqlite_shell or self.source is None:
+        if not self.spec.sqlite_shell:
             return super()._render_statement(kept_tokens, terminator, dropped_terminator_pos)
         start = kept_tokens[0].pos
         end = (
@@ -363,7 +361,7 @@ class LexicalStatementParser(BaseStatementParser):
 
     def _check_sqlite_line(self, token: Token) -> None:
         """Refuse shell-only lines that would change SQLite statement boundaries."""
-        if self.source is None or token.line == self._sqlite_checked_line:
+        if token.line == self._sqlite_checked_line:
             return
         self._sqlite_checked_line = token.line
         line_start = self.source.rfind("\n", 0, token.pos) + 1
@@ -391,9 +389,7 @@ class LexicalStatementParser(BaseStatementParser):
                 "put the terminator on the statement"
             )
 
-    def _line_end(self, pos: int) -> Optional[int]:
-        if self.source is None:
-            return None
+    def _line_end(self, pos: int) -> int:
         newline = self.source.find("\n", pos)
         return newline + 1 if newline >= 0 else len(self.source)
 
@@ -405,20 +401,12 @@ class LexicalStatementParser(BaseStatementParser):
         end_pos: Optional[int],
     ) -> Tuple[Optional[int], int, Optional[int]]:
         """Return the record's source start, its line and its source end."""
-        source_start = (
-            self._raw_segment_start
-            if self.spec.raw_segment_records and self.source is not None
-            else first.pos if self.source is not None else None
-        )
+        source_start = self._raw_segment_start if self.spec.raw_segment_records else first.pos
         line = tokens[0].line if self.spec.raw_segment_records else first.line
-        source_end = (
+        source_end: Optional[int] = (
             terminator.pos + len(terminator.text)
             if terminator is not None
-            else (
-                end_pos
-                if end_pos is not None
-                else len(self.source) if self.source is not None else None
-            )
+            else (end_pos if end_pos is not None else len(self.source))
         )
         if self._script is not None:
             source_end = self._script.record_end(tokens, terminator, source_end)
@@ -434,8 +422,7 @@ class LexicalStatementParser(BaseStatementParser):
         """Find the combine terminators of a statement and the statements they join.
 
         Returns the combinators, the analysis statements they separate (None when the
-        statement has none or there is no source) and the rendered text, with each
-        combinator sent as ``;`` when the source is known and unchanged otherwise.
+        statement has none) and the rendered text, with each combinator sent as ``;``.
         """
         combinators = [
             t
@@ -445,7 +432,7 @@ class LexicalStatementParser(BaseStatementParser):
             and t.text == self.spec.combine_terminator
         ]
         analysis_statements = None
-        if combinators and self.source is not None:
+        if combinators:
             end = terminator.pos if terminator is not None else len(self.source)
             starts = [first.pos, *(t.pos + len(t.text) for t in combinators)]
             ends = [*(t.pos for t in combinators), end]
@@ -479,8 +466,6 @@ class LexicalStatementParser(BaseStatementParser):
             raise UnsafeStatementSplitError(
                 "COPY FROM STDIN cannot be combined with another statement using psql \\;"
             )
-        if self.source is None:
-            return Statement(text=rendered, line=first.line, terminator="\\.", kind="copy_stdin")
         end = terminator.pos + len(terminator.text)
         text = self.source[first.pos : end]
         ended = self.source.startswith("\\.", end)

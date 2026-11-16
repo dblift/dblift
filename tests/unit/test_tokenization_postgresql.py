@@ -2,11 +2,8 @@
 
 import pytest
 
-from dblift.core.sql_parser.lexical_statement_parser import (
-    LexicalStatementParser,
-)
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
-from dblift.core.sql_parser.parser_context import ParserContext
 from dblift.core.sql_parser.tokens import TokenType
 from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 
@@ -49,8 +46,7 @@ class TestLexicalTokenizer:
         texts = [t.text for t in tokens if t.type != TokenType.EOF]
         assert "${table_schema}" in texts
         assert any(t.text == "." for t in tokens)
-        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
-        stmts = parser.split_statements()
+        stmts = LexicalEngine(POSTGRESQL_SPEC).split_statements(sql)
         assert len(stmts) == 1
         assert "${table_schema}.users" in stmts[0]
 
@@ -70,11 +66,7 @@ class TestLexicalStatementParser:
     def test_simple_sql_split(self):
         """Test simple SQL statement splitting."""
         sql = "SELECT * FROM table1; SELECT * FROM table2;"
-        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
-        tokens = tokenizer.tokenize()
-
-        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
-        statements = parser.split_statements()
+        statements = LexicalEngine(POSTGRESQL_SPEC).split_statements(sql)
 
         assert len(statements) == 2
 
@@ -85,11 +77,7 @@ BEGIN
     RETURN 42;
 END;
 $$ LANGUAGE plpgsql;"""
-        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
-        tokens = tokenizer.tokenize()
-
-        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
-        statements = parser.split_statements()
+        statements = LexicalEngine(POSTGRESQL_SPEC).split_statements(sql)
 
         # Should be one statement (entire function)
         assert len(statements) == 1
@@ -101,11 +89,7 @@ BEGIN ATOMIC
     SELECT 1;
     SELECT 2;
 END;"""
-        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
-        tokens = tokenizer.tokenize()
-
-        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
-        statements = parser.split_statements()
+        statements = LexicalEngine(POSTGRESQL_SPEC).split_statements(sql)
 
         # Should be one statement (entire function with ATOMIC block)
         assert len(statements) == 1
@@ -113,12 +97,8 @@ END;"""
     def test_transaction_compatibility(self):
         """Test transaction compatibility detection."""
         sql = "CREATE TABLE test (id INT);"
-        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
-        tokens = tokenizer.tokenize()
-
-        context = ParserContext()
-        parser = LexicalStatementParser(tokens, context, spec=POSTGRESQL_SPEC)
-        statements = parser.split_statements()
+        statements = LexicalEngine(POSTGRESQL_SPEC).split_statements(sql)
+        assert len(statements) == 1
 
         # Regular DDL can run in transaction
         from dblift.core.migration.sql.execution_statement import classify_execution_statement
@@ -131,9 +111,7 @@ END;"""
             "CREATE DOMAIN email_domain AS VARCHAR(255) "
             "CHECK (VALUE ~ '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Z]{2,}$');"
         )
-        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
-        parser = LexicalStatementParser(tokenizer.tokenize(), spec=POSTGRESQL_SPEC)
-        statements = parser.split_statements()
+        statements = LexicalEngine(POSTGRESQL_SPEC).split_statements(sql)
         assert len(statements) == 1
         assert "VALUE ~ '" in statements[0] or "VALUE ~'" in statements[0]
         assert "VALUE '" not in statements[0]
@@ -148,11 +126,7 @@ BEGIN
     RETURN result;
 END;
 $$ LANGUAGE plpgsql;"""
-        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
-        tokens = tokenizer.tokenize()
-
-        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
-        statements = parser.split_statements()
+        statements = LexicalEngine(POSTGRESQL_SPEC).split_statements(sql)
 
         # Should be one statement
         assert len(statements) == 1

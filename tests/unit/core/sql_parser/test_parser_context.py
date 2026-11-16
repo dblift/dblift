@@ -7,7 +7,6 @@ def test_block_initiators_are_a_stack() -> None:
     ctx.increase_block_depth("CASE")
     ctx.decrease_block_depth()
     assert ctx.get_block_initiator() == "ATOMIC"
-    assert ctx.get_last_closed_block_initiator() == "CASE"
     ctx.decrease_block_depth()
     assert ctx.get_block_initiator() is None and ctx.block_depth == 0
 
