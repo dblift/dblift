@@ -72,13 +72,8 @@ class MigrationJournal:
 
     _lock = threading.Lock()  # Thread lock for access
 
-    def __init__(self, enabled: bool = True, capture_objects: bool = True):
-        """Initialize the migration journal
-
-        Args:
-            enabled: Whether journaling is enabled
-        """
-        self.enabled = enabled
+    def __init__(self, capture_objects: bool = True):
+        """Initialize the migration journal."""
         self.capture_objects = capture_objects
         self.current_migration_id: Optional[str] = None
         # Journal data is kept only in memory (no file persistence)
@@ -103,9 +98,6 @@ class MigrationJournal:
             migration_id: Migration ID (typically script_name)
             details: Additional migration details
         """
-        if not self.enabled:
-            return
-
         # Set current migration ID
         self.current_migration_id = migration_id
 
@@ -162,7 +154,7 @@ class MigrationJournal:
             statement: SQL statement being executed
             statement_index: Index of statement in migration (0-based)
         """
-        if not self.enabled or not self.current_migration_id:
+        if not self.current_migration_id:
             return
 
         entry = JournalEntry(
@@ -190,7 +182,7 @@ class MigrationJournal:
             execution_time: Execution time in milliseconds
             details: Additional details (e.g., affected rows)
         """
-        if not self.enabled or not self.current_migration_id:
+        if not self.current_migration_id:
             return
 
         entry = JournalEntry(
@@ -216,7 +208,7 @@ class MigrationJournal:
             error_message: Error message
             execution_time: Execution time in milliseconds
         """
-        if not self.enabled or not self.current_migration_id:
+        if not self.current_migration_id:
             return
 
         entry = JournalEntry(
@@ -247,9 +239,6 @@ class MigrationJournal:
         Args:
             entry: Journal entry to store
         """
-        if not self.enabled:
-            return
-
         with MigrationJournal._lock:
             # Add to in-memory entries
             self.entries.append(entry)
@@ -282,9 +271,6 @@ class MigrationJournal:
         Returns:
             List of journal entries
         """
-        if not self.enabled:
-            return []
-
         # Return in-memory journal entries
         return list(self.migration_journals.get(migration_id, []))
 
@@ -298,7 +284,7 @@ class MigrationJournal:
             statement_index: Index of statement in migration
             objects_affected: List of affected objects with their metadata
         """
-        if not self.enabled or not self.current_migration_id:
+        if not self.current_migration_id:
             return
 
         entry = JournalEntry(
@@ -552,65 +538,27 @@ class MigrationJournal:
                 objects_affected = entry.details.get("objects_affected", [])
                 for obj in objects_affected:
                     # Convert SqlObject dict to operation format expected by template
-                    if isinstance(obj, dict):
-                        object_name = obj.get("object_name", "unknown")
-                        schema = obj.get("schema", "")
-                        object_type = obj.get("object_type", "UNKNOWN")
+                    object_name = obj.get("object_name", "unknown")
+                    schema = obj.get("schema", "")
+                    object_type_str = self._normalize_object_type(obj.get("object_type", "UNKNOWN"))
 
-                        # Handle object_type enum (generic schema-object type,
-                        # not MigrationType). After the .value unwrap above,
-                        # object_type is a string in every tested code path.
-                        if hasattr(object_type, "value"):
-                            object_type = object_type.value
-                        object_type_str = str(object_type)  # lint: allow-enum-str
+                    # Determine operation more accurately based on statement and object type
+                    operation = self._determine_operation_from_statement(
+                        entry.statement, object_type_str
+                    )
 
-                        # Determine operation more accurately based on statement and object type
-                        operation = self._determine_operation_from_statement(
-                            entry.statement, object_type_str
-                        )
+                    # Remove schema prefix from object name if present
+                    if schema and object_name.startswith(f"{schema}."):
+                        object_name = object_name[len(schema) + 1 :]
 
-                        # Remove schema prefix from object name if present
-                        if schema and object_name.startswith(f"{schema}."):
-                            object_name = object_name[len(schema) + 1 :]
-
-                        object_operations.append(
-                            {
-                                "operation": operation,
-                                "object_type": object_type_str,
-                                "object_name": object_name,
-                                "schema": schema,
-                            }
-                        )
-                    else:
-                        # Handle SqlObject instances
-                        object_name = getattr(obj, "name", "unknown")
-                        schema = getattr(obj, "schema", "")
-                        object_type = getattr(obj, "object_type", "UNKNOWN")
-
-                        # Handle object_type enum (generic schema-object type,
-                        # not MigrationType). After the .value unwrap above,
-                        # object_type is a string in every tested code path.
-                        if hasattr(object_type, "value"):
-                            object_type = object_type.value
-                        object_type_str = str(object_type)  # lint: allow-enum-str
-
-                        # Determine operation more accurately based on statement and object type
-                        operation = self._determine_operation_from_statement(
-                            entry.statement, object_type_str
-                        )
-
-                        # Remove schema prefix from object name if present
-                        if schema and object_name.startswith(f"{schema}."):
-                            object_name = object_name[len(schema) + 1 :]
-
-                        object_operations.append(
-                            {
-                                "operation": operation,
-                                "object_type": object_type_str,
-                                "object_name": object_name,
-                                "schema": schema,
-                            }
-                        )
+                    object_operations.append(
+                        {
+                            "operation": operation,
+                            "object_type": object_type_str,
+                            "object_name": object_name,
+                            "schema": schema,
+                        }
+                    )
 
         # A failed statement is part of the run: keep it, in order, so reports
         # can show which statement stopped the migration.
@@ -641,32 +589,16 @@ class MigrationJournal:
                 "object_name": object_name,
             }
 
-        if not statement_times:
-            summary: Dict[str, Any] = {
-                "migration_id": actual_migration_id,
-                "version": str(version) if version is not None else None,
-                "total_statements": 0,
-                "total_execution_time": 0,
-                "avg_statement_time": 0,
-                "max_statement_time": 0,
-                "min_statement_time": 0,
-                "slowest_statement": None,
-                "statements": [],
-                "object_operations": object_operations,
-            }
-            if not self.capture_objects:
-                summary["object_analysis"] = "disabled"
-            return summary
-
-        # Calculate summary metrics
-        summary = {
+        summary: Dict[str, Any] = {
             "migration_id": actual_migration_id,
             "version": str(version) if version is not None else None,
             "total_statements": len(statement_times),
             "total_execution_time": sum(statement_times),
-            "avg_statement_time": sum(statement_times) / len(statement_times),
-            "max_statement_time": max(statement_times),
-            "min_statement_time": min(statement_times),
+            "avg_statement_time": (
+                sum(statement_times) / len(statement_times) if statement_times else 0
+            ),
+            "max_statement_time": max(statement_times, default=0),
+            "min_statement_time": min(statement_times, default=0),
             "slowest_statement": slowest_statement,
             "statements": [_statement_dict(entry) for entry in executed],
             "object_operations": object_operations,

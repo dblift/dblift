@@ -6,17 +6,16 @@ running. The migration in flight cannot be interrupted safely, but no further
 migration may start.
 """
 
-from types import SimpleNamespace
-
-from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.migration import Migration, MigrationType
+from tests.unit._migration_factory import make_migration
 from tests.unit.core.migration.commands.test_migrate_command_lock_refusal import (
     _cmd,
     _run,
 )
 
 
-def _versioned(version: str) -> SimpleNamespace:
-    return SimpleNamespace(
+def _versioned(version: str) -> Migration:
+    return make_migration(
         script_name=f"V{version}__step.sql",
         version=version,
         description="step",

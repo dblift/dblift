@@ -7,27 +7,27 @@ filesystem) for display purposes.
 """
 
 import functools
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from dblift.core.logger import Log, NullLog
 from dblift.core.logger.results import is_failed_migration_status
+from dblift.core.migration._type_match import is_migration_type, migration_type_name
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import MigrationEligibility, MigrationState
-from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
+from dblift.core.migration.version_utils import compare_versions
 
 
 class MigrationDataCollector:
     """Collects and structures migration data for display."""
 
-    def __init__(self, log: Log, script_manager: Optional[MigrationScriptManager] = None):
+    def __init__(self, log: Log, script_manager: MigrationScriptManager):
         """Initialize the data collector.
 
         Args:
             log: Logger instance
-            script_manager: Script manager instance (optional)
+            script_manager: Script manager used to read tags from script names
         """
         self.log = log if log is not None else NullLog()
         self.script_manager = script_manager
@@ -71,40 +71,17 @@ class MigrationDataCollector:
             self.log.debug(f"Could not format installed_on timestamp: {e}")
             return str(installed_on) if installed_on else ""
 
-    def _get_migration_type_string(self, migration_type: Any) -> str:
-        """Safely get migration type as string, handling both enum and string types.
-
-        Delegates to the shared helper in ``dblift.core.migration._type_match``;
-        kept as a method for backwards compatibility with existing call sites.
-        """
-        from dblift.core.migration._type_match import migration_type_name
-
-        return migration_type_name(migration_type)
-
-    def _is_migration_type_equal(self, migration_type: Any, target_type: str) -> bool:
-        """Check if migration type matches target type, handling both enum and string types.
-
-        Delegates to the shared helper in ``dblift.core.migration._type_match``;
-        kept as a method for backwards compatibility with existing call sites.
-        """
-        from dblift.core.migration._type_match import is_migration_type
-
-        return is_migration_type(migration_type, target_type)
-
     def _is_versioned_type(self, migration_type: Any) -> bool:
         """Return True for any versioned script type (SQL, PYTHON, etc.).
 
         Delegates to the shared VERSIONED_SCRIPT_TYPES constant so adding a new
         versioned type (e.g. SHELL) registers here automatically.
         """
-        return any(self._is_migration_type_equal(migration_type, t) for t in VERSIONED_SCRIPT_TYPES)
+        return any(is_migration_type(migration_type, t) for t in VERSIONED_SCRIPT_TYPES)
 
     def get_migration_data(
         self,
         migration_state: MigrationState,
-        all_applied_migrations: List[Migration],
-        scripts_dir: Optional[Path] = None,
-        target_version: Optional[str] = None,
         tags: Optional[List[str]] = None,
         exclude_tags: Optional[List[str]] = None,
         versions: Optional[List[str]] = None,
@@ -112,50 +89,13 @@ class MigrationDataCollector:
     ) -> List[Dict[str, Any]]:
         """Get structured migration data suitable for any formatter (console, HTML, JSON).
 
-        Args:
-            migration_state: MigrationState object (contains all state info)
-            all_applied_migrations: All migrations from history in chronological order
-            scripts_dir: Directory containing migration scripts
-            target_version: Target version for filtering
-            tags: Tags to include
-            exclude_tags: Tags to exclude
-            versions: Versions to include
-            exclude_versions: Versions to exclude
-        """
-        return self._get_migration_data_from_state(
-            migration_state=migration_state,
-            all_applied_migrations=all_applied_migrations,
-            scripts_dir=scripts_dir,
-            target_version=target_version,
-            tags=tags,
-            exclude_tags=exclude_tags,
-            versions=versions,
-            exclude_versions=exclude_versions,
-        )
-
-    def _get_migration_data_from_state(
-        self,
-        migration_state: MigrationState,
-        all_applied_migrations: List[Migration],
-        scripts_dir: Optional[Path] = None,
-        target_version: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        exclude_tags: Optional[List[str]] = None,
-        versions: Optional[List[str]] = None,
-        exclude_versions: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
-        """Get migration data from MigrationState (new implementation).
-
-        This method uses the StateManager's state to show:
-        1. All migrations in chronological order by installed_rank
+        Uses the state's manager-computed statuses to show:
+        1. All migrations from history in chronological order by installed_rank
         2. Undone migrations marked as "UNDONE" (not "SUCCESS")
         3. Pending migrations at the end
 
         Args:
-            migration_state: MigrationState object containing all state information
-            all_applied_migrations: All migrations from history table (not filtered)
-            scripts_dir: Directory containing migration scripts
-            target_version: Target version for filtering
+            migration_state: MigrationState object (contains all state info)
             tags: Tags to include
             exclude_tags: Tags to exclude
             versions: Versions to include
@@ -164,16 +104,14 @@ class MigrationDataCollector:
         Returns:
             List of migration data dictionaries
         """
-        if self.script_manager is None:
-            logger = self.log
-            self.script_manager = MigrationScriptManager(logger, "utf-8")
+        filters = (tags or [], exclude_tags or [], versions or [], exclude_versions or [])
 
         # Use the same resolved undo catalogue that the undo command consumes.
-        undo_versions = self._find_undo_versions(scripts_dir, migration_state)
+        undo_versions = self._find_undo_versions(migration_state)
 
         # Sort all migrations by installed_rank to show complete sequential history
         sorted_applied_migrations = sorted(
-            all_applied_migrations, key=lambda m: getattr(m, "installed_rank", 0) or 0
+            migration_state.all_applied_objects, key=lambda m: getattr(m, "installed_rank", 0) or 0
         )
 
         # Get pending migrations from state (already sorted by migration order)
@@ -210,43 +148,26 @@ class MigrationDataCollector:
 
             # Flyway removeUndos: completed undo scripts are not table rows. A
             # failed one is kept: it blocks validate, migrate and undo.
-            if self._is_migration_type_equal(
-                migration_type, "UNDO_SQL"
-            ) and not is_failed_migration_status(state):
-                continue
-
-            # Skip if this version should be excluded based on filters
-            if self._should_exclude_migration(
-                version,
-                script_name,
-                tags or [],
-                exclude_tags or [],
-                versions or [],
-                exclude_versions or [],
+            if is_migration_type(migration_type, "UNDO_SQL") and not is_failed_migration_status(
+                state
             ):
                 continue
 
-            migrations_data.append(
-                {
-                    "category": self._get_category_from_type(
-                        self._get_migration_type_string(migration_type), migration
-                    ),
-                    "version": self._format_version(version),
-                    "description": self._clean_delete_description(
-                        getattr(migration, "description", "")
-                    ),
-                    "type": self._get_type_from_migration_type(migration_type, script_name),
-                    "installed_on": self._format_installed_on(installed_on),
-                    "installed_by": installed_by or "",
-                    "state": state,
-                    "undoable": version in undo_versions if version else False,
-                    "filepath": getattr(migration, "filepath", ""),
-                    "script": script_name,
-                    "execution_time": execution_time or 0,
-                    "installed_rank": installed_rank,
-                    "checksum": checksum,
-                }
+            # Skip if this version should be excluded based on filters
+            if self._should_exclude_migration(version, script_name, *filters):
+                continue
+
+            row = self._display_row(
+                migration, version, migration_type, script_name, state, undo_versions
             )
+            row.update(
+                installed_on=self._format_installed_on(installed_on),
+                installed_by=installed_by or "",
+                execution_time=execution_time or 0,
+                installed_rank=installed_rank,
+                checksum=checksum,
+            )
+            migrations_data.append(row)
 
         # Process pending migrations at the end (in execution order)
         # Execution order: versioned first (sorted by version), then repeatable (sorted by script
@@ -262,49 +183,52 @@ class MigrationDataCollector:
             migration_type = getattr(migration, "type", None)
 
             # Flyway removeUndos: undo scripts are not table rows.
-            if self._is_migration_type_equal(migration_type, "UNDO_SQL"):
+            if is_migration_type(migration_type, "UNDO_SQL"):
                 continue
 
             # Skip if should be excluded
-            if self._should_exclude_migration(
-                version,
-                script_name,
-                tags or [],
-                exclude_tags or [],
-                versions or [],
-                exclude_versions or [],
-            ):
+            if self._should_exclude_migration(version, script_name, *filters):
                 continue
 
             # Status is already computed by MigrationStateService (via build_state()).
             state = pending_status_by_id.get(id(migration), MigrationDisplayState.PENDING.value)
 
             migrations_data.append(
-                {
-                    "category": self._get_category_from_type(
-                        self._get_migration_type_string(migration_type), migration
-                    ),
-                    "version": self._format_version(version),
-                    "description": self._clean_delete_description(
-                        getattr(migration, "description", "")
-                    ),
-                    "type": self._get_type_from_migration_type(migration_type, script_name),
-                    "installed_on": "",
-                    "installed_by": "",
-                    "state": state,
-                    "undoable": version in undo_versions if version else False,
-                    "filepath": getattr(migration, "filepath", ""),
-                    "script": script_name,
-                    "execution_time": 0,
-                    "installed_rank": None,
-                }
+                self._display_row(
+                    migration, version, migration_type, script_name, state, undo_versions
+                )
             )
 
         return migrations_data
 
-    def _find_undo_versions(
-        self, scripts_dir: Optional[Path], migration_state: Optional[MigrationState] = None
-    ) -> Set[str]:
+    def _display_row(
+        self,
+        migration: Migration,
+        version: Optional[str],
+        migration_type: Any,
+        script_name: str,
+        state: Optional[str],
+        undo_versions: Set[str],
+    ) -> Dict[str, Any]:
+        """Build a row as for a pending migration; applied rows fill in their history columns."""
+        return {
+            "category": self._get_category_from_type(
+                migration_type_name(migration_type), migration
+            ),
+            "version": version or "",
+            "description": self._clean_delete_description(getattr(migration, "description", "")),
+            "type": self._get_type_from_migration_type(migration_type, script_name),
+            "installed_on": "",
+            "installed_by": "",
+            "state": state,
+            "undoable": version in undo_versions if version else False,
+            "filepath": getattr(migration, "filepath", ""),
+            "script": script_name,
+            "execution_time": 0,
+            "installed_rank": None,
+        }
+
+    def _find_undo_versions(self, migration_state: MigrationState) -> Set[str]:
         """Find versions that have undo capability available.
 
         A version is undoable if it has a separate undo companion script:
@@ -312,22 +236,12 @@ class MigrationDataCollector:
         Python undo companions use the same ``def migrate(context)`` contract
         as versioned scripts; they are not selected by an inline ``undo`` on ``V*``.
         """
-        if migration_state is not None:
-            return {
-                str(record.migration.version)
-                for record in migration_state.catalog
-                if record.eligibility == MigrationEligibility.UNDO_AVAILABLE
-                and getattr(record.migration, "version", None) is not None
-            }
-
-        undo_versions = set()
-        if scripts_dir and scripts_dir.exists() and self.script_manager is not None:
-            for pattern in ("U*.sql", "U*.py"):
-                for file_path in scripts_dir.rglob(pattern):
-                    version = self.script_manager.extract_version(file_path.name)
-                    if version:
-                        undo_versions.add(version)
-        return undo_versions
+        return {
+            str(record.migration.version)
+            for record in migration_state.catalog
+            if record.eligibility == MigrationEligibility.UNDO_AVAILABLE
+            and getattr(record.migration, "version", None) is not None
+        }
 
     def _should_exclude_migration(
         self,
@@ -347,10 +261,8 @@ class MigrationDataCollector:
         if exclude_versions and version in exclude_versions:
             return True
 
-        # Extract tags from script name if script_manager is available
-        migration_tags = []
-        if self.script_manager is not None:
-            migration_tags = self.script_manager.extract_tags(script_name) or []
+        # Extract tags from the script name
+        migration_tags = self.script_manager.extract_tags(script_name) or []
 
         # Tags inclusion filter: migration must have at least one matching tag
         if tags:
@@ -441,7 +353,7 @@ class MigrationDataCollector:
             return "UNKNOWN"
 
         # Get the enum name or string value using helper function
-        type_name = self._get_migration_type_string(migration_type)
+        type_name = migration_type_name(migration_type)
 
         # REPEATABLE covers both .sql and .py scripts; the history table stores
         # type=REPEATABLE regardless of the script's extension.  Infer the real
@@ -462,14 +374,6 @@ class MigrationDataCollector:
 
         return type_mapping.get(type_name, "UNKNOWN")
 
-    def _format_version(self, version: Optional[str]) -> str:
-        """Format version for display."""
-        return version if version else ""
-
-    def _compare_versions(self, version1: Optional[str], version2: Optional[str]) -> int:
-        """Compare two version strings. Delegates to shared compare_versions utility."""
-        return _compare_versions_shared(version1, version2)
-
     def _compare_pending_migrations(self, m1: Migration, m2: Migration) -> int:
         """Order pending migrations for display: versioned before repeatable,
         versioned entries in numeric version order, then by script name."""
@@ -479,7 +383,7 @@ class MigrationDataCollector:
             return type1 - type2
 
         if type1 == 0:
-            version_cmp = self._compare_versions(
+            version_cmp = compare_versions(
                 getattr(m1, "version", "") or "", getattr(m2, "version", "") or ""
             )
             if version_cmp != 0:

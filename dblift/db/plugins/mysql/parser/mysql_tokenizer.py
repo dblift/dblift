@@ -24,14 +24,13 @@ class MySQLTokenizer(BaseTokenizer):
 
     dialect_name = "mysql"  # lint: allow-dialect-string: dialect dispatch
 
-    def __init__(self, sql: str, strict_unknown_chars: bool = False):
+    def __init__(self, sql: str):
         """Initialize MySQL tokenizer.
 
         Args:
             sql: SQL content to tokenize
-            strict_unknown_chars: If True, unknown characters fail tokenization.
         """
-        super().__init__(sql, strict_unknown_chars=strict_unknown_chars)
+        super().__init__(sql)
         self.current_delimiter = ";"
 
     def _next_token(self) -> Optional[Token]:
@@ -153,44 +152,21 @@ class MySQLTokenizer(BaseTokenizer):
         directive_text = ""
         directive_text += self.read(prefix_len)  # /*! or /*M!
 
-        # Check for version number (5 digits)
-        if self.peek().isdigit():
-            # Read version number
-            version = ""
-            for _ in range(5):
-                if self.pos < len(self.sql) and self.peek().isdigit():
-                    char = self.read()
-                    version += char
-                    directive_text += char
-                else:
-                    break
-
-            # Read until */
-            while self.pos < len(self.sql):
-                if self.peek(2) == "*/":
-                    directive_text += self.read(2)
-                    break
+        # Optional version number (up to 5 digits)
+        for _ in range(5):
+            if self.pos < len(self.sql) and self.peek().isdigit():
                 directive_text += self.read()
+            else:
+                break
 
-            # Comment directives are treated as executable code
-            return Token(
-                TokenType.COMMENT_DIRECTIVE,
-                directive_text,
-                start_pos,
-                start_line,
-                start_col,
-                self.parens_depth,
-            )
-
-        # No version - still a comment directive (executable code)
-        # MySQL executes /*!  */ directives even without version numbers
+        # Read until */. Comment directives are executable code, with or
+        # without a version number.
         while self.pos < len(self.sql):
             if self.peek(2) == "*/":
                 directive_text += self.read(2)
                 break
             directive_text += self.read()
 
-        # Non-versioned comment directives are also executable code
         return Token(
             TokenType.COMMENT_DIRECTIVE,
             directive_text,
@@ -220,29 +196,9 @@ class MySQLTokenizer(BaseTokenizer):
         """
         # Check for backtick identifier (not a string)
         if self.peek() == "`":
-            return self._handle_backtick_identifier()
+            return self._read_delimited_identifier("`")
 
-        # Check for double-quoted string
-        if self.peek() == '"':
-            return self._handle_double_quoted_string()
-
-        # Handle single-quoted string with backslash escapes
-        return self._handle_single_quoted_string()
-
-    def _handle_single_quoted_string(self) -> Token:
-        """Handle single-quoted string with backslash escapes.
-
-        Returns:
-            String token
-        """
-        return self._handle_quoted_string()
-
-    def _handle_double_quoted_string(self) -> Token:
-        """Handle double-quoted string with backslash escapes.
-
-        Returns:
-            String token
-        """
+        # Single- and double-quoted strings, with backslash escapes
         return self._handle_quoted_string()
 
     def _handle_quoted_string(self) -> Token:
@@ -277,41 +233,6 @@ class MySQLTokenizer(BaseTokenizer):
         return Token(
             TokenType.STRING,
             string_text,
-            start_pos,
-            start_line,
-            start_col,
-            self.parens_depth,
-        )
-
-    def _handle_backtick_identifier(self) -> Token:
-        """Handle backtick-quoted identifiers.
-
-        Returns:
-            Identifier token
-        """
-        start_pos = self.pos
-        start_line = self.line
-        start_col = self.col
-
-        # Preserve the full identifier including backticks
-        identifier_text = ""
-        identifier_text += self.read()  # Opening backtick
-
-        while self.pos < len(self.sql):
-            char = self.peek()
-            if char == "`":
-                # Check for doubled backtick (escape)
-                if self.peek(2) == "``":
-                    identifier_text += self.read(2)
-                else:
-                    identifier_text += self.read()  # Closing backtick
-                    break
-            else:
-                identifier_text += self.read()
-
-        return Token(
-            TokenType.IDENTIFIER,
-            identifier_text,
             start_pos,
             start_line,
             start_col,

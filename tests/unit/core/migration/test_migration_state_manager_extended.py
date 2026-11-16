@@ -210,10 +210,6 @@ class TestInstalledRank(unittest.TestCase):
         m.installed_rank = None
         assert MigrationStateManager._installed_rank(m) == 0
 
-    def test_missing_attribute_returns_zero(self):
-        m = MagicMock(spec=[])
-        assert MigrationStateManager._installed_rank(m) == 0
-
 
 # ===========================================================================
 # _passes_filters

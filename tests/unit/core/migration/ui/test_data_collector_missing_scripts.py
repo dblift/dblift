@@ -6,6 +6,7 @@ import pytest
 
 from dblift.core.logger import NullLog
 from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_state import (
     CatalogMigration,
     MigrationEntry,
@@ -78,16 +79,14 @@ def _build_pending_state(
 def test_applied_migration_with_deleted_script_shows_missing():
     """V3's script was applied but its file is gone; only V1-V2 remain on
     disk and nothing is pending — V3 must render as Missing."""
-    collector = MigrationDataCollector(NullLog())
+    collector = MigrationDataCollector(NullLog(), MigrationScriptManager(NullLog()))
     v1 = _mk_versioned("1", rank=1, resolved=True)
     v2 = _mk_versioned("2", rank=2, resolved=True)
     v3 = _mk_versioned("3", rank=3, resolved=False)
 
     state = _build_state([v1, v2, v3], current_version="3")
-    rows = collector._get_migration_data_from_state(
+    rows = collector.get_migration_data(
         migration_state=state,
-        all_applied_migrations=[v1, v2, v3],
-        scripts_dir=None,
     )
 
     by_version = {row["version"]: row for row in rows}
@@ -97,14 +96,12 @@ def test_applied_migration_with_deleted_script_shows_missing():
 
 
 def test_failed_applied_migration_with_deleted_script_shows_failed_missing():
-    collector = MigrationDataCollector(NullLog())
+    collector = MigrationDataCollector(NullLog(), MigrationScriptManager(NullLog()))
     v1 = _mk_versioned("1", rank=1, success=False, resolved=False)
 
     state = _build_state([v1], current_version=None)
-    rows = collector._get_migration_data_from_state(
+    rows = collector.get_migration_data(
         migration_state=state,
-        all_applied_migrations=[v1],
-        scripts_dir=None,
     )
 
     assert rows[0]["state"] == "Failed missing"
@@ -114,15 +111,13 @@ def test_applied_migrations_with_scripts_still_present_stay_success():
     """Regression guard for the _mark_resolved_status bug: applied migrations
     whose scripts are still on disk (and nothing is currently pending) must
     not be reported as Missing."""
-    collector = MigrationDataCollector(NullLog())
+    collector = MigrationDataCollector(NullLog(), MigrationScriptManager(NullLog()))
     v1 = _mk_versioned("1", rank=1, resolved=True)
     v2 = _mk_versioned("2", rank=2, resolved=True)
 
     state = _build_state([v1, v2], current_version="2")
-    rows = collector._get_migration_data_from_state(
+    rows = collector.get_migration_data(
         migration_state=state,
-        all_applied_migrations=[v1, v2],
-        scripts_dir=None,
     )
 
     assert [row["state"] for row in rows] == ["Success", "Success"]
@@ -132,14 +127,12 @@ def test_unresolved_future_version_shows_future():
     """An unresolved applied migration whose version is higher than the
     current schema version renders as Future (e.g. after undo of the
     current head), not plain Missing."""
-    collector = MigrationDataCollector(NullLog())
+    collector = MigrationDataCollector(NullLog(), MigrationScriptManager(NullLog()))
     v5 = _mk_versioned("5", rank=1, resolved=False)
 
     state = _build_state([v5], current_version="3")
-    rows = collector._get_migration_data_from_state(
+    rows = collector.get_migration_data(
         migration_state=state,
-        all_applied_migrations=[v5],
-        scripts_dir=None,
     )
 
     assert rows[0]["state"] == "Future"
@@ -149,7 +142,7 @@ def test_undone_migration_still_detected_with_resolved_scripts():
     """Regression guard: inserting the resolved-check ahead of the UNDONE
     lookahead must not break UNDONE detection for migrations whose scripts
     are still present."""
-    collector = MigrationDataCollector(NullLog())
+    collector = MigrationDataCollector(NullLog(), MigrationScriptManager(NullLog()))
     sql = _mk_versioned("1", rank=1, resolved=True)
     undo = make_migration(
         script_name="U1__test.sql",
@@ -162,10 +155,8 @@ def test_undone_migration_still_detected_with_resolved_scripts():
     undo.installed_rank = 2
 
     state = _build_state([sql, undo], current_version=None, undone_versions=["1"])
-    rows = collector._get_migration_data_from_state(
+    rows = collector.get_migration_data(
         migration_state=state,
-        all_applied_migrations=[sql, undo],
-        scripts_dir=None,
     )
 
     sql_row = next(row for row in rows if row["version"] == "1" and row["type"] != "UNDO_SQL")
@@ -178,7 +169,7 @@ def test_pending_migration_with_undo_script_shows_pending():
     import tempfile
     from pathlib import Path
 
-    collector = MigrationDataCollector(NullLog())
+    collector = MigrationDataCollector(NullLog(), MigrationScriptManager(NullLog()))
     pending = make_migration(
         script_name="V2__test.sql",
         content="SELECT 1;",
@@ -193,10 +184,8 @@ def test_pending_migration_with_undo_script_shows_pending():
         (scripts_dir / "U2__undo.sql").write_text("SELECT 1;", encoding="utf-8")
 
         state = _build_pending_state([pending], scripts_dir=scripts_dir)
-        rows = collector._get_migration_data_from_state(
+        rows = collector.get_migration_data(
             migration_state=state,
-            all_applied_migrations=[],
-            scripts_dir=scripts_dir,
         )
 
     assert rows[0]["state"] == "Pending"

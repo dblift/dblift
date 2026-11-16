@@ -15,6 +15,7 @@ from dblift.core.migration.state.migration_state import (
     MigrationEligibility,
     MigrationState,
 )
+from tests.unit._migration_factory import make_migration
 from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 
@@ -42,7 +43,7 @@ def test_python_migrations_trigger_versioned_callbacks(monkeypatch):
     command.state_manager = wire_plan_migrate(MagicMock())
     command.history_manager = MagicMock()
     command.history_manager.get_applied_migration_records.return_value = []
-    python_migration = SimpleNamespace(
+    python_migration = make_migration(
         script_name="V1__create_containers.py",
         version="1",
         type=MigrationType.PYTHON,

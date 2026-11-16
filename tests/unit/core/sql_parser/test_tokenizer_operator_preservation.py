@@ -140,32 +140,6 @@ def test_unclaimed_character_is_preserved_not_deleted() -> None:
     ), "unclaimed character must still be reported, not silently accepted"
 
 
-@pytest.mark.unit
-def test_strict_mode_still_rejects_unclaimed_characters() -> None:
-    """``strict_unknown_chars`` remains an error in strict-tokenizer mode."""
-    from dblift.core.sql_parser.base_tokenizer import BaseTokenizer, TokenizerError
-
-    with pytest.raises(TokenizerError):
-        BaseTokenizer("SELECT a \\ b;", strict_unknown_chars=True).tokenize()
-
-
-# Only these three dialect parsers wire ``strict_tokenizer`` through to the
-# tokenizer's ``strict_unknown_chars`` (and re-raise on failure); Oracle's
-# `split_statements` ignores the flag and always falls back to regex.
-STRICT_MODE_OPERATOR_CASES = [
-    ("postgresql", "UPDATE t SET n = n % 7 WHERE id = 1;"),
-    ("postgresql", """SELECT id FROM t WHERE j @> '{"a":1}';"""),
-    ("postgresql", "SELECT a & b FROM t;"),
-    ("postgresql", "SELECT a ^ b FROM t;"),
-    ("mysql", "UPDATE t SET n = n % 7 WHERE id = 1;"),
-    ("mysql", "SELECT a & b FROM t;"),
-    ("mysql", "SELECT a ^ b FROM t;"),
-    ("sqlserver", "UPDATE t SET n = n % 7 WHERE id = 1;"),
-    ("sqlserver", "SELECT a & b FROM t;"),
-    ("sqlserver", "SELECT a ^ b FROM t;"),
-]
-
-
 TOKENIZING_PARSERS = {
     "postgresql": facts_factory("postgresql"),
     "mysql": facts_factory("mysql"),

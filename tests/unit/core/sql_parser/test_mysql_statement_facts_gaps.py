@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from dblift.core.sql_model.base import SqlObjectType
-from dblift.core.sql_parser import sqlglot_statement_facts
+from dblift.core.sql_parser import dml_modifiers
 from dblift.core.sql_parser.sqlglot_statement_facts import read_statement_facts
 from dblift.core.sql_parser.statement_facts import DeclaredConstraint
 from dblift.db import dml_analysis
@@ -293,8 +293,8 @@ def test_modifier_words_elsewhere_in_the_statement_are_untouched():
 
 
 def test_the_modifier_table_has_one_definition():
-    assert dml_analysis._DML_MODIFIER_WORDS is sqlglot_statement_facts.MYSQL_DML_MODIFIER_WORDS
-    assert sqlglot_statement_facts.MYSQL_DML_MODIFIER_WORDS == {
+    assert dml_analysis._DML_MODIFIER_WORDS is dml_modifiers.MYSQL_DML_MODIFIER_WORDS
+    assert dml_modifiers.MYSQL_DML_MODIFIER_WORDS == {
         "UPDATE": "LOW_PRIORITY|IGNORE",
         "DELETE": "LOW_PRIORITY|QUICK|IGNORE",
         "INSERT": "LOW_PRIORITY|HIGH_PRIORITY|DELAYED|IGNORE",

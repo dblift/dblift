@@ -10,7 +10,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_state import MigrationState
+from dblift.core.migration.ui.data_collector import MigrationDataCollector
 from dblift.core.migration.ui.migration_ui import MigrationUI
 from dblift.core.migration.ui.table_renderer import TableRenderer
 from tests.unit._migration_factory import make_migration
@@ -180,7 +182,6 @@ class TestMigrationUIInit(unittest.TestCase):
 
     def test_components_initialized(self):
         ui = MigrationUI(_make_log())
-        assert ui.data_collector is not None
         assert ui.table_renderer is not None
 
     def test_none_log_uses_nulllog(self):
@@ -188,30 +189,6 @@ class TestMigrationUIInit(unittest.TestCase):
 
         ui = MigrationUI(None)
         assert isinstance(ui.log, NullLog)
-
-
-class TestMigrationUIGetMigrationData(unittest.TestCase):
-
-    def setUp(self):
-        self.ui = MigrationUI(_make_log())
-
-    def test_new_mode_with_migration_state(self):
-        """migration_state-based path returns a list."""
-        all_applied = [_make_migration()]
-        state = MigrationState(all_applied_objects=all_applied)
-        result = self.ui.get_migration_data(
-            migration_state=state,
-            all_applied_migrations=all_applied,
-        )
-        assert isinstance(result, list)
-
-    def test_own_script_manager_propagated_to_data_collector(self):
-        """When the UI already holds a script_manager, it's handed to the collector."""
-        sm = MagicMock()
-        self.ui.script_manager = sm
-        state = MigrationState(all_applied_objects=[])
-        self.ui.get_migration_data(migration_state=state, all_applied_migrations=[])
-        assert self.ui.data_collector.script_manager is sm
 
 
 class TestMigrationUIDisplayMigrationInfo(unittest.TestCase):
@@ -224,12 +201,14 @@ class TestMigrationUIDisplayMigrationInfo(unittest.TestCase):
         """End-to-end: real MigrationUI/TableRenderer, no mocked collaborators."""
         m = _make_migration()
         state = MigrationState(all_applied_objects=[m])
-        self.ui.display_migration_info(migration_state=state, all_applied_migrations=[m])
+        rows = MigrationDataCollector(
+            self.ui.log, MigrationScriptManager(self.ui.log)
+        ).get_migration_data(migration_state=state)
+        self.ui.display_migration_info(rows)
 
         self.ui.log.info.assert_called_once()
         self.ui.log.file_only_info.assert_called_once()
-        assert self.ui.log.migration_data
-        assert self.ui.log.migration_data[0]["version"] == "1"
+        assert rows[0]["version"] == "1"
 
 
 if __name__ == "__main__":

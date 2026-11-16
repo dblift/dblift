@@ -45,6 +45,10 @@ class DeclaredConstraint:
     referenced_columns: Tuple[str, ...] = ()
 
 
+def _rewrites_every_row(operation: str, predicate: Optional[str]) -> bool:
+    return operation in ("UPDATE", "DELETE") and not predicate
+
+
 @dataclass(frozen=True)
 class DmlEffect:
     """A data change a statement makes besides its own: one writing CTE.
@@ -58,6 +62,11 @@ class DmlEffect:
     predicate: Optional[str]
     events: frozenset[str]
     affected_columns: Tuple[str, ...] = ()
+
+    @property
+    def rewrites_every_row(self) -> bool:
+        """Whether this is an UPDATE or DELETE with no predicate."""
+        return _rewrites_every_row(self.operation, self.predicate)
 
 
 @dataclass(frozen=True)
@@ -75,7 +84,6 @@ class StatementFacts:
     predicate: Optional[str] = None
     declared_columns: Tuple[str, ...] = ()
     declared_constraints: Tuple[DeclaredConstraint, ...] = ()
-    declared_column_comments: Optional[Tuple[str, ...]] = None
     indexed_table: Optional[str] = None
     indexed_columns: Optional[Tuple[str, ...]] = None
     affected_columns: Tuple[str, ...] = ()
@@ -87,6 +95,11 @@ class StatementFacts:
     cte_writes: Tuple[DmlEffect, ...] = ()
     renamed_to: Optional[NamedObject] = None
     table_comment: Optional[str] = None
+
+    @property
+    def rewrites_every_row(self) -> bool:
+        """Whether this is an UPDATE or DELETE with no predicate."""
+        return _rewrites_every_row(self.operation, self.predicate)
 
     @property
     def opaque(self) -> bool:

@@ -8,13 +8,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_quirks import BaseQuirks
+from tests.unit._migration_factory import migration_with_attrs
 from tests.unit._validation_snapshot import validate_snapshot_for
 
 
@@ -26,9 +27,9 @@ def _validator(strict_result: bool) -> MigrationValidator:
         provider=SimpleNamespace(config=SimpleNamespace(strict_mode=True)),
         get_applied_migrations=MagicMock(
             return_value=[
-                SimpleNamespace(
+                migration_with_attrs(
                     script_name="V1__old.sql",
-                    type="SQL",
+                    type=MigrationType.SQL,
                     version="1",
                     success=True,
                 )
@@ -44,7 +45,7 @@ def _validator(strict_result: bool) -> MigrationValidator:
     validator._quirks = BaseQuirks()
     validator.state_manager.get_resolved_migrations = MagicMock(
         return_value=[
-            SimpleNamespace(
+            migration_with_attrs(
                 script_name="V2__new.sql",
                 type=MigrationType.SQL,
                 version="2",
@@ -117,13 +118,13 @@ def test_target_version_filter_skips_out_of_scope_placeholder_warnings(tmp_path:
     validator = _filtering_validator()
     validator.state_manager.get_resolved_migrations = MagicMock(
         return_value=[
-            SimpleNamespace(
+            migration_with_attrs(
                 script_name="V1__init.sql",
                 type=MigrationType.SQL,
                 version="1",
                 content="SELECT 1;",
             ),
-            SimpleNamespace(
+            migration_with_attrs(
                 script_name="V3__placeholder.sql",
                 type=MigrationType.SQL,
                 version="3",
@@ -144,7 +145,7 @@ def test_validate_does_not_parse_in_scope_placeholder_script(tmp_path: Path):
     validator = _filtering_validator()
     validator.state_manager.get_resolved_migrations = MagicMock(
         return_value=[
-            SimpleNamespace(
+            migration_with_attrs(
                 script_name="V3__placeholder.sql",
                 type=MigrationType.SQL,
                 version="3",
@@ -165,7 +166,7 @@ def test_validate_ignores_unresolved_placeholder_outside_sql_literal(tmp_path: P
     validator = _filtering_validator()
     validator.state_manager.get_resolved_migrations = MagicMock(
         return_value=[
-            SimpleNamespace(
+            migration_with_attrs(
                 script_name="V5__placeholder.sql",
                 type=MigrationType.SQL,
                 version="5",
@@ -185,7 +186,7 @@ def test_validate_ignores_unresolved_placeholder_outside_sql_literal(tmp_path: P
 def test_resolved_catalog_validation_does_not_parse_pending_sql():
     validator = _filtering_validator()
     scripts = [
-        SimpleNamespace(
+        migration_with_attrs(
             script_name="V5__placeholder.sql",
             type=MigrationType.SQL,
             version="5",
@@ -200,14 +201,14 @@ def test_resolved_catalog_validation_does_not_parse_pending_sql():
 
 @pytest.mark.unit
 def test_metadata_validation_does_not_construct_analyzer_or_read_sql(monkeypatch):
-    class UnreadableSqlMigration:
-        script_name = "V5__pending.sql"
-        type = MigrationType.SQL
-        version = "5"
-
+    class UnreadableSqlMigration(Migration):
         @property
         def content(self):
             raise AssertionError("metadata validation must not read SQL content")
+
+        @content.setter
+        def content(self, value):
+            pass
 
     def fail_analyzer_init(*_args, **_kwargs):
         raise AssertionError("metadata validation must not construct StatementReader")
@@ -228,7 +229,9 @@ def test_metadata_validation_does_not_construct_analyzer_or_read_sql(monkeypatch
         log=MagicMock(),
     )
 
-    migration = UnreadableSqlMigration()
+    migration = UnreadableSqlMigration(
+        script_name="V5__pending.sql", type=MigrationType.SQL, version="5", checksum=None
+    )
     result = validate_snapshot_for(validator, resolved_migrations=[migration])
 
     assert result.success is True
@@ -240,24 +243,24 @@ def test_target_version_filter_keeps_applied_scripts_in_checksum_scope(tmp_path:
     validator = _filtering_validator()
     validator.history_manager.has_history_table = True
     validator.history_manager.get_applied_migrations.return_value = [
-        SimpleNamespace(script_name="V3__applied.sql", type=MigrationType.SQL, version="3"),
-        SimpleNamespace(script_name="V5__future.sql", type=MigrationType.SQL, version="5"),
+        migration_with_attrs(script_name="V3__applied.sql", type=MigrationType.SQL, version="3"),
+        migration_with_attrs(script_name="V5__future.sql", type=MigrationType.SQL, version="5"),
     ]
     validator.state_manager.get_resolved_migrations = MagicMock(
         return_value=[
-            SimpleNamespace(
+            migration_with_attrs(
                 script_name="V3__applied.sql",
                 type=MigrationType.SQL,
                 version="3",
                 content="SELECT 3;",
             ),
-            SimpleNamespace(
+            migration_with_attrs(
                 script_name="V4__pending.sql",
                 type=MigrationType.SQL,
                 version="4",
                 content="SELECT 4;",
             ),
-            SimpleNamespace(
+            migration_with_attrs(
                 script_name="V5__future.sql",
                 type=MigrationType.SQL,
                 version="5",

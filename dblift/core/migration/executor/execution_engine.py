@@ -7,7 +7,7 @@ callbacks, and SQL statements.
 
 import time
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from dblift.config.dblift_config import DbliftConfig
 from dblift.core.constants import (
@@ -224,10 +224,7 @@ class ExecutionEngine:
 
         policy = self._plan_sql_execution(statements, migration)
         if policy.unsupported_mixed_mode:
-            result.set_error(
-                f"Migration {migration.script_name} mixes transactional and autocommit-only "
-                f"statements: {policy.reason}"
-            )
+            result.set_error(self._mixed_mode_error(migration, policy))
             return
 
         transaction_started = False
@@ -359,9 +356,14 @@ class ExecutionEngine:
         self._script_session_open = False
         return self.provider.end_script_session()
 
-    def _classify_execution_statements(self, statements: List[str]) -> List[ExecutionStatement]:
-        """Attach transaction metadata to executable SQL statements."""
-        dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
+    def _classify_execution_statements(
+        self, statements: List[str], skip: Optional[Callable[[str], bool]] = None
+    ) -> List[ExecutionStatement]:
+        """Attach transaction metadata to executable SQL statements.
+
+        Statements for which ``skip`` is true are left out.
+        """
+        dialect = self._execution_dialect()
         execution_statements: List[ExecutionStatement] = []
         policy_texts = (
             statements.policy_texts
@@ -369,6 +371,8 @@ class ExecutionEngine:
             else [None] * len(statements)
         )
         for statement, policy_text in zip(statements, policy_texts):
+            if skip is not None and skip(statement):
+                continue
             statement_type = self.sql_analyzer.get_statement_type(statement)
             execution_statements.append(
                 classify_execution_statement(
@@ -379,6 +383,13 @@ class ExecutionEngine:
                 )
             )
         return execution_statements
+
+    @staticmethod
+    def _mixed_mode_error(migration: Migration, policy: TransactionPolicyDecision) -> str:
+        return (
+            f"Migration {migration.script_name} mixes transactional and autocommit-only "
+            f"statements: {policy.reason}"
+        )
 
     def get_executable_sql_statements(
         self, migration: Migration, result: OperationResult
@@ -393,39 +404,21 @@ class ExecutionEngine:
         if statements is None:
             return []
 
-        dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
-        quirks = ProviderRegistry.get_quirks(dialect)
+        quirks = ProviderRegistry.get_quirks(self._execution_dialect())
         is_oracle_sqlplus = self._current_sqlplus_ctx is not None
-        executable: List[str] = []
-        execution_statements: List[ExecutionStatement] = []
-        policy_texts = (
-            statements.policy_texts
-            if isinstance(statements, PreparedStatements)
-            else [None] * len(statements)
+        execution_statements = self._classify_execution_statements(
+            statements,
+            skip=lambda statement: (
+                is_oracle_sqlplus and quirks.parse_error_policy_directive(statement) is not None
+            ),
         )
-        for statement, policy_text in zip(statements, policy_texts):
-            if is_oracle_sqlplus and quirks.parse_error_policy_directive(statement) is not None:
-                continue
-            statement_type = self.sql_analyzer.get_statement_type(statement)
-            execution_statements.append(
-                classify_execution_statement(
-                    statement,
-                    dialect=dialect,
-                    statement_type=statement_type,
-                    policy_text=policy_text,
-                )
-            )
-            executable.append(statement)
         policy = self.transaction_policy.decide(
             execution_statements, self.provider, script_managed=self._opts_out(migration)
         )
         if policy.unsupported_mixed_mode:
-            result.set_error(
-                f"Migration {migration.script_name} mixes transactional and autocommit-only "
-                f"statements: {policy.reason}"
-            )
+            result.set_error(self._mixed_mode_error(migration, policy))
             return []
-        return executable
+        return [statement.sql for statement in execution_statements]
 
     def annotate_sql_statements(self, statements: List[str]) -> List[Dict[str, str]]:
         """The operation and first object of each statement, as an applied run reports them.
@@ -717,6 +710,14 @@ class ExecutionEngine:
                 return d
         return _normalize(getattr(self.provider, "dialect", None))
 
+    def _execution_dialect(self) -> str:
+        """Dialect key for statement classification and quirks lookups.
+
+        Falls back to the analyzer's own dialect when the probe cannot resolve
+        it, e.g. a name the registry has no plugin for.
+        """
+        return self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
+
     def _execute_statements(
         self,
         statements: List[str],
@@ -741,7 +742,7 @@ class ExecutionEngine:
         # when the dialect's script context signals it. The quirks layer owns both
         # the directive recognition and the provider execution.
         ctx = self._current_sqlplus_ctx
-        dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
+        dialect = self._execution_dialect()
         quirks = ProviderRegistry.get_quirks(dialect)
         session_output = self._enable_session_output(ctx, quirks)
 
@@ -1441,7 +1442,7 @@ class ExecutionEngine:
 
         transaction_started = self._begin_callback_transaction(callback, policy)
 
-        dialect = self._probe_dialect_key() or getattr(self.sql_analyzer, "dialect", "") or ""
+        dialect = self._execution_dialect()
         quirks = ProviderRegistry.get_quirks(dialect)
 
         if policy.script_managed is True:

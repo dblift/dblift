@@ -2368,7 +2368,6 @@
      "affected_columns": [
       "val"
      ],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -2415,7 +2414,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -2465,7 +2463,6 @@
      "affected_columns": [
       "Item Value"
      ],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -2515,7 +2512,6 @@
      "affected_columns": [
       "val"
      ],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -2565,7 +2561,6 @@
      "affected_columns": [
       "val"
      ],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -2617,7 +2612,6 @@
     "facts": {
      "action": "copy-from-file",
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -2660,7 +2654,6 @@
       "id",
       "Item Value"
      ],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -2702,7 +2695,6 @@
      "affected_columns": [
       "id"
      ],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -2740,7 +2732,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -2776,7 +2767,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -2812,7 +2802,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -2848,7 +2837,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": "duckdb COPY source or destination is opaque",
@@ -2877,7 +2865,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": "duckdb COPY source or destination is opaque",
@@ -2906,7 +2893,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": "duckdb COPY source or destination is opaque",
@@ -2935,7 +2921,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": "duckdb COPY source or destination is opaque",
@@ -2964,7 +2949,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": "duckdb COPY source or destination is opaque",
@@ -2993,7 +2977,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": "duckdb COPY source or destination is opaque",
@@ -3022,7 +3005,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": "duckdb COPY source or destination is opaque",
@@ -3051,7 +3033,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": "duckdb COPY source or destination is opaque",
@@ -3080,7 +3061,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": "duckdb COPY source or destination is opaque",
@@ -3109,7 +3089,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": "duckdb COPY source or destination is opaque",
@@ -3138,7 +3117,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": "duckdb COPY source or destination is opaque",
@@ -3169,7 +3147,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3213,7 +3190,6 @@
      "affected_columns": [
       "a"
      ],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3253,7 +3229,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3291,7 +3266,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [
       "x"
      ],
@@ -3335,7 +3309,6 @@
      "affected_columns": [
       "a"
      ],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3375,7 +3348,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3419,7 +3391,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3455,7 +3426,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3493,7 +3463,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3543,7 +3512,6 @@
      "affected_columns": [
       "a"
      ],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3589,7 +3557,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3633,7 +3600,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3669,7 +3635,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3705,7 +3670,6 @@
     "facts": {
      "action": "add-column",
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [
       "c"
      ],
@@ -3743,7 +3707,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3779,7 +3742,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3826,7 +3788,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3864,7 +3825,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -3900,7 +3860,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": "duckdb statement holds U+00A0, which the engine may read as part of a name; its objects are not named",
@@ -3929,7 +3888,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": "duckdb statement holds U+200B, which the engine may read as part of a name; its objects are not named",
@@ -3958,7 +3916,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": "duckdb statement holds U+3000, which the engine may read as part of a name; its objects are not named",
@@ -3987,7 +3944,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [
       "a"
      ],
@@ -4027,7 +3983,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -4071,7 +4026,6 @@
      "affected_columns": [
       "a"
      ],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,
@@ -4109,7 +4063,6 @@
     "facts": {
      "action": null,
      "affected_columns": [],
-     "declared_column_comments": null,
      "declared_columns": [],
      "declared_constraints": [],
      "diagnostic": null,

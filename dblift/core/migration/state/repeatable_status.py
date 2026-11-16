@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, Optional, Sequence
+from typing import Dict, Optional, Sequence
 
 from dblift.core.migration._type_match import is_migration_type
 from dblift.core.migration.migration import Migration, MigrationType, normalize_migration_checksum
@@ -42,16 +42,16 @@ class RepeatableRun:
     current_checksum: Optional[int]  # normalised script checksum
 
 
-def _repeatable_rows_by_name(history: Sequence[Any]) -> Dict[str, list]:
+def _repeatable_rows_by_name(history: Sequence[Migration]) -> Dict[str, list]:
     rows: Dict[str, list] = {}
     for row in history:
-        row_type = getattr(row, "type", None)
+        row_type = row.type
         if row_type is not None and not is_migration_type(row_type, MigrationType.REPEATABLE):
             continue
         # A row with no recorded outcome (NULL) is neither a success nor a failure.
-        if getattr(row, "success", None) is None:
+        if row.success is None:
             continue
-        name = getattr(row, "script_name", None)
+        name = row.script_name
         if name:
             rows.setdefault(name, []).append(row)
     return rows
@@ -73,17 +73,17 @@ def repeatable_runs(
 
     runs: Dict[str, RepeatableRun] = {}
     for script in scripts:
-        if not is_migration_type(getattr(script, "type", None), MigrationType.REPEATABLE):
+        if not is_migration_type(script.type, MigrationType.REPEATABLE):
             continue
         name = script.script_name
         rows = by_name.get(name) or by_basename.get(Path(name).name) or []
-        current = normalize_migration_checksum(getattr(script, "checksum", None))
+        current = normalize_migration_checksum(script.checksum)
         if not rows:
             runs[name] = RepeatableRun(RepeatableStatus.NEW, None, current)
             continue
         latest = max(rows, key=installed_rank)
-        stored = normalize_migration_checksum(getattr(latest, "checksum", None))
-        if not is_migration_success(getattr(latest, "success", None)):
+        stored = normalize_migration_checksum(latest.checksum)
+        if not is_migration_success(latest.success):
             status = (
                 RepeatableStatus.FAILED_CHANGED
                 if current != stored

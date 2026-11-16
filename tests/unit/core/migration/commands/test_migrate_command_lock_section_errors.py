@@ -10,7 +10,6 @@
 """
 
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from dblift.core.migration.commands.migrate_command import MigrateCommand
@@ -21,6 +20,7 @@ from dblift.core.migration.state.migration_state import (
     MigrationState,
 )
 from dblift.db.provider_interfaces import TransactionalProvider
+from tests.unit._migration_factory import make_migration
 from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 
@@ -34,7 +34,7 @@ def _cmd():
     history_manager = MagicMock()
     history_manager.get_applied_migrations.return_value = []
 
-    pending = SimpleNamespace(
+    pending = make_migration(
         script_name="V1__init.sql",
         version="1",
         description="init",
