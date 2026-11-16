@@ -7,6 +7,7 @@ from sqlalchemy.engine import make_url
 
 from dblift.config.dblift_config import DbliftConfig
 from dblift.db.plugins.mariadb.plugin import PLUGIN as MARIADB_PLUGIN
+from dblift.db.plugins.mysql.config import MySqlConfig
 from dblift.db.plugins.mysql.plugin import PLUGIN as MYSQL_PLUGIN
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -32,7 +33,7 @@ def test_mariadb_plugin_declares_sqlalchemy_url_builder() -> None:
 def test_mysql_registry_builds_pymysql_sqlalchemy_url(_reset_registry) -> None:
     ProviderRegistry._plugins["mysql"] = MYSQL_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = MySqlConfig(
         type="mysql",
         host="db.example.com",
         port=3307,
@@ -66,7 +67,7 @@ def test_mysql_registry_builds_pymysql_sqlalchemy_url(_reset_registry) -> None:
 def test_mysql_bare_sqlalchemy_url_uses_pymysql_driver(_reset_registry) -> None:
     ProviderRegistry._plugins["mysql"] = MYSQL_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(type="mysql", url="mysql://db.example.com/app")
+    database_config = MySqlConfig(type="mysql", url="mysql://db.example.com/app")
 
     url = make_url(ProviderRegistry.build_sqlalchemy_url(database_config))
 
@@ -78,7 +79,7 @@ def test_mysql_bare_sqlalchemy_url_uses_pymysql_driver(_reset_registry) -> None:
 def test_mysql_sqlalchemy_url_merges_explicit_credentials(_reset_registry) -> None:
     ProviderRegistry._plugins["mysql"] = MYSQL_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = MySqlConfig(
         type="mysql",
         url="mysql+pymysql://db.example.com/app",
         username="mysql",
@@ -98,7 +99,7 @@ def test_mysql_sqlalchemy_url_prefers_explicit_credentials_over_url_userinfo(
 ) -> None:
     ProviderRegistry._plugins["mysql"] = MYSQL_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = MySqlConfig(
         type="mysql",
         url="mysql+pymysql://stale:old@db.example.com/app",
         username="mysql",
@@ -114,7 +115,7 @@ def test_mysql_sqlalchemy_url_prefers_explicit_credentials_over_url_userinfo(
 def test_mariadb_registry_builds_pymysql_sqlalchemy_url(_reset_registry) -> None:
     ProviderRegistry._plugins["mariadb"] = MARIADB_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = MySqlConfig(
         type="mariadb",
         host="db.example.com",
         port=3306,
@@ -135,7 +136,7 @@ def test_mariadb_registry_builds_pymysql_sqlalchemy_url(_reset_registry) -> None
 def test_mysql_sqlalchemy_url_builder_rejects_database_url(_reset_registry) -> None:
     ProviderRegistry._plugins["mysql"] = MYSQL_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = MySqlConfig(
         type="mysql",
         url="jdbc:mysql://db.example.com:3306/app",
     )

@@ -17,6 +17,7 @@ from dblift.config.database_config import (
     BaseDatabaseConfig,
     _file_dialect,
     _infer_type_from_url_scheme,
+    _url_scheme,
 )
 from dblift.config.errors import ConfigurationError
 from dblift.config.file_path_anchoring import (
@@ -945,9 +946,7 @@ class DbliftConfig:
         if url and not db_type:
             from dblift.db.provider_registry import ProviderRegistry
 
-            url_lower = url.lower()
-            scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
-            db_type = ProviderRegistry.canonical_dialect_name(scheme) or ""
+            db_type = ProviderRegistry.canonical_dialect_name(_url_scheme(url)) or ""
             if not db_type:
                 from dblift.config.secrets._registry import is_secret_uri as _is_secret_uri_inline
 
@@ -1107,9 +1106,7 @@ class DbliftConfig:
         db_type = str(database.get("type") or "").strip().lower()
         url = str(database.get("url") or "").strip()
         if not db_type and url:
-            url_lower = url.lower()
-            scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
-            db_type = ProviderRegistry.canonical_dialect_name(scheme) or ""
+            db_type = ProviderRegistry.canonical_dialect_name(_url_scheme(url)) or ""
 
         if not db_type:
             if url:
@@ -1313,9 +1310,9 @@ class DbliftConfig:
             if not _is_secret_uri_args(url_val):
                 from dblift.db.provider_registry import ProviderRegistry
 
-                url_lower = url_val.strip().lower()
-                scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
-                inferred_type = ProviderRegistry.canonical_dialect_name(scheme) or ""
+                inferred_type = (
+                    ProviderRegistry.canonical_dialect_name(_url_scheme(url_val.strip())) or ""
+                )
                 if inferred_type:
                     db_cfg["type"] = inferred_type
 

@@ -1,10 +1,9 @@
 """Oracle plugin-owned SQLAlchemy URL construction."""
 
-from types import SimpleNamespace
-
 import pytest
 from sqlalchemy.engine import make_url
 
+from dblift.db.plugins.oracle.config import OracleConfig
 from dblift.db.plugins.oracle.plugin import PLUGIN as ORACLE_PLUGIN
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -27,7 +26,7 @@ def test_oracle_plugin_declares_sqlalchemy_url_builder() -> None:
 def test_oracle_registry_builds_oracledb_service_name_url(_reset_registry) -> None:
     ProviderRegistry._plugins["oracle"] = ORACLE_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = OracleConfig(
         type="oracle",
         host="ora.example.com",
         port=1522,
@@ -57,7 +56,7 @@ def test_oracle_registry_builds_oracledb_service_name_url(_reset_registry) -> No
 def test_oracle_registry_builds_sid_url(_reset_registry) -> None:
     ProviderRegistry._plugins["oracle"] = ORACLE_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = OracleConfig(
         type="oracle",
         host="localhost",
         port=1521,
@@ -76,7 +75,7 @@ def test_oracle_registry_builds_sid_url(_reset_registry) -> None:
 def test_oracle_service_name_removes_stale_sid_query(_reset_registry) -> None:
     ProviderRegistry._plugins["oracle"] = ORACLE_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = OracleConfig(
         type="oracle",
         host="localhost",
         port=1521,
@@ -95,7 +94,7 @@ def test_oracle_service_name_removes_stale_sid_query(_reset_registry) -> None:
 def test_oracle_sid_removes_stale_service_name_query(_reset_registry) -> None:
     ProviderRegistry._plugins["oracle"] = ORACLE_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = OracleConfig(
         type="oracle",
         host="localhost",
         port=1521,
@@ -114,7 +113,7 @@ def test_oracle_sid_removes_stale_service_name_query(_reset_registry) -> None:
 def test_oracle_bare_sqlalchemy_url_uses_oracledb_driver(_reset_registry) -> None:
     ProviderRegistry._plugins["oracle"] = ORACLE_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = OracleConfig(
         type="oracle",
         url="oracle://ora.example.com:1521/?service_name=XEPDB1",
     )
@@ -131,7 +130,7 @@ def test_oracle_raw_sqlalchemy_url_merges_extra_params_and_options(
 ) -> None:
     ProviderRegistry._plugins["oracle"] = ORACLE_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = OracleConfig(
         type="oracle",
         url="oracle+oracledb://ora.example.com:1521/?service_name=XEPDB1",
         extra_params={"encoding": "UTF-8"},
@@ -150,7 +149,7 @@ def test_oracle_raw_sqlalchemy_url_merges_extra_params_and_options(
 def test_oracle_sqlalchemy_url_merges_explicit_credentials(_reset_registry) -> None:
     ProviderRegistry._plugins["oracle"] = ORACLE_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = OracleConfig(
         type="oracle",
         url="oracle+oracledb://ora.example.com:1521/?service_name=XEPDB1",
         username="system",
@@ -168,7 +167,7 @@ def test_oracle_sqlalchemy_url_explicit_credentials_override_url_credentials(
 ) -> None:
     ProviderRegistry._plugins["oracle"] = ORACLE_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = OracleConfig(
         type="oracle",
         url="oracle+oracledb://stale:old@ora.example.com:1521/?service_name=XEPDB1",
         username="system",
@@ -184,7 +183,7 @@ def test_oracle_sqlalchemy_url_explicit_credentials_override_url_credentials(
 def test_oracle_sqlalchemy_url_builder_rejects_database_url(_reset_registry) -> None:
     ProviderRegistry._plugins["oracle"] = ORACLE_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = OracleConfig(
         type="oracle",
         url="jdbc:oracle:thin:@localhost:1521/XEPDB1",
     )

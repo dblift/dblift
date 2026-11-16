@@ -32,3 +32,10 @@ def clean_identifier(name: str) -> str:
 def double_quote_identifier(name: str) -> str:
     """Return *name* as a double-quoted identifier, doubling embedded quotes."""
     return '"' + name.replace('"', '""') + '"'
+
+
+def string_mapping(values: Any) -> Dict[str, str]:
+    """Return *values* as a ``str -> str`` dict; anything that is not a dict gives ``{}``."""
+    if not isinstance(values, dict):
+        return {}
+    return {str(key): str(value) for key, value in values.items()}
