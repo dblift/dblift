@@ -6,10 +6,10 @@ for display and processing purposes.
 """
 
 from functools import cmp_to_key
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from dblift.core.logger import Log
+from dblift.core.migration._type_match import migration_type_name
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration
 from dblift.core.migration.state.rank_wins import effective_current_version, latest_successful_ranks
 from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
@@ -19,18 +19,14 @@ from dblift.core.migration.version_utils import is_migration_success
 class MigrationDataService:
     """Service for preparing migration data for display and analysis."""
 
-    def __init__(
-        self, logger: Log, scripts_dir: Optional[Path] = None, target_version: Optional[str] = None
-    ):
+    def __init__(self, logger: Log, target_version: Optional[str] = None):
         """Initialize the migration data service.
 
         Args:
             logger: Logger instance
-            scripts_dir: Directory containing migration scripts
             target_version: Target version for migrations
         """
         self.logger = logger
-        self.scripts_dir = scripts_dir
         self.target_version = target_version
 
     def _build_analysis_context(self, applied_migrations: List[Migration]) -> Dict[str, Any]:
@@ -59,7 +55,6 @@ class MigrationDataService:
             "out_of_order_migrations": out_of_order_migrations,
             "current_version": current_version,
             "target_version": self.target_version,
-            "scripts_dir": self.scripts_dir,
         }
 
     def _get_undone_versions(self, migrations: List[Migration]) -> Set[str]:
@@ -74,7 +69,7 @@ class MigrationDataService:
         undone_versions = set()
 
         for migration in migrations:
-            if self._get_migration_type(migration) == "UNDO_SQL":
+            if migration_type_name(getattr(migration, "type", None)).upper() == "UNDO_SQL":
                 version = getattr(migration, "version", None)
                 if version and self._is_migration_successful(migration):
                     undone_versions.add(str(version))
@@ -103,7 +98,7 @@ class MigrationDataService:
             Optional[str]: Baseline version if found
         """
         for migration in applied_migrations:
-            if self._get_migration_type(migration) == "BASELINE":
+            if migration_type_name(getattr(migration, "type", None)).upper() == "BASELINE":
                 return str(getattr(migration, "version", ""))
         return None
 
@@ -125,7 +120,7 @@ class MigrationDataService:
         highest_version: Optional[str] = None
 
         for migration in applied_migrations:
-            migration_type = self._get_migration_type(migration)
+            migration_type = migration_type_name(getattr(migration, "type", None)).upper()
             version = str(getattr(migration, "version", ""))
             if not version:
                 continue
@@ -174,19 +169,6 @@ class MigrationDataService:
             List of migrations sorted by installed rank
         """
         return sorted(applied_migrations, key=lambda m: getattr(m, "installed_rank", 0))
-
-    def _get_migration_type(self, migration: Any) -> str:
-        """Get the migration type as uppercase string.
-
-        Args:
-            migration: Migration object
-
-        Returns:
-            str: Migration type in uppercase
-        """
-        from dblift.core.migration._type_match import migration_type_name
-
-        return migration_type_name(getattr(migration, "type", None)).upper()
 
     def _is_migration_successful(self, migration: Any) -> bool:
         """Check if a migration was successful.

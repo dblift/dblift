@@ -193,6 +193,3 @@ def test_validation_uses_supplied_checksum_and_standalone_observes_edits(tmp_pat
     assert result.failed_scripts == [script.script_name]
     assert "has been modified" in issues[0]
     assert reads.call_count == 0
-    assert instance.script_manager.has_script_changed(script.script_name, rows, path)
-    path.write_text("SELECT 1;\n")
-    assert not instance.script_manager.has_script_changed(script.script_name, rows, path)

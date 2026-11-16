@@ -110,7 +110,6 @@ class MigrationExecutor:
         )
 
         self.placeholder_service = PlaceholderService(self.placeholders, log)
-        self.placeholder_manager.placeholder_service = self.placeholder_service
 
         # Debug: Track schema usage at executor instantiation
         schema = getattr(config.database, "schema", None)

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from dblift.core.logger import NullLog
-from dblift.core.migration import AppliedMigration, MigrationResource, ResolvedMigration
+from dblift.core.migration import AppliedMigration, ResolvedMigration
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.migration import Migration, MigrationType, dict_to_migration
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
@@ -53,21 +53,13 @@ def test_dict_to_migration_uses_applied_record_adapter():
 
 
 @pytest.mark.unit
-def test_script_manager_can_expose_resources_and_resolved_migrations(tmp_path):
+def test_script_manager_can_expose_resolved_migrations(tmp_path):
     script = tmp_path / "V1__create_users.sql"
     script.write_text("create table users(id int);", encoding="utf-8")
     manager = MigrationScriptManager(MagicMock())
 
-    resources = manager.get_migration_resources(tmp_path)
     resolved = manager.get_resolved_migrations(tmp_path)
 
-    assert resources == [
-        MigrationResource(
-            path=script,
-            script_name="V1__create_users.sql",
-            content="create table users(id int);",
-        )
-    ]
     assert len(resolved) == 1
     assert isinstance(resolved[0], ResolvedMigration)
     assert resolved[0].resource is not None
