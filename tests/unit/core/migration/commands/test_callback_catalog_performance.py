@@ -59,9 +59,8 @@ def _run_migration_batch(tmp_path: Path, migration_count: int, mode: str) -> int
     return load_count
 
 
-# Both modes read the catalog once more under the lock, for the script-session refusal;
-# execution mode adds one more: its SQL-callback preflight reads the catalog once.
-@pytest.mark.parametrize(("mode", "max_loads"), [("full", 4), ("execution", 5)])
+# Execution mode adds one load: its SQL-callback preflight reads the catalog once.
+@pytest.mark.parametrize(("mode", "max_loads"), [("full", 3), ("execution", 4)])
 def test_callback_catalog_load_count_is_independent_of_migration_count(
     tmp_path: Path, mode: str, max_loads: int
 ) -> None:

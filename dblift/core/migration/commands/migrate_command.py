@@ -418,9 +418,10 @@ class MigrateCommand(BaseCommand):
             return False
 
         if locked_pending and not mark_as_executed:
-            self._refuse_unsupported_script_sessions(
-                locked_pending + self._callbacks_for(self._events_fired_by(locked_pending))
+            callbacks = self._callbacks_for(
+                self._events_fired_by(locked_pending), self._pin_callback_snapshot()
             )
+            self._refuse_unsupported_script_sessions(locked_pending + callbacks)
 
         planned = {m.script_name for m in pending_migrations}
         newly_pending = [m for m in locked_pending if m.script_name not in planned]

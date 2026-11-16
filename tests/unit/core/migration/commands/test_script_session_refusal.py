@@ -2,11 +2,14 @@
 
 import sqlite3
 import sys
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
+from dblift.core.migration.commands.base_command import BaseCommand
+from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.seams import runtime_checks
 
 DIRECTIVE = "-- dblift:no-transaction\n"
@@ -165,3 +168,45 @@ def test_a_run_without_the_directive_probes_nothing_for_the_refusal(
         result = client.migrate()
     assert result.success, result.error_message
     assert "script_session_refusal" not in probed_by
+
+
+@MODES
+def test_the_callbacks_checked_are_the_callbacks_fired(tmp_path, analysis_mode, monkeypatch):
+    original = MigrateCommand._refuse_unsupported_script_sessions
+
+    def refuse_then_add_a_callback(self, scripts):
+        original(self, scripts)
+        (tmp_path / "sql" / "beforeMigrate__late.sql").write_text(
+            "CREATE TABLE late_ran (id INTEGER);"
+        )
+
+    monkeypatch.setattr(
+        MigrateCommand, "_refuse_unsupported_script_sessions", refuse_then_add_a_callback
+    )
+    with _client(
+        tmp_path,
+        analysis_mode,
+        V1__first="CREATE TABLE first_ran (id INTEGER);",
+        beforeMigrate__cb="CREATE TABLE before_cb_ran (id INTEGER);",
+    ) as client:
+        result = client.migrate()
+    assert result.success, result.error_message
+    assert {"first_ran", "before_cb_ran"} <= _tables(tmp_path)
+    assert "late_ran" not in _tables(tmp_path)
+
+
+def _command_with_engine(engine):
+    command = BaseCommand.__new__(BaseCommand)
+    command.execution_engine = engine
+    return command
+
+
+def test_a_string_refusal_is_raised_with_its_text():
+    engine = MagicMock()
+    engine.script_session_refusal.return_value = "V2.sql: refused"
+    with pytest.raises(runtime_checks.SqlPreflightError, match="V2.sql: refused"):
+        _command_with_engine(engine)._refuse_unsupported_script_sessions([object()])
+
+
+def test_a_bare_mock_engine_refuses_nothing():
+    _command_with_engine(MagicMock())._refuse_unsupported_script_sessions([object()])

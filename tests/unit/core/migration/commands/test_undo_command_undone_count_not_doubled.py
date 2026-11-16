@@ -68,7 +68,6 @@ def _make_command(applied_migrations, undo_scripts):
     executor_factory.get_executor.return_value = None
 
     execution_engine = MagicMock()
-    execution_engine.script_session_refusal.return_value = None
     execution_engine.executor_factory = executor_factory
     # execute_migration is a no-op mock: it must not touch result.error_message,
     # so every migration in this test takes the "successful undo" path.

@@ -49,7 +49,6 @@ def _cmd(pending, execute_side_effect=None):
     migration_helpers.validate_migrations_for_migrate.return_value = (True, None, 0.0)
 
     execution_engine = MagicMock()
-    execution_engine.script_session_refusal.return_value = None
     if execute_side_effect is not None:
         execution_engine.execute_migration.side_effect = execute_side_effect
 

@@ -350,12 +350,14 @@ class BaseCommand:
             result=binding.result,
         )
 
-    def _callbacks_for(self, events: Iterable[str]) -> List[Migration]:
-        """List the bound callbacks of ``events``, in event order, from one fresh snapshot."""
+    def _callbacks_for(
+        self, events: Iterable[str], snapshot: Optional[CallbackReadSnapshot] = None
+    ) -> List[Migration]:
+        """List the bound callbacks of ``events`` in order, read from ``snapshot`` if given."""
         binding = self._bound_callbacks()
         if binding.scripts_dir is None:
             return []
-        snapshot = self.state_manager.new_callback_snapshot()
+        snapshot = snapshot or self.state_manager.new_callback_snapshot()
         return [
             callback
             for event in events
@@ -686,11 +688,16 @@ class BaseCommand:
         if prepare is not None:
             prepare()
 
+    def _pin_callback_snapshot(self) -> CallbackReadSnapshot:
+        """Start a callback scope that the check and the callbacks fired afterwards share."""
+        self._callback_snapshot = self.state_manager.new_callback_snapshot()
+        return self._callback_snapshot
+
     def _refuse_unsupported_script_sessions(self, scripts: Sequence[Migration]) -> None:
         """Refuse the run, before anything starts, at the first script that cannot run here."""
         for script in scripts:
             refusal = self.execution_engine.script_session_refusal(script)
-            if refusal is not None:
+            if isinstance(refusal, str):
                 raise SqlPreflightError(refusal)
 
     def _report_refusal(self, result: OperationResult, refusal: SqlPreflightError) -> None:

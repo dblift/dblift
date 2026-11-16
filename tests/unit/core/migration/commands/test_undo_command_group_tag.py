@@ -67,7 +67,6 @@ def _make_command(applied_migrations, undo_scripts=None):
     )
 
     execution_engine = MagicMock()
-    execution_engine.script_session_refusal.return_value = None
     execution_engine.executor_factory = MagicMock(get_executor=MagicMock(return_value=None))
 
     config = MagicMock()

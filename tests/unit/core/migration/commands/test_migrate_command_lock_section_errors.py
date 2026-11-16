@@ -66,7 +66,7 @@ def _cmd():
         script_manager=MagicMock(),
         history_manager=history_manager,
         validator=MagicMock(),
-        execution_engine=MagicMock(**{"script_session_refusal.return_value": None}),
+        execution_engine=MagicMock(),
         migration_helpers=migration_helpers,
         state_manager=state_manager,
         migration_ui=MagicMock(),
