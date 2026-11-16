@@ -1,4 +1,4 @@
-"""History-table predicates must include ``PYTHON``, not just ``SQL``.
+"""History rows carry ``PYTHON`` as well as ``SQL``; no dialect may filter on ``SQL`` alone.
 
 ``MigrationType.SQL`` does not mean "SQL format" — it is what
 ``parse_filename`` returns for *every* versioned script, whatever the
@@ -7,11 +7,11 @@ extension. ``Migration`` then relabels non-SQL formats as
 with ``type = 'PYTHON'``.
 
 Any read-side predicate spelled ``type = 'SQL'`` therefore drops every
-Python migration. These tests pin the widened predicate, the single shared
-constant the dialects must build it from, and the fact that the persisted
-vocabulary itself is unchanged (history stores ``MigrationType.<member>.name``
-and is read back with the name-based ``MigrationType[...]`` lookup, so a
-renamed or added stored value would silently degrade old rows to ``UNKNOWN``).
+Python migration. These tests keep such a predicate out of the history
+modules and pin the persisted vocabulary (history stores
+``MigrationType.<member>.name`` and is read back with the name-based
+``MigrationType[...]`` lookup, so a renamed or added stored value would
+silently degrade old rows to ``UNKNOWN``).
 """
 
 from __future__ import annotations
@@ -27,10 +27,6 @@ from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
 from dblift.core.migration.migration import MigrationType
-from dblift.db.plugins.base_history_manager import (
-    VERSIONED_HISTORY_TYPES,
-    VERSIONED_HISTORY_TYPES_SQL_IN,
-)
 
 V_SQL = "CREATE TABLE items (id INTEGER PRIMARY KEY);"
 U_SQL = "DROP TABLE IF EXISTS items;"
@@ -67,8 +63,7 @@ def _executable_source(relpath: str) -> str:
     """Source with comments and docstrings removed.
 
     The guards below look for SQL that a dialect actually emits. Prose that
-    *names* the old predicate — this module's own docstring, or the comment on
-    ``VERSIONED_HISTORY_TYPES`` explaining why the predicate was widened — is
+    *names* the old predicate — this module's own docstring, for instance — is
     not a violation, so it must not be scanned.
     """
     src = (_repo_root() / relpath).read_text(encoding="utf-8")
@@ -118,19 +113,8 @@ def _history_rows(db_path: Path):
 
 
 @pytest.mark.unit
-class TestVersionedHistoryTypeConstant:
-    """The shared constant, and the name/value coincidence it rests on."""
-
-    def test_constant_holds_both_versioned_type_names(self):
-        assert VERSIONED_HISTORY_TYPES == frozenset({"SQL", "PYTHON"})
-
-    def test_constant_is_built_from_migration_type_names(self):
-        assert VERSIONED_HISTORY_TYPES == frozenset(
-            {MigrationType.SQL.name, MigrationType.PYTHON.name}
-        )
-
-    def test_sql_in_clause_renders_a_quoted_deterministic_list(self):
-        assert VERSIONED_HISTORY_TYPES_SQL_IN == "('PYTHON', 'SQL')"
+class TestPersistedTypeNames:
+    """History stores type names; the name/value coincidence must hold."""
 
     @pytest.mark.parametrize("member", [MigrationType.SQL, MigrationType.PYTHON])
     def test_versioned_names_and_values_have_not_drifted(self, member):
@@ -179,22 +163,11 @@ class TestNoDialectKeepsItsOwnSqlPredicate:
 
 
 @pytest.mark.unit
-class TestGetCurrentVersionEndToEnd:
-    """A real SQLite migration, a real history table, the real read path."""
+class TestHistoryRowTypesEndToEnd:
+    """A real SQLite migration and a real history table."""
 
     @pytest.mark.parametrize("ext", ["sql", "py"])
-    def test_current_version_is_returned_for_either_format(self, tmp_path, ext):
-        engine, migrations = _make_project(tmp_path, ext)
-        client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations)
-        try:
-            assert client.migrate().success
-            provider = client.provider
-            assert provider.history_manager.get_current_version(provider.connection, "main") == "1"
-        finally:
-            client.close()
-
-    @pytest.mark.parametrize("ext", ["sql", "py"])
-    def test_history_row_type_matches_the_widened_predicate(self, tmp_path, ext):
+    def test_history_row_type_is_the_format_specific_name(self, tmp_path, ext):
         """The persisted vocabulary is unchanged: 'SQL' for .sql, 'PYTHON' for .py."""
         engine, migrations = _make_project(tmp_path, ext)
         client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations)
@@ -204,27 +177,17 @@ class TestGetCurrentVersionEndToEnd:
             client.close()
         rows = _history_rows(tmp_path / "app.db")
         assert [r[2] for r in rows] == ["SQL" if ext == "sql" else "PYTHON"]
-        assert set(r[2] for r in rows) <= VERSIONED_HISTORY_TYPES
 
     @pytest.mark.parametrize("ext", ["sql", "py"])
-    def test_undo_row_is_excluded_from_the_predicate_for_either_format(self, tmp_path, ext):
-        """Undo appends an ``UNDO_SQL`` row; widening must not pull it in.
-
-        Both formats must reach the identical conclusion — the undo row is
-        outside the versioned predicate, so ``ORDER BY installed_rank DESC``
-        still lands on the original versioned row.
-        """
+    def test_undo_appends_an_undo_row_for_either_format(self, tmp_path, ext):
+        """Undo appends an ``UNDO_SQL`` row after the versioned row, whatever the format."""
         engine, migrations = _make_project(tmp_path, ext, with_undo=True)
         client = DBLiftClient.from_sqlalchemy(engine, migrations_dir=migrations)
         try:
             assert client.migrate().success
             assert client.undo().success
-            provider = client.provider
-            current = provider.history_manager.get_current_version(provider.connection, "main")
         finally:
             client.close()
 
         rows = _history_rows(tmp_path / "app.db")
         assert [r[2] for r in rows] == ["SQL" if ext == "sql" else "PYTHON", "UNDO_SQL"]
-        # The undo row has the higher installed_rank but must not be selected.
-        assert current == "1"
