@@ -57,17 +57,15 @@ def find_checksum_drift(
         scripts_by_name.setdefault(candidate.script_name, candidate)
     # One pass over the supplied history; the lookups below reuse this snapshot.
     rows = list(applied)
-    latest_successful = {
-        getattr(row, "script_name", None): row for row in _successful_non_delete_records(rows)
-    }
+    latest_successful = {row.script_name: row for row in _successful_non_delete_records(rows)}
 
     drift: List[ChecksumDrift] = []
     seen = set()
     for row in rows:
-        script_name = getattr(row, "script_name", None)
+        script_name = row.script_name
         if not script_name or script_name in seen:
             continue
-        if any(is_migration_type(getattr(row, "type", None), t) for t in _NO_CHECKSUM_TYPES):
+        if any(is_migration_type(row.type, t) for t in _NO_CHECKSUM_TYPES):
             continue
         script = scripts_by_name.get(script_name)
         if script is None:
@@ -76,8 +74,8 @@ def find_checksum_drift(
         if script is None or applied_record is None:
             continue
         seen.add(script_name)
-        applied_checksum = normalize_migration_checksum(getattr(applied_record, "checksum", None))
-        current_checksum = normalize_migration_checksum(getattr(script, "checksum", None))
+        applied_checksum = normalize_migration_checksum(applied_record.checksum)
+        current_checksum = normalize_migration_checksum(script.checksum)
         if (
             applied_checksum is None
             or current_checksum is None
@@ -88,9 +86,7 @@ def find_checksum_drift(
                     script_name=script_name,
                     applied_checksum=applied_checksum,
                     current_checksum=current_checksum,
-                    repeatable=is_migration_type(
-                        getattr(applied_record, "type", None), MigrationType.REPEATABLE
-                    ),
+                    repeatable=is_migration_type(applied_record.type, MigrationType.REPEATABLE),
                 )
             )
     return drift

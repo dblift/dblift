@@ -1,8 +1,9 @@
 """Extended tests for core/sql_validator/migration_validator.py."""
 
 import unittest
-from types import SimpleNamespace
 from unittest.mock import MagicMock
+
+from tests.unit._migration_factory import make_migration
 
 
 def _make_validator(dialect="postgresql"):
@@ -215,21 +216,20 @@ class TestCheckRepeatableMigrationsRankOrdering(unittest.TestCase):
     def _make_script(self, script_name, checksum=42):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
-            type=MigrationType.REPEATABLE,
-            script_name=script_name,
-            checksum=checksum,
-            path=None,
+        return make_migration(
+            script_name=script_name, type=MigrationType.REPEATABLE, checksum=checksum
         )
 
     def _make_applied(self, script_name, success, installed_rank, checksum=42, execution_time=100):
-        return SimpleNamespace(
-            script_name=script_name,
-            success=success,
-            installed_rank=installed_rank,
-            checksum=checksum,
-            execution_time=execution_time,
+        from dblift.core.migration.migration import MigrationType
+
+        applied = make_migration(
+            script_name=script_name, type=MigrationType.REPEATABLE, checksum=checksum
         )
+        applied.success = success
+        applied.installed_rank = installed_rank
+        applied.execution_time = execution_time
+        return applied
 
     def _run(self, scripts, applied):
         from dblift.core.migration.state.repeatable_status import repeatable_runs

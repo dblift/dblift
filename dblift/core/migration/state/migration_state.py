@@ -127,26 +127,20 @@ class MigrationEntry:
         return str(value)
 
     @classmethod
-    def from_migration(cls, migration: Any, status: Optional[str] = None) -> "MigrationEntry":
-        """Create an entry from a migration-like object."""
+    def from_migration(cls, migration: Migration, status: str) -> MigrationEntry:
+        """Create an entry from a migration."""
 
-        version_val = getattr(migration, "version", None)
+        version_val = migration.version
         return cls(
-            script=getattr(migration, "script_name", ""),
+            script=migration.script_name,
             version=str(version_val) if version_val not in (None, "") else None,
-            description=getattr(migration, "description", None),
-            type=(
-                getattr(getattr(migration, "type", None), "name", None)
-                if getattr(migration, "type", None) is not None
-                else getattr(migration, "type", None)
-            ),
-            status=status
-            or getattr(migration, "state", None)
-            or getattr(migration, "status", None),
+            description=migration.description,
+            type=migration.type.name if migration.type else None,
+            status=status,
             checksum=getattr(migration, "checksum", None),
-            installed_on=cls._format_datetime(getattr(migration, "installed_on", None)),
-            installed_by=getattr(migration, "installed_by", None),
-            execution_time_ms=getattr(migration, "execution_time", None),
+            installed_on=cls._format_datetime(migration.installed_on),
+            installed_by=migration.installed_by,
+            execution_time_ms=migration.execution_time,
         )
 
     def to_dict(self) -> Dict[str, Optional[str]]:
