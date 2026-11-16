@@ -91,7 +91,7 @@ def _enforce_strict_ordering(
     for entry in out_of_order(migrations, current_version):
         migration = entry.migration
         version = migration.version
-        script_name = getattr(migration, "script_name", "")
+        script_name = migration.script_name
         if strict_mode:
             raise StrictModeError(
                 f"Strict mode: out-of-order migration {script_name} "

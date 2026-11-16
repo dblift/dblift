@@ -6,7 +6,7 @@ based on their execution history and context.
 """
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from dblift.core.logger import Log
 from dblift.core.migration._type_match import migration_type_name
@@ -68,14 +68,9 @@ class MigrationStateService:
         if is_migration_failure(success):
             # Check if this is a missing migration (no longer exists in filesystem)
             if hasattr(migration, "resolved") and not migration.resolved:
-                # Check if version is in the future
-                if version and current_version:
-                    if self._compare_versions(version, current_version) > 0:
-                        return MigrationDisplayState.FAILED_FUTURE
-                    else:
-                        return MigrationDisplayState.FAILED_MISSING
-                else:
-                    return MigrationDisplayState.FAILED_MISSING
+                if self._is_future(version, current_version):
+                    return MigrationDisplayState.FAILED_FUTURE
+                return MigrationDisplayState.FAILED_MISSING
             else:
                 return MigrationDisplayState.FAILED
 
@@ -111,14 +106,9 @@ class MigrationStateService:
 
             # Check if migration is missing (success but not resolved)
             if hasattr(migration, "resolved") and not migration.resolved:
-                # Check if version is in the future
-                if version and current_version:
-                    if self._compare_versions(version, current_version) > 0:
-                        return MigrationDisplayState.FUTURE
-                    else:
-                        return MigrationDisplayState.MISSING
-                else:
-                    return MigrationDisplayState.MISSING
+                if self._is_future(version, current_version):
+                    return MigrationDisplayState.FUTURE
+                return MigrationDisplayState.MISSING
 
             # Default successful state
             return MigrationDisplayState.SUCCESS
@@ -172,6 +162,12 @@ class MigrationStateService:
 
         # Default pending state
         return MigrationEligibility.PENDING
+
+    def _is_future(self, version: Optional[str], current_version: Optional[str]) -> bool:
+        """True when a version is known and lies beyond the current one."""
+        return bool(
+            version and current_version and self._compare_versions(version, current_version) > 0
+        )
 
     def _compare_versions(self, version1: str, version2: str) -> int:
         """Compare two version strings. Delegates to shared compare_versions utility."""

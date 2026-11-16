@@ -17,14 +17,13 @@ are visible.
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 from typing import List
 from unittest.mock import MagicMock
 
 import pytest
 
 from dblift.core.migration.commands.repair_command import RepairCommand, RepairSafetyError
-from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.state.repair_plan import (
     _detect_checksum_drift,
@@ -34,17 +33,18 @@ from dblift.core.migration.version_utils import compare_versions
 from tests.unit._migration_factory import make_migration
 
 
-def _make_applied(script_name: str, version: str = "1") -> SimpleNamespace:
-    """Minimal applied-history row (matches attribute access in code under test)."""
-    return SimpleNamespace(
+def _make_applied(script_name: str, version: str = "1", checksum: int = 1) -> Migration:
+    """Minimal applied-history row."""
+    row = make_migration(
         script_name=script_name,
         version=version,
         description="",
         type=MigrationType.SQL,
-        checksum=1,
-        success=True,
-        installed_rank=int(version),
+        checksum=checksum,
     )
+    row.success = True
+    row.installed_rank = int(version)
+    return row
 
 
 def _make_repair_command(script_manager_mock: MagicMock, applied=()) -> RepairCommand:
@@ -147,15 +147,7 @@ class TestRepairChecksumDrift:
         script_manager.load_migration_scripts.return_value = {MigrationType.SQL: [script]}
         cmd = _make_repair_command(
             script_manager,
-            [
-                SimpleNamespace(
-                    script_name="V1__a.sql",
-                    version="1",
-                    type=MigrationType.SQL,
-                    checksum=0,
-                    success=True,
-                )
-            ],
+            [_make_applied("V1__a.sql", checksum=0)],
         )
         state = cmd.state_manager.build_state(tmp_path)
 

@@ -162,7 +162,7 @@ class MigrationExecutor:
             dialect=config.database.type, analysis_mode=analysis_mode
         )
         # In-process statement journal is always on (not user-configurable).
-        self.journal = MigrationJournal(enabled=True, capture_objects=analysis_mode == "full")
+        self.journal = MigrationJournal(capture_objects=analysis_mode == "full")
 
         # Initialize SqlExecutionService for journal support
         from ..sql.sql_execution_service import SqlExecutionService

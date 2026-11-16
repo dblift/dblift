@@ -14,32 +14,30 @@ from dblift.core.migration.state.migration_state import (
     MigrationEligibility,
     MigrationState,
 )
+from tests.unit._migration_factory import make_migration
 from tests.unit.core.migration.commands._plan_undo_wiring import wire_plan_undo
 
 
 def _applied(version, *, success=True, mtype=MigrationType.SQL, tags=None):
-    m = SimpleNamespace(
+    m = make_migration(
         version=str(version),
         type=mtype,
-        success=success,
         script_name=f"V{version}__test.sql",
         description="test",
         checksum="abc",
-        content=None,
         tags=list(tags) if tags is not None else [],
     )
+    m.success = success
     return m
 
 
 def _undo_script(version, script_name=None):
-    return SimpleNamespace(
+    return make_migration(
         version=str(version),
         type=MigrationType.UNDO_SQL,
         script_name=script_name or f"U{version}__test.sql",
         description="undo test",
         tags=[],
-        format=SimpleNamespace(name="SQL"),
-        content=None,
     )
 
 

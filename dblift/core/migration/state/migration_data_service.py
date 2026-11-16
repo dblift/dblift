@@ -69,8 +69,8 @@ class MigrationDataService:
         undone_versions = set()
 
         for migration in migrations:
-            if migration_type_name(getattr(migration, "type", None)).upper() == "UNDO_SQL":
-                version = getattr(migration, "version", None)
+            if migration_type_name(migration.type).upper() == "UNDO_SQL":
+                version = migration.version
                 if version and self._is_migration_successful(migration):
                     undone_versions.add(str(version))
 
@@ -98,8 +98,8 @@ class MigrationDataService:
             Optional[str]: Baseline version if found
         """
         for migration in applied_migrations:
-            if migration_type_name(getattr(migration, "type", None)).upper() == "BASELINE":
-                return str(getattr(migration, "version", ""))
+            if migration_type_name(migration.type).upper() == "BASELINE":
+                return str(migration.version)
         return None
 
     def _detect_out_of_order_migrations(self, applied_migrations: List[Migration]) -> Set[str]:
@@ -120,8 +120,8 @@ class MigrationDataService:
         highest_version: Optional[str] = None
 
         for migration in applied_migrations:
-            migration_type = migration_type_name(getattr(migration, "type", None)).upper()
-            version = str(getattr(migration, "version", ""))
+            migration_type = migration_type_name(migration.type).upper()
+            version = str(migration.version)
             if not version:
                 continue
 
