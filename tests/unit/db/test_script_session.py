@@ -5,7 +5,9 @@ from typing import List
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
+from dblift.core.exceptions import ExecutionError
 from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
@@ -17,18 +19,29 @@ class _Provider(SqlAlchemyProvider):
         self._engine = create_engine("sqlite://")
         self._connection = self._engine.connect()
         self._tx = None
+        self._script_session_options = None
         self._lock = threading.RLock()
         self.calls: List[str] = []
         self.open_transaction = open_transaction
         self.level_seen_by_check = None
+        self.fail_check = False
+        self.check_error: Exception = RuntimeError("check failed")
+        self.probe_statement = None
+        self.fail_roll_back = False
 
     def _script_transaction_open(self, conn) -> bool:
         self.calls.append("open?")
+        if self.probe_statement:
+            self._exec_unbound(conn, self.probe_statement)
+        if self.fail_check:
+            raise self.check_error
         self.level_seen_by_check = conn.get_execution_options().get("isolation_level")
         return self.open_transaction
 
     def _roll_back_script_transaction(self, conn) -> None:
         self.calls.append("roll back")
+        if self.fail_roll_back:
+            raise RuntimeError("roll back failed")
 
     def _end_open_transaction(self, conn) -> None:
         self.calls.append("end open")
@@ -118,3 +131,130 @@ def test_statements_run_inside_the_session_without_a_per_statement_commit(provid
     assert provider._tx is not None
     provider.end_script_session()
     assert conn.execute(text("SELECT count(*) FROM t")).scalar() == 0
+
+
+def _assert_back_to_normal(provider):
+    assert not provider.has_explicit_transaction()
+    assert provider._script_session_options is None
+    assert "isolation_level" not in provider._connection.get_execution_options()
+
+
+@pytest.mark.parametrize("hook", ["fail_check", "fail_roll_back"])
+def test_end_cleans_up_then_propagates_when_a_hook_raises(provider, hook):
+    provider.begin_script_session()
+    setattr(provider, hook, True)
+
+    with pytest.raises(RuntimeError):
+        provider.end_script_session()
+
+    _assert_back_to_normal(provider)
+
+
+def test_begin_that_fails_to_open_its_transaction_leaves_the_connection_as_it_was(
+    provider, monkeypatch
+):
+    def refuse():
+        raise RuntimeError("begin failed")
+
+    monkeypatch.setattr(provider._connection, "begin", refuse)
+
+    with pytest.raises(RuntimeError):
+        provider.begin_script_session()
+
+    _assert_back_to_normal(provider)
+
+
+def test_begin_whose_check_raises_changes_nothing(provider):
+    provider.fail_check = True
+
+    with pytest.raises(RuntimeError):
+        provider.begin_script_session()
+
+    _assert_back_to_normal(provider)
+
+
+def test_end_without_a_session_leaves_an_ordinary_transaction_alone(provider):
+    provider.begin_transaction()
+    provider._connection.execute(text("CREATE TABLE t (a INTEGER)"))
+
+    assert provider.end_script_session() is False
+
+    assert provider.has_explicit_transaction()
+    assert provider._connection.in_transaction()
+    provider.rollback_transaction()
+
+
+_SCRIPT = ("BEGIN", "INSERT INTO t VALUES (1)", "ROLLBACK")
+
+
+def _run_script_then_count(provider) -> int:
+    conn = provider._connection
+    conn.execute(text("CREATE TABLE t (a INTEGER)"))
+    for statement in _SCRIPT:
+        try:
+            provider.execute_statement(statement)
+        except OperationalError:  # the bare connection has no transaction left to end
+            pass
+    return conn.execute(text("SELECT count(*) FROM t")).scalar()
+
+
+def test_the_script_own_rollback_is_real_inside_a_session(provider):
+    provider.begin_script_session()
+    count = _run_script_then_count(provider)
+    provider.end_script_session()
+
+    assert count == 0
+
+
+def test_control_a_bare_autocommit_connection_commits_after_each_statement(provider):
+    provider._connection.execution_options(isolation_level="AUTOCOMMIT")
+
+    assert provider._tx is None
+    assert _run_script_then_count(provider) == 1
+
+
+def test_a_database_error_at_begin_becomes_an_execution_error(provider):
+    original = SQLAlchemyError("boom")
+    provider.fail_check = True
+    provider.check_error = original
+
+    with pytest.raises(
+        ExecutionError, match="the connection could not be prepared: boom"
+    ) as raised:
+        provider.begin_script_session()
+
+    assert raised.value.__cause__ is original
+    _assert_back_to_normal(provider)
+
+
+def test_a_failed_begin_of_the_transaction_becomes_an_execution_error(provider, monkeypatch):
+    def refuse():
+        raise SQLAlchemyError("begin failed")
+
+    monkeypatch.setattr(provider._connection, "begin", refuse)
+
+    with pytest.raises(ExecutionError, match="could not be prepared: begin failed"):
+        provider.begin_script_session()
+
+    _assert_back_to_normal(provider)
+
+
+def test_an_execution_error_from_the_hook_propagates_unchanged(provider):
+    original = ExecutionError("driver cannot tell")
+    provider.fail_check = True
+    provider.check_error = original
+
+    with pytest.raises(ExecutionError) as raised:
+        provider.begin_script_session()
+
+    assert raised.value is original
+    _assert_back_to_normal(provider)
+
+
+def test_begin_succeeds_when_the_check_autobegan_a_transaction(provider):
+    provider.probe_statement = "SELECT 1"
+
+    provider.begin_script_session()
+
+    assert provider._connection.get_execution_options()["isolation_level"] == "AUTOCOMMIT"
+    assert provider.has_explicit_transaction()
