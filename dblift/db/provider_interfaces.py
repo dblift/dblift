@@ -291,6 +291,10 @@ class TransactionalProvider(ABC):
         """Return True if the caller supplied the connection and owns its transactions."""
         return False
 
+    def supports_script_session(self) -> bool:
+        """Return True if a script may manage its own transactions on this provider."""
+        return False
+
     def caller_transaction_active(self) -> Optional[bool]:
         """Return transaction state for an explicitly supplied connection, else None."""
         return None

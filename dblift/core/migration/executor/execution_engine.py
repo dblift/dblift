@@ -47,6 +47,7 @@ from dblift.core.migration.sql.migration_sql_parser import (
     parse_migration_sql,
     resolve_migration_sql_dialect,
 )
+from dblift.core.migration.sql.script_directives import opts_out_of_transaction
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.seams import runtime_checks
@@ -196,7 +197,7 @@ class ExecutionEngine:
 
         self.check_sql_preflight(migration, statements)
 
-        policy = self._plan_sql_execution(statements)
+        policy = self._plan_sql_execution(statements, migration)
         if policy.unsupported_mixed_mode:
             result.set_error(
                 f"Migration {migration.script_name} mixes transactional and autocommit-only "
@@ -262,9 +263,34 @@ class ExecutionEngine:
                     )
             raise
 
-    def _plan_sql_execution(self, statements: List[str]) -> TransactionPolicyDecision:
+    def _plan_sql_execution(
+        self, statements: List[str], migration: Migration
+    ) -> TransactionPolicyDecision:
         execution_statements = self._classify_execution_statements(statements)
-        return self.transaction_policy.decide(execution_statements, self.provider)
+        return self.transaction_policy.decide(
+            execution_statements, self.provider, script_managed=self._opts_out(migration)
+        )
+
+    def _opts_out(self, migration: Migration) -> bool:
+        """Whether the original script text carries the no-transaction directive."""
+        return migration.format == MigrationFormat.SQL and opts_out_of_transaction(
+            migration.content or ""
+        )
+
+    def script_session_refusal(self, migration: Migration) -> Optional[str]:
+        """Why a script that opts out of the transaction cannot run here, else None."""
+        if not self._opts_out(migration):
+            return None
+        head = f"{migration.script_name}: -- dblift:no-transaction"
+        tail = "none of its statements were executed"
+        if (
+            not isinstance(self.provider, TransactionalProvider)
+            or not self.provider.supports_script_session()
+        ):
+            return f"{head} is not supported on {self._probe_dialect_key()}; {tail}"
+        if self.provider.is_caller_owned():
+            return f"{head} cannot run on a connection passed to from_sqlalchemy; {tail}"
+        return None
 
     def _classify_execution_statements(self, statements: List[str]) -> List[ExecutionStatement]:
         """Attach transaction metadata to executable SQL statements."""
@@ -323,7 +349,9 @@ class ExecutionEngine:
                 )
             )
             executable.append(statement)
-        policy = self.transaction_policy.decide(execution_statements, self.provider)
+        policy = self.transaction_policy.decide(
+            execution_statements, self.provider, script_managed=self._opts_out(migration)
+        )
         if policy.unsupported_mixed_mode:
             result.set_error(
                 f"Migration {migration.script_name} mixes transactional and autocommit-only "
@@ -382,6 +410,9 @@ class ExecutionEngine:
         placeholder_service: Optional[PlaceholderService] = None,
     ) -> List[str]:
         """Prepare execution SQL without converting parsing exceptions into result errors."""
+        refusal = self.script_session_refusal(migration)
+        if refusal:
+            raise TransactionStatementError(refusal)
         dialect_key: Optional[str] = None
         if self.config is not None:
             db = getattr(self.config, "database", None)
@@ -1295,7 +1326,7 @@ class ExecutionEngine:
         if check_sql_preflight:
             self.check_sql_preflight(callback, sql_statements)
 
-        policy = self._plan_sql_execution(sql_statements)
+        policy = self._plan_sql_execution(sql_statements, callback)
         if policy.unsupported_mixed_mode:
             raise CallbackExecutionError(
                 f"Callback {callback.script_name} mixes transactional and "

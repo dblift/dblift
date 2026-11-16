@@ -10,6 +10,7 @@ from dblift.core.logger import NullLog
 from dblift.core.logger.results import MigrateResult
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.migration import Migration, MigrationType
+from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
 from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.provider_interfaces import TransactionalProvider, TransactionOutcome
 from tests.unit._migration_factory import make_migration
@@ -18,8 +19,9 @@ from tests.unit._migration_factory import make_migration
 class _Provider(TransactionalProvider):
     canonical_dialect_key = "sqlite"
 
-    def __init__(self, outcome: Any = None) -> None:
+    def __init__(self, outcome: Any = None, script_session: bool = False) -> None:
         self.events: List[str] = []
+        self._script_session = script_session
         self._outcome = outcome
         self.connection = MagicMock()
 
@@ -50,6 +52,9 @@ class _Provider(TransactionalProvider):
     def supports_transactional_ddl(self) -> bool:
         return True
 
+    def supports_script_session(self) -> bool:
+        return self._script_session
+
 
 class _History:
     def __init__(self, events: List[str], fail: bool = False) -> None:
@@ -76,15 +81,20 @@ class _Log(NullLog):
 
 
 def _run(
-    outcome: Any = None, fail_history: bool = False, content: str = "INSERT INTO t VALUES (1);"
+    outcome: Any = None,
+    fail_history: bool = False,
+    content: str = "INSERT INTO t VALUES (1);",
+    script_session: bool = False,
+    placeholder_service: Any = None,
 ):
-    provider = _Provider(outcome)
+    provider = _Provider(outcome, script_session)
     log = _Log()
     engine = ExecutionEngine(
         provider,
         StatementReader("sqlite", analysis_mode="execution"),
         log,
         history_manager=_History(provider.events, fail_history),
+        placeholder_service=placeholder_service,
     )
     migration = Migration(
         script_name="V1__x.sql",
@@ -180,3 +190,57 @@ def test_callback_that_left_a_transaction_open_fails():
     with pytest.raises(TransactionLeftOpenError, match="left a transaction open"):
         engine.execute_callback(callback)
     assert provider.events == ["begin", "execute", "rollback"]
+
+
+NT = "-- dblift:no-transaction\n"
+
+
+@pytest.mark.unit
+def test_directive_on_a_provider_that_does_not_support_it_is_refused_before_anything_runs():
+    engine, migration, result, provider, _ = _run(content=NT + "INSERT INTO t VALUES (1);")
+    engine.execute_migration(migration, result)
+    assert provider.events == []
+    assert result.error_message == (
+        "V1__x.sql: -- dblift:no-transaction is not supported on sqlite; "
+        "none of its statements were executed"
+    )
+
+
+@pytest.mark.unit
+def test_directive_on_a_caller_owned_connection_is_refused():
+    engine, migration, result, provider, _ = _run(
+        content=NT + "INSERT INTO t VALUES (1);", script_session=True
+    )
+    provider.is_caller_owned = lambda: True
+    engine.execute_migration(migration, result)
+    assert provider.events == []
+    assert "cannot run on a connection passed to from_sqlalchemy" in result.error_message
+
+
+@pytest.mark.unit
+def test_directive_lifts_the_mixed_mode_refusal_in_previews():
+    mixed = "VACUUM;\nINSERT INTO t VALUES (1);"
+    engine, migration, result, _, _ = _run(content=mixed)
+    assert engine.get_executable_sql_statements(migration, result) == []
+    assert "mixes transactional and autocommit-only" in result.error_message
+    engine, migration, result, _, _ = _run(content=NT + mixed, script_session=True)
+    assert len(engine.get_executable_sql_statements(migration, result)) == 2
+    assert result.error_message is None
+
+
+@pytest.mark.unit
+def test_refusal_is_none_without_the_directive_and_for_python_scripts():
+    engine, migration, _, _, _ = _run()
+    assert engine.script_session_refusal(migration) is None
+    python = make_migration(script_name="V2__p.py", content=NT + "pass", version="2")
+    assert engine.script_session_refusal(python) is None
+
+
+@pytest.mark.unit
+def test_directive_is_read_from_the_original_text_not_the_substituted_one():
+    engine, migration, result, provider, _ = _run(
+        content="-- ${mode}\nINSERT INTO t VALUES (1);",
+        placeholder_service=PlaceholderService({"mode": "dblift:no-transaction"}),
+    )
+    engine.execute_migration(migration, result)
+    assert provider.events == ["begin", "execute", "history:True", "commit"]
