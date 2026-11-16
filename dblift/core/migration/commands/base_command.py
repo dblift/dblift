@@ -10,7 +10,18 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Iterator, List, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Union,
+)
 
 from dblift.config import DbliftConfig
 from dblift.config.database_config import BaseDatabaseConfig
@@ -675,6 +686,20 @@ class BaseCommand:
         if prepare is not None:
             prepare()
 
+    def _refuse_unsupported_script_sessions(self, scripts: Sequence[Migration]) -> None:
+        """Refuse the run, before anything starts, at the first script that cannot run here."""
+        for script in scripts:
+            refusal = self.execution_engine.script_session_refusal(script)
+            if refusal is not None:
+                raise SqlPreflightError(refusal)
+
+    def _report_refusal(self, result: OperationResult, refusal: SqlPreflightError) -> None:
+        """Record a refusal made before anything started as the error of ``result``."""
+        reason = redact_driver_error_text(str(refusal))
+        self.log.error(reason)
+        result.set_error(reason)
+        result.complete()
+
     def _preflight_execution_sql(self, migrations: List[Any]) -> None:
         """Classify selected SQL and run contextual extension checks before writes."""
         if self._capture_objects and not registered_checks("migration.preflight_sql"):
@@ -715,16 +740,23 @@ class BaseCommand:
         """Prepare only when this command's callback catalog contains SQL."""
         snapshot = self.state_manager.new_callback_snapshot()
         self._callback_snapshot = snapshot
-        for event in events:
-            callbacks = self.state_manager.get_callbacks_by_event(
-                scripts_dir,
-                event,
-                read_snapshot=snapshot,
-                recursive=recursive,
-                additional_dirs=additional_dirs,
-                dir_recursive_map=dir_recursive_map,
-            )
-            sql_callbacks = [c for c in callbacks if c.format == MigrationFormat.SQL]
+        catalog = [
+            [
+                c
+                for c in self.state_manager.get_callbacks_by_event(
+                    scripts_dir,
+                    event,
+                    read_snapshot=snapshot,
+                    recursive=recursive,
+                    additional_dirs=additional_dirs,
+                    dir_recursive_map=dir_recursive_map,
+                )
+                if c.format == MigrationFormat.SQL
+            ]
+            for event in events
+        ]
+        self._refuse_unsupported_script_sessions([c for sql in catalog for c in sql])
+        for sql_callbacks in catalog:
             if sql_callbacks:
                 self._prepare_required_analysis()
                 if self._capture_objects:

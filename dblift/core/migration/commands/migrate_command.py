@@ -352,6 +352,24 @@ class MigrateCommand(BaseCommand):
         else:
             self.log.info("No pending migrations found")
 
+    @staticmethod
+    def _events_fired_by(migrations: List[Migration]) -> List[str]:
+        """The callback events a run of ``migrations`` fires."""
+        events = [
+            "beforeMigrate",
+            "afterMigrate",
+            "afterMigrateError",
+            "beforeEach",
+            "afterEach",
+            "beforeEachMigrate",
+            "afterEachMigrate",
+        ]
+        if any(getattr(m.type, "value", m.type) in VERSIONED_SCRIPT_TYPES for m in migrations):
+            events.extend(("beforeVersioned", "afterVersioned"))
+        if any(m.type == MigrationType.REPEATABLE for m in migrations):
+            events.extend(("beforeRepeatable", "afterRepeatable"))
+        return events
+
     def _migrate_holding_lock(
         self,
         lock: ExitStack,
@@ -398,6 +416,11 @@ class MigrateCommand(BaseCommand):
             result.set_error(f"Validation failed: {locked_errors}")
             result.complete()
             return False
+
+        if locked_pending and not mark_as_executed:
+            self._refuse_unsupported_script_sessions(
+                locked_pending + self._callbacks_for(self._events_fired_by(locked_pending))
+            )
 
         planned = {m.script_name for m in pending_migrations}
         newly_pending = [m for m in locked_pending if m.script_name not in planned]
@@ -595,22 +618,9 @@ class MigrateCommand(BaseCommand):
 
             def preflight_sql(migrations: List[Migration]) -> None:
                 """Classify the SQL of ``migrations`` and of the callbacks they would fire."""
-                events = [
-                    "beforeMigrate",
-                    "afterMigrate",
-                    "afterMigrateError",
-                    "beforeEach",
-                    "afterEach",
-                    "beforeEachMigrate",
-                    "afterEachMigrate",
-                ]
-                if any(
-                    getattr(m.type, "value", m.type) in VERSIONED_SCRIPT_TYPES for m in migrations
-                ):
-                    events.extend(("beforeVersioned", "afterVersioned"))
-                if any(m.type == MigrationType.REPEATABLE for m in migrations):
-                    events.extend(("beforeRepeatable", "afterRepeatable"))
-                self._preflight_execution_sql(migrations + self._callbacks_for(events))
+                self._preflight_execution_sql(
+                    migrations + self._callbacks_for(self._events_fired_by(migrations))
+                )
 
             if not dry_run and not mark_as_executed and check_execution_sql:
                 if pending_migrations:

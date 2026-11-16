@@ -32,6 +32,7 @@ def test_python_migrations_trigger_versioned_callbacks(monkeypatch):
     command.migration_helpers.setup_migration_parameters.return_value = (True, None)
     command.migration_helpers.validate_migrations_for_migrate.return_value = (True, None, 0.0)
     command.validator = MagicMock()
+    command.execution_engine = MagicMock(**{"script_session_refusal.return_value": None})
     command.placeholder_service = MagicMock()
     command._execute_before_callbacks = MagicMock()
     command._execute_migration_loop = MagicMock()

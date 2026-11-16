@@ -65,6 +65,7 @@ def _make_command(applied_migrations, *, migration_rules, undo_scripts=None):
     executor_factory.get_executor.return_value = None
 
     execution_engine = MagicMock()
+    execution_engine.script_session_refusal.return_value = None
     execution_engine.executor_factory = executor_factory
 
     history_manager = MagicMock()

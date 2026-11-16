@@ -77,7 +77,7 @@ def observe_reads(client, migrations):
 @pytest.mark.parametrize(
     "operation,populated,expected_history,expected_loads",
     [
-        ("migrate", False, 4, 3),
+        ("migrate", False, 4, 4),
         ("migrate", True, 2, 1),
         ("info", False, 0, 1),
         ("info", True, 2, 1),
@@ -447,7 +447,7 @@ def test_nonempty_recursion_map_preserves_validator_discovery_scope(database_cli
 
     assert result.success, result.error_message
     assert [m.script for m in result.migrations] == ["V1__app.sql"]
-    assert counts == {"history": 4, "files": {"V1__app.sql": 3}, "scans": 3}
+    assert counts == {"history": 4, "files": {"V1__app.sql": 4}, "scans": 4}
 
 
 def test_info_duplicate_warning_reuses_state_catalog(database_client):
@@ -513,7 +513,7 @@ def test_filtered_migrate_keeps_full_catalog_for_missing_file_validation(databas
     assert filtered.success, filtered.error_message
     assert [row.script for row in filtered.migrations] == ["V3__new[keep].sql"]
     assert not any("is missing from" in call.args[0] for call in warnings.call_args_list)
-    assert counts["scans"] == 3
+    assert counts["scans"] == 4
 
     excluded.unlink()
     with (
@@ -725,8 +725,8 @@ def test_callback_discovery_sees_file_created_during_lock_acquisition(database_c
     ]
     assert counts == {
         "history": 4,
-        "files": {"V1__app.sql": 3, "beforeMigrate__late.sql": 2},
-        "scans": 3,
+        "files": {"V1__app.sql": 4, "beforeMigrate__late.sql": 3},
+        "scans": 4,
     }
     with sqlite3.connect(database) as connection:
         assert connection.execute(
