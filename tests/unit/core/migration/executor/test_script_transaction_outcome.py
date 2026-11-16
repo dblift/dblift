@@ -31,7 +31,9 @@ class _Provider(TransactionalProvider):
         fail_execute: bool = False,
         fail_begin_session: bool = False,
         fail_end_session: bool = False,
+        execute_error: Any = None,
     ) -> None:
+        self._execute_error = execute_error
         self.events: List[str] = []
         self._script_session = script_session
         self._left_open = left_open
@@ -59,6 +61,8 @@ class _Provider(TransactionalProvider):
         return None
 
     def execute_statement(self, sql: str, schema=None, params=None) -> int:
+        if self._execute_error is not None:
+            raise self._execute_error
         if self._fail_execute:
             raise RuntimeError("statement failed")
         self.events.append("execute")
@@ -466,3 +470,47 @@ def test_failing_close_after_success_propagates_and_records_no_history():
     with pytest.raises(ExecutionError, match="close failed"):
         engine.execute_migration(migration, result)
     assert provider.events == ["session:begin", "execute", "session:end"]
+
+
+HINT = (
+    ' Add "-- dblift:no-transaction" as the first line of the script '
+    "to let it manage its own transactions."
+)
+
+
+class _Refused(Exception):
+    def __init__(self, sqlstate: str) -> None:
+        super().__init__("invalid transaction termination")
+        self.sqlstate = sqlstate
+
+
+def _refused_run(sqlstate: str = "2D000", script_session: bool = True, content: str = ""):
+    engine, migration, result, _, _ = _run(
+        content=content or "INSERT INTO t VALUES (1);",
+        script_session=script_session,
+        execute_error=_Refused(sqlstate),
+    )
+    engine.execute_migration(migration, result)
+    return result
+
+
+@pytest.mark.unit
+def test_refused_transaction_end_names_the_directive_when_the_provider_supports_it():
+    assert _refused_run().error_message.endswith(HINT)
+
+
+@pytest.mark.unit
+def test_refused_transaction_end_has_no_hint_without_script_session_support():
+    assert HINT not in _refused_run(script_session=False).error_message
+
+
+@pytest.mark.unit
+def test_other_sqlstate_gets_no_hint():
+    assert HINT not in _refused_run(sqlstate="23505").error_message
+
+
+@pytest.mark.unit
+def test_script_already_carrying_the_directive_gets_no_hint():
+    result = _refused_run(content=NT + "INSERT INTO t VALUES (1);")
+    assert "invalid transaction termination" in result.error_message
+    assert HINT not in result.error_message

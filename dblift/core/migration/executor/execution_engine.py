@@ -58,6 +58,7 @@ from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import (
     clean_driver_error_message,
     engine_error_message,
+    extract_sqlstate,
     redact_driver_error_text,
     strip_sql_statement_block,
 )
@@ -93,6 +94,14 @@ def _record_callback_result_set(
     if record is not None:
         record.result_sets.append({"statement": statement, "columns": columns, "rows": rows})
         record.row_count += len(rows)
+
+
+# SQLSTATE class 2D: the engine refused to end a transaction the caller did not start.
+_INVALID_TRANSACTION_TERMINATION = "2D000"
+_NO_TRANSACTION_HINT = (
+    ' Add "-- dblift:no-transaction" as the first line of the script '
+    "to let it manage its own transactions."
+)
 
 
 class ExecutionEngine:
@@ -946,6 +955,17 @@ class ExecutionEngine:
         if finish is not None:
             finish(statements)
 
+    def _no_transaction_hint(self, migration: Migration, error: Exception) -> str:
+        """Name the directive when the engine refused a transaction end it could be told about."""
+        if (
+            extract_sqlstate(error) == _INVALID_TRANSACTION_TERMINATION
+            and isinstance(self.provider, TransactionalProvider)
+            and self.provider.supports_script_session() is True
+            and not self._opts_out(migration)
+        ):
+            return _NO_TRANSACTION_HINT
+        return ""
+
     def _handle_statement_failure(
         self,
         migration: Migration,
@@ -964,6 +984,7 @@ class ExecutionEngine:
                 clean_driver_error_message(to_python_string(error) or str(error))
             )
         )
+        error_msg += self._no_transaction_hint(migration, error)
         self.log.error(
             f"Failed to execute statement {stmt_index + 1} from {migration.script_name}: "
             f"{error_msg}"
