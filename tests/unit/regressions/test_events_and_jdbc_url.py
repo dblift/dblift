@@ -52,13 +52,10 @@ class TestUndoChecksumZeroSentinel(unittest.TestCase):
         # plus each relational provider, which own their history inline.
         return [
             Path("dblift/db/plugins/base_history_manager.py"),
-            Path("dblift/db/plugins/postgresql/provider.py"),
-            Path("dblift/db/plugins/mysql/provider.py"),
+            Path("dblift/db/sqlalchemy_provider.py"),
             Path("dblift/db/plugins/oracle/provider.py"),
             Path("dblift/db/plugins/sqlserver/provider.py"),
             Path("dblift/db/plugins/db2/provider.py"),
-            Path("dblift/db/plugins/duckdb/provider.py"),
-            Path("dblift/db/plugins/snowflake/provider.py"),
         ]
 
     def test_no_source_still_uses_checksum_none(self) -> None:

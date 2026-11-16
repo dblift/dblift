@@ -14,7 +14,7 @@ from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCom
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
-from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
+from dblift.db.plugins.base_history_manager import installed_on_to_bind
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
 from dblift.db.plugins.sql_lease_store import (
     OWNER_COLUMN,
@@ -444,20 +444,6 @@ class DuckDBProvider(SqlLeaseLockingProvider):
         self.execute_statement(f"CREATE SEQUENCE IF NOT EXISTS {seq}")
         self.execute_statement(self.create_history_table(schema, table_name))
 
-    def _check_baseline_safety(self, schema: str, table_name: str) -> None:
-        """Refuse baseline when the history table already contains migrations."""
-        qualified_table = self.get_schema_qualified_name(schema, table_name)
-        rows = self.execute_query(f"SELECT COUNT(1) as count FROM {qualified_table}")
-        migration_count = 0
-        if rows:
-            migration_count = int(rows[0].get("count", rows[0].get("COUNT", 0)) or 0)
-        if migration_count > 0:
-            raise RuntimeError(
-                f"Schema {schema} already contains a migration history table "
-                f"{table_name} with {migration_count} migration(s). "
-                "Baseline cannot be applied to a schema with existing migrations."
-            )
-
     def record_migration(
         self, schema: str, migration_info: Dict[str, Any], table_name: str = DEFAULT_HISTORY_TABLE
     ) -> None:
@@ -490,29 +476,6 @@ class DuckDBProvider(SqlLeaseLockingProvider):
             """,
             params=params,
         )
-
-    def record_undo(
-        self,
-        schema: str,
-        version: str,
-        table_name: Optional[str] = None,
-        script_name: Optional[str] = None,
-    ) -> bool:
-        """Record a successful undo operation in DuckDB migration history."""
-        undo_script = script_name or f"UNDO_{version}.sql"
-        self.record_migration(
-            schema,
-            {
-                "version": version,
-                "description": f"Undo migration {version}",
-                "type": UNDO_HISTORY_TYPE,
-                "script": undo_script,
-                "checksum": 0,
-                "success": True,
-            },
-            table_name or DEFAULT_HISTORY_TABLE,
-        )
-        return True
 
     def repair_migration_history(
         self,

@@ -28,6 +28,9 @@ from dblift.db.plugins.sql_lease_store import (
 )
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.provider_registry import ProviderRegistry
+from dblift.db.value_utils import clean_identifier as _clean_identifier
+from dblift.db.value_utils import double_quote_identifier as _q
+from dblift.db.value_utils import row_value as _row_value
 
 
 def _refuse_edges_the_driver_strips(sql: str) -> str:
@@ -42,16 +45,6 @@ def _refuse_edges_the_driver_strips(sql: str) -> str:
         tokenizer = LexicalTokenizer(sql, spec=ORACLE_SPEC)
         refuse_edges_the_driver_strips(sql, tokenizer.tokenize(), tokenizer.comments, blanks)
     return sql
-
-
-def _q(name: str) -> str:
-    """Return a double-quoted Oracle identifier."""
-    return '"' + name.replace('"', '""') + '"'
-
-
-def _clean_identifier(name: str) -> str:
-    """Return a bare identifier for dictionary lookups."""
-    return name.replace('"', "").strip()
 
 
 def _oracle_name(name: str) -> str:
@@ -94,20 +87,6 @@ def _schema_object(schema: str, obj: str) -> str:
     connects the session as.
     """
     return f"{_q(_oracle_dictionary_name(schema))}.{_q(_clean_identifier(obj))}"
-
-
-def _row_value(row: Dict[str, Any], *names: str, default: Any = None) -> Any:
-    """Read a value from a SQLAlchemy row mapping with Oracle case tolerance."""
-    for name in names:
-        if name in row:
-            return row[name]
-        upper = name.upper()
-        if upper in row:
-            return row[upper]
-        lower = name.lower()
-        if lower in row:
-            return row[lower]
-    return default
 
 
 _OWNER_COLUMN = OWNER_COLUMN.upper()
