@@ -19,6 +19,9 @@ from dblift.core.seams.runtime_checks import SqlPreflightError, registered_check
 from ._script_runner import ScriptRunner, ScriptRunPolicy
 from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand, PreflightConnectionError
 
+UNDO_CALLBACK_EVENTS = ("beforeUndo", "afterUndo", "afterUndoError", "beforeEach", "afterEach")
+
+
 UNDO_POLICY = ScriptRunPolicy(
     before_events=("beforeEach",),
     after_events=("afterEach",),
@@ -319,13 +322,14 @@ class UndoCommand(BaseCommand):
                 if not self._undo_scripts_have_sql(undo_plan, result):
                     return
 
-                if not dry_run and (
-                    not self._capture_objects or registered_checks("migration.preflight_sql")
-                ):
+                if not dry_run:
                     callbacks = self._callbacks_for(
-                        ("beforeUndo", "afterUndo", "afterUndoError", "beforeEach", "afterEach")
+                        UNDO_CALLBACK_EVENTS, self._pin_callback_snapshot()
                     )
-                    self._preflight_execution_sql([undo for _, undo in undo_plan] + callbacks)
+                    undo_scripts = [undo for _, undo in undo_plan] + callbacks
+                    self._refuse_unsupported_script_sessions(undo_scripts)
+                    if not self._capture_objects or registered_checks("migration.preflight_sql"):
+                        self._preflight_execution_sql(undo_scripts)
 
                 if dry_run:
                     self._dry_run_undo(undo_plan, result, show_sql)

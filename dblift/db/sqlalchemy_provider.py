@@ -19,7 +19,7 @@ from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from dblift.config import DbliftConfig
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
-from dblift.core.exceptions import TransactionAbortedError
+from dblift.core.exceptions import ExecutionError, TransactionAbortedError
 from dblift.core.logger import Log
 from dblift.db.base_provider import NativeProvider
 from dblift.db.native_connection_manager import NativeConnectionManager
@@ -129,6 +129,7 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
         )
         self._connection: Optional[Connection] = None
         self._tx: Optional[Transaction] = None
+        self._script_session_options: Optional[Mapping[str, object]] = None
         self.query_executor = _SqlAlchemyQueryExecutor(self)
         # A single Connection is cached on this provider (see create_connection)
         # and reused across calls. SQLAlchemy Connections are not safe for
@@ -505,6 +506,61 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
             self._tx = None
         if conn.in_transaction():
             conn.rollback()
+
+    def _script_transaction_open(self, conn: Connection) -> bool:
+        """Whether the server holds a transaction the script left open."""
+        raise NotImplementedError
+
+    def _roll_back_script_transaction(self, conn: Connection) -> None:
+        """Roll back the transaction a script left open, where ending the connection's does not."""
+
+    def begin_script_session(self) -> None:
+        """Autocommit every statement, with the provider's transaction object held open."""
+        with self._lock:
+            try:
+                self._switch_to_script_session()
+            except SQLAlchemyError as exc:
+                raise ExecutionError(f"the connection could not be prepared: {exc}") from exc
+
+    def _switch_to_script_session(self) -> None:
+        conn = self._ensure_connection()
+        self._end_open_transaction(conn)
+        self._script_transaction_open(conn)
+        if conn.in_transaction():  # the check may have autobegun one
+            conn.rollback()
+        previous = conn.get_execution_options()
+        begun = False
+        try:
+            conn.execution_options(isolation_level="AUTOCOMMIT")
+            self._tx = conn.begin()
+            begun = True
+        finally:
+            if begun:
+                self._script_session_options = previous
+            else:
+                self._tx = None
+                self._restore_isolation_level(conn, previous)
+
+    def end_script_session(self) -> bool:
+        """Roll back a transaction the script left open, restore the connection, report it."""
+        with self._lock:
+            previous = self._script_session_options
+            if previous is None:
+                return False
+            self._script_session_options = None
+            conn = self._connection
+            if conn is None or conn.closed:
+                self._tx = None
+                return False
+            try:
+                left_open = self._script_transaction_open(conn)
+                self._roll_back_script_transaction(conn)
+            finally:
+                try:
+                    self._end_open_transaction(conn)
+                finally:
+                    self._restore_isolation_level(conn, previous)
+            return left_open
 
     def execute_autocommit_statement(
         self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None

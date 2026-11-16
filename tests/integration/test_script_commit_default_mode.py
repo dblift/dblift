@@ -80,6 +80,7 @@ FRAGMENTS = {
     "SAVE": "SAVEPOINT s;",
     "BACK": "ROLLBACK TO SAVEPOINT s;",
     "UNDO_UPD": "UPDATE t SET a = 1 WHERE a = 2;",
+    "D": "-- dblift:no-transaction",
 }
 MYSQL_PROCEDURE = (
     "DELIMITER //\n"
@@ -123,6 +124,8 @@ ENGINE_FRAGMENTS = {
     "postgresql": {
         "BEGIN": "BEGIN;",
         "DO_BLOCK": PG_DO_BLOCK,
+        "DO_ROLLBACK": PG_DO_BLOCK.replace("IF n = 1 THEN", "IF n = 100 THEN"),
+        "INDEX": "CREATE INDEX CONCURRENTLY nt_i ON t (a);",
     },
     "cockroachdb": {
         "BEGIN": "BEGIN;",
@@ -142,6 +145,27 @@ ENGINE_FRAGMENTS = {
         "PROC_COMMIT": ORACLE_BLOCK.format(rows=1),
         "PROC_ROLLBACK": ORACLE_BLOCK.format(rows=100),
     },
+}
+# Catalog query per engine: one row when the history table exists in the place.
+HISTORY_TABLE_EXISTS = {
+    **dict.fromkeys(
+        PG_FAMILY,
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_name = 'dblift_schema_history' AND table_schema = '{place.schema}'",
+    ),
+    **dict.fromkeys(
+        ("mysql", "mariadb"),
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_name = 'dblift_schema_history' AND table_schema = '{place.name}'",
+    ),
+    "oracle": (
+        "SELECT 1 FROM all_tables "
+        "WHERE LOWER(table_name) = 'dblift_schema_history' AND owner = '{place.name}'"
+    ),
+    "db2": (
+        "SELECT 1 FROM syscat.tables "
+        "WHERE LOWER(tabname) = 'dblift_schema_history' AND tabschema = '{place.name}'"
+    ),
 }
 T_START = [(1, 2)]
 T_DONE = [(2, 2)]
@@ -209,7 +233,10 @@ EXPECT = [
 # Where an engine refuses a construct, the error message says why: (engine, id) -> text.
 IN_PROGRESS = "there is already a transaction in progress"
 ERROR_CONTAINS = {
-    ("postgresql", "procedural_refused"): "invalid transaction termination",
+    ("postgresql", "procedural_refused"): (
+        "invalid transaction termination",
+        "dblift:no-transaction",
+    ),
     ("cockroachdb", "envelope"): IN_PROGRESS,
     ("cockroachdb", "envelope_failure"): IN_PROGRESS,
     ("cockroachdb", "envelope_rollback"): IN_PROGRESS,
@@ -322,6 +349,11 @@ FLOWS = [
 
 def _env(engine: str, name: str, default: str) -> str:
     return os.environ.get(f"DBLIFT_{engine.upper()}_{name}", default)
+
+
+def assert_error_contains(result, needles) -> None:
+    for needle in [needles] if isinstance(needles, str) else needles:
+        assert needle in (result.error_message or ""), (needle, result.error_message)
 
 
 def _script(engine: str, fragments) -> str:
@@ -543,6 +575,12 @@ class Place:
     def h(self) -> list:
         return sorted(row[0] for row in self.query(f"SELECT v FROM {self._prefix()}h"))
 
+    def success_rows(self) -> list:
+        """History rows with success true; a history table that was never created has none."""
+        if not self.query(HISTORY_TABLE_EXISTS[self.engine].format(place=self)):
+            return []
+        return [row for row in self.history() if row[1]]
+
     def history(self) -> list:
         sql = (
             f"SELECT script, success FROM {self._prefix()}dblift_schema_history "
@@ -602,7 +640,7 @@ def test_script_transaction_outcome(place, tmp_path, name, fragments, ok, t, h, 
 
     assert result.success is ok, result.error_message
     if (place.engine, name) in ERROR_CONTAINS:
-        assert ERROR_CONTAINS[(place.engine, name)] in (result.error_message or "")
+        assert_error_contains(result, ERROR_CONTAINS[(place.engine, name)])
     assert place.t() == t
     assert place.h() == h
     assert [success for _, success in place.history()] == history
@@ -633,3 +671,187 @@ def test_script_transaction_flow(
     assert place.h() == h
     if history is not None:
         assert [row for row in place.history() if row[0] in dict(history)] == history
+
+
+# Scripts that opt out of the wrapping transaction with a leading comment, run on
+# PostgreSQL: the script's own BEGIN / COMMIT / ROLLBACK are the real ones.
+# (id, fragments, success, t, h, history, engines)
+PG = ["postgresql"]
+NO_TRANSACTION = [
+    ("nt_plain", ("D", "UPD", "INS1"), True, T_DONE, [1], [True], PG),
+    ("nt_procedural_commit", ("D", "DO_BLOCK"), True, T_DONE, [], [True], PG),
+    ("nt_procedural_rollback", ("D", "DO_ROLLBACK"), True, T_START, [], [True], PG),
+    ("nt_envelope_commit", ("D", "BEGIN", "UPD", "COMMIT"), True, T_DONE, [], [True], PG),
+    ("nt_envelope_rollback", ("D", "BEGIN", "UPD", "ROLLBACK"), True, T_START, [], [True], PG),
+    ("nt_left_open", ("D", "BEGIN", "UPD"), False, T_START, [], [False], PG),
+    (
+        "nt_commit_a_open_b",
+        ("D", "BEGIN", "UPD", "COMMIT", "BEGIN", "INS1"),
+        False,
+        T_DONE,
+        [],
+        [False],
+        PG,
+    ),
+    ("nt_commit_then_failure", ("D", "UPD", "FAIL"), False, T_DONE, [], [False], PG),
+    (
+        "nt_failure_in_own_transaction",
+        ("D", "BEGIN", "UPD", "FAIL", "COMMIT"),
+        False,
+        T_START,
+        [],
+        [False],
+        PG,
+    ),
+    ("nt_autocommit_only_with_others", ("D", "INDEX", "UPD"), True, T_DONE, [], [True], PG),
+    (
+        "nt_directive_after_first_statement",
+        ("UPD", "D", "DO_BLOCK"),
+        False,
+        T_START,
+        [],
+        [False],
+        PG,
+    ),
+]
+OPEN = "left a transaction open"
+ERROR_CONTAINS.update(
+    {
+        ("postgresql", "nt_left_open"): OPEN,
+        ("postgresql", "nt_commit_a_open_b"): OPEN,
+        ("postgresql", "nt_directive_after_first_statement"): (
+            "invalid transaction termination",
+            "dblift:no-transaction",
+        ),
+    }
+)
+
+
+@pytest.mark.parametrize(
+    "place, name, fragments, ok, t, h, history",
+    _combos(NO_TRANSACTION),
+    indirect=["place"],
+)
+def test_no_transaction_outcome(place, tmp_path, name, fragments, ok, t, h, history):
+    create_migration(tmp_path, "V1__case.sql", _script(place.engine, fragments))
+
+    result = place.run(tmp_path)
+
+    assert result.success is ok, result.error_message
+    if (place.engine, name) in ERROR_CONTAINS:
+        assert_error_contains(result, ERROR_CONTAINS[(place.engine, name)])
+    assert place.t() == t
+    assert place.h() == h
+    assert [success for _, success in place.history()] == history
+    _assert_truthful(place, result, 1)
+
+
+# (id, {file: fragments}, undo fragments or None, caller_owned, success, t, h,
+# history as (script, success) or NO_SUCCESS_ROW, error text or None)
+NO_SUCCESS_ROW = "no row with success true"
+NO_TRANSACTION_FLOWS = [
+    (
+        "nt_then_ordinary_failure",
+        {"V1__nt.sql": ("D", "UPD"), "V2__fails.sql": ("INS2", "FAIL")},
+        None,
+        False,
+        False,
+        T_DONE,
+        [],
+        [("V1__nt.sql", True), ("V2__fails.sql", False)],
+        None,
+    ),
+    (
+        "nt_callback",
+        {
+            "beforeMigrate__cb.sql": ("D", "BEGIN", "INS7", "COMMIT"),
+            "V1__case.sql": ("UPD",),
+        },
+        None,
+        False,
+        True,
+        T_DONE,
+        [7],
+        [("V1__case.sql", True)],
+        None,
+    ),
+    (
+        "nt_callback_left_open",
+        {"beforeMigrate__cb.sql": ("D", "BEGIN", "INS7"), "V1__case.sql": ("UPD",)},
+        None,
+        False,
+        False,
+        T_START,
+        [],
+        NO_SUCCESS_ROW,
+        None,
+    ),
+    (
+        "nt_undo",
+        {"V1__case.sql": ("UPD",)},
+        ("D", "BEGIN", "UNDO_UPD", "COMMIT"),
+        False,
+        True,
+        T_START,
+        [],
+        None,
+        None,
+    ),
+    (
+        "nt_caller_owned_refused",
+        {"V1__case.sql": ("D", "UPD")},
+        None,
+        True,
+        False,
+        T_START,
+        [],
+        NO_SUCCESS_ROW,
+        "from_sqlalchemy",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "place, name, files, undo, caller_owned, ok, t, h, history, error",
+    _combos([(*flow, PG) for flow in NO_TRANSACTION_FLOWS]),
+    indirect=["place"],
+)
+def test_no_transaction_flow(
+    place, tmp_path, name, files, undo, caller_owned, ok, t, h, history, error
+):
+    for filename, fragments in files.items():
+        create_migration(tmp_path, filename, _script(place.engine, fragments))
+    if undo:
+        create_undo_migration(tmp_path, "1", "case", _script(place.engine, undo))
+
+    result = place.run(tmp_path, caller_owned=caller_owned)
+
+    assert result.success is ok, result.error_message
+    if error:
+        assert_error_contains(result, error)
+    if history == NO_SUCCESS_ROW:
+        assert place.success_rows() == []
+    else:
+        _assert_truthful(place, result, len([f for f in files if f.startswith("V")]))
+    if undo:
+        undone = place.run(tmp_path, "undo")
+        assert undone.success, undone.error_message
+    assert place.t() == t
+    assert place.h() == h
+    if history not in (None, NO_SUCCESS_ROW):
+        assert [row for row in place.history() if row[0] in dict(history)] == history
+
+
+@pytest.mark.parametrize("place", ["cockroachdb", "mysql"], indirect=True)
+def test_no_transaction_refused_where_not_enabled(place, tmp_path):
+    create_migration(tmp_path, "V1__ok.sql", _script(place.engine, ("UPD",)))
+    create_migration(tmp_path, "beforeMigrate__cb.sql", _script(place.engine, ("INS7",)))
+    create_migration(tmp_path, "V2__nt.sql", _script(place.engine, ("D", "UPD")))
+
+    result = place.run(tmp_path)
+
+    assert result.success is False
+    assert_error_contains(result, f"-- dblift:no-transaction is not supported on {place.engine}")
+    assert place.t() == T_START
+    assert place.h() == []
+    assert place.success_rows() == []

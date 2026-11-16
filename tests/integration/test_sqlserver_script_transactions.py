@@ -426,3 +426,169 @@ def test_undo_script_that_commits_succeeds(account, tmp_path):
 
     assert undo_result.success, undo_result.error_message
     assert _t(account) == [(1, 2)]
+
+
+# Scripts that opt out of the wrapping transaction with a leading comment: the
+# script's own BEGIN / COMMIT / ROLLBACK are the real ones.
+D = "-- dblift:no-transaction\n"
+NT_CASES = [
+    (
+        "nt_conditional_commit",
+        f"BEGIN TRAN;\n{UPD}\nIF @@ROWCOUNT = 1 COMMIT; ELSE ROLLBACK;\nGO\n",
+        True,
+        [(2, 2)],
+        [],
+        [True],
+        None,
+    ),
+    (
+        "nt_conditional_rollback",
+        f"BEGIN TRAN;\n{UPD}\nIF @@ROWCOUNT = 100 COMMIT; ELSE ROLLBACK;\nGO\n",
+        True,
+        [(1, 2)],
+        [],
+        [True],
+        None,
+    ),
+    (
+        "nt_begin_and_commit_in_separate_units",
+        f"BEGIN TRAN;\nGO\n{UPD}\nGO\nCOMMIT;\nGO\n",
+        True,
+        [(2, 2)],
+        [],
+        [True],
+        None,
+    ),
+    ("nt_left_open", f"BEGIN TRAN;\nGO\n{UPD}\nGO\n", False, [(1, 2)], [], [False], None),
+    (
+        "nt_commit_a_open_b",
+        f"BEGIN TRAN;\nGO\n{UPD}\nGO\nCOMMIT;\nGO\n"
+        "BEGIN TRAN;\nGO\nINSERT INTO app.h VALUES (1);\nGO\n",
+        False,
+        [(2, 2)],
+        [],
+        [False],
+        None,
+    ),
+    (
+        "nt_commit_without_begin",
+        f"{UPD}\nIF @@ROWCOUNT = 1 COMMIT; ELSE ROLLBACK;\nGO\n",
+        False,
+        [(2, 2)],
+        [],
+        [False],
+        "no corresponding BEGIN TRANSACTION",
+    ),
+    (
+        "nt_commit_then_failure",
+        f"{UPD}\nGO\nINSERT INTO app.nosuch VALUES (1);\nGO\n",
+        False,
+        [(2, 2)],
+        [],
+        [False],
+        None,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "name, script, ok, t, h, history, error", NT_CASES, ids=[c[0] for c in NT_CASES]
+)
+def test_no_transaction_outcome(account, tmp_path, name, script, ok, t, h, history, error):
+    create_migration(tmp_path, "V1__case.sql", D + script)
+
+    result = _migrate(account, tmp_path)
+
+    assert result.success is ok, result.error_message
+    if error:
+        assert error in (result.error_message or ""), result.error_message
+    assert _t(account) == t
+    assert _h(account) == h
+    assert [success for _, success in _history(account)] == history
+    _assert_truthful(account, result)
+
+
+def _success_rows(account) -> list:
+    """History rows with success true; a history table that was never created has none."""
+    if _rows(account, f"SELECT OBJECT_ID('{SCHEMA}.dblift_schema_history')")[0][0] is None:
+        return []
+    return [row for row in _history(account) if row[1]]
+
+
+def test_no_transaction_then_ordinary_failure(account, tmp_path):
+    create_migration(tmp_path, "V1__nt.sql", f"{D}{UPD}\nGO\n")
+    create_migration(
+        tmp_path,
+        "V2__fails.sql",
+        "INSERT INTO app.h VALUES (2);\nGO\nINSERT INTO app.nosuch VALUES (1);\nGO\n",
+    )
+
+    result = _migrate(account, tmp_path)
+
+    assert not result.success
+    assert _history(account) == [("V1__nt.sql", True), ("V2__fails.sql", False)]
+    assert _h(account) == []
+    assert _t(account) == [(2, 2)]
+    _assert_truthful(account, result, 2)
+
+
+def test_no_transaction_callback_that_commits_keeps_its_work(account, tmp_path):
+    create_migration(
+        tmp_path,
+        "beforeMigrate__cb.sql",
+        f"{D}BEGIN TRAN;\nINSERT INTO app.h VALUES (7);\nCOMMIT;\nGO\n",
+    )
+    create_migration(tmp_path, "V1__case.sql", f"{UPD}\nGO\n")
+
+    result = _migrate(account, tmp_path)
+
+    assert result.success, result.error_message
+    assert _h(account) == [7]
+    assert _t(account) == [(2, 2)]
+    assert [success for _, success in _history(account)] == [True]
+    _assert_truthful(account, result)
+
+
+def test_no_transaction_callback_left_open_fails_the_run(account, tmp_path):
+    create_migration(
+        tmp_path,
+        "beforeMigrate__cb.sql",
+        f"{D}BEGIN TRAN;\nINSERT INTO app.h VALUES (7);\nGO\n",
+    )
+    create_migration(tmp_path, "V1__case.sql", f"{UPD}\nGO\n")
+
+    result = _migrate(account, tmp_path)
+
+    assert not result.success
+    assert _h(account) == []
+    assert _t(account) == [(1, 2)]
+    assert _success_rows(account) == []
+
+
+def test_no_transaction_undo_script_that_commits_succeeds(account, tmp_path):
+    create_migration(tmp_path, "V1__case.sql", f"{UPD}\nGO\n")
+    create_undo_migration(
+        tmp_path,
+        "1",
+        "case",
+        f"{D}BEGIN TRAN;\nUPDATE app.t SET a = 1 WHERE a = 2;\nCOMMIT;\nGO\n",
+    )
+    applied = _migrate(account, tmp_path)
+    assert applied.success, applied.error_message
+    _assert_truthful(account, applied)
+
+    undo_result = _undo(account, tmp_path)
+
+    assert undo_result.success, undo_result.error_message
+    assert _t(account) == [(1, 2)]
+
+
+def test_no_transaction_refused_on_a_caller_owned_connection(account, tmp_path):
+    create_migration(tmp_path, "V1__case.sql", f"{D}{UPD}\nGO\n")
+
+    result = _migrate_caller_owned(account, tmp_path)
+
+    assert not result.success
+    assert "from_sqlalchemy" in (result.error_message or ""), result.error_message
+    assert _t(account) == [(1, 2)]
+    assert _success_rows(account) == []

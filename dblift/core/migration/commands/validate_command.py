@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set, cast
 if TYPE_CHECKING:
     pass
 from dblift.core.logger.results import MigrationInfo, ValidateResult
+from dblift.core.seams.runtime_checks import SqlPreflightError
 
 from .base_command import BaseCommand
 
@@ -89,13 +90,17 @@ class ValidateCommand(BaseCommand):
 
         read_snapshot = self.state_manager.new_read_snapshot()
 
-        self._prepare_analysis_for_sql_callbacks(
-            scripts_dir,
-            ("beforeValidate", "afterValidate"),
-            recursive,
-            additional_dirs,
-            dir_recursive_map,
-        )
+        try:
+            self._prepare_analysis_for_sql_callbacks(
+                scripts_dir,
+                ("beforeValidate", "afterValidate"),
+                recursive,
+                additional_dirs,
+                dir_recursive_map,
+            )
+        except SqlPreflightError as refusal:
+            self._report_refusal(result, refusal)
+            return result
 
         def body() -> None:
             nonlocal read_snapshot

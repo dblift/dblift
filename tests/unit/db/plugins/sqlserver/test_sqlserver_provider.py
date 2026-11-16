@@ -354,3 +354,33 @@ def test_sqlserver_commit_and_rollback_forget_the_baseline(end):
         getattr(p, end)()
     assert p.transaction_outcome() is TransactionOutcome.INTACT
     assert p.execute_query.call_count == 1
+
+
+@pytest.mark.parametrize("count,expected", [(0, False), (1, True), (2, True)])
+def test_sqlserver_script_transaction_open_reads_the_transaction_count(count, expected):
+    p = object.__new__(SqlServerProvider)
+    conn = MagicMock()
+    result = MagicMock()
+    result.scalar.return_value = count
+    with patch.object(SqlAlchemyProvider, "_exec_unbound", return_value=result) as run:
+        assert p._script_transaction_open(conn) is expected
+    run.assert_called_once_with(conn, "SELECT @@TRANCOUNT")
+
+
+def test_sqlserver_script_rollback_sends_the_guarded_rollback_unbound():
+    p = object.__new__(SqlServerProvider)
+    conn = MagicMock()
+    with patch.object(SqlAlchemyProvider, "_exec_unbound") as run:
+        p._roll_back_script_transaction(conn)
+    run.assert_called_once_with(conn, "IF @@TRANCOUNT > 0 ROLLBACK")
+
+
+def test_sqlserver_supports_a_script_session():
+    assert object.__new__(SqlServerProvider).supports_script_session() is True
+
+
+def test_a_sqlserver_subclass_with_another_dialect_key_is_not_enabled():
+    class Other(SqlServerProvider):
+        canonical_dialect_key = "other"
+
+    assert object.__new__(Other).supports_script_session() is False

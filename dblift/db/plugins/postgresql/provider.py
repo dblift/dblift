@@ -28,6 +28,8 @@ from dblift.db.plugins.postgresql.search_path import search_path_schemas
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
+_LIBPQ_TRANSACTION_IDLE = 0
+
 
 def _quote_identifier(identifier: str) -> str:
     return '"' + identifier.replace('"', '""') + '"'
@@ -130,6 +132,22 @@ class PostgreSqlProvider(SqlAlchemyProvider):
             super()._end_open_transaction(conn)
             if undoes_set:
                 self._schema_applied_for = None
+
+    def supports_script_session(self) -> bool:
+        """Only PostgreSQL itself: engines built on this class are not enabled by inheriting."""
+        return self.canonical_dialect_key == "postgresql"
+
+    def _script_transaction_open(self, conn: Connection) -> bool:
+        """Whether the driver reports a transaction, in progress or failed."""
+        try:
+            driver = conn.connection.dbapi_connection
+            status = driver.info.transaction_status  # type: ignore[union-attr]
+        except AttributeError as exc:
+            raise ExecutionError(
+                "-- dblift:no-transaction needs a database driver that reports the "
+                "transaction status; this one does not"
+            ) from exc
+        return int(status) != _LIBPQ_TRANSACTION_IDLE
 
     def drop_object(self, obj: DroppableObject) -> None:
         """Drop one object without letting a failure abort the whole clean.

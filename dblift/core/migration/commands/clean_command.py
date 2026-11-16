@@ -9,6 +9,7 @@ from dblift.core.exceptions import FixedDboSchemaError
 from dblift.core.logger._null import NullLog
 from dblift.core.logger.console import rich_available
 from dblift.core.logger.results import CleanResult
+from dblift.core.seams.runtime_checks import SqlPreflightError
 from dblift.db.error import engine_error_message
 from dblift.db.provider_capabilities import get_clean_listing_warnings
 from dblift.db.provider_interfaces import CleanTargetProvider, TransactionalProvider
@@ -228,18 +229,22 @@ class CleanCommand(BaseCommand):
                     f"{error_count} error(s))"
                 )
 
-        return cast(
-            CleanResult,
-            self._run_command_lifecycle(
-                "clean",
-                result,
-                body,
-                preflight=preflight,
-                error_message_prefix="Clean operation failed",
-                header_kwargs={"dry_run": dry_run},
-                on_error=lambda: self._fire("afterCleanError"),
-            ),
-        )
+        try:
+            return cast(
+                CleanResult,
+                self._run_command_lifecycle(
+                    "clean",
+                    result,
+                    body,
+                    preflight=preflight,
+                    error_message_prefix="Clean operation failed",
+                    header_kwargs={"dry_run": dry_run},
+                    on_error=lambda: self._fire("afterCleanError"),
+                ),
+            )
+        except SqlPreflightError as refusal:
+            self._report_refusal(result, refusal)
+            return result
 
     def _log_clean_summary(self, result: CleanResult) -> None:
         """Log summary of cleaned objects grouped by type."""
