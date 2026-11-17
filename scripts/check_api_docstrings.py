@@ -1,26 +1,17 @@
 """Public-API docstring linter.
 
-Enforces that every module, class, function and method exposed under
-``api/`` carries a docstring. ``api/`` is the documented public surface
-consumed by IDE integrations, CI/CD pipelines and the rest of the
-``DBLift`` test suite — a missing docstring there has the same cost as
-a missing type signature.
+Enforces that every public module, class, function and method in the
+``dblift`` package carries a docstring. The gate is zero-tolerance: it
+scans the whole package (every subpackage and the top-level modules) and
+any violation fails the run. There are no per-root caps.
 
 Scope
 =====
 
-Default behaviour scans ``api/``: zero-tolerance, every violation fails
-CI. Extended behaviour scans additional roots (``cli/``, ``core/``,
-``config/``, ``db/``) under a **count-based ratchet** loaded from
-``--ratchet PATH``. The ratchet records a per-root cap on missing
-docstrings; new violations push the count above the cap and fail CI,
-while removed violations are rewarded with an informational nudge to
-commit a tighter cap. The mechanism mirrors the
-deferral-with-ratchet style used by ``scripts/lint_patterns.py`` for
-``.lint-patterns-baseline.txt``, except the unit of accounting is a
-count, not a fingerprinted entry — appropriate when the deferred
-violations number in the hundreds and per-line annotations would
-flood the source files.
+Default behaviour scans ``dblift/``. ``--paths`` narrows the scan to
+other directories or files. A root that is not found is an error (exit
+code ``2``), so running from the wrong working directory can never pass
+on an empty scan.
 
 What counts as "public"
 =======================
@@ -66,27 +57,24 @@ Running
 
 ::
 
-    python scripts/check_api_docstrings.py                                    # api/ strict
-    python scripts/check_api_docstrings.py --paths api cli core               # multi-root strict
-    python scripts/check_api_docstrings.py --paths cli core --ratchet F       # ratcheted
+    python scripts/check_api_docstrings.py                      # whole package
+    python scripts/check_api_docstrings.py --paths dblift/api   # one subtree
     python scripts/check_api_docstrings.py --help
 
-Exit code is ``0`` when no violations remain (or every root is at-or-below
-its ratchet cap) and ``1`` otherwise. CI gates the lint job on the
-zero-exit (see ``.github/workflows/code-quality.yml``).
+Exit code is ``0`` when no violations remain, ``1`` when there are
+violations and ``2`` when a scanned root does not exist. CI gates the
+lint job on the zero-exit (see ``.github/workflows/code-quality.yml``).
 """
 
 from __future__ import annotations
 
 import argparse
 import ast
-import json
 import os
 import sys
-from collections import Counter
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Iterable, List, Tuple
 
-DEFAULT_ROOTS = ("api",)
+DEFAULT_ROOTS = ("dblift",)
 ALLOW_ANNOTATION = "# lint: allow-missing-docstring"
 
 Violation = Tuple[str, int, str, str]  # (path, lineno, kind, name)
@@ -222,44 +210,6 @@ def scan_file(path: str) -> List[Violation]:
     return violations
 
 
-def _root_of(path: str, roots: Iterable[str]) -> Optional[str]:
-    """Match *path* to the most specific configured root prefix."""
-    norm = path.replace(os.sep, "/")
-    best: Optional[str] = None
-    for root in roots:
-        rnorm = root.replace(os.sep, "/").rstrip("/")
-        if norm == rnorm or norm.startswith(rnorm + "/"):
-            if best is None or len(rnorm) > len(best):
-                best = rnorm
-    return best
-
-
-def _load_ratchet(path: str) -> Dict[str, int]:
-    """Read the per-root caps from *path*. Comment keys (starting with ``_``) are ignored.
-
-    Keep in sync with ``scripts/check_line_length.py::_load_ratchet`` —
-    these two are duplicated on purpose (project convention is one
-    standalone script per lint rule, with no shared scripts/ package).
-    A third ratchet would justify extracting into ``scripts/_ratchet_utils.py``.
-    """
-    with open(path, encoding="utf-8") as fh:
-        data = json.load(fh)
-    if not isinstance(data, dict):
-        raise ValueError(f"{path}: expected a top-level JSON object, got {type(data).__name__}")
-    out: Dict[str, int] = {}
-    for key, value in data.items():
-        if key.startswith("_"):
-            continue
-        # ``bool`` is a subclass of ``int`` in Python, so a naive ``isinstance(value, int)``
-        # check silently accepts ``true`` / ``false`` from JSON as caps 1 / 0. A literal
-        # boolean almost certainly means a typo by the ratchet maintainer — reject it
-        # explicitly so the misconfiguration surfaces.
-        if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            raise ValueError(f"{path}: ratchet key '{key}' must map to a non-negative integer")
-        out[key] = value
-    return out
-
-
 def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -270,110 +220,32 @@ def main(argv: List[str] | None = None) -> int:
         default=list(DEFAULT_ROOTS),
         help=f"Directories or files to scan (default: {' '.join(DEFAULT_ROOTS)})",
     )
-    parser.add_argument(
-        "--ratchet",
-        metavar="PATH",
-        default=None,
-        help=(
-            "Load a per-root cap from a JSON file. With --ratchet, the script "
-            "fails only when a root exceeds its recorded cap; counts at or below "
-            "the cap pass. Without --ratchet, every violation fails."
-        ),
-    )
     args = parser.parse_args(argv)
+
+    missing = [path for path in args.paths if not os.path.exists(path)]
+    if missing:
+        print(
+            f"error: scan root(s) {', '.join(missing)} not found "
+            f"(cwd: {os.getcwd()}). Run from the repository root.",
+            file=sys.stderr,
+        )
+        return 2
 
     all_violations: List[Violation] = []
     for path in _iter_python_files(args.paths):
         all_violations.extend(scan_file(path))
 
-    if args.ratchet is None:
-        if not all_violations:
-            print(f"OK: no missing docstrings in {' '.join(args.paths)}")
-            return 0
-        print(f"FAIL: {len(all_violations)} missing docstring(s) in public API surface:")
-        for path, lineno, kind, name in all_violations:
-            print(f"  {path}:{lineno}  {kind}  {name}")
-        print(
-            "\nFix by adding a docstring, or — if the case is genuinely exempt — "
-            f"annotate the def/class line with `{ALLOW_ANNOTATION}: <reason>`."
-        )
-        return 1
-
-    caps = _load_ratchet(args.ratchet)
-    counts: Counter[str] = Counter()
-    unmapped: List[Violation] = []
-    for v in all_violations:
-        root = _root_of(v[0], args.paths)
-        if root is None:
-            unmapped.append(v)
-        else:
-            counts[root] += 1
-
-    if unmapped:
-        print(
-            f"FAIL: {len(unmapped)} violation(s) outside any configured root — "
-            "this should not happen, please report:"
-        )
-        for path, lineno, kind, name in unmapped:
-            print(f"  {path}:{lineno}  {kind}  {name}")
-        return 1
-
-    failing: List[str] = []
-    failing_roots: List[str] = []
-    suggest_tighten: List[str] = []
-    for root in args.paths:
-        rnorm = root.replace(os.sep, "/").rstrip("/")
-        current = counts.get(rnorm, 0)
-        cap = caps.get(rnorm)
-        if cap is None:
-            if current > 0:
-                failing.append(
-                    f"  {rnorm}: {current} violation(s) — root not declared in ratchet "
-                    f"{args.ratchet}. Add a cap for it or drop it from --paths."
-                )
-                failing_roots.append(rnorm)
-            continue
-        if current > cap:
-            failing.append(
-                f"  {rnorm}: {current} violation(s), cap is {cap}. Net +{current - cap} "
-                "since the last ratchet update — add docstrings or annotate."
-            )
-            failing_roots.append(rnorm)
-        elif current < cap:
-            suggest_tighten.append(
-                f"  {rnorm}: {current} violation(s), cap is {cap} — you can lower "
-                f"the cap by {cap - current} in {args.ratchet}."
-            )
-
-    if failing:
-        print("FAIL: docstring ratchet exceeded:")
-        for line in failing:
-            print(line)
-        # Help signal: print the actual violations in the first failing root.
-        # Use the structured root name captured during the loop above, not a
-        # re-parse of the formatted message — the message format and the
-        # filter logic should never share a string contract.
-        first_root_norm = failing_roots[0]
-        print(f"\nViolations in '{first_root_norm}':")
-        for path, lineno, kind, name in all_violations:
-            if _root_of(path, args.paths) == first_root_norm:
-                print(f"  {path}:{lineno}  {kind}  {name}")
-        print(
-            f"\nFix by adding a docstring, or annotate with "
-            f"`{ALLOW_ANNOTATION}: <reason>` on the def/class line."
-        )
-        return 1
-
-    summary = ", ".join(
-        f"{r.replace(os.sep, '/').rstrip('/')}={counts.get(r.replace(os.sep, '/').rstrip('/'), 0)}/{caps.get(r.replace(os.sep, '/').rstrip('/'), 'n/a')}"
-        for r in args.paths
+    if not all_violations:
+        print(f"OK: no missing docstrings in {' '.join(args.paths)}")
+        return 0
+    print(f"FAIL: {len(all_violations)} missing docstring(s) in public API surface:")
+    for path, lineno, kind, name in all_violations:
+        print(f"  {path}:{lineno}  {kind}  {name}")
+    print(
+        "\nFix by adding a docstring, or — if the case is genuinely exempt — "
+        f"annotate the def/class line with `{ALLOW_ANNOTATION}: <reason>`."
     )
-    print(f"OK: docstring ratchet respected ({summary})")
-    if suggest_tighten:
-        print("\nThe ratchet is loose on these roots — consider committing tighter caps:")
-        for line in suggest_tighten:
-            print(line)
-    return 0
+    return 1
 
 
 if __name__ == "__main__":

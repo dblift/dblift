@@ -25,10 +25,7 @@ def _run_migration(command, migration, result):
 
 @pytest.mark.unit
 def test_migrate_dispatches_generic_and_command_specific_each_callbacks():
-    command = MigrateCommand.__new__(MigrateCommand)
-    command.journal = None
-    command.execution_engine = MagicMock()
-    command.log = MagicMock()
+    command = MigrateCommand(log=MagicMock(), execution_engine=MagicMock())
     command._execute_callbacks = MagicMock()
     migration = SimpleNamespace(
         script_name="V1__init.sql",
@@ -55,10 +52,7 @@ def test_failing_beforeEachMigrate_callback_surfaces_its_own_error():
     through, so a failing callback surfaced as UnboundLocalError instead of the
     callback's real error.
     """
-    command = MigrateCommand.__new__(MigrateCommand)
-    command.journal = None
-    command.execution_engine = MagicMock()
-    command.log = MagicMock()
+    command = MigrateCommand(log=MagicMock(), execution_engine=MagicMock())
 
     def _execute_callbacks(scripts_dir, event, *args, **kwargs):
         if event == "beforeEachMigrate":
@@ -104,15 +98,15 @@ def test_each_callback_banner_logs_once_per_migration_in_a_batch():
         def _write_log_event(self, event, console_only=False):
             logged_messages.append(event.message)
 
-    command = MigrateCommand.__new__(MigrateCommand)
-    command.log = _RecordingLog("test")
-    command.execution_engine = MagicMock()
-
+    log = _RecordingLog("test")
     callback = SimpleNamespace(script_name="beforeEachMigrate__mark.sql")
-    command.script_manager = MagicMock()
-    command.script_manager.get_callbacks_by_event.return_value = [callback]
-    command.state_manager = MigrationStateManager(
-        command.log, MagicMock(), command.script_manager, MagicMock()
+    script_manager = MagicMock()
+    script_manager.get_callbacks_by_event.return_value = [callback]
+    command = MigrateCommand(
+        log=log,
+        execution_engine=MagicMock(),
+        script_manager=script_manager,
+        state_manager=MigrationStateManager(log, MagicMock(), script_manager, MagicMock()),
     )
 
     scripts_dir = Path("migrations")
@@ -133,38 +127,3 @@ def test_each_callback_banner_logs_once_per_migration_in_a_batch():
         "expected one banner line per migration in the batch, got "
         f"{len(banner_lines)}: {logged_messages}"
     )
-
-
-@pytest.mark.unit
-def test_each_callback_banner_falls_back_when_len_raises():
-    """A callbacks collection that declares ``__len__`` but raises on call
-    (a malformed/duck-typed collection) must still log a banner line,
-    falling back to a plain "callback(s)" message instead of propagating."""
-
-    class _BrokenLen:
-        def __len__(self):
-            raise TypeError("len() not actually supported")
-
-        def __iter__(self):
-            return iter([SimpleNamespace(script_name="beforeEachMigrate__mark.sql")])
-
-        def __bool__(self):
-            return True
-
-    command = MigrateCommand.__new__(MigrateCommand)
-    command.log = MagicMock()
-    command.execution_engine = MagicMock()
-    command.script_manager = MagicMock()
-    command.script_manager.get_callbacks_by_event.return_value = _BrokenLen()
-    command.state_manager = MigrationStateManager(
-        command.log, MagicMock(), command.script_manager, MagicMock()
-    )
-
-    command._execute_callbacks(Path("migrations"), "beforeEachMigrate", True, None, None)
-
-    banner_calls = [
-        call.args[0]
-        for call in command.log.info.call_args_list
-        if call.args[0].startswith("Executing") and "callback(s)" in call.args[0]
-    ]
-    assert banner_calls == ["Executing beforeEachMigrate callback(s)"]

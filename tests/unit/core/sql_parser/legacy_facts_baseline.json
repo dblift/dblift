@@ -462,7 +462,6 @@
               ]
             }
           ],
-          "declared_column_comments": null,
           "affected_columns": [],
           "events": null,
           "diagnostic": null,
@@ -491,7 +490,6 @@
           "predicate": null,
           "declared_columns": [],
           "declared_constraints": [],
-          "declared_column_comments": null,
           "affected_columns": [],
           "events": null,
           "diagnostic": null,
@@ -516,7 +514,6 @@
           "predicate": "id = 1",
           "declared_columns": [],
           "declared_constraints": [],
-          "declared_column_comments": null,
           "affected_columns": [
             "parent_id"
           ],
@@ -543,7 +540,6 @@
           "predicate": "id = 1",
           "declared_columns": [],
           "declared_constraints": [],
-          "declared_column_comments": null,
           "affected_columns": [],
           "events": [
             "DELETE"
@@ -568,7 +564,6 @@
           "predicate": null,
           "declared_columns": [],
           "declared_constraints": [],
-          "declared_column_comments": null,
           "affected_columns": [],
           "events": null,
           "diagnostic": null,

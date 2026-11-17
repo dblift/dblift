@@ -25,10 +25,15 @@ from __future__ import annotations
 import logging
 import os
 from collections.abc import Callable
-from importlib.metadata import PackageNotFoundError, entry_points, version
+from importlib.metadata import entry_points
 from typing import Protocol
 
 from dblift.core.constants import ENV_PREFIX
+from dblift.core.premium_manifest import (
+    ENTERPRISE_DISTRIBUTION,
+    PRO_DISTRIBUTION,
+    distribution_installed,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -46,7 +51,7 @@ _features_loaded = False
 # added -- an unlisted distribution is indistinguishable here from "not
 # installed", so _any_tier_distribution_installed silently reverts to the
 # pre-fix never-retries behavior for it.
-_KNOWN_TIER_DISTRIBUTIONS = ("dblift-pro", "dblift-enterprise")
+_KNOWN_TIER_DISTRIBUTIONS = (PRO_DISTRIBUTION, ENTERPRISE_DISTRIBUTION)
 
 
 def _any_tier_distribution_installed() -> bool:
@@ -60,16 +65,7 @@ def _any_tier_distribution_installed() -> bool:
     (the documented race an empty ``entry_points()`` result alone can't
     rule out).
     """
-    for name in _KNOWN_TIER_DISTRIBUTIONS:
-        try:
-            version(name)
-        except PackageNotFoundError:
-            continue
-        except Exception as exc:  # a broken distribution must not break startup
-            _log.warning("Could not check whether %r is installed: %s", name, exc)
-            continue
-        return True
-    return False
+    return any(distribution_installed(name) for name in _KNOWN_TIER_DISTRIBUTIONS)
 
 
 class _FeatureEntryPoint(Protocol):

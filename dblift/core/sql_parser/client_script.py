@@ -101,7 +101,8 @@ class ClientScript:
         if following and following.type != TokenType.EOF and following.line == token.line:
             self._refuse_directive_after_terminator(following)
             raise UnsafeStatementSplitError(
-                f"';' is not the last text on line {token.line}: {self.client_name} rejects the line "
+                f"';' is not the last text on line {token.line}: {self.client_name} rejects the "
+                "line "
                 "(ORA-03405); move the comment or the next statement to its own line"
             )
         self._last_terminator = ";"
@@ -192,7 +193,8 @@ class ClientScript:
         )
         if found is not None:
             raise UnsupportedMetaCommandError(
-                f"{self.client_name} directive {found[0]!r} follows a ';' on line {following.line}: "
+                f"{self.client_name} directive {found[0]!r} follows a ';' on line "
+                f"{following.line}: "
                 f"{self.client_name} rejects the line (ORA-03405); put it on its own line"
             )
 

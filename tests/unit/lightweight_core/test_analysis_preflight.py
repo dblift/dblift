@@ -1,23 +1,28 @@
 """Required journal analysis must be ready before any migration write."""
 
 import sys
-from unittest.mock import Mock
+from unittest.mock import Mock, create_autospec
 
 import pytest
 
+from dblift.core.migration.journals.migration_journal import MigrationJournal
 from dblift.core.migration.sql.sql_execution_service import SqlExecutionService
 from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.db.base_quirks import BaseQuirks
 from tests.unit.lightweight_core._support import run_python
 
 
+def _capturing_journal():
+    journal = create_autospec(MigrationJournal, instance=True)
+    journal.capture_objects = True
+    return journal
+
+
 def test_required_analysis_is_prepared_before_execution():
     provider = Mock()
     analyzer = Mock()
     analyzer.prepare_object_analysis.side_effect = ModuleNotFoundError("sqlglot")
-    journal = Mock(
-        spec=["record_statement_start", "record_statement_complete", "record_object_changes"]
-    )
+    journal = _capturing_journal()
     service = SqlExecutionService(provider, analyzer, journal=journal)
 
     with pytest.raises(ModuleNotFoundError, match="sqlglot"):
@@ -34,9 +39,7 @@ def test_direct_statement_call_prepares_before_provider_or_journal():
     provider.execute_statement.return_value = 1
     analyzer = Mock()
     analyzer.prepare_object_analysis.side_effect = ModuleNotFoundError("sqlglot")
-    journal = Mock(
-        spec=["record_statement_start", "record_statement_complete", "record_object_changes"]
-    )
+    journal = _capturing_journal()
     service = SqlExecutionService(provider, analyzer, journal=journal)
 
     with pytest.raises(ModuleNotFoundError, match="sqlglot"):
@@ -50,7 +53,7 @@ def test_direct_statement_call_prepares_before_provider_or_journal():
 def test_preparation_retries_after_failure_and_then_caches_success():
     analyzer = Mock()
     analyzer.prepare_object_analysis.side_effect = [ModuleNotFoundError("sqlglot"), None]
-    journal = Mock(spec=["record_object_changes"])
+    journal = MigrationJournal()
     service = SqlExecutionService(Mock(), analyzer, journal=journal)
 
     with pytest.raises(ModuleNotFoundError, match="sqlglot"):
@@ -66,7 +69,7 @@ def test_full_analysis_without_sqlglot_names_the_extra_before_any_statement_runs
     service = SqlExecutionService(
         provider,
         StatementReader("sqlite"),
-        journal=Mock(spec=["record_object_changes"]),
+        journal=MigrationJournal(),
         quirks=BaseQuirks(),
     )
     with pytest.raises(ModuleNotFoundError, match=r"dblift\[analysis\]"):

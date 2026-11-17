@@ -40,7 +40,8 @@ def get_row_value(row: Dict[str, Any], key: str) -> Any:
         alt_keys.add(compact_key)
         alt_keys.add(compact_key.upper())
 
-    # DB2-style abbreviations (sequence -> seq, constraint -> const, table -> tab, column -> col, index -> ind)
+    # DB2-style abbreviations (sequence -> seq, constraint -> const, table -> tab, column -> col,
+    # index -> ind)
     if "sequence" in key:
         alt_keys.add(key.replace("sequence", "seq"))
         alt_keys.add(key.replace("sequence", "seq").replace("_", ""))

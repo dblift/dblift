@@ -158,7 +158,7 @@
       ]
     },
     "path": "analyzer",
-    "reason": "The MySQL tokenizer reads the double-quoted proposed name as STRING, not IDENTIFIER. The connection's ANSI_QUOTES mode is unavailable, so the reader cannot publish its identity. Source head: 'CREATE INDEX \"Ix\" ON \"T\" (a) TABLESPACE ts'; dialect tokens: CREATE(CREATE) INDEX(INDEX) STRING(Ix) ON(ON) STRING(T) L_PAREN(() VAR(a) R_PAREN()). Prior native observation for this exact SQL: Not a MySQL statement: MySQL 8.4.11 rejects it with error 1064 and MariaDB 11.8.8-MariaDB-ubu2404 with error 1064 (run on throwaway servers, 2026-10-20).",
+    "reason": "MySQL's CREATE INDEX has no TABLESPACE clause (an index_option is KEY_BLOCK_SIZE, an index type, WITH PARSER, COMMENT, visibility or an engine attribute); MySQL and MariaDB reject it with error 1064. The double-quoted `\"Ix\"` would be a string unless ANSI_QUOTES is set. The reader reports the CREATE with a diagnostic and names nothing, where the extraction took the index name.",
     "sql": "CREATE INDEX \"Ix\" ON \"T\" (a) TABLESPACE ts"
   },
   "041c72644271a79f/analyzer": {
@@ -2326,7 +2326,7 @@
       "kind": "DDL",
       "operation": "DROP"
     },
-    "issue": "https://github.com/dblift/dblift/issues/775",
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
       "analyzer": [
         [
@@ -2507,7 +2507,7 @@
       "kind": "DDL",
       "operation": "DROP"
     },
-    "issue": "https://github.com/dblift/dblift/issues/775",
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
       "analyzer": [
         [
@@ -5663,7 +5663,7 @@
       "kind": "DDL",
       "operation": "DROP"
     },
-    "issue": "https://github.com/dblift/dblift/issues/775",
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
       "analyzer": [
         [
@@ -6913,7 +6913,7 @@
       "kind": "DDL",
       "operation": "DROP"
     },
-    "issue": "https://github.com/dblift/dblift/issues/775",
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
       "analyzer": [
         [
@@ -9837,7 +9837,7 @@
       "kind": "DDL",
       "operation": "DROP"
     },
-    "issue": "https://github.com/dblift/dblift/issues/775",
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
     "old": {
       "analyzer": [
         [
@@ -10121,5 +10121,66 @@
       "MySQL 8.4.11": "1064"
     },
     "sql": "COPY child FROM 'input.csv'"
+  },
+  "6e46fc27b60686e4": {
+    "sql": "INSERT OVERWRITE INTO target SELECT * FROM source",
+    "path": "both",
+    "class": "no-old",
+    "reason": "Input harvested after this family's extraction was frozen (the Snowflake INSERT OVERWRITE form): no extraction can be recomputed for it, so there is nothing to compare. The reader reads it as INSERT \u2026 SELECT: `target` altered, `source` referenced.",
+    "issue": "",
+    "old": {
+      "hybrid": null,
+      "analyzer": null
+    },
+    "facts": {
+      "events": [
+        "INSERT"
+      ],
+      "kind": "DML",
+      "objects": [
+        [
+          "target",
+          "TABLE",
+          "altered",
+          null
+        ],
+        [
+          "source",
+          "TABLE",
+          "referenced",
+          null
+        ]
+      ],
+      "operation": "INSERT",
+      "target": "target",
+      "target_sql": "target"
+    }
+  },
+  "78fceffe915fca5c": {
+    "sql": "CREATE INDEX idx_name ON employees(name) TABLESPACE users",
+    "path": "both",
+    "class": "opaque-reader-gap",
+    "reason": "MySQL's CREATE INDEX has no TABLESPACE clause (an index_option is KEY_BLOCK_SIZE, an index type, WITH PARSER, COMMENT, visibility or an engine attribute); MySQL and MariaDB reject it with error 1064. The reader reports the CREATE with a diagnostic and names nothing, where the extraction took the index name.",
+    "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+    "old": {
+      "hybrid": [
+        [
+          "INDEX",
+          "idx_name",
+          null
+        ]
+      ],
+      "analyzer": [
+        [
+          "INDEX",
+          "idx_name"
+        ]
+      ]
+    },
+    "facts": {
+      "diagnostic": "index: mysql TABLESPACE clause is not supported",
+      "kind": "DDL",
+      "operation": "CREATE"
+    }
   }
 }

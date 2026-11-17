@@ -24,11 +24,11 @@ import pytest
 
 from dblift.api.events import EventType
 from dblift.config import DbliftConfig
+from tests.unit._client_factory import bare_client
 
 
 def _make_client(undo_result):
     """Build a minimal Client stub for event-emission tests."""
-    from dblift.api.client import DBLiftClient
 
     provider = MagicMock()
     provider.supports_transactions.return_value = False
@@ -36,7 +36,7 @@ def _make_client(undo_result):
     executor = MagicMock()
     executor.undo.return_value = undo_result
 
-    client = DBLiftClient.__new__(DBLiftClient)
+    client = bare_client()
     client.config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
     client.provider = provider
     client.executor = executor
@@ -94,7 +94,6 @@ class TestUndoEvents:
         assert failed_calls[0].args[1]["error"] == "No undo script for V2"
 
     def test_undo_exception_still_emits_failed(self):
-        from dblift.api.client import DBLiftClient
 
         provider = MagicMock()
         provider.supports_transactions.return_value = False
@@ -102,7 +101,7 @@ class TestUndoEvents:
         executor = MagicMock()
         executor.undo.side_effect = RuntimeError("DB gone")
 
-        client = DBLiftClient.__new__(DBLiftClient)
+        client = bare_client()
         client.config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
         client.provider = provider
         client.executor = executor

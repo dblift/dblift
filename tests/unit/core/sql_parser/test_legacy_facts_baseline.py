@@ -187,7 +187,6 @@ def test_sqlite_statement_facts_snapshot():
                     }
                     for constraint in facts.declared_constraints
                 ],
-                "declared_column_comments": facts.declared_column_comments,
                 "affected_columns": list(facts.affected_columns),
                 "events": sorted(facts.events) if facts.events else None,
                 "diagnostic": facts.diagnostic,

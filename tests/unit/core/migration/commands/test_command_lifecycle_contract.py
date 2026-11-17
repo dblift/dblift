@@ -249,7 +249,9 @@ class TestPrintMainHeaderOnceRouting:
 def _build_command(command_class, **collaborators):
     """Build *command_class* with MagicMock collaborators, overridable by keyword."""
     deps = {
-        "config": SimpleNamespace(database=SimpleNamespace(schema="public", type="postgresql")),
+        "config": SimpleNamespace(
+            database=SimpleNamespace(schema="public", type="postgresql"), strict_mode=False
+        ),
         "log": MagicMock(),
         "provider": MagicMock(),
         "script_manager": MagicMock(),

@@ -6,9 +6,10 @@ based on their execution history and context.
 """
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from dblift.core.logger import Log
+from dblift.core.migration._type_match import migration_type_name
 from dblift.core.migration.migration import normalize_migration_checksum
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import MigrationEligibility
@@ -26,16 +27,6 @@ class MigrationStateService:
             logger: Logger instance for debugging
         """
         self.logger = logger
-
-    def _get_migration_type_string(self, migration_type: Any) -> str:
-        """Safely get migration type as string, handling both enum and string types.
-
-        Delegates to the shared helper in ``dblift.core.migration._type_match``;
-        kept as a method for backwards compatibility with existing call sites.
-        """
-        from dblift.core.migration._type_match import migration_type_name
-
-        return migration_type_name(migration_type)
 
     def determine_state(self, migration: Any, context: Dict[str, Any]) -> MigrationDisplayState:
         """Determine the display state of a migration based on its context.
@@ -60,7 +51,7 @@ class MigrationStateService:
         # Get migration properties
         version = getattr(migration, "version", None)
         migration_type_raw = getattr(migration, "type", None)
-        migration_type = self._get_migration_type_string(migration_type_raw).upper()
+        migration_type = migration_type_name(migration_type_raw).upper()
         success = getattr(migration, "success", None)
         checksum = getattr(migration, "checksum", None)
         script_name = getattr(migration, "script_name", "")
@@ -77,14 +68,9 @@ class MigrationStateService:
         if is_migration_failure(success):
             # Check if this is a missing migration (no longer exists in filesystem)
             if hasattr(migration, "resolved") and not migration.resolved:
-                # Check if version is in the future
-                if version and current_version:
-                    if self._compare_versions(version, current_version) > 0:
-                        return MigrationDisplayState.FAILED_FUTURE
-                    else:
-                        return MigrationDisplayState.FAILED_MISSING
-                else:
-                    return MigrationDisplayState.FAILED_MISSING
+                if self._is_future(version, current_version):
+                    return MigrationDisplayState.FAILED_FUTURE
+                return MigrationDisplayState.FAILED_MISSING
             else:
                 return MigrationDisplayState.FAILED
 
@@ -120,14 +106,9 @@ class MigrationStateService:
 
             # Check if migration is missing (success but not resolved)
             if hasattr(migration, "resolved") and not migration.resolved:
-                # Check if version is in the future
-                if version and current_version:
-                    if self._compare_versions(version, current_version) > 0:
-                        return MigrationDisplayState.FUTURE
-                    else:
-                        return MigrationDisplayState.MISSING
-                else:
-                    return MigrationDisplayState.MISSING
+                if self._is_future(version, current_version):
+                    return MigrationDisplayState.FUTURE
+                return MigrationDisplayState.MISSING
 
             # Default successful state
             return MigrationDisplayState.SUCCESS
@@ -158,7 +139,7 @@ class MigrationStateService:
         # Get migration properties
         version = getattr(migration, "version", None)
         # Migration type may be an enum; normalize to uppercase string safely
-        migration_type = self._get_migration_type_string(getattr(migration, "type", None)).upper()
+        migration_type = migration_type_name(getattr(migration, "type", None)).upper()
 
         # Handle different migration types
         if migration_type == "REPEATABLE":
@@ -181,6 +162,12 @@ class MigrationStateService:
 
         # Default pending state
         return MigrationEligibility.PENDING
+
+    def _is_future(self, version: Optional[str], current_version: Optional[str]) -> bool:
+        """True when a version is known and lies beyond the current one."""
+        return bool(
+            version and current_version and self._compare_versions(version, current_version) > 0
+        )
 
     def _compare_versions(self, version1: str, version2: str) -> int:
         """Compare two version strings. Delegates to shared compare_versions utility."""

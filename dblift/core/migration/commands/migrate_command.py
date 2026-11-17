@@ -5,39 +5,28 @@ Migrate command implementation.
 from contextlib import ExitStack, nullcontext
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, cast
-
-from dblift.config import DbliftConfig
-from dblift.db.provider_interfaces import TransactionalProvider
-
-if TYPE_CHECKING:
-    from dblift.core.migration.journals.migration_journal import MigrationJournal
-    from dblift.core.migration.placeholders.placeholder_service import PlaceholderService
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 from dblift.core.constants import DEFAULT_MIGRATION_LOCK_TIMEOUT_SECONDS
-from dblift.core.logger import Log
 from dblift.core.logger.results import MigrateResult, MigrationInfo, MigrationSqlInfo
-from dblift.core.migration.executor.execution_engine import ExecutionEngine
-from dblift.core.migration.executor.migration_helpers import MigrationHelpers
-from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration, MigrationType
 from dblift.core.migration.presentation import presentation_for
-from dblift.core.migration.rules.migration_rules import MigrationRules
-from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.lint import SAFE, lint_pending_scripts
 from dblift.core.migration.sql.script_analysis import dialect_of
-from dblift.core.migration.state.migrate_plan import StrictModeError
+from dblift.core.migration.state.migrate_plan import MigratePlan, StrictModeError
 from dblift.core.migration.state.migration_state import MigrationReadSnapshot, MigrationState
-from dblift.core.migration.state.migration_state_manager import MigrationStateManager
-from dblift.core.migration.ui.migration_ui import MigrationUI
 from dblift.core.migration.ui.progress import NullProgress
 from dblift.core.migration.version_utils import compare_versions
-from dblift.core.sql_validator.migration_validator import MigrationValidator
-from dblift.db.base_provider import BaseProvider
+from dblift.core.seams.runtime_checks import (
+    SqlPreflightError,
+    registered_checks,
+    run_checks,
+)
 from dblift.db.error import engine_error_message, redact_driver_error_text
+from dblift.db.provider_interfaces import TransactionalProvider
 
 from ._script_runner import ScriptRunner, ScriptRunPolicy
-from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand, BaseCommandContext
+from .base_command import MIGRATION_LOCK_REFUSAL, BaseCommand
 
 MIGRATE_POLICY = ScriptRunPolicy(
     before_events=("beforeEach", "beforeEachMigrate"),
@@ -51,47 +40,6 @@ class MigrateCommand(BaseCommand):
     """Handles the 'migrate' command execution."""
 
     _check_callback_sql_preflight = True
-
-    def __init__(
-        self,
-        ctx_or_config: Optional[Union[BaseCommandContext, DbliftConfig]] = None,
-        log: Optional[Log] = None,
-        provider: Optional[BaseProvider] = None,
-        script_manager: Optional[MigrationScriptManager] = None,
-        history_manager: Optional[MigrationHistoryManager] = None,
-        validator: Optional[MigrationValidator] = None,
-        execution_engine: Optional[ExecutionEngine] = None,
-        migration_helpers: Optional[MigrationHelpers] = None,
-        state_manager: Optional[MigrationStateManager] = None,
-        migration_ui: Optional[MigrationUI] = None,
-        migration_rules: Optional[MigrationRules] = None,
-        journal: Optional["MigrationJournal"] = None,
-        placeholder_service: Optional["PlaceholderService"] = None,
-        config: Optional[DbliftConfig] = None,
-    ):
-        """Initialize migrate command.
-
-        Args:
-            ctx_or_config: A :class:`~.base_command.BaseCommandContext` (preferred)
-                or the application config (legacy).
-            (remaining args are legacy; ignored when ctx provided)
-        """
-        super().__init__(
-            ctx_or_config,
-            log=log,
-            provider=provider,
-            script_manager=script_manager,
-            history_manager=history_manager,
-            validator=validator,
-            execution_engine=execution_engine,
-            migration_helpers=migration_helpers,
-            state_manager=state_manager,
-            migration_ui=migration_ui,
-            migration_rules=migration_rules,
-            journal=journal,
-            placeholder_service=placeholder_service,
-            config=config,
-        )
 
     def _collect_visible_sql(
         self, migrations: List[Migration], result: MigrateResult, record: bool = True
@@ -289,7 +237,8 @@ class MigrateCommand(BaseCommand):
                     break
                 sink.describe(migration.script_name)
                 self.log.debug(
-                    f"About to execute migration: {migration.script_name} (version: {migration.version})"
+                    f"About to execute migration: {migration.script_name} (version: "
+                    f"{migration.version})"
                 )
                 if result.show_sql:
                     self._collect_visible_sql([migration], result)
@@ -335,6 +284,168 @@ class MigrateCommand(BaseCommand):
         )
         result.current_schema_version = migration_state_after.current_version
 
+    def _log_nothing_pending(
+        self, current_version: Optional[str], target_version: Optional[str]
+    ) -> None:
+        """Log that no migration is pending, naming the target when it is already reached."""
+        if (
+            target_version is not None
+            and current_version
+            and compare_versions(current_version, target_version) >= 0
+        ):
+            self.log.info(
+                f"No pending migrations found: the current version {current_version} "
+                f"is at or above the target version {target_version}, nothing to apply"
+            )
+        else:
+            self.log.info("No pending migrations found")
+
+    @staticmethod
+    def _events_fired_by(migrations: List[Migration]) -> List[str]:
+        """The callback events a run of ``migrations`` fires."""
+        events = [
+            "beforeMigrate",
+            "afterMigrate",
+            "afterMigrateError",
+            "beforeEach",
+            "afterEach",
+            "beforeEachMigrate",
+            "afterEachMigrate",
+        ]
+        if any(getattr(m.type, "value", m.type) in VERSIONED_SCRIPT_TYPES for m in migrations):
+            events.extend(("beforeVersioned", "afterVersioned"))
+        if any(m.type == MigrationType.REPEATABLE for m in migrations):
+            events.extend(("beforeRepeatable", "afterRepeatable"))
+        return events
+
+    def _migrate_holding_lock(
+        self,
+        lock: ExitStack,
+        result: MigrateResult,
+        *,
+        pending_migrations: List[Migration],
+        plan_migrate: Callable[..., MigratePlan],
+        validate: Callable[[MigrationState, MigrationReadSnapshot], Tuple[bool, object]],
+        preflight_sql: Callable[[List[Migration]], None],
+        mark_as_executed: bool,
+        contextual_sql_checks: bool,
+        check_execution_sql: bool,
+    ) -> bool:
+        """Acquire the migration lock into ``lock``, plan again, then apply what is pending.
+
+        Returns False when the run stops here and the final schema version is not read:
+        the lock is refused, the locked plan is refused in strict mode, its validation
+        fails, or marking as executed or its commit fails. Other errors propagate.
+        """
+        if not lock.enter_context(self._migration_lock()):
+            self.log.error(MIGRATION_LOCK_REFUSAL)
+            result.set_error(MIGRATION_LOCK_REFUSAL)
+            result.complete()
+            return False
+
+        # Plan again now that the lock is held: another process may have
+        # applied (or undone) migrations while we were waiting, and
+        # running a stale plan would fail and write duplicate failure
+        # rows into the history table.
+        locked_snapshot = self.state_manager.new_read_snapshot()
+        try:
+            locked_plan = plan_migrate(read_snapshot=locked_snapshot)
+        except StrictModeError as e:
+            # Nothing ran, so no error callbacks fire.
+            self.log.error(str(e))
+            result.set_error(str(e))
+            return False
+        locked_state = locked_plan.state
+        locked_pending = list(locked_plan.pending)
+
+        locked_success, locked_errors = validate(locked_state, locked_snapshot)
+        if not locked_success:
+            # Nothing ran, so no error callbacks fire.
+            result.set_error(f"Validation failed: {locked_errors}")
+            result.complete()
+            return False
+
+        if locked_pending and not mark_as_executed:
+            callbacks = self._callbacks_for(
+                self._events_fired_by(locked_pending), self._pin_callback_snapshot()
+            )
+            self._refuse_unsupported_script_sessions(locked_pending + callbacks)
+
+        planned = {m.script_name for m in pending_migrations}
+        newly_pending = [m for m in locked_pending if m.script_name not in planned]
+        to_check = locked_pending if contextual_sql_checks else newly_pending
+        if to_check and not mark_as_executed and check_execution_sql:
+            preflight_sql(to_check)
+
+        self._log_applied_concurrently(pending_migrations, locked_pending)
+
+        if not locked_pending:
+            self.log.info(
+                "All pending migrations were applied by another "
+                "process while waiting for the lock"
+            )
+        elif mark_as_executed:
+            return self._mark_as_executed_and_commit(locked_pending, result)
+        else:
+            # Separate versioned and repeatable migrations for targeted callbacks
+            versioned_migrations = [
+                m
+                for m in locked_pending
+                if getattr(m.type, "value", m.type) in VERSIONED_SCRIPT_TYPES
+            ]
+            repeatable_migrations = [
+                m for m in locked_pending if m.type == MigrationType.REPEATABLE
+            ]
+
+            # Execute before-migration callbacks
+            self._execute_before_callbacks(versioned_migrations, repeatable_migrations)
+
+            # Execute migrations normally
+            self._execute_migration_loop(locked_pending, result)
+
+            # Execute after-migration callbacks if all migrations succeeded
+            self._execute_after_callbacks(versioned_migrations, repeatable_migrations, result)
+        return True
+
+    def _log_applied_concurrently(
+        self, pending_migrations: List[Migration], locked_pending: List[Migration]
+    ) -> None:
+        """Log each planned migration another process applied while the lock was awaited."""
+        still_pending = {m.script_name for m in locked_pending}
+        skipped = [m for m in pending_migrations if m.script_name not in still_pending]
+        for migration in skipped:
+            version = f" (version: {migration.version})" if migration.version else ""
+            self.log.info(
+                f"Skipping {migration.script_name}{version} — applied by concurrent process"
+            )
+        if skipped:
+            self.log.info(
+                f"{len(skipped)} pending migration(s) "
+                "applied by another process while waiting for the "
+                "lock; skipping"
+            )
+
+    def _mark_as_executed_and_commit(
+        self, pending_migrations: List[Migration], result: MigrateResult
+    ) -> bool:
+        """Record ``pending_migrations`` as applied and commit those history rows.
+
+        Returns False when marking or the commit fails.
+        """
+        if not self._mark_migrations_as_executed(pending_migrations, result):
+            return False
+        try:
+            if isinstance(self.provider, TransactionalProvider):
+                self.provider.commit_transaction()
+                if self.provider.is_caller_owned():
+                    self.provider.note_caller_work()
+        except Exception as commit_error:
+            self.log.error(f"Failed to commit mark-as-executed history records: {commit_error}")
+            result.set_error(f"Failed to commit mark-as-executed history records: {commit_error}")
+            result.complete()
+            return False
+        return True
+
     def execute(
         self,
         scripts_dir: Path,
@@ -357,12 +468,6 @@ class MigrateCommand(BaseCommand):
         This will automatically create the schema history table if it doesn't exist,
         without requiring a separate baseline command.
         """
-        from dblift.core.seams.runtime_checks import (
-            SqlPreflightError,
-            registered_checks,
-            run_checks,
-        )
-
         if not dry_run and not mark_as_executed:
             self._prepare_required_analysis()
 
@@ -381,8 +486,6 @@ class MigrateCommand(BaseCommand):
         result.show_query_results = show_query_results
         result.target_schema = self.config.database.schema
         result.journal = self.journal
-        if not getattr(self, "migration_helpers", None):
-            self.migration_helpers = MigrationHelpers(self.config, self.log)
 
         read_snapshot = self.state_manager.new_read_snapshot()
 
@@ -456,22 +559,9 @@ class MigrateCommand(BaseCommand):
 
             def preflight_sql(migrations: List[Migration]) -> None:
                 """Classify the SQL of ``migrations`` and of the callbacks they would fire."""
-                events = [
-                    "beforeMigrate",
-                    "afterMigrate",
-                    "afterMigrateError",
-                    "beforeEach",
-                    "afterEach",
-                    "beforeEachMigrate",
-                    "afterEachMigrate",
-                ]
-                if any(
-                    getattr(m.type, "value", m.type) in VERSIONED_SCRIPT_TYPES for m in migrations
-                ):
-                    events.extend(("beforeVersioned", "afterVersioned"))
-                if any(m.type == MigrationType.REPEATABLE for m in migrations):
-                    events.extend(("beforeRepeatable", "afterRepeatable"))
-                self._preflight_execution_sql(migrations + self._callbacks_for(events))
+                self._preflight_execution_sql(
+                    migrations + self._callbacks_for(self._events_fired_by(migrations))
+                )
 
             if not dry_run and not mark_as_executed and check_execution_sql:
                 if pending_migrations:
@@ -516,125 +606,44 @@ class MigrateCommand(BaseCommand):
                 )
 
             if not pending_migrations:
-                if (
-                    target_version is not None
-                    and current_version
-                    and compare_versions(current_version, target_version) >= 0
-                ):
-                    self.log.info(
-                        f"No pending migrations found: the current version {current_version} "
-                        f"is at or above the target version {target_version}, nothing to apply"
-                    )
-                else:
-                    self.log.info("No pending migrations found")
+                self._log_nothing_pending(current_version, target_version)
                 return
 
             self.log.info(f"Found {len(pending_migrations)} pending migration(s)")
             for pending_migration in pending_migrations:
                 self.log.debug(
-                    f"  - Pending migration: {pending_migration.script_name} (version: {pending_migration.version}, type: {pending_migration.type})"
+                    f"  - Pending migration: {pending_migration.script_name} (version: "
+                    f"{pending_migration.version}, type: {pending_migration.type})"
                 )
 
             if dry_run:
+                # The same refusal the real run makes before anything starts.
+                try:
+                    self._refuse_unsupported_script_sessions(
+                        pending_migrations
+                        + self._callbacks_for(self._events_fired_by(pending_migrations))
+                    )
+                except SqlPreflightError as e:
+                    self._report_refusal(result, e)
+                    return
                 self._handle_dry_run(pending_migrations, result, show_sql=show_sql)
                 return
 
             # Acquire the migration lock before changing anything
             lock = ExitStack()
             try:
-                if not lock.enter_context(self._migration_lock()):
-                    self.log.error(MIGRATION_LOCK_REFUSAL)
-                    result.set_error(MIGRATION_LOCK_REFUSAL)
-                    result.complete()
+                if not self._migrate_holding_lock(
+                    lock,
+                    result,
+                    pending_migrations=pending_migrations,
+                    plan_migrate=plan_migrate,
+                    validate=validate,
+                    preflight_sql=preflight_sql,
+                    mark_as_executed=mark_as_executed,
+                    contextual_sql_checks=contextual_sql_checks,
+                    check_execution_sql=check_execution_sql,
+                ):
                     return
-
-                # Plan again now that the lock is held: another process may have
-                # applied (or undone) migrations while we were waiting, and
-                # running a stale plan would fail and write duplicate failure
-                # rows into the history table.
-                locked_snapshot = self.state_manager.new_read_snapshot()
-                try:
-                    locked_plan = plan_migrate(read_snapshot=locked_snapshot)
-                except StrictModeError as e:
-                    # Nothing ran, so no error callbacks fire.
-                    self.log.error(str(e))
-                    result.set_error(str(e))
-                    return
-                locked_state = locked_plan.state
-                locked_pending = list(locked_plan.pending)
-
-                locked_success, locked_errors = validate(locked_state, locked_snapshot)
-                if not locked_success:
-                    # Nothing ran, so no error callbacks fire.
-                    result.set_error(f"Validation failed: {locked_errors}")
-                    result.complete()
-                    return
-
-                planned = {m.script_name for m in pending_migrations}
-                newly_pending = [m for m in locked_pending if m.script_name not in planned]
-                to_check = locked_pending if contextual_sql_checks else newly_pending
-                if to_check and not mark_as_executed and check_execution_sql:
-                    preflight_sql(to_check)
-
-                still_pending = {m.script_name for m in locked_pending}
-                skipped = [m for m in pending_migrations if m.script_name not in still_pending]
-                for migration in skipped:
-                    version = f" (version: {migration.version})" if migration.version else ""
-                    self.log.info(
-                        f"Skipping {migration.script_name}{version} — applied by concurrent process"
-                    )
-                if skipped:
-                    self.log.info(
-                        f"{len(skipped)} pending migration(s) "
-                        "applied by another process while waiting for the "
-                        "lock; skipping"
-                    )
-                pending_migrations = locked_pending
-
-                if not pending_migrations:
-                    self.log.info(
-                        "All pending migrations were applied by another "
-                        "process while waiting for the lock"
-                    )
-                elif mark_as_executed:
-                    if not self._mark_migrations_as_executed(pending_migrations, result):
-                        return
-                    try:
-                        if isinstance(self.provider, TransactionalProvider):
-                            self.provider.commit_transaction()
-                            if self.provider.is_caller_owned():
-                                self.provider.note_caller_work()
-                    except Exception as commit_error:
-                        self.log.error(
-                            f"Failed to commit mark-as-executed history records: {commit_error}"
-                        )
-                        result.set_error(
-                            f"Failed to commit mark-as-executed history records: {commit_error}"
-                        )
-                        result.complete()
-                        return
-                else:
-                    # Separate versioned and repeatable migrations for targeted callbacks
-                    versioned_migrations = [
-                        m
-                        for m in pending_migrations
-                        if getattr(m.type, "value", m.type) in VERSIONED_SCRIPT_TYPES
-                    ]
-                    repeatable_migrations = [
-                        m for m in pending_migrations if m.type == MigrationType.REPEATABLE
-                    ]
-
-                    # Execute before-migration callbacks
-                    self._execute_before_callbacks(versioned_migrations, repeatable_migrations)
-
-                    # Execute migrations normally
-                    self._execute_migration_loop(pending_migrations, result)
-
-                    # Execute after-migration callbacks if all migrations succeeded
-                    self._execute_after_callbacks(
-                        versioned_migrations, repeatable_migrations, result
-                    )
-
             except SqlPreflightError as e:
                 # No script or callback has started: this is a preflight refusal.
                 reason = redact_driver_error_text(str(e))
@@ -642,7 +651,8 @@ class MigrateCommand(BaseCommand):
                 result.set_error(reason)
             except Exception as e:
                 # Handle any exception during lock acquisition or migration execution
-                # Only log if error_message is not already set (migration execution already logged it)
+                # Only log if error_message is not already set (migration execution already logged
+                # it)
                 if not result.error_message:
                     reason = redact_driver_error_text(engine_error_message(e))
                     self.log.error(f"Exception during migration execution: {reason}")

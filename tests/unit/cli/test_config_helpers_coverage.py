@@ -663,23 +663,6 @@ class TestResolveScriptsDirectories:
         sd, add, rec, drm = _resolve_scripts_directories(args, config, parser, ["migrate"])
         assert rec is False
 
-    def test_no_dir_configs_falls_back_to_cwd_migrations(self, tmp_path):
-        # Lines 463-465: no dir_configs → default "migrations" under CWD
-        args = self._make_args()
-        config = self._make_config(dir_configs=[])
-        parser = MagicMock()
-
-        import os
-
-        orig = os.getcwd()
-        os.chdir(str(tmp_path))
-        try:
-            sd, add, rec, drm = _resolve_scripts_directories(args, config, parser, ["migrate"])
-        finally:
-            os.chdir(orig)
-        # scripts_dir should be tmp_path/migrations (may or may not exist)
-        assert sd is not None
-
     def test_cli_recursive_flag_overrides(self, tmp_path):
         # Lines 470-478: recursive_flag from CLI wins over config
         scripts_dir = tmp_path / "migrations"

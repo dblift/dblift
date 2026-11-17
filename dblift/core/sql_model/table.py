@@ -1,6 +1,6 @@
 """Dialect-agnostic ``Table`` SQL object — columns, constraints, partitions, options."""
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from dblift.core.sql_model.base import (
     SqlColumn,
@@ -24,6 +24,61 @@ if TYPE_CHECKING:
     from dblift.core.sql_model.table_options import TableOptions
 
 
+# Compared only when both tables are system-versioned and either sets it explicitly.
+_SYSTEM_VERSIONING_DETAILS = (
+    "history_table",
+    "history_schema",
+    "period_start_column",
+    "period_end_column",
+)
+
+
+def _column_pair_differences(
+    self_col: SqlColumn, other_col: SqlColumn
+) -> Dict[str, Dict[str, object]]:
+    """Differences between two same-named columns; nullable and default only when explicit."""
+    found: Dict[str, Dict[str, object]] = {}
+    # Compare data types (required property)
+    if self_col.data_type.lower() != other_col.data_type.lower():
+        found["data_type"] = {"self": self_col.data_type, "other": other_col.data_type}
+
+    # Compare nullable property if explicitly set in either column
+    if (
+        hasattr(self_col, "is_property_explicit")
+        and self_col.is_property_explicit("nullable")
+        or hasattr(other_col, "is_property_explicit")
+        and other_col.is_property_explicit("nullable")
+    ):
+        if self_col.nullable != other_col.nullable:
+            found["nullable"] = {"self": self_col.nullable, "other": other_col.nullable}
+
+    # Compare default value if explicitly set in either column
+    if (
+        hasattr(self_col, "is_property_explicit")
+        and self_col.is_property_explicit("default_value")
+        or hasattr(other_col, "is_property_explicit")
+        and other_col.is_property_explicit("default_value")
+    ):
+        if self_col.default_value != other_col.default_value:
+            found["default_value"] = {
+                "self": self_col.default_value,
+                "other": other_col.default_value,
+            }
+    return found
+
+
+def _column_differences(
+    self_columns: Dict[str, SqlColumn], other_columns: Dict[str, SqlColumn]
+) -> Dict[str, Dict[str, Any]]:
+    """Per-column differences for the columns both tables have, keyed by lower-cased name."""
+    pairs = (
+        (name, _column_pair_differences(self_col, other_columns[name]))
+        for name, self_col in self_columns.items()
+        if name in other_columns
+    )
+    return {name: found for name, found in pairs if found}
+
+
 class Table(SqlObject):
     """Represents a database table.
 
@@ -31,14 +86,14 @@ class Table(SqlObject):
 
     Tier-3 plugin isolation (current):
     Dialect-specific options are stored in :attr:`dialect_options` keyed by
-    plugin name, e.g. ``{"mysql": {"storage_engine": "InnoDB"}}``. Historical
-    flat attributes (``storage_engine``, ``filegroup``, ``row_security``,
-    ``pctfree``, ...) remain as property aliases that read/write the same
-    dict, so legacy ``table.storage_engine = ...`` call sites keep working.
+    plugin name, e.g. ``{"mysql": {"storage_engine": "InnoDB"}}``. There are
+    no flat attributes (``storage_engine``, ``filegroup``, ...) on the table;
+    read and write these options with :meth:`get_dialect_option` /
+    :meth:`set_dialect_option`.
 
     The legacy :class:`dblift.core.sql_model.table_options.TableOptions` typed
     surface (``Table.from_options`` / ``Table.to_options``) still works and
-    feeds through the same property aliases. New code should prefer
+    maps onto the same ``dialect_options`` dict. New code should prefer
     :meth:`set_dialect_option` so the field is owned by the plugin namespace
     rather than the named-slot dataclass.
     """
@@ -83,14 +138,14 @@ class Table(SqlObject):
 
         # Ensure columns inherit the dialect
         for col in self.columns:
-            if not hasattr(col, "dialect") or not col.dialect:
+            if not col.dialect:
                 col.dialect = dialect
 
         self.constraints = constraints or []
 
         # Ensure constraints inherit the dialect
         for constraint in self.constraints:
-            if not hasattr(constraint, "dialect") or not constraint.dialect:
+            if not constraint.dialect:
                 constraint.dialect = dialect
 
         self.temporary = temporary
@@ -341,7 +396,7 @@ class Table(SqlObject):
             column: The column to add
         """
         # Inherit dialect if needed
-        if not hasattr(column, "dialect") or not column.dialect:
+        if not column.dialect:
             column.dialect = self.dialect
 
         self._columns.append(column)
@@ -365,7 +420,7 @@ class Table(SqlObject):
             constraint: The constraint to add
         """
         # Inherit dialect if needed
-        if not hasattr(constraint, "dialect") or not constraint.dialect:
+        if not constraint.dialect:
             constraint.dialect = self.dialect
 
         self.constraints.append(constraint)
@@ -448,6 +503,42 @@ class Table(SqlObject):
         if self.temporary != other_table.temporary:
             differences["temporary"] = {"self": self.temporary, "other": other_table.temporary}
 
+        differences.update(self._filegroup_option_differences(other_table))
+
+        # Compare columns
+        self_columns = {col.name.lower(): col for col in self.columns}
+        other_columns = {col.name.lower(): col for col in other_table.columns}
+
+        # Find columns only in self
+        for name, col in self_columns.items():
+            if name not in other_columns:
+                differences.setdefault("columns_only_in_self", []).append(col.name)
+
+        # Find columns only in other
+        for name, col in other_columns.items():
+            if name not in self_columns:
+                differences.setdefault("columns_only_in_other", []).append(col.name)
+
+        # Compare columns that exist in both
+        column_differences = _column_differences(self_columns, other_columns)
+        if column_differences:
+            differences["column_differences"] = column_differences
+
+        # BACKLOG P3: Ajouter comparaison des contraintes dans Table.compare_to()
+        # Raison: Complexité de normalisation des noms de contraintes cross-dialecte (auto-générés
+        # vs explicites)
+        # Impact: Le diff de schéma ne détecte pas les ajouts/suppressions de PK, FK, UNIQUE, CHECK
+        # Approche: Comparer self.pk vs other.pk, self.foreign_keys vs other.foreign_keys, etc.
+        #   Nécessite normalisation des noms (ignorer noms auto-générés dialecte-spécifiques)
+        #   Attributs disponibles: pk, foreign_keys, unique_constraints, check_constraints
+        #   (indexes sont trackés séparément via diff.missing_indexes / diff.extra_indexes)
+        # Dépendances: Normalisation cross-dialecte des noms de contraintes à définir d'abord
+        # Ref: voir _bmad-output/implementation-artifacts/10-26-todos-documenter-ou-implementer.md
+
+        return differences
+
+    def _filegroup_option_differences(self, other_table: "Table") -> Dict[str, Dict[str, object]]:
+        """Differences in filegroup-syntax options, when either table's dialect uses them."""
         # T-SQL grammar-based: Compare filegroup (SQL Server).
         # Gate via plugin Quirks (``table_uses_filegroup_syntax``)
         # and read the built-ins from ``dialect_options`` under the canonical
@@ -470,141 +561,53 @@ class Table(SqlObject):
                 return default
             return table_obj.get_dialect_option(ns_sqlserver, key, default=default)
 
-        if _filegroup_supported(self.dialect) or _filegroup_supported(other_table.dialect):
-            if self.is_property_explicit("filegroup") or (
-                hasattr(other_table, "is_property_explicit")
-                and other_table.is_property_explicit("filegroup")
-            ):
-                if _ss(self, "filegroup") != _ss(other_table, "filegroup"):
-                    differences["filegroup"] = {
-                        "self": _ss(self, "filegroup"),
-                        "other": _ss(other_table, "filegroup"),
-                    }
+        found: Dict[str, Dict[str, object]] = {}
+        if not (_filegroup_supported(self.dialect) or _filegroup_supported(other_table.dialect)):
+            return found
+        if self.is_property_explicit("filegroup") or (
+            hasattr(other_table, "is_property_explicit")
+            and other_table.is_property_explicit("filegroup")
+        ):
+            if _ss(self, "filegroup") != _ss(other_table, "filegroup"):
+                found["filegroup"] = {
+                    "self": _ss(self, "filegroup"),
+                    "other": _ss(other_table, "filegroup"),
+                }
 
-            # Compare memory-optimized property
-            if self.is_property_explicit("memory_optimized") or (
-                hasattr(other_table, "is_property_explicit")
-                and other_table.is_property_explicit("memory_optimized")
-            ):
-                self_mem = bool(_ss(self, "memory_optimized", default=False))
-                other_mem = bool(_ss(other_table, "memory_optimized", default=False))
-                if self_mem != other_mem:
-                    differences["memory_optimized"] = {
-                        "self": self_mem,
-                        "other": other_mem,
-                    }
+        # Compare memory-optimized property
+        if self.is_property_explicit("memory_optimized") or (
+            hasattr(other_table, "is_property_explicit")
+            and other_table.is_property_explicit("memory_optimized")
+        ):
+            self_mem = bool(_ss(self, "memory_optimized", default=False))
+            other_mem = bool(_ss(other_table, "memory_optimized", default=False))
+            if self_mem != other_mem:
+                found["memory_optimized"] = {"self": self_mem, "other": other_mem}
 
-            # Compare system-versioned property
-            self_sysver = bool(_ss(self, "system_versioned", default=False))
-            other_sysver = bool(_ss(other_table, "system_versioned", default=False))
-            if self.is_property_explicit("system_versioned") or (
-                hasattr(other_table, "is_property_explicit")
-                and other_table.is_property_explicit("system_versioned")
-            ):
-                if self_sysver != other_sysver:
-                    differences["system_versioned"] = {
-                        "self": self_sysver,
-                        "other": other_sysver,
-                    }
-                # Also compare history table if system-versioned
-                if self_sysver and other_sysver:
-                    if _ss(self, "history_table") != _ss(other_table, "history_table"):
-                        differences["history_table"] = {
-                            "self": _ss(self, "history_table"),
-                            "other": _ss(other_table, "history_table"),
-                        }
-                    if _ss(self, "history_schema") != _ss(other_table, "history_schema"):
-                        differences["history_schema"] = {
-                            "self": _ss(self, "history_schema"),
-                            "other": _ss(other_table, "history_schema"),
-                        }
-                    if _ss(self, "period_start_column") != _ss(other_table, "period_start_column"):
-                        differences["period_start_column"] = {
-                            "self": _ss(self, "period_start_column"),
-                            "other": _ss(other_table, "period_start_column"),
-                        }
-                    if _ss(self, "period_end_column") != _ss(other_table, "period_end_column"):
-                        differences["period_end_column"] = {
-                            "self": _ss(self, "period_end_column"),
-                            "other": _ss(other_table, "period_end_column"),
-                        }
+        found.update(self._system_versioning_differences(other_table, _ss))
+        return found
 
-        # Compare columns
-        self_columns = {col.name.lower(): col for col in self.columns}
-        other_columns = {col.name.lower(): col for col in other_table.columns}
-
-        # Find columns only in self
-        for name, col in self_columns.items():
-            if name not in other_columns:
-                if "columns_only_in_self" not in differences:
-                    differences["columns_only_in_self"] = []
-                differences["columns_only_in_self"].append(col.name)
-
-        # Find columns only in other
-        for name, col in other_columns.items():
-            if name not in self_columns:
-                if "columns_only_in_other" not in differences:
-                    differences["columns_only_in_other"] = []
-                differences["columns_only_in_other"].append(col.name)
-
-        # Compare columns that exist in both
-        column_differences: Dict[str, Dict[str, Any]] = {}
-        for name, self_col in self_columns.items():
-            if name in other_columns:
-                other_col = other_columns[name]
-                # Compare data types (required property)
-                if self_col.data_type.lower() != other_col.data_type.lower():
-                    if name not in column_differences:
-                        column_differences[name] = {}
-                    column_differences[name]["data_type"] = {
-                        "self": self_col.data_type,
-                        "other": other_col.data_type,
-                    }
-
-                # Compare nullable property if explicitly set in either column
-                if (
-                    hasattr(self_col, "is_property_explicit")
-                    and self_col.is_property_explicit("nullable")
-                    or hasattr(other_col, "is_property_explicit")
-                    and other_col.is_property_explicit("nullable")
-                ):
-                    if self_col.nullable != other_col.nullable:
-                        if name not in column_differences:
-                            column_differences[name] = {}
-                        column_differences[name]["nullable"] = {
-                            "self": self_col.nullable,
-                            "other": other_col.nullable,
-                        }
-
-                # Compare default value if explicitly set in either column
-                if (
-                    hasattr(self_col, "is_property_explicit")
-                    and self_col.is_property_explicit("default_value")
-                    or hasattr(other_col, "is_property_explicit")
-                    and other_col.is_property_explicit("default_value")
-                ):
-                    if self_col.default_value != other_col.default_value:
-                        if name not in column_differences:
-                            column_differences[name] = {}
-                        column_differences[name]["default_value"] = {
-                            "self": self_col.default_value,
-                            "other": other_col.default_value,
-                        }
-
-        if column_differences:
-            differences["column_differences"] = column_differences
-
-        # BACKLOG P3: Ajouter comparaison des contraintes dans Table.compare_to()
-        # Raison: Complexité de normalisation des noms de contraintes cross-dialecte (auto-générés vs explicites)
-        # Impact: Le diff de schéma ne détecte pas les ajouts/suppressions de PK, FK, UNIQUE, CHECK
-        # Approche: Comparer self.pk vs other.pk, self.foreign_keys vs other.foreign_keys, etc.
-        #   Nécessite normalisation des noms (ignorer noms auto-générés dialecte-spécifiques)
-        #   Attributs disponibles: pk, foreign_keys, unique_constraints, check_constraints
-        #   (indexes sont trackés séparément via diff.missing_indexes / diff.extra_indexes)
-        # Dépendances: Normalisation cross-dialecte des noms de contraintes à définir d'abord
-        # Ref: voir _bmad-output/implementation-artifacts/10-26-todos-documenter-ou-implementer.md
-
-        return differences
+    def _system_versioning_differences(
+        self, other_table: "Table", option: Callable[..., object]
+    ) -> Dict[str, Dict[str, object]]:
+        """Differences in system versioning, read through ``option(table, key, default=...)``."""
+        found: Dict[str, Dict[str, object]] = {}
+        # Compare system-versioned property
+        self_sysver = bool(option(self, "system_versioned", default=False))
+        other_sysver = bool(option(other_table, "system_versioned", default=False))
+        if self.is_property_explicit("system_versioned") or (
+            hasattr(other_table, "is_property_explicit")
+            and other_table.is_property_explicit("system_versioned")
+        ):
+            if self_sysver != other_sysver:
+                found["system_versioned"] = {"self": self_sysver, "other": other_sysver}
+            # Also compare history table if system-versioned
+            if self_sysver and other_sysver:
+                for key in _SYSTEM_VERSIONING_DETAILS:
+                    self_value, other_value = option(self, key), option(other_table, key)
+                    if self_value != other_value:
+                        found[key] = {"self": self_value, "other": other_value}
+        return found
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert table to dictionary representation.
@@ -751,9 +754,7 @@ class Table(SqlObject):
         # via the legacy flat-field aliases; restoring an explicit value here
         # (e.g. from a newer serialization that includes the dict directly)
         # must take precedence but absence must not wipe what was just set.
-        for plugin, opts in (data.get("dialect_options") or {}).items():
-            for key, value in opts.items():
-                table.set_dialect_option(plugin, key, value)
+        table._restore_dialect_options(data)
 
         # Restore the serialized explicit-property state when present. An
         # empty mapping is meaningful and must clear flags inferred while

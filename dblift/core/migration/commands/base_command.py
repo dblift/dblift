@@ -10,7 +10,18 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Iterator, List, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Union,
+)
 
 from dblift.config import DbliftConfig
 from dblift.config.database_config import BaseDatabaseConfig
@@ -25,8 +36,9 @@ if TYPE_CHECKING:
 
 from dblift.core.exceptions import CallbackExecutionError
 from dblift.core.logger import Log, NullLog
-from dblift.core.logger.console import rich_available
+from dblift.core.logger.console import render_panel_to_str, rich_available
 from dblift.core.logger.log import LogFormat  # noqa: F401 - historical export
+from dblift.core.logger.log import ConsoleLog, MultiLog, TextFormatter
 from dblift.core.logger.results import CallbackExecution
 from dblift.core.migration.executor.execution_engine import ExecutionEngine
 from dblift.core.migration.executor.migration_helpers import MigrationHelpers
@@ -36,6 +48,9 @@ from dblift.core.migration.migration_types import MigrationType
 from dblift.core.migration.presentation import presentation_for
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.sql.sql_execution_service import (
+    _format_execution_error,
+)
 from dblift.core.migration.state.migration_state import CallbackReadSnapshot, MigrationReadSnapshot
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.ui.migration_ui import MigrationUI
@@ -43,7 +58,12 @@ from dblift.core.seams.runtime_checks import SqlPreflightError, registered_check
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.core.utils.url_masking import mask_database_url
 from dblift.db.base_provider import BaseProvider
-from dblift.db.error import engine_error_message, redact_driver_error_text
+from dblift.db.error import (
+    engine_error_message,
+    format_connection_error,
+    redact_driver_error_text,
+    strip_sql_statement_block,
+)
 from dblift.db.provider_capabilities import (
     ensure_provider_connection,
     get_provider_display_url,
@@ -339,12 +359,14 @@ class BaseCommand:
             result=binding.result,
         )
 
-    def _callbacks_for(self, events: Iterable[str]) -> List[Migration]:
-        """List the bound callbacks of ``events``, in event order, from one fresh snapshot."""
+    def _callbacks_for(
+        self, events: Iterable[str], snapshot: Optional[CallbackReadSnapshot] = None
+    ) -> List[Migration]:
+        """List the bound callbacks of ``events`` in order, read from ``snapshot`` if given."""
         binding = self._bound_callbacks()
         if binding.scripts_dir is None:
             return []
-        snapshot = self.state_manager.new_callback_snapshot()
+        snapshot = snapshot or self.state_manager.new_callback_snapshot()
         return [
             callback
             for event in events
@@ -381,7 +403,7 @@ class BaseCommand:
         Raises:
             Exception: If any callback fails (except for error callbacks which only log warnings)
         """
-        read_snapshot = getattr(self, "_callback_snapshot", None)
+        read_snapshot = self._callback_snapshot
         if read_snapshot is None:
             read_snapshot = self.state_manager.new_callback_snapshot()
             self._callback_snapshot = read_snapshot
@@ -403,22 +425,15 @@ class BaseCommand:
             # deduplication otherwise silently swallows these lines for every
             # migration but the first, even though the callbacks themselves
             # execute for every migration.
-            try:
-                callback_count = len(callbacks) if hasattr(callbacks, "__len__") else None
-                self.log.info(
-                    f"Executing {callback_count if callback_count is not None else 'some'} "
-                    f"{event_prefix} callback(s)",
-                    dedupe=False,
-                )
-            except (TypeError, AttributeError):
-                callback_count = None
-                self.log.info(f"Executing {event_prefix} callback(s)", dedupe=False)
+            callback_count = len(callbacks)
+            self.log.info(
+                f"Executing {callback_count} {event_prefix} callback(s)",
+                dedupe=False,
+            )
 
             lifecycle_event = _CALLBACK_LIFECYCLE_EVENTS.get(event_prefix)
             if lifecycle_event:
-                _emit_script_event(
-                    lifecycle_event, {"count": callback_count} if callback_count is not None else {}
-                )
+                _emit_script_event(lifecycle_event, {"count": callback_count})
 
             for callback in callbacks:
                 script_name = getattr(callback, "script_name", "")
@@ -450,7 +465,8 @@ class BaseCommand:
                     )
                     if isinstance(e, SqlPreflightError) and "Error" not in event_prefix:
                         raise
-                    # Error callbacks (afterMigrateError, afterCleanError, afterUndoError) should only log warnings
+                    # Error callbacks (afterMigrateError, afterCleanError, afterUndoError) should
+                    # only log warnings
                     # Regular callbacks should fail the entire operation
                     if "Error" in event_prefix:
                         self.log.warning(f"Error callback {callback.script_name} failed: {reason}")
@@ -477,16 +493,7 @@ class BaseCommand:
             # Get applied migrations to determine current version
             applied_migrations = self.state_manager.get_applied_migrations()
 
-            # Check if applied_migrations is empty (handle Mock objects in tests)
-            try:
-                is_empty = not applied_migrations or (
-                    hasattr(applied_migrations, "__len__") and len(applied_migrations) == 0
-                )
-            except (TypeError, AttributeError):
-                # If we can't determine, assume it's not empty and continue
-                is_empty = False
-
-            if is_empty:
+            if not applied_migrations:
                 # Only log to debug, not info (header will show it)
                 self.log.debug("Current schema version: <none> (no migrations applied)")
                 return
@@ -513,7 +520,7 @@ class BaseCommand:
         """
         if result.end_time is None:
             result.complete()
-        presenter = presentation_for(getattr(self, "execution_engine", None), self.log)
+        presenter = presentation_for(self.execution_engine, self.log)
         if presenter is not None:
             presenter.present_command_result(self, command_name, result)
 
@@ -564,8 +571,6 @@ class BaseCommand:
         Returns:
             Formatted footer string (plain, for file logs).
         """
-        from dblift.core.logger.console import render_panel_to_str
-
         if not rich_available():
             lines = [
                 f"{command_name} {'completed successfully' if success else 'FAILED'}"
@@ -637,8 +642,6 @@ class BaseCommand:
             if not self.provider.is_connected():
                 self.provider.connect()
         except Exception as exc:
-            from dblift.db.error import format_connection_error
-
             db_type = getattr(self.provider, "canonical_dialect_key", "") or getattr(
                 getattr(self.config, "database", None), "type", ""
             )
@@ -673,6 +676,25 @@ class BaseCommand:
         prepare = getattr(service, "prepare_analysis", None)
         if prepare is not None:
             prepare()
+
+    def _pin_callback_snapshot(self) -> CallbackReadSnapshot:
+        """Start a callback scope that the check and the callbacks fired afterwards share."""
+        self._callback_snapshot = self.state_manager.new_callback_snapshot()
+        return self._callback_snapshot
+
+    def _refuse_unsupported_script_sessions(self, scripts: Sequence[Migration]) -> None:
+        """Refuse the run, before anything starts, at the first script that cannot run here."""
+        for script in scripts:
+            refusal = self.execution_engine.script_session_refusal(script)
+            if isinstance(refusal, str):
+                raise SqlPreflightError(refusal)
+
+    def _report_refusal(self, result: OperationResult, refusal: SqlPreflightError) -> None:
+        """Record a refusal made before anything started as the error of ``result``."""
+        reason = redact_driver_error_text(str(refusal))
+        self.log.error(reason)
+        result.set_error(reason)
+        result.complete()
 
     def _preflight_execution_sql(self, migrations: List[Any]) -> None:
         """Classify selected SQL and run contextual extension checks before writes."""
@@ -714,16 +736,23 @@ class BaseCommand:
         """Prepare only when this command's callback catalog contains SQL."""
         snapshot = self.state_manager.new_callback_snapshot()
         self._callback_snapshot = snapshot
-        for event in events:
-            callbacks = self.state_manager.get_callbacks_by_event(
-                scripts_dir,
-                event,
-                read_snapshot=snapshot,
-                recursive=recursive,
-                additional_dirs=additional_dirs,
-                dir_recursive_map=dir_recursive_map,
-            )
-            sql_callbacks = [c for c in callbacks if c.format == MigrationFormat.SQL]
+        catalog = [
+            [
+                c
+                for c in self.state_manager.get_callbacks_by_event(
+                    scripts_dir,
+                    event,
+                    read_snapshot=snapshot,
+                    recursive=recursive,
+                    additional_dirs=additional_dirs,
+                    dir_recursive_map=dir_recursive_map,
+                )
+                if c.format == MigrationFormat.SQL
+            ]
+            for event in events
+        ]
+        self._refuse_unsupported_script_sessions([c for sql in catalog for c in sql])
+        for sql_callbacks in catalog:
             if sql_callbacks:
                 self._prepare_required_analysis()
                 if self._capture_objects:
@@ -812,11 +841,6 @@ class BaseCommand:
                     settling.note_caller_work()
                     settling.commit_caller_work()
             except Exception as exc:
-                from dblift.core.migration.sql.sql_execution_service import (
-                    _format_execution_error,
-                )
-                from dblift.db.error import strip_sql_statement_block
-
                 # Strip the generated DDL SQLAlchemy appends to
                 # statement-bound errors (see strip_sql_statement_block in
                 # dblift.db.error) so a schema/history-table setup failure
@@ -996,11 +1020,7 @@ class BaseCommand:
                 result.native_driver = get_provider_driver_display(self.provider, self.config)
             except (AttributeError, RuntimeError) as e:
                 # Driver info not available - log at debug level if enabled
-                if (
-                    hasattr(self, "log")
-                    and hasattr(self.log, "is_debug_enabled")
-                    and self.log.is_debug_enabled()
-                ):
+                if self.log.is_debug_enabled():
                     self.log.debug(f"Could not retrieve native driver info: {e}")
                 result.native_driver = None  # Don't set "Unknown Native Driver"
 
@@ -1032,8 +1052,6 @@ class BaseCommand:
             Formatted header string (plain, for file logs). Use
             ``_build_command_header_panel`` for the console-rendered version.
         """
-        from dblift.core.logger.console import render_panel_to_str
-
         if not rich_available():
             lines = [f"Command: {command_name}"]
             lines.extend(filters or [])
@@ -1153,11 +1171,7 @@ class BaseCommand:
             if display_url:
                 return mask_database_url(display_url)
         except (AttributeError, RuntimeError, ValueError) as e:
-            if (
-                hasattr(self, "log")
-                and hasattr(self.log, "is_debug_enabled")
-                and self.log.is_debug_enabled()
-            ):
+            if self.log.is_debug_enabled():
                 self.log.debug(f"Could not retrieve database URL: {e}")
         return None
 
@@ -1178,11 +1192,7 @@ class BaseCommand:
                 if version_info:
                     return f"Connected to database {db_name} ({version_info})"
         except (AttributeError, RuntimeError, ValueError) as e:
-            if (
-                hasattr(self, "log")
-                and hasattr(self.log, "is_debug_enabled")
-                and self.log.is_debug_enabled()
-            ):
+            if self.log.is_debug_enabled():
                 self.log.debug(f"Could not retrieve connection info: {e}")
         return None
 
@@ -1191,8 +1201,6 @@ class BaseCommand:
 
         Used to decide whether to ``print()`` formatted headers/footers.
         """
-        from dblift.core.logger.log import ConsoleLog, MultiLog
-
         if isinstance(self.log, MultiLog):
             return any(isinstance(log, ConsoleLog) for log in self.log.logs)
         return isinstance(self.log, ConsoleLog)
@@ -1203,8 +1211,6 @@ class BaseCommand:
         Uses a module-level flag so that the header is not repeated when
         multiple commands run in the same process.
         """
-        from dblift.core.logger.log import TextFormatter
-
         current_module = sys.modules[__name__]
         if not hasattr(current_module, "_console_main_header_printed"):
             current_module._console_main_header_printed = False  # type: ignore[attr-defined]
@@ -1241,7 +1247,8 @@ class BaseCommand:
         read_snapshot: Optional[MigrationReadSnapshot] = None,
         **kwargs: Any,
     ) -> None:
-        """Update command header with schema version and connection info after connection is established.
+        """Update command header with schema version and connection info after connection is
+        established.
 
         Orchestrates five focused helpers:
         1. :meth:`_build_filters_list` — CLI filter flags
@@ -1260,7 +1267,7 @@ class BaseCommand:
             exclude_versions: Exclude versions filter
             **kwargs: Additional command-specific filters
         """
-        presenter = presentation_for(getattr(self, "execution_engine", None), self.log)
+        presenter = presentation_for(self.execution_engine, self.log)
         if presenter is not None:
             presenter.present_command_start(
                 self,

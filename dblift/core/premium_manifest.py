@@ -34,21 +34,33 @@ gets created that either shadows a real command under a different name or
 advertises one that does not exist, breaking the "real parsers always
 win" precedence above. Keep entries in sync with the real command
 surface, never ahead of it.
+
+A stub also fires when an extension package is installed without the
+package that provides the command; :func:`render_upsell` then says which
+package to install instead of the default message. It checks the installed
+distributions only when a stub fires, never at import time.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
 from typing import Dict, Iterable, Optional, Tuple
 
+_log = logging.getLogger(__name__)
+
 UPGRADE_URL = "https://dblift.com/upgrade"
+# Distribution names (PEP 503 canonical form) checked by render_upsell and feature loading.
+PRO_DISTRIBUTION = "dblift-pro"
+ENTERPRISE_DISTRIBUTION = "dblift-enterprise"
 
 
 @dataclass(frozen=True)
 class PremiumCommand:
-    """Declarative descriptor for a command that exists only in a paid edition."""
+    """Declarative descriptor for a command, or root flag, that only an extension provides."""
 
-    name: str
+    name: str  # command name, or the flag spelling (``--flag``) for a root flag
     edition: str  # human-facing label: "Pro" or "Enterprise"
     summary: str  # one-line help, mirrored from the paid parser registration
     api_method: Optional[str] = None  # corresponding api.DBLiftClient method, if any
@@ -70,7 +82,7 @@ PREMIUM_COMMANDS: Tuple[PremiumCommand, ...] = (
     PremiumCommand(
         "data",
         "Pro",
-        "Manage data corrections - audited DML with plan/apply/undo",
+        "Manage data corrections (Lane B) - audited DML with plan/apply/status",
     ),
     PremiumCommand(
         "snapshot",
@@ -93,7 +105,17 @@ PREMIUM_COMMANDS: Tuple[PremiumCommand, ...] = (
     PremiumCommand(
         "license",
         "Enterprise",
-        "Manage the dblift license (activate, info, check)",
+        "Manage the dblift license",
+    ),
+)
+
+# Root flags an extension package registers. Kept apart from PREMIUM_COMMANDS,
+# which drives the subcommand stubs.
+PREMIUM_ROOT_FLAGS: Tuple[PremiumCommand, ...] = (
+    PremiumCommand(
+        "--license-key",
+        "Enterprise",
+        "Pass a key for this invocation",
     ),
 )
 
@@ -111,15 +133,51 @@ def premium_commands_missing_from(
     return tuple(cmd for cmd in PREMIUM_COMMANDS if cmd.name not in taken)
 
 
+def premium_root_flags_missing_from(
+    registered: Iterable[str],
+) -> Tuple[PremiumCommand, ...]:
+    """Root-flag entries whose spelling is not among the ``registered`` option strings."""
+    taken = set(registered)
+    return tuple(flag for flag in PREMIUM_ROOT_FLAGS if flag.name not in taken)
+
+
 def premium_stub_index(registered: Iterable[str]) -> Dict[str, PremiumCommand]:
     """Like :func:`premium_commands_missing_from`, keyed by command name."""
     return {cmd.name: cmd for cmd in premium_commands_missing_from(registered)}
 
 
+def distribution_installed(name: str) -> bool:
+    """Whether the distribution ``name`` is installed; a broken one counts as absent."""
+    try:
+        version(name)
+    except PackageNotFoundError:
+        return False
+    except Exception as exc:  # a broken distribution must not break the caller
+        _log.warning("Could not check whether %r is installed: %s", name, exc)
+        return False
+    return True
+
+
 def render_upsell(cmd: PremiumCommand) -> str:
-    """Message shown when a stubbed paid command is invoked in OSS."""
+    """Message shown when a stubbed command is invoked.
+
+    By default it names the edition and the upgrade page. When an extension
+    package is installed without the package that provides the command, it
+    says which package to install instead.
+    """
+    if distribution_installed(PRO_DISTRIBUTION) and not distribution_installed(
+        ENTERPRISE_DISTRIBUTION
+    ):
+        return (
+            f"'{cmd.name}' is provided by the {ENTERPRISE_DISTRIBUTION} package, "
+            f"which is not installed.\n"
+            f"  {cmd.summary}.\n"
+            f"Install {ENTERPRISE_DISTRIBUTION}[<engine>] from your DBLift bundle, "
+            f"then run: dblift license activate <key>"
+        )
+    kind = "option" if cmd.name.startswith("--") else "command"
     return (
-        f"'{cmd.name}' is a dblift {cmd.edition} command and is not included "
+        f"'{cmd.name}' is a dblift {cmd.edition} {kind} and is not included "
         f"in the open-source edition.\n"
         f"  {cmd.summary}.\n"
         f"Learn more and upgrade: {UPGRADE_URL}"

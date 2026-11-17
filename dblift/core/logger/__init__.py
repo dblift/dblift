@@ -1,6 +1,5 @@
 """dblift logger package — log levels, sinks, formatters, and result aggregates."""
 
-import os
 import traceback
 from contextlib import contextmanager
 from pathlib import Path
@@ -102,7 +101,7 @@ class DbliftLogger(Log):
             name: The name of the logger (usually component/class name)
             level: The log level to use
             format: Format for log files (TEXT, JSON, HTML)
-            logfile_dir: Directory where log files will be stored (defaults to "./logs" if None)
+            logfile_dir: Directory where log files will be stored; None means console only
             config: Optional configuration with database information
             log_file_pattern: Optional custom log file naming pattern
         """
@@ -123,16 +122,6 @@ class DbliftLogger(Log):
         # Avoid circular imports - create our own internal logger
         console_log = ConsoleLog(name=name, enable_debug=level == LogLevel.DEBUG, log_level=level)
         self.log = console_log
-
-        # Default to "./logs" if no logfile_dir is provided
-        if logfile_dir is None:
-            logfile_dir = Path("./logs")
-            # Create the directory if it doesn't exist
-            if not logfile_dir.exists():
-                os.makedirs(logfile_dir, exist_ok=True)
-
-        self.logfile_dir = logfile_dir
-        self.current_log_file = None
 
         # Set up console log
         console_log = ConsoleLog(name, enable_debug=level == LogLevel.DEBUG, log_level=level)

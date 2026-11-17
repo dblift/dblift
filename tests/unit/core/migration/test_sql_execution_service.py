@@ -461,28 +461,6 @@ class TestExtractSimpleTableName(unittest.TestCase):
         assert SqlExecutionService._extract_simple_table_name(None) is None
 
 
-# ===========================================================================
-# Journal without the optional methods (getattr guard)
-# ===========================================================================
-
-
-class TestJournalWithoutOptionalMethods(unittest.TestCase):
-
-    def test_journal_without_record_start_no_crash(self):
-        """Journal without record_statement_start should not crash."""
-        provider = MagicMock()
-        provider.execute_statement.return_value = 0
-        sql_analyzer = MagicMock()
-        sql_analyzer.get_statement_type.return_value = SqlStatementType.DDL.value
-
-        # Journal without record_statement_start attribute
-        journal = MagicMock(spec=["record_statement_complete", "record_statement_failed"])
-        journal.record_statement_complete = MagicMock()
-
-        svc = SqlExecutionService(provider=provider, sql_analyzer=sql_analyzer, journal=journal)
-        svc.execute_statement("CREATE TABLE t (id INT)")  # Should not raise
-
-
 # ---------------------------------------------------------------------------
 # Autocommit routing — statements flagged by TransactionPolicy
 # ---------------------------------------------------------------------------

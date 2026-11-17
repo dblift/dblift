@@ -63,7 +63,3 @@ def truncate_sql_for_logging(sql: str, max_length: int = LOG_STATEMENT_PREVIEW_L
     if len(sql) <= max_length:
         return sql
     return f"{sql[:max_length]}..."
-
-
-# Test values
-TEST_PLACEHOLDER_TIME_MS = 100

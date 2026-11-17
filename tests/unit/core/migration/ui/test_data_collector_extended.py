@@ -20,9 +20,12 @@ class TestMigrationDataCollectorInit(unittest.TestCase):
 
     def test_null_log_default(self):
         from dblift.core.logger import NullLog
+        from dblift.core.migration.scripting.migration_script_manager import (
+            MigrationScriptManager,
+        )
         from dblift.core.migration.ui.data_collector import MigrationDataCollector
 
-        coll = MigrationDataCollector(log=None)
+        coll = MigrationDataCollector(log=None, script_manager=MigrationScriptManager(NullLog()))
         self.assertIsInstance(coll.log, NullLog)
 
 
@@ -48,28 +51,6 @@ class TestFormatInstalledOn(unittest.TestCase):
     def test_iso_string_returned_as_is(self):
         coll = self._c()
         result = coll._format_installed_on("2024-01-15T10:30:00")
-        self.assertIsInstance(result, str)
-
-
-class TestGetMigrationTypeString(unittest.TestCase):
-    def _c(self):
-        return _make_collector()[0]
-
-    def test_sql_type(self):
-        from dblift.core.migration.migration import MigrationType
-
-        coll = self._c()
-        result = coll._get_migration_type_string(MigrationType.SQL)
-        self.assertIsInstance(result, str)
-
-    def test_none_returns_string(self):
-        coll = self._c()
-        result = coll._get_migration_type_string(None)
-        self.assertIsInstance(result, str)
-
-    def test_string_type_passed_through(self):
-        coll = self._c()
-        result = coll._get_migration_type_string("SQL")
         self.assertIsInstance(result, str)
 
 

@@ -18,10 +18,12 @@ from sqlalchemy.engine import Connection, Engine, Transaction
 from sqlalchemy.exc import DBAPIError, SQLAlchemyError
 
 from dblift.config import DbliftConfig
-from dblift.core.exceptions import TransactionAbortedError
+from dblift.core.constants import DEFAULT_HISTORY_TABLE
+from dblift.core.exceptions import ExecutionError, TransactionAbortedError
 from dblift.core.logger import Log
 from dblift.db.base_provider import NativeProvider
 from dblift.db.native_connection_manager import NativeConnectionManager
+from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE
 from dblift.db.provider_interfaces import TransactionalProvider
 
 
@@ -127,6 +129,7 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
         )
         self._connection: Optional[Connection] = None
         self._tx: Optional[Transaction] = None
+        self._script_session_options: Optional[Mapping[str, object]] = None
         self.query_executor = _SqlAlchemyQueryExecutor(self)
         # A single Connection is cached on this provider (see create_connection)
         # and reused across calls. SQLAlchemy Connections are not safe for
@@ -203,12 +206,6 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
             # from_sqlalchemy with connection=) so that the caller's
             # session/transaction is used.
             if self._connection is not None and not self._connection.closed:
-                return self._connection
-            if (
-                self._tx is not None
-                and self._connection is not None
-                and not self._connection.closed
-            ):
                 return self._connection
             self._connection = self._conn_mgr.create_connection()
             return self._connection
@@ -510,6 +507,61 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
         if conn.in_transaction():
             conn.rollback()
 
+    def _script_transaction_open(self, conn: Connection) -> bool:
+        """Whether the server holds a transaction the script left open."""
+        raise NotImplementedError
+
+    def _roll_back_script_transaction(self, conn: Connection) -> None:
+        """Roll back the transaction a script left open, where ending the connection's does not."""
+
+    def begin_script_session(self) -> None:
+        """Autocommit every statement, with the provider's transaction object held open."""
+        with self._lock:
+            try:
+                self._switch_to_script_session()
+            except SQLAlchemyError as exc:
+                raise ExecutionError(f"the connection could not be prepared: {exc}") from exc
+
+    def _switch_to_script_session(self) -> None:
+        conn = self._ensure_connection()
+        self._end_open_transaction(conn)
+        self._script_transaction_open(conn)
+        if conn.in_transaction():  # the check may have autobegun one
+            conn.rollback()
+        previous = conn.get_execution_options()
+        begun = False
+        try:
+            conn.execution_options(isolation_level="AUTOCOMMIT")
+            self._tx = conn.begin()
+            begun = True
+        finally:
+            if begun:
+                self._script_session_options = previous
+            else:
+                self._tx = None
+                self._restore_isolation_level(conn, previous)
+
+    def end_script_session(self) -> bool:
+        """Roll back a transaction the script left open, restore the connection, report it."""
+        with self._lock:
+            previous = self._script_session_options
+            if previous is None:
+                return False
+            self._script_session_options = None
+            conn = self._connection
+            if conn is None or conn.closed:
+                self._tx = None
+                return False
+            try:
+                left_open = self._script_transaction_open(conn)
+                self._roll_back_script_transaction(conn)
+            finally:
+                try:
+                    self._end_open_transaction(conn)
+                finally:
+                    self._restore_isolation_level(conn, previous)
+            return left_open
+
     def execute_autocommit_statement(
         self, sql: str, schema: Optional[str] = None, params: Optional[List[Any]] = None
     ) -> int:
@@ -590,3 +642,55 @@ class SqlAlchemyProvider(NativeProvider, TransactionalProvider):
             if dbapi_connection is not None:
                 conn.dialect.reset_isolation_level(dbapi_connection)
         conn._execution_options = previous  # type: ignore[assignment]
+
+    def create_migration_history_table_if_not_exists(
+        self,
+        schema: str,
+        create_schema: bool = False,
+        table_name: str = DEFAULT_HISTORY_TABLE,
+    ) -> None:
+        """Create the migration history table if it is missing."""
+        if create_schema:
+            self.create_schema_if_not_exists(schema)
+        if self.table_exists(schema, table_name):
+            if create_schema:
+                self._check_baseline_safety(schema, table_name)
+            return
+        self.execute_statement(self.create_history_table(schema, table_name))
+
+    def _check_baseline_safety(self, schema: str, table_name: str) -> None:
+        """Refuse baseline when the history table already contains migrations."""
+        qualified_table = self.get_schema_qualified_name(schema, table_name)
+        rows = self.execute_query(f"SELECT COUNT(1) as count FROM {qualified_table}")
+        migration_count = 0
+        if rows:
+            migration_count = int(rows[0].get("count", rows[0].get("COUNT", 0)) or 0)
+        if migration_count > 0:
+            raise RuntimeError(
+                f"Schema {schema} already contains a migration history table "
+                f"{table_name} with {migration_count} migration(s). "
+                "Baseline cannot be applied to a schema with existing migrations."
+            )
+
+    def record_undo(
+        self,
+        schema: str,
+        version: str,
+        table_name: Optional[str] = None,
+        script_name: Optional[str] = None,
+    ) -> bool:
+        """Record a successful undo operation in the migration history."""
+        undo_script = script_name or f"UNDO_{version}.sql"
+        self.record_migration(
+            schema,
+            {
+                "version": version,
+                "description": f"Undo migration {version}",
+                "type": UNDO_HISTORY_TYPE,
+                "script": undo_script,
+                "checksum": 0,
+                "success": True,
+            },
+            table_name or DEFAULT_HISTORY_TABLE,
+        )
+        return True

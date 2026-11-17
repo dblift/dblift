@@ -100,57 +100,36 @@
    "operation": "CREATE"
   },
   "CREATE OR REPLACE TRIGGER my_trigger AFTER INSERT ON t FOR EACH ROW BEGIN END": {
-   "diagnostic": "duckdb Command is opaque to statement facts",
-   "indexed_table": null,
+   "operation": "CREATE",
    "kind": "DDL",
-   "objects": [],
    "opaque": true,
-   "operation": "CREATE"
+   "objects": [],
+   "indexed_table": null,
+   "diagnostic": "duckdb does not support triggers"
   },
   "CREATE TRIGGER tr BEFORE INSERT ON t FOR EACH ROW SET NEW.a = 1": {
-   "diagnostic": "trigger: duckdb Command is opaque to statement facts",
-   "indexed_table": null,
+   "operation": "CREATE",
    "kind": "DDL",
-   "objects": [
-    [
-     "tr",
-     "TRIGGER",
-     "created",
-     null
-    ]
-   ],
    "opaque": true,
-   "operation": "CREATE"
+   "objects": [],
+   "indexed_table": null,
+   "diagnostic": "duckdb does not support triggers"
   },
   "CREATE TRIGGER trg BEFORE INSERT ON s.t FOR EACH ROW EXECUTE FUNCTION audit('a;b')": {
-   "diagnostic": null,
-   "indexed_table": null,
+   "operation": "CREATE",
    "kind": "DDL",
-   "objects": [
-    [
-     "t",
-     "TABLE",
-     "referenced",
-     "s"
-    ]
-   ],
-   "opaque": false,
-   "operation": "CREATE"
+   "opaque": true,
+   "objects": [],
+   "indexed_table": null,
+   "diagnostic": "duckdb does not support triggers"
   },
   "CREATE TRIGGER users_bi BEFORE INSERT ON users FOR EACH ROW EXECUTE FUNCTION f()": {
-   "diagnostic": null,
-   "indexed_table": null,
+   "operation": "CREATE",
    "kind": "DDL",
-   "objects": [
-    [
-     "users",
-     "TABLE",
-     "referenced",
-     null
-    ]
-   ],
-   "opaque": false,
-   "operation": "CREATE"
+   "opaque": true,
+   "objects": [],
+   "indexed_table": null,
+   "diagnostic": "duckdb does not support triggers"
   },
   "CREATE UNIQUE INDEX CONCURRENTLY ON t (c)": {
    "diagnostic": null,

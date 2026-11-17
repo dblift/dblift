@@ -41,6 +41,7 @@ class SnowflakeQuirks(BaseQuirks):
     )
 
     def __init__(self, dialect_name: str = "snowflake") -> None:
+        """Create the Snowflake quirks under ``dialect_name``."""
         super().__init__(dialect_name=dialect_name)
 
     def has_connection_identifier(self, database_config: Any) -> bool:

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import importlib
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -26,6 +27,7 @@ from sqlalchemy.exc import ArgumentError, NoSuchModuleError
 
 import dblift.db.native_connection_manager as connection_manager_module
 import dblift.db.plugins
+from dblift.config.database_config import BaseDatabaseConfig
 from dblift.db.native_connection_manager import (
     NativeConnectionManager,
     describe_missing_driver,
@@ -629,16 +631,17 @@ class TestTheCPythonBehaviourTheRuleRestsOn:
         assert connection_manager_module._missing_module(exc) is None
 
 
-class _Database:
-    """Minimal stand-in for a dblift database config section."""
+@dataclass(repr=False)
+class _Database(BaseDatabaseConfig):
+    """A real database config section whose dialect the test chooses."""
 
-    def __init__(self, db_type: str) -> None:
-        self.type = db_type
+    def build_connection_string(self) -> str:
+        return ""
 
 
 class _Config:
     def __init__(self, db_type: str) -> None:
-        self.database = _Database(db_type)
+        self.database = _Database(type=db_type)
 
 
 def _engine_raising(

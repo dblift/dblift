@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple, cast
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Set, Tuple
 
 from dblift.core.logger import Log
 from dblift.core.migration.history.migration_history_manager import (
@@ -20,7 +20,6 @@ from dblift.core.migration.migration import (
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.checksum_drift import ChecksumDrift, find_checksum_drift
-from dblift.core.migration.state.migrate_plan import MigratePlan
 from dblift.core.migration.state.migrate_plan import plan_migrate as _plan_migrate
 from dblift.core.migration.state.migration_data_service import MigrationDataService
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
@@ -44,14 +43,12 @@ from dblift.core.migration.state.migration_state_service import MigrationStateSe
 from dblift.core.migration.state.missing_scripts import deleted_script_names, missing_applied
 from dblift.core.migration.state.ordering import OutOfOrder, out_of_order
 from dblift.core.migration.state.rank_wins import effective_current_version, latest_successful_ranks
-from dblift.core.migration.state.repair_plan import RepairPlan
 from dblift.core.migration.state.repair_plan import plan_repairs as _plan_repairs
 from dblift.core.migration.state.repeatable_status import (
     PENDING_REPEATABLE_STATUSES,
     RepeatableRun,
     repeatable_runs,
 )
-from dblift.core.migration.state.undo_plan import UndoPlan
 from dblift.core.migration.state.undo_plan import plan_undo as _plan_undo
 from dblift.core.migration.version_utils import (
     is_migration_failure,
@@ -70,6 +67,11 @@ class _HistoryAnalysis:
     repeatable_checksums: Dict[str, str]
     deleted_scripts: Set[str]
     failed_migrations: List[Migration]
+
+    @property
+    def undone_not_reapplied(self) -> Set[str]:
+        """Versions undone and not applied again afterwards."""
+        return self.undone_versions - self.reapplied_versions
 
 
 class MigrationStateManager:
@@ -277,7 +279,7 @@ class MigrationStateManager:
             self.logger, target_version=target_version
         )._build_analysis_context(applied_migrations)
         history = self._analyse_history(applied_migrations, context)
-        undone = history.undone_versions - history.reapplied_versions
+        undone = history.undone_not_reapplied
         pending = [
             migration
             for migration in selected
@@ -314,7 +316,7 @@ class MigrationStateManager:
                 # Keep non-versioned migrations (repeatable, callback, etc.)
                 self._get_type_name(m) not in VERSIONED_SCRIPT_TYPES
                 # Keep versioned migrations that haven't been undone
-                or str(getattr(m, "version", "")) not in undone_versions
+                or str(m.version) not in undone_versions
             )
         ]
 
@@ -416,9 +418,7 @@ class MigrationStateManager:
         applied_migrations = self.get_applied_migrations(read_snapshot)
         self.logger.debug(f"Loaded {len(applied_migrations)} applied migrations from history")
 
-        data_service = MigrationDataService(
-            self.logger, scripts_dir=scripts_dir, target_version=target_version
-        )
+        data_service = MigrationDataService(self.logger, target_version=target_version)
         analysis_context = data_service._build_analysis_context(applied_migrations)
 
         history = self._analyse_history(applied_migrations, analysis_context)
@@ -485,9 +485,8 @@ class MigrationStateManager:
 
         # Filter out undone migrations from applied_objects (unless they were reapplied)
         # This ensures that migrations that were undone don't appear in the applied list
-        undone_but_not_reapplied = history.undone_versions - history.reapplied_versions
         applied_objects_filtered = self._without_undone(
-            applied_migrations, undone_but_not_reapplied
+            applied_migrations, history.undone_not_reapplied
         )
 
         state = MigrationState(
@@ -495,11 +494,7 @@ class MigrationStateManager:
             baseline_version=analysis_context.get("baseline_version"),
             applied=applied_entries,
             failed=failed_entries,
-            undone_versions=sorted(
-                version
-                for version in history.undone_versions
-                if version not in history.reapplied_versions
-            ),
+            undone_versions=sorted(history.undone_not_reapplied),
             deleted_scripts=sorted(history.deleted_scripts),
             checksum_changes=checksum_changes,
             applied_objects=applied_objects_filtered,
@@ -543,7 +538,7 @@ class MigrationStateManager:
         # pending_migrations alone would wrongly mark its history row missing.
         resolved_script_names: Set[str] = set()
         for migration in all_scripts:
-            script_name = getattr(migration, "script_name", "")
+            script_name = migration.script_name
             if script_name:
                 resolved_script_names.add(script_name)
                 resolved_script_names.add(Path(script_name).name)
@@ -552,7 +547,7 @@ class MigrationStateManager:
             migration.resolved = True
 
         for migration in applied_migrations:
-            script_name = getattr(migration, "script_name", "")
+            script_name = migration.script_name
             basename = Path(script_name).name if script_name else ""
             migration.resolved = bool(
                 not script_name
@@ -576,16 +571,21 @@ class MigrationStateManager:
         failed_migrations: List[Migration] = []
         version_groups: Dict[str, List[Migration]] = {}
 
+        def mark_executed(script_name: str) -> None:
+            executed_scripts.add(script_name)
+            if "/" in script_name:
+                executed_scripts.add(Path(script_name).name)
+
         for migration in applied_migrations:
             migration_type = self._get_type_name(migration)
-            script_name = getattr(migration, "script_name", "")
+            script_name = migration.script_name
 
             if migration_type == "DELETE":
                 continue
 
             # Only add to failed_migrations if explicitly failed (success=False)
             # NULL/None means the migration can be retried (e.g., after repair)
-            success_value = getattr(migration, "success", None)
+            success_value = migration.success
             is_explicitly_failed = is_migration_failure(success_value)
             if is_explicitly_failed:
                 failed_migrations.append(migration)
@@ -593,16 +593,14 @@ class MigrationStateManager:
             is_success = self.migration_rules.is_success(migration)
 
             if migration_type in VERSIONED_SCRIPT_TYPES and is_success:
-                version = str(getattr(migration, "version", "") or "")
+                version = str(migration.version or "")
                 if version:
                     version_groups.setdefault(version, []).append(migration)
             elif migration_type == "REPEATABLE" and is_success:
                 recorded = repeatable_successes.get(script_name)
                 if not recorded or self._installed_rank(migration) > self._installed_rank(recorded):
                     repeatable_successes[script_name] = migration
-                executed_scripts.add(script_name)
-                if "/" in script_name:
-                    executed_scripts.add(Path(script_name).name)
+                mark_executed(script_name)
             elif migration_type == "CALLBACK" and is_success:
                 executed_scripts.add(script_name)
 
@@ -620,12 +618,9 @@ class MigrationStateManager:
             # For versioned migrations, track by version (primary key)
             executed_versions.add(str(version))
             # Also keep script_name for backward compatibility and traceability
-            script_name = getattr(most_recent, "script_name", "")
-            executed_scripts.add(script_name)
+            script_name = most_recent.script_name
             # Also add basename for comparison (handle both relative paths and filenames)
-            if "/" in script_name:
-                basename = Path(script_name).name
-                executed_scripts.add(basename)
+            mark_executed(script_name)
 
         repeatable_checksums: Dict[str, str] = {}
         for script, migration in repeatable_successes.items():
@@ -637,14 +632,12 @@ class MigrationStateManager:
         # add their versions/script names to the executed sets so
         # _is_versioned_pending() returns False for them.
         for _fm in failed_migrations:
-            _fv = str(getattr(_fm, "version", "") or "")
+            _fv = str(_fm.version or "")
             if _fv:
                 executed_versions.add(_fv)
-            _fs = getattr(_fm, "script_name", "")
+            _fs = _fm.script_name
             if _fs:
-                executed_scripts.add(_fs)
-                if "/" in _fs:
-                    executed_scripts.add(Path(_fs).name)
+                mark_executed(_fs)
 
         return _HistoryAnalysis(
             applied=applied_migrations,
@@ -684,7 +677,7 @@ class MigrationStateManager:
         basename_checksums: Optional[Dict[str, str]] = None
 
         for migration in pending_migrations:
-            if getattr(migration, "type", None) != MigrationType.REPEATABLE:
+            if migration.type != MigrationType.REPEATABLE:
                 continue
 
             current_checksum = getattr(migration, "checksum", None)
@@ -696,7 +689,7 @@ class MigrationStateManager:
                 for name, checksum in previous_checksums.items():
                     basename_checksums.setdefault(Path(name).name, checksum)
 
-            script_key = getattr(migration, "script_name", "")
+            script_key = migration.script_name
             previous_checksum = self._lookup_checksum(
                 previous_checksums,
                 script_key,
@@ -723,14 +716,14 @@ class MigrationStateManager:
 
     @staticmethod
     def _get_type_name(migration: Migration) -> str:
-        m_type = getattr(migration, "type", None)
+        m_type = migration.type
         if isinstance(m_type, MigrationType):
             return m_type.name
         return str(m_type or "").upper()
 
     @staticmethod
     def _installed_rank(migration: Migration) -> int:
-        return int(getattr(migration, "installed_rank", 0) or 0)
+        return int(migration.installed_rank or 0)
 
     @staticmethod
     def _lookup_checksum(
@@ -836,7 +829,7 @@ class MigrationStateManager:
         for migration in all_scripts:
             script_name = migration.script_name
             migration_type_name = self._get_type_name(migration)
-            migration_version = cast(Optional[str], getattr(migration, "version", None))
+            migration_version = migration.version
 
             if migration_type_name in VERSIONED_SCRIPT_TYPES:
                 if self._is_versioned_pending(
@@ -923,86 +916,10 @@ class MigrationStateManager:
         """
         return runs[script_name].status in PENDING_REPEATABLE_STATUSES
 
-    def plan_migrate(
-        self,
-        scripts_dir: Optional[Path],
-        *,
-        recursive: bool,
-        additional_dirs: Optional[Sequence[Path]],
-        dir_recursive_map: Optional[Dict[Path, bool]],
-        target_version: Optional[str],
-        tags: Optional[Sequence[str]],
-        exclude_tags: Optional[Sequence[str]],
-        versions: Optional[Sequence[str]],
-        exclude_versions: Optional[Sequence[str]],
-        strict_mode: bool,
-        read_snapshot: Optional[MigrationReadSnapshot] = None,
-    ) -> MigratePlan:
-        """Select what ``migrate`` runs; raises ``StrictModeError`` when strict and out of order."""
-        return _plan_migrate(
-            self,
-            scripts_dir,
-            recursive=recursive,
-            additional_dirs=additional_dirs,
-            dir_recursive_map=dir_recursive_map,
-            target_version=target_version,
-            tags=tags,
-            exclude_tags=exclude_tags,
-            versions=versions,
-            exclude_versions=exclude_versions,
-            strict_mode=strict_mode,
-            read_snapshot=read_snapshot,
-        )
-
-    def plan_undo(
-        self,
-        scripts_dir: Optional[Path],
-        *,
-        recursive: bool,
-        additional_dirs: Optional[Sequence[Path]],
-        dir_recursive_map: Optional[Dict[Path, bool]],
-        target_version: Optional[str],
-        tags: Optional[Sequence[str]],
-        exclude_tags: Optional[Sequence[str]],
-        versions: Optional[Sequence[str]],
-        exclude_versions: Optional[Sequence[str]],
-        migration_rules: MigrationRules,
-        read_snapshot: Optional[MigrationReadSnapshot] = None,
-    ) -> UndoPlan:
-        """Select what ``undo`` reverts; a refused plan carries its message in ``refusal``."""
-        return _plan_undo(
-            self,
-            scripts_dir,
-            recursive=recursive,
-            additional_dirs=additional_dirs,
-            dir_recursive_map=dir_recursive_map,
-            target_version=target_version,
-            tags=tags,
-            exclude_tags=exclude_tags,
-            versions=versions,
-            exclude_versions=exclude_versions,
-            migration_rules=migration_rules,
-            read_snapshot=read_snapshot,
-        )
-
-    def plan_repairs(
-        self,
-        scripts_dir: Path,
-        *,
-        recursive: bool,
-        additional_dirs: Optional[List[Path]],
-        dir_recursive_map: Optional[Dict[Path, bool]],
-        read_snapshot: Optional[MigrationReadSnapshot] = None,
-    ) -> RepairPlan:
-        """Decide what ``repair`` fixes; raises ``RepairSafetyError`` when it would mark everything missing."""
-        return _plan_repairs(
-            self,
-            scripts_dir,
-            recursive=recursive,
-            additional_dirs=additional_dirs,
-            dir_recursive_map=dir_recursive_map,
-            read_snapshot=read_snapshot,
-        )
+    # The planners live in state/*_plan.py and take the manager as their first argument.
+    plan_migrate = _plan_migrate
+    plan_undo = _plan_undo
+    plan_repairs = _plan_repairs
 
     _passes_filters = staticmethod(passes_filters)
     apply_filters_to_migrations = staticmethod(select_migrations)

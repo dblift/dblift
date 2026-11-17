@@ -118,14 +118,16 @@ class CosmosDbSchemaOperations(BaseSchemaOperations):
                     container_id = container.get("id")
                     if container_id == container_name:
                         self.log.debug(
-                            f"Container {container_name} found via list (read error: {str(read_error)})"
+                            f"Container {container_name} found via list "
+                            f"(read error: {str(read_error)})"
                         )
                         return True
                 return False
             except Exception as list_error:
                 # If listing also fails, log and return False
                 self.log.debug(
-                    f"Error checking container existence (read: {str(read_error)}, list: {str(list_error)})"
+                    f"Error checking container existence (read: {str(read_error)}, "
+                    f"list: {str(list_error)})"
                 )
                 return False
 
@@ -358,59 +360,3 @@ class CosmosDbSchemaOperations(BaseSchemaOperations):
             )
 
         return summary
-
-    def get_schemas(self, connection: Any) -> List[str]:
-        """Get list of schemas (not applicable to Cosmos DB).
-
-        Returns:
-            Empty list (Cosmos DB doesn't have schemas)
-        """
-        return []
-
-    def get_tables(self, connection: Any, schema: str) -> List[str]:
-        """Get list of containers (tables) in the database.
-
-        Args:
-            schema: Schema name (not used in Cosmos DB)
-
-        Returns:
-            List of container names
-        """
-        return self.list_containers()
-
-    def get_columns_query(self, schema: str, table: str) -> str:
-        """Get a Cosmos DB-specific query to retrieve column information.
-
-        Args:
-            schema: Schema name (not used)
-            table: Container name
-
-        Returns:
-            Query to sample documents from the container
-        """
-        return f"SELECT TOP 1 * FROM {table}"
-
-    def get_add_column_sql(self, schema: str, table: str, column: str, type_def: str) -> str:
-        """Generate Cosmos DB-specific SQL for adding a column.
-
-        Args:
-            schema: Schema name (not used)
-            table: Container name
-            column: Column name
-            type_def: Column type definition
-
-        Returns:
-            SQL comment (Cosmos DB is schema-less)
-        """
-        return f"-- Cosmos DB is schema-less, no ALTER TABLE needed for {table}.{column}"
-
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Get positional placeholders for dblift SQL execution paths.
-
-        Args:
-            count: Number of placeholders needed
-
-        Returns:
-            Comma-separated parameter placeholders
-        """
-        return ", ".join(["?" for _ in range(count)])

@@ -17,11 +17,11 @@ import pytest
 
 from dblift.api.events import EventType
 from dblift.config import DbliftConfig
+from tests.unit._client_factory import bare_client
 
 
 def _make_client(executor_method: str, result: MagicMock) -> "DBLiftClient":  # noqa: F821
     """Build a minimal DBLiftClient stub for event-emission tests."""
-    from dblift.api.client import DBLiftClient
 
     provider = MagicMock()
     provider.supports_transactions.return_value = False
@@ -29,7 +29,7 @@ def _make_client(executor_method: str, result: MagicMock) -> "DBLiftClient":  # 
     executor = MagicMock()
     getattr(executor, executor_method).return_value = result
 
-    client = DBLiftClient.__new__(DBLiftClient)
+    client = bare_client()
     client.config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
     client.provider = provider
     client.executor = executor
@@ -39,7 +39,6 @@ def _make_client(executor_method: str, result: MagicMock) -> "DBLiftClient":  # 
 
 
 def _make_failing_client(executor_method: str, exc: Exception) -> "DBLiftClient":  # noqa: F821
-    from dblift.api.client import DBLiftClient
 
     provider = MagicMock()
     provider.supports_transactions.return_value = False
@@ -47,7 +46,7 @@ def _make_failing_client(executor_method: str, exc: Exception) -> "DBLiftClient"
     executor = MagicMock()
     getattr(executor, executor_method).side_effect = exc
 
-    client = DBLiftClient.__new__(DBLiftClient)
+    client = bare_client()
     client.config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
     client.provider = provider
     client.executor = executor

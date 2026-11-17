@@ -1846,13 +1846,6 @@
   "reason": "the analyzer path qualifies the unqualified `tr` with a placeholder schema `default_schema` and keeps its spelling; the reader names `TR` with no schema, folded to upper case as Db2 stores it",
   "sql": "CREATE TRIGGER tr BEFORE INSERT ON t BEGIN SELECT RAISE(ABORT, 'x'); END"
  },
- "43f7a0f6fd3db92c/analyzer": {
-  "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
-  "path": "analyzer",
-  "reason": "ALTER TABLE: the reader names `T` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
-  "sql": "ALTER TABLE t ADD CONSTRAINT uk_email UNIQUE(email)"
- },
  "4470919cf94692bc/analyzer": {
   "class": "opaque-reader-gap",
   "issue": "not Db2 SQL: no reader gap, the statement is another engine's or a client command",
@@ -2492,10 +2485,9 @@
   "sql": "COMMENT ON TABLE orders IS 'desc'"
  },
  "6173b395e5248ec9/analyzer": {
-  "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "class": "disagree",
   "path": "analyzer",
-  "reason": "ALTER TABLE: the reader names `NEWTAB` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
+  "reason": "ALTER TABLE changes `NEWTAB` and declares `FK1` on `A` referencing `OTHER(B)`. The analyzer recorded only `default_schema.newtab`; the reader folds the table names and includes the referenced parent.",
   "sql": "ALTER TABLE newtab ADD CONSTRAINT fk1 FOREIGN KEY (a) REFERENCES other(b)"
  },
  "6197595503f01ee2": {
@@ -3428,10 +3420,9 @@
   "sql": "CREATE INDEX ix ON t () USING HASH"
  },
  "851e4202df9255bc/analyzer": {
-  "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "class": "disagree",
   "path": "analyzer",
-  "reason": "ALTER TABLE: the reader names `ORDERS` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
+  "reason": "ALTER TABLE changes `ORDERS` and declares `FK1` on `A` referencing `B(C)`. The analyzer recorded only `default_schema.orders`; the reader folds the table names and includes the referenced parent.",
   "sql": "ALTER TABLE orders ADD CONSTRAINT fk1 FOREIGN KEY (a) REFERENCES b(c)"
  },
  "853b5dfcecc0f0cb/analyzer": {
@@ -4321,10 +4312,9 @@
   "sql": "CREATE TABLE orders (id INT, user_id INT, total DECIMAL(10,2))"
  },
  "aaf78c1b488e5cf8/analyzer": {
-  "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "class": "disagree",
   "path": "analyzer",
-  "reason": "ALTER TABLE: the reader names `ORDERS` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
+  "reason": "ALTER TABLE changes `ORDERS` and declares `FK_USER` on `USER_ID` referencing `USERS(ID)`. The analyzer recorded only `default_schema.orders`; the reader folds the table names and includes the referenced parent.",
   "sql": "ALTER TABLE orders ADD CONSTRAINT fk_user FOREIGN KEY (user_id) REFERENCES users(id)"
  },
  "ab280641b39ea839/hybrid": {
@@ -4662,10 +4652,9 @@
   "sql": "CREATE TABLE orders (id INT PRIMARY KEY, name VARCHAR(50))"
  },
  "b560ae9634899dee/analyzer": {
-  "class": "opaque-reader-gap",
-  "issue": "by design: the reader states what it cannot read as unavailable (docs/sql-parsing/db2.md section 13)",
+  "class": "disagree",
   "path": "analyzer",
-  "reason": "ALTER TABLE: the reader names `ORDERS` but states column facts (columns, constraints, indexed columns) unavailable rather than guess; it agrees with the extraction on the name",
+  "reason": "ALTER TABLE changes `ORDERS` and declares `FK_CUSTOMER` on `CUSTOMER_ID` referencing `CUSTOMERS(ID)`. The analyzer recorded only `default_schema.orders`; the reader folds the table names and includes the referenced parent.",
   "sql": "ALTER TABLE orders ADD CONSTRAINT fk_customer FOREIGN KEY (customer_id) REFERENCES customers(id)"
  },
  "b56ac7073e32f203/analyzer": {
@@ -6516,5 +6505,21 @@
   "path": "analyzer",
   "reason": "DROP TABLE: the extraction named `default_schema.t_keep` from inside a nested comment (`/* ... /* ... */ ... */`); the reader skips the whole comment, names `T_AFTER` as created and states column facts unavailable",
   "sql": "/* a /* b */ DROP TABLE t_keep; */ CREATE TABLE t_after (x INT) /* tail */"
+ },
+ "6e46fc27b60686e4": {
+  "sql": "INSERT OVERWRITE INTO target SELECT * FROM source",
+  "path": "both",
+  "class": "no-old",
+  "reason": "Input harvested after this family's extraction was frozen (the Snowflake INSERT OVERWRITE form): no extraction can be recomputed for it, so there is nothing to compare. The Db2 head classifier leaves the INSERT unclassified (diagnostic `db2 INSERT statement: not classified`).",
+  "issue": "",
+  "old": {
+   "hybrid": null,
+   "analyzer": null
+  },
+  "facts": {
+   "diagnostic": "db2 INSERT statement: not classified",
+   "kind": "DML",
+   "operation": "INSERT"
+  }
  }
 }

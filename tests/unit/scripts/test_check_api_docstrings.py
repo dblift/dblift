@@ -1,19 +1,19 @@
-"""Unit tests for ``scripts/check_api_docstrings`` (PR-E1, action #4).
+"""Unit tests for ``scripts/check_api_docstrings``.
 
-The linter gates the ``api/`` + ``cli/`` + ``core/`` public surface in
-CI; these tests pin the detection rules, exemption mechanisms, and
-ratchet semantics so future changes can't silently weaken the contract.
+The linter gates the public surface of the whole ``dblift/`` package at
+zero tolerance in CI; these tests pin the detection rules, exemption
+mechanisms and the fail-loudly behaviour for missing roots so future
+changes can't silently weaken the contract.
 """
 
 from __future__ import annotations
 
-import json
 import textwrap
 from pathlib import Path
 
 import pytest
 
-from scripts.check_api_docstrings import main, scan_file
+from scripts.check_api_docstrings import DEFAULT_ROOTS, main, scan_file
 
 pytestmark = [pytest.mark.unit]
 
@@ -349,122 +349,56 @@ def test_deeply_nested_private_chain(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Ratchet mode (action #4)
+# Zero-tolerance scope
 # ---------------------------------------------------------------------------
 
 
-def _make_violator_tree(tmp_path: Path, root: str, count: int) -> Path:
-    """Create *count* files under *tmp_path*/*root*/ each missing a module docstring."""
-    root_dir = tmp_path / root
-    root_dir.mkdir(parents=True, exist_ok=True)
-    for i in range(count):
-        (root_dir / f"mod_{i}.py").write_text("def f():\n    pass\n", encoding="utf-8")
-    return root_dir
+def test_default_root_is_the_whole_package() -> None:
+    """The gate covers every subpackage and top-level module, not a hand-picked list."""
+    assert DEFAULT_ROOTS == ("dblift",)
 
 
-def test_ratchet_pass_at_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """count == cap exits 0."""
-    monkeypatch.chdir(tmp_path)
-    _make_violator_tree(tmp_path, "fake", 5)
-    ratchet = tmp_path / "ratchet.json"
-    ratchet.write_text(json.dumps({"fake": 5}), encoding="utf-8")
-    rc = main(["--paths", "fake", "--ratchet", str(ratchet)])
-    assert rc == 0
-
-
-def test_ratchet_fail_when_over_cap(
+def test_any_violation_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """count > cap exits 1 and lists the delta."""
+    """There is no cap: a single missing docstring fails the run."""
     monkeypatch.chdir(tmp_path)
-    _make_violator_tree(tmp_path, "fake", 6)
-    ratchet = tmp_path / "ratchet.json"
-    ratchet.write_text(json.dumps({"fake": 5}), encoding="utf-8")
-    rc = main(["--paths", "fake", "--ratchet", str(ratchet)])
-    out = capsys.readouterr().out
-    assert rc == 1
-    assert "fake: 6 violation(s), cap is 5" in out
-    assert "Net +1" in out
-
-
-def test_ratchet_pass_under_cap_with_nudge(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """count < cap exits 0 with a tightening suggestion."""
-    monkeypatch.chdir(tmp_path)
-    _make_violator_tree(tmp_path, "fake", 3)
-    ratchet = tmp_path / "ratchet.json"
-    ratchet.write_text(json.dumps({"fake": 10}), encoding="utf-8")
-    rc = main(["--paths", "fake", "--ratchet", str(ratchet)])
-    out = capsys.readouterr().out
-    assert rc == 0
-    assert "consider committing tighter caps" in out
-    assert "you can lower the cap by 7" in out
-
-
-def test_ratchet_missing_root_with_violations_fails(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """A root listed in --paths but absent from the ratchet must be declared."""
-    monkeypatch.chdir(tmp_path)
-    _make_violator_tree(tmp_path, "fake", 2)
-    ratchet = tmp_path / "ratchet.json"
-    ratchet.write_text(json.dumps({"other": 0}), encoding="utf-8")
-    rc = main(["--paths", "fake", "--ratchet", str(ratchet)])
-    out = capsys.readouterr().out
-    assert rc == 1
-    assert "root not declared in ratchet" in out
-
-
-def test_ratchet_comment_keys_ignored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Underscore-prefixed top-level keys are comments — never treated as roots."""
-    monkeypatch.chdir(tmp_path)
-    _make_violator_tree(tmp_path, "fake", 1)
-    ratchet = tmp_path / "ratchet.json"
-    ratchet.write_text(
-        json.dumps({"_comment": "anything", "_policy": "stuff", "fake": 1}),
-        encoding="utf-8",
-    )
-    rc = main(["--paths", "fake", "--ratchet", str(ratchet)])
-    assert rc == 0
-
-
-def test_ratchet_rejects_negative_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A negative cap is a config error — propagate as a hard failure."""
-    monkeypatch.chdir(tmp_path)
-    _make_violator_tree(tmp_path, "fake", 0)
-    ratchet = tmp_path / "ratchet.json"
-    ratchet.write_text(json.dumps({"fake": -1}), encoding="utf-8")
-    with pytest.raises(ValueError, match="non-negative integer"):
-        main(["--paths", "fake", "--ratchet", str(ratchet)])
-
-
-def test_ratchet_rejects_boolean_cap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """``true`` / ``false`` are JSON booleans, not integer caps — reject explicitly.
-
-    Regression for Bugbot review on PR #340: Python's ``bool`` is a subclass
-    of ``int``, so ``isinstance(True, int)`` is True. A naive int-only check
-    silently accepts ``"api": true`` as cap=1, which almost certainly means
-    the ratchet maintainer typed a bare ``true`` instead of ``1``.
-    """
-    monkeypatch.chdir(tmp_path)
-    _make_violator_tree(tmp_path, "fake", 0)
-    ratchet = tmp_path / "ratchet.json"
-    ratchet.write_text(json.dumps({"fake": True}), encoding="utf-8")
-    with pytest.raises(ValueError, match="non-negative integer"):
-        main(["--paths", "fake", "--ratchet", str(ratchet)])
-    ratchet.write_text(json.dumps({"fake": False}), encoding="utf-8")
-    with pytest.raises(ValueError, match="non-negative integer"):
-        main(["--paths", "fake", "--ratchet", str(ratchet)])
-
-
-def test_no_ratchet_keeps_strict_behavior(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    """Default (no --ratchet) is unchanged: any violation fails."""
-    monkeypatch.chdir(tmp_path)
-    _make_violator_tree(tmp_path, "fake", 1)
+    root = tmp_path / "fake"
+    root.mkdir()
+    (root / "mod.py").write_text("def f():\n    return 1\n", encoding="utf-8")
     rc = main(["--paths", "fake"])
     out = capsys.readouterr().out
     assert rc == 1
     assert "missing docstring" in out
+
+
+def test_clean_tree_passes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    root = tmp_path / "fake"
+    root.mkdir()
+    (root / "mod.py").write_text('"""Doc."""\n', encoding="utf-8")
+    assert main(["--paths", "fake"]) == 0
+
+
+def test_ratchet_option_is_gone() -> None:
+    """Caps are retired; the option must not be silently accepted."""
+    with pytest.raises(SystemExit):
+        main(["--paths", "fake", "--ratchet", "caps.json"])
+
+
+def test_missing_root_fails_loudly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Running from the wrong directory must not pass on an empty scan."""
+    monkeypatch.chdir(tmp_path)
+    rc = main([])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "dblift" in err and "not found" in err
+
+
+def test_missing_explicit_root_fails_loudly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert main(["--paths", "nope"]) == 2

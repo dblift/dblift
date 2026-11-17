@@ -22,6 +22,7 @@ from dblift.core.migration.commands.repair_command import RepairCommand
 from dblift.core.migration.commands.validate_command import ValidateCommand
 from dblift.core.migration.state.migration_data_service import MigrationDataService
 from dblift.core.migration.state.migration_state import MigrationState
+from tests.unit._validation_snapshot import validate_snapshot_for
 from tests.unit.core.migration.commands._plan_repairs_wiring import as_actions
 
 pytestmark = [pytest.mark.unit, pytest.mark.sqlite]
@@ -141,8 +142,12 @@ def test_empty_history_snapshot_is_used_by_state_and_strict_validation(database_
 
     with observe_reads(client, migrations) as counts:
         state = client.executor.state_manager.build_state(migrations, read_snapshot=snapshot)
-        validation = client.executor.validator.validate_migrations(
-            migrations, "validate", resolved_migrations=[], preloaded_records=[]
+        validation = validate_snapshot_for(
+            client.executor.validator,
+            migrations,
+            "validate",
+            resolved_migrations=[],
+            applied_migrations=[],
         )
 
     assert [entry.script for entry in state.pending] == ["V1__app.sql"]
@@ -212,10 +217,11 @@ def test_resolved_catalog_copy_preserves_order_and_state_json(database_client):
     with observe_reads(client, migrations) as counts:
         state = client.executor.state_manager.build_state(migrations)
         copied = state.copy()
-        validation = client.executor.validator.validate_migrations(
+        validation = validate_snapshot_for(
+            client.executor.validator,
             migrations,
             resolved_migrations=copied.resolved_objects,
-            preloaded_records=copied.all_applied_objects,
+            applied_migrations=copied.all_applied_objects,
         )
 
     assert [script.script_name for script in copied.resolved_objects] == names
@@ -429,10 +435,12 @@ def test_migrate_dry_run_keeps_database_bytes_and_pending_results(database_clien
     assert [row.script for row in result.migrations] == ["V2__second.sql"]
     assert result.dry_run_count == 1
     assert database.read_bytes() == original
+    # The second scan is the callback catalog: a dry run checks the callbacks the run
+    # would fire for the same refusal the real run makes.
     assert counts == {
         "history": 2,
-        "files": {"V1__app.sql": 1, "V2__second.sql": 1},
-        "scans": 1,
+        "files": {"V1__app.sql": 2, "V2__second.sql": 2},
+        "scans": 2,
     }
 
 
@@ -859,12 +867,6 @@ def test_commands_validate_state_snapshots_without_public_collection_adapters(
             manager, "build_validation_snapshot", wraps=manager.build_validation_snapshot
         ) as build,
         patch.object(validator, "validate_snapshot", wraps=validator.validate_snapshot) as validate,
-        patch.object(
-            validator, "validate_migrations", side_effect=AssertionError("legacy adapter")
-        ),
-        patch.object(
-            validator, "validate_resolved_migrations", side_effect=AssertionError("legacy adapter")
-        ),
     ):
         result = getattr(client, operation)()
     assert result.success, result.error_message
@@ -991,6 +993,7 @@ def test_repair_delete_record_never_uses_model_filename_inference(
             ]
         ),
         result,
+        MigrationState(),
     )
     assert not failed, result.error_message
     assert count == 1

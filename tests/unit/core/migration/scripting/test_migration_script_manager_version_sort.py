@@ -204,30 +204,3 @@ class TestParseFilenameAlphabeticVersion:
         assert self.mgr.compare_versions("8b", "12") == -1
         assert self.mgr.compare_versions("8b", "9") == -1
         assert self.mgr.compare_versions("8b", "8") == 1
-
-
-class TestIsVersionedScriptName:
-    """is_versioned_script_name uses parse_filename (not Migration._determine_type)."""
-
-    def setup_method(self):
-        logger = DbliftLogger("test", LogFormat.TEXT)
-        self.mgr = MigrationScriptManager(logger)
-
-    def test_sql_and_py_versioned(self):
-        assert self.mgr.is_versioned_script_name("V1_0_0__seed.sql") is True
-        assert self.mgr.is_versioned_script_name("V1_0_0__seed.py") is True
-
-    def test_letter_version_rejected(self):
-        """A version must start with a digit — both classifiers agree on this."""
-        assert self.mgr.is_versioned_script_name("Va__letter.sql") is False
-
-    def test_alphanumeric_version_accepted(self):
-        """Only the leading character must be a digit; later segments may mix."""
-        assert self.mgr.is_versioned_script_name("V3.2A__mixed.sql") is True
-
-    def test_repeatable_undo_not_versioned(self):
-        assert self.mgr.is_versioned_script_name("R__repeat.sql") is False
-        assert self.mgr.is_versioned_script_name("U1__undo.sql") is False
-
-    def test_malformed_versioned_no_version(self):
-        assert self.mgr.is_versioned_script_name("V__.sql") is False

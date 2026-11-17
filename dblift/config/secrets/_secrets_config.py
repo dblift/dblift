@@ -33,6 +33,7 @@ class SecretsConfig:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SecretsConfig":
+        """Build a secrets configuration from a dictionary."""
         from dblift.config.secrets._registry import is_secret_uri
 
         def _literal(v: Any) -> Optional[str]:

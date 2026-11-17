@@ -5,7 +5,6 @@ from unittest.mock import Mock
 
 import pytest
 
-from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
 from dblift.core.migration.state.migration_state import MigrationEligibility
 from dblift.core.migration.state.migration_state_service import MigrationStateService
@@ -24,21 +23,6 @@ class TestMigrationStateService:
     def test_init(self, service):
         """Test MigrationStateService initialization."""
         assert service.logger is not None
-
-    def test_get_migration_type_string_none(self, service):
-        """Test _get_migration_type_string with None."""
-        result = service._get_migration_type_string(None)
-        assert result == "UNKNOWN"
-
-    def test_get_migration_type_string_enum(self, service):
-        """Test _get_migration_type_string with enum."""
-        result = service._get_migration_type_string(MigrationType.SQL)
-        assert result == "SQL"
-
-    def test_get_migration_type_string_string(self, service):
-        """Test _get_migration_type_string with string."""
-        result = service._get_migration_type_string("REPEATABLE")
-        assert result == "REPEATABLE"
 
     def test_determine_state_none_migration(self, service):
         """Test determine_state with None migration."""

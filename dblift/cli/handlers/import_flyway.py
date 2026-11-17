@@ -16,7 +16,7 @@ def _handle_import_flyway(ctx: CliCommandContext) -> Tuple[bool, Any]:
         ctx.client.import_flyway(
             dry_run=bool(ctx.args.dry_run),
             recursive=ctx.recursive,
-            flyway_table=getattr(ctx.args, "flyway_table", "flyway_schema_history"),
+            flyway_table=ctx.args.flyway_table,
         )
     )
     _set_command_completed(ctx.log, result, "IMPORT-FLYWAY")

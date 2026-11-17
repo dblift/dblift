@@ -123,4 +123,5 @@ def is_secret_uri(value: str) -> bool:
 
 
 def registered_schemes() -> list:
+    """Return the sorted URI schemes of the registered secrets providers."""
     return sorted(_providers.keys())

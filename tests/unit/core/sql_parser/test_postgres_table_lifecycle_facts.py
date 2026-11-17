@@ -6,7 +6,7 @@ from sqlglot.tokens import TokenType
 
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.sqlglot_statement_facts import (
-    _postgres_table_alter_tokens_match,
+    _table_alter_tokens_match,
     read_statement_facts,
 )
 from dblift.core.sql_parser.statement_facts import DeclaredConstraint, NamedObject
@@ -58,9 +58,10 @@ def test_table_rename_source_proof_rejects_a_different_table_name():
     assert isinstance(rename, exp.AlterRename)
     tail = [TokenType.RENAME, "TO", rename.this.this]
 
-    assert _postgres_table_alter_tokens_match(original, ast, tail)
-    assert not _postgres_table_alter_tokens_match(
+    assert _table_alter_tokens_match(original, "postgres", ast, tail)
+    assert not _table_alter_tokens_match(
         "ALTER TABLE other RENAME TO old_child",
+        "postgres",
         ast,
         tail,
     )

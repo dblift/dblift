@@ -17,6 +17,7 @@ from dblift.core.sql_parser.client_directives import classify_directive, is_free
 from dblift.core.sql_parser.delimiter_script import DelimiterScript
 from dblift.core.sql_parser.lexical_spec import (
     BOM,
+    BatchScriptRules,
     DirectiveAction,
     LexicalSpec,
     SegmentScriptRules,
@@ -328,7 +329,8 @@ class LexicalTokenizer(BaseTokenizer):
         """Lexemes of a terminator script, read from the text with its terminators blanked.
 
         An unterminated string, identifier or comment runs to the end of the script: the assembly
-        decides what that means. The depth at each consumed terminator that falls inside a comment is marked.
+        decides what that means. The depth at each consumed terminator that falls inside a comment
+        is marked.
         """
         sql = self.sql
         assert self.terminator_script is not None
@@ -651,13 +653,27 @@ class LexicalTokenizer(BaseTokenizer):
                 return directive
 
         if self._batches is not None:
-            self._token_start, self._token_line = self.pos, self.line
-            if self.pos >= self._seg_end:
-                self._enter_segment()
+            separator = self._batch_line_token(self._batches)
+            if separator is not None:
+                return separator
 
-        if self._batches is not None and self._line_head and self.peek(2) not in ("--", "/*"):
+        char = self.peek()
+        token = self._word_or_client_command_token(char)
+        if token is None:
+            token = self._comment_quote_or_placeholder_token(char)
+        if token is None:
+            return self._parameter_number_or_symbol_token(char)
+        return token
+
+    def _batch_line_token(self, batches: BatchScriptRules) -> Optional[Token]:
+        """Enter the segment at the cursor; a client command at a line head is a separator."""
+        self._token_start, self._token_line = self.pos, self.line
+        if self.pos >= self._seg_end:
+            self._enter_segment()
+
+        if self._line_head and self.peek(2) not in ("--", "/*"):
             count = read_command(
-                self._batches,
+                batches,
                 self.spec.client_name,
                 self.sql,
                 self.pos,
@@ -667,11 +683,12 @@ class LexicalTokenizer(BaseTokenizer):
             if count is not None:
                 return self._separator_token()
 
-        if self._batches is not None and not self._seg_checked:
+        if not self._seg_checked:
             self._check_segment()
+        return None
 
-        char = self.peek()
-
+    def _word_or_client_command_token(self, char: str) -> Optional[Token]:
+        """A plain word, a combining terminator or a client meta-command at the cursor."""
         # Plain code has no quote, comment or directive opener. Keep its source
         # span in the shared scanner and adapt it to the public Token contract.
         if char.isascii() and (char.isalpha() or char == "_"):
@@ -708,7 +725,13 @@ class LexicalTokenizer(BaseTokenizer):
             )
         ):
             return self._handle_meta_command()
+        return None
 
+    def _comment_quote_or_placeholder_token(self, char: str) -> Optional[Token]:
+        """A ``//`` comment, a placeholder or a quoted identifier at the cursor.
+
+        Refuses a tagged dollar quote where the dialect has only ``$$``.
+        """
         if self.spec.slash_line_comments and self.peek(2) == "//":
             return self._handle_comment()
 
@@ -732,7 +755,10 @@ class LexicalTokenizer(BaseTokenizer):
         # Check for double-quoted identifier BEFORE other checks
         if char == self.spec.quoted_identifier:
             return self._handle_quoted_identifier()
+        return None
 
+    def _parameter_number_or_symbol_token(self, char: str) -> Optional[Token]:
+        """A positional parameter, a number, a ``;`` or a symbol; else the base scanner's token."""
         # '$' that does not open a dollar-quote: a positional parameter ($1)
         # or a stray '$'.
         prefix = self.spec.parameter_prefix
@@ -1188,7 +1214,8 @@ class LexicalTokenizer(BaseTokenizer):
         )
 
     def _enter_segment(self) -> None:
-        """Start a code segment at the cursor: refuse a lone carriage return in the blanks before it."""
+        """Start a code segment at the cursor: refuse a lone carriage return in the blanks before
+        it."""
         assert self._batches is not None
         if self.pos > self._line_end:
             newline = self.sql.find("\n", self.pos)
@@ -1202,7 +1229,8 @@ class LexicalTokenizer(BaseTokenizer):
         self._seg_lone_cr = found is not None
 
     def _check_segment(self) -> None:
-        """Refuse a lone carriage return, then a variable reference, in the segment at the cursor."""
+        """Refuse a lone carriage return, then a variable reference, in the segment at
+        the cursor."""
         assert self._batches is not None
         self._seg_checked = True
         if self._seg_lone_cr:
@@ -1310,7 +1338,8 @@ class LexicalTokenizer(BaseTokenizer):
         )
 
     def _handle_unknown_char(self, char: str) -> Optional[Token]:
-        """An unclaimed character is a symbol; it only warns when the spec has not declared it silent."""
+        """An unclaimed character is a symbol; it only warns when the spec has not declared it
+        silent."""
         if not self.spec.silent_unclaimed:
             return super()._handle_unknown_char(char)
         start_pos, start_line, start_col = self.pos, self.line, self.col
@@ -1335,30 +1364,65 @@ class LexicalTokenizer(BaseTokenizer):
         try:
             token = self._next_sql_token()
         except UnsafeStatementSplitError as error:
-            if self._batches is not None and str(error).startswith("unterminated"):
-                self._refuse_variable_in_unterminated()
+            self._refuse_variable_before_error(error)
             raise
         if token is None:
             return None
-        if self._batches is not None and self._is_lexeme(token):
+        if self._batches is not None:
+            self._follow_batch_token(self._batches, token)
+        if self._reads_directives and token.type != TokenType.DIRECTIVE:
+            if clear and token.type == TokenType.COMMENT and self.sql.startswith("/*", token.pos):
+                self._clear_from = self.pos
+            self._track(token)
+        if self._copy_header is not None or (self._statement_start and self.spec.copy_from_stdin):
+            self._follow_copy_header(token)
+        if token.type not in (TokenType.COMMENT, TokenType.EOF):
+            self._statement_start = self._starts_statement(token)
+        return token
+
+    def _refuse_variable_before_error(self, error: UnsafeStatementSplitError) -> None:
+        """Before *error* propagates, report a variable the unterminated lexeme swallowed.
+
+        Only when batches are read and the message of *error* starts with "unterminated":
+        ``_refuse_variable_in_unterminated`` then raises when the open lexeme is a string, a
+        quoted name or a bracketed name whose swallowed text holds a client variable
+        reference. Otherwise returns None.
+        """
+        if self._batches is not None and str(error).startswith("unterminated"):
+            self._refuse_variable_in_unterminated()
+
+    def _follow_batch_token(self, batches: BatchScriptRules, token: Token) -> None:
+        """Check a token read under batch rules and track whether the next token heads a line.
+
+        A string or a quoted or bracketed name is first checked for a client variable
+        reference, which raises. Then a comment whose text up to the cursor holds a newline
+        sets ``_line_head``, a comment without one leaves it, ``EOF`` leaves it, and any other
+        token clears it. Returns None.
+        """
+        if self._is_lexeme(token):
             refuse_variable_in_lexeme(
-                self._batches,
+                batches,
                 self.spec.client_name,
                 self.sql,
                 token.pos + 1,
                 token.pos + len(token.text) - 1,
                 token.line,
             )
-        if self._batches is not None:
-            if token.type == TokenType.COMMENT:
-                if self.sql.find("\n", token.pos, self.pos) >= 0:
-                    self._line_head = True  # the line the comment ends on starts inside it
-            elif token.type != TokenType.EOF:
-                self._line_head = False
-        if self._reads_directives and token.type != TokenType.DIRECTIVE:
-            if clear and token.type == TokenType.COMMENT and self.sql.startswith("/*", token.pos):
-                self._clear_from = self.pos
-            self._track(token)
+        if token.type == TokenType.COMMENT:
+            if self.sql.find("\n", token.pos, self.pos) >= 0:
+                self._line_head = True  # the line the comment ends on starts inside it
+        elif token.type != TokenType.EOF:
+            self._line_head = False
+
+    def _follow_copy_header(self, token: Token) -> None:
+        """Collect the tokens of a ``COPY`` header up to the ``;`` that ends it.
+
+        A delimiter at parenthesis depth 0 ends the header being collected, if any, and when
+        that header reads ``FROM STDIN`` sets ``in_copy_data`` and ``_copy_data_pending``.
+        Inside a header every other token is appended to it. Otherwise a ``COPY`` keyword at
+        the start of a statement opens a header when the spec reads ``COPY FROM STDIN``.
+        Returns None.
+        """
         if token.type == TokenType.DELIMITER and token.parens_depth == 0:
             if self._copy_header is not None and copy_header_reads(
                 self._copy_header, "FROM", "STDIN"
@@ -1375,22 +1439,28 @@ class LexicalTokenizer(BaseTokenizer):
             and token.text.upper() == "COPY"
         ):
             self._copy_header = []
-        if token.type not in (TokenType.COMMENT, TokenType.EOF):
-            self._statement_start = token.type in (
-                TokenType.META_COMMAND,
-                TokenType.COPY_DATA,
-            ) or (
-                token.parens_depth == 0
-                and (
-                    token.type == TokenType.DELIMITER
-                    or (
-                        token.type == TokenType.SYMBOL
-                        and bool(self.spec.combine_terminator)
-                        and token.text == self.spec.combine_terminator
-                    )
+
+    def _starts_statement(self, token: Token) -> bool:
+        """Return whether a statement can begin after *token*.
+
+        True after a meta-command or a COPY data block, after a delimiter at parenthesis depth
+        0, and after a symbol at depth 0 equal to the spec's non-empty ``combine_terminator``;
+        False after any other token.
+        """
+        return token.type in (
+            TokenType.META_COMMAND,
+            TokenType.COPY_DATA,
+        ) or (
+            token.parens_depth == 0
+            and (
+                token.type == TokenType.DELIMITER
+                or (
+                    token.type == TokenType.SYMBOL
+                    and bool(self.spec.combine_terminator)
+                    and token.text == self.spec.combine_terminator
                 )
             )
-        return token
+        )
 
     def handle_copy_data(self) -> Token:
         r"""Read COPY FROM STDIN rows up to the line that is exactly ``\.``.

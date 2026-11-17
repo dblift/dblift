@@ -3,18 +3,17 @@
 import os
 from functools import cmp_to_key
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, NamedTuple, Optional, Set, Tuple
+from typing import Dict, Iterable, Iterator, List, NamedTuple, Optional, Set, Tuple
 
 from dblift.core.logger import Log
 from dblift.core.migration._type_match import is_migration_type
 from dblift.core.migration.encoding import MigrationEncodingError, read_migration_text
+from dblift.core.migration.formats import MigrationFormat, MigrationFormatDetector
 from dblift.core.migration.migration import (
     Migration,
-    MigrationResource,
     MigrationType,
     ResolvedMigration,
     calculate_migration_script_checksum,
-    normalize_migration_checksum,
 )
 from dblift.core.migration.scripting.filename_parser import (
     _CALLBACK_PREFIXES,
@@ -26,6 +25,7 @@ from dblift.core.migration.scripting.filename_parser import (
 from dblift.core.migration.scripting.migration_markers import MigrationMarkerMixin
 from dblift.core.migration.version_utils import compare_versions as _compare_versions_shared
 from dblift.core.migration.version_utils import is_migration_success
+from dblift.core.utils.path_checks import path_exists, path_is_dir
 
 
 class _DiscoveredScript(NamedTuple):
@@ -48,73 +48,17 @@ def _successful_non_delete_records(migrations: Iterable[Migration]) -> Iterator[
             yield migration
 
 
-def _last_successful_non_delete_record(
-    applied_migrations: List[Migration], script_name: str
-) -> Optional[Migration]:
-    """Find the last successful non-audit row in the supplied history order."""
-    return next(
-        (
-            migration
-            for migration in _successful_non_delete_records(reversed(applied_migrations))
-            if getattr(migration, "script_name", None) == script_name
-        ),
-        None,
-    )
-
-
-def _current_script_checksum(
-    manager: "MigrationScriptManager",
-    script_path: Optional[Path],
-    script: Optional[Migration] = None,
-) -> Optional[int]:
-    """Reuse resolved content's checksum, or read a legacy/standalone script once."""
-    if script is not None and isinstance(getattr(script, "content", None), str):
-        checksum = normalize_migration_checksum(getattr(script, "checksum", None))
-        if checksum is not None:
-            return checksum
-    if script_path and script_path.exists():
-        raw_text = read_migration_text(
-            script_path,
-            configured_encoding=manager.script_encoding,
-            detect_encoding=manager.detect_encoding,
-        )
-        checksum = normalize_migration_checksum(manager.calculate_checksum(raw_text))
-        if checksum is None:
-            checksum = calculate_migration_script_checksum(raw_text)
-        return checksum
-    return None
-
-
 class MigrationScriptManager(MigrationMarkerMixin):
     """Resolves on-disk migration scripts, computes checksums, and orders them by version."""
 
     def __init__(self, logger: Log, script_encoding: str = "utf-8", detect_encoding: bool = False):
-        """Configure script encoding and (optional) auto-detection used when reading migration files."""
+        """Configure script encoding and (optional) auto-detection used when reading migration
+        files."""
         self.logger = logger
         self.script_encoding = script_encoding
         self.detect_encoding = detect_encoding
         # Filenames already reported by _report_callback_naming_violation.
         self._reported_naming_violations: Set[str] = set()
-
-    def _get_migration_type_string(self, migration_type: Any) -> str:
-        """Safely get migration type as string, handling both enum and string types.
-
-        Delegates to the shared helper in ``dblift.core.migration._type_match``;
-        kept as a method for backwards compatibility with existing call sites.
-        """
-        from dblift.core.migration._type_match import migration_type_name
-
-        return migration_type_name(migration_type)
-
-    def _is_migration_type_equal(self, migration_type: Any, target_type: str) -> bool:
-        """Check if migration type matches target type, handling both enum and string types.
-
-        Delegates to the shared helper in ``dblift.core.migration._type_match``;
-        kept as a method for backwards compatibility with existing call sites.
-        """
-        from dblift.core.migration._type_match import is_migration_type
-
-        return is_migration_type(migration_type, target_type)
 
     def calculate_checksum(self, content: str) -> int:
         """Calculate the Flyway-compatible CRC32 checksum for script content (see Migration)."""
@@ -143,8 +87,6 @@ class MigrationScriptManager(MigrationMarkerMixin):
 
         A vanished file raises the encoding reader's error.
         """
-        from dblift.core.migration.formats import MigrationFormat
-
         metadata = (
             filename_metadata
             if filename_metadata is not None
@@ -172,23 +114,15 @@ class MigrationScriptManager(MigrationMarkerMixin):
             migration.type = MigrationType.PYTHON
         return migration
 
-    def is_versioned_script_name(self, filename: str) -> bool:
-        """True if *filename* is a Flyway versioned migration (V*__), any registered extension.
-
-        Uses the canonical parser for every registered extension. Versions must
-        start with a digit.
-        """
-        migration_type, version, _, _ = self.parse_filename(filename)
-        return migration_type == MigrationType.SQL and bool(version)
-
     def compare_versions(self, version1: Optional[str], version2: Optional[str]) -> int:
-        """Compare two version strings (e.g. '1.0.0' vs '1.0.1', '1_2_3' vs '1_2_4', '3.2A' vs '3.2B'). Handles None as empty string."""
+        """Compare two version strings (e.g. '1.0.0' vs '1.0.1', '1_2_3' vs '1_2_4', '3.2A' vs
+        '3.2B'). Handles None as empty string."""
         return _compare_versions_shared(version1, version2)
 
     @staticmethod
     def migration_directory_exists(path: Path) -> bool:
         """Report filesystem status for migration input collection."""
-        return path.exists()
+        return path_exists(path)
 
     def get_migration_scripts(
         self,
@@ -235,35 +169,6 @@ class MigrationScriptManager(MigrationMarkerMixin):
 
         return all_migrations
 
-    def get_migration_resources(
-        self,
-        scripts_dir: Path,
-        recursive: bool = True,
-        additional_dirs: Optional[List[Path]] = None,
-        dir_recursive_map: Optional[Dict[Path, bool]] = None,
-    ) -> List[MigrationResource]:
-        """Return script resources without history/execution fields."""
-        migrations = self.get_migration_scripts(
-            scripts_dir,
-            recursive=recursive,
-            additional_dirs=additional_dirs,
-            dir_recursive_map=dir_recursive_map,
-        )
-        resources: List[MigrationResource] = []
-        for migration in migrations:
-            path = getattr(migration, "path", None)
-            if path is None:
-                continue
-            resources.append(
-                MigrationResource(
-                    path=path,
-                    script_name=migration.script_name,
-                    content=migration.content,
-                    encoding=getattr(migration, "script_encoding", self.script_encoding),
-                )
-            )
-        return resources
-
     def get_resolved_migrations(
         self,
         scripts_dir: Path,
@@ -288,77 +193,11 @@ class MigrationScriptManager(MigrationMarkerMixin):
         migration_type, version, _, _ = self.parse_filename(script_name)
         return version
 
-    def extract_description(self, script_name: str) -> str:
-        """Extract description from script name."""
-        # Use the parse_filename method for consistency
-        _, _, description, _ = self.parse_filename(script_name)
-        return description
-
     def extract_tags(self, script_name: str) -> List[str]:
         """Extract tags from script name."""
         # Use the parse_filename method for consistency
         _, _, _, tags = self.parse_filename(script_name)
         return tags
-
-    def has_script_changed(
-        self,
-        script_name: str,
-        applied_migrations: Optional[List[Migration]] = None,
-        script_path: Optional[Path] = None,
-    ) -> bool:
-        """Check if a script has changed by comparing its checksum with the stored one.
-
-        Args:
-            script_name: Name of the script
-            applied_migrations: List of applied Migration objects from history manager (optional)
-            script_path: Path to the script file (optional, if not provided will try to find it)
-
-        Returns:
-            bool: True if the script has changed or hasn't been applied yet, False otherwise
-        """
-        # If no applied migrations provided, we can't check if script has changed
-        if not applied_migrations:
-            self.logger.debug(
-                f"No applied migrations provided, assuming script {script_name} has changed"
-            )
-            return True
-
-        applied_script = _last_successful_non_delete_record(applied_migrations, script_name)
-
-        # If script has never been successfully applied, consider it changed
-        if not applied_script:
-            self.logger.debug(f"Script {script_name} has not been applied yet")
-            return True
-
-        # Get applied checksum (normalize driver unsigned 32-bit vs signed Flyway CRC32)
-        applied_checksum = normalize_migration_checksum(getattr(applied_script, "checksum", None))
-
-        # Standalone callers always read the current file, without a resolved snapshot.
-        current_checksum = _current_script_checksum(self, script_path)
-
-        if applied_checksum is None:
-            self.logger.debug(
-                f"No stored checksum for {script_name}; cannot verify if script changed"
-            )
-            return True
-
-        if current_checksum is None:
-            self.logger.debug(
-                f"Could not compute normalized filesystem checksum for {script_name}; "
-                "treating as possibly changed"
-            )
-            return True
-
-        # Compare only signed 32-bit ints — never str vs int (always "changed" in Python).
-        is_changed: bool = current_checksum != applied_checksum
-        if is_changed:
-            self.logger.debug(
-                f"Script {script_name} has changed. Database checksum: {applied_checksum}, Filesystem checksum: {current_checksum}"
-            )
-        else:
-            self.logger.debug(f"Script {script_name} has not changed")
-
-        return is_changed
 
     def get_all_scripts(
         self,
@@ -422,7 +261,7 @@ class MigrationScriptManager(MigrationMarkerMixin):
 
         for dir_path, resolved_dir_path in normalized_dirs:
             # Validate the directory exists
-            if not dir_path.exists() or not dir_path.is_dir():
+            if not path_is_dir(dir_path):
                 self.logger.debug(
                     f"Migration directory does not exist or is not a directory: {dir_path}"
                 )
@@ -441,7 +280,6 @@ class MigrationScriptManager(MigrationMarkerMixin):
 
             # Choose the appropriate search method based on recursive flag
             # Support multiple migration formats
-            from dblift.core.migration.formats import MigrationFormatDetector
 
             if dir_recursive:
                 # Recursively find all migration files in the directory and subdirectories
@@ -628,7 +466,8 @@ class MigrationScriptManager(MigrationMarkerMixin):
                 if resolved_path in seen_files:
                     # Skip this file as we've already processed it
                     self.logger.debug(
-                        f"Skipping duplicate file {script_path} (already processed as {resolved_path})"
+                        f"Skipping duplicate file {script_path} (already processed as "
+                        f"{resolved_path})"
                     )
                     continue
                 seen_files.add(resolved_path)
@@ -645,7 +484,8 @@ class MigrationScriptManager(MigrationMarkerMixin):
                 if parsed_metadata is None:
                     parsed_metadata = self.parse_filename(script_name)
                 migration_type = parsed_metadata[0]
-                # Exclude files that are classified as BASELINE but do not match the naming convention
+                # Exclude files that are classified as BASELINE but do not match the naming
+                # convention
                 if migration_type == MigrationType.BASELINE and not any(
                     script_name.startswith(prefix) for prefix in _CALLBACK_PREFIXES
                 ):
@@ -693,21 +533,11 @@ class MigrationScriptManager(MigrationMarkerMixin):
         # Log excluded files
         if excluded_files:
             self.logger.info(
-                f"Found {len(excluded_files)} script(s) not following Dblift naming convention. These will be excluded from migration: {excluded_files}"
+                f"Found {len(excluded_files)} script(s) not following Dblift naming convention. "
+                f"These will be excluded from migration: {excluded_files}"
             )
 
         return migrations
-
-    def is_valid_script_name(self, filename: str) -> bool:
-        """Return True if the filename is a valid migration or callback script name, False otherwise."""
-        migration_type, _, _, _ = self.parse_filename(filename)
-        # Accept versioned, repeatable, undo, and callback scripts
-        return migration_type in (
-            MigrationType.SQL,
-            MigrationType.REPEATABLE,
-            MigrationType.UNDO_SQL,
-            MigrationType.CALLBACK,
-        )
 
     def get_callbacks_by_event(
         self,

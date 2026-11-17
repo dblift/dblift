@@ -15,22 +15,22 @@ from dblift.cli.handlers._shared import (
 
 def _info_result_to_dict(result: Any) -> Dict[str, Any]:
     """Serialize an InfoResult to a JSON-compatible dict."""
-    migrations = [_migration_info_to_dict(m) for m in getattr(result, "migrations", [])]
+    migrations = [_migration_info_to_dict(m) for m in result.migrations]
     return {
         # ``success`` mirrors the error-path payload (``{"success": False, ...}``)
         # so downstream consumers can do ``result["success"]`` on both happy and
         # error paths without a KeyError on the happy path.
-        "success": bool(getattr(result, "success", True)),
+        "success": bool(result.success),
         # Same reason ``OutputFormatter.format_info`` prints as ``Error: ...``.
         # Without it a JSON consumer saw ``success: false`` and nothing else,
         # while the key was already populated on the handler's exception payload.
-        "error": getattr(result, "error_message", None),
-        "current_schema_version": getattr(result, "current_schema_version", None),
-        "history_table_exists": getattr(result, "history_table_exists", True),
-        "target_schema": getattr(result, "target_schema", ""),
-        "db_version": getattr(result, "db_version", None),
-        "database_url_masked": getattr(result, "database_url_masked", None),
-        "native_driver": getattr(result, "native_driver", None),
+        "error": result.error_message,
+        "current_schema_version": result.current_schema_version,
+        "history_table_exists": result.history_table_exists,
+        "target_schema": result.target_schema,
+        "db_version": result.db_version,
+        "database_url_masked": result.database_url_masked,
+        "native_driver": result.native_driver,
         "migrations": migrations,
     }
 

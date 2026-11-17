@@ -99,7 +99,8 @@ class MigrationRules:
             return True, ""
 
         self.logger.warning(
-            f"Version {version} has already been undone - cannot undo multiple times without reapplying"
+            f"Version {version} has already been undone - cannot undo multiple times without "
+            "reapplying"
         )
 
         next_version_to_undo = self._next_version_to_undo(
@@ -108,11 +109,13 @@ class MigrationRules:
         if next_version_to_undo:
             return (
                 False,
-                f"Version {version} has already been undone. Please specify version {next_version_to_undo} to undo it.",
+                f"Version {version} has already been undone. Please specify version "
+                f"{next_version_to_undo} to undo it.",
             )
         return (
             False,
-            f"Version {version} has already been undone and no other versions are available to undo.",
+            f"Version {version} has already been undone and no other versions are available to "
+            "undo.",
         )
 
     def _is_currently_undone(

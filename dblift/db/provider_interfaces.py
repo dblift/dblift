@@ -8,6 +8,7 @@ isinstance(provider, TransactionalProvider) pour vérifier le support.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, List, Optional, cast
 
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
@@ -203,8 +204,20 @@ class SchemaProvider(ABC):
         return True
 
 
+class TransactionOutcome(Enum):
+    """What a script did to the transaction the engine opened for it."""
+
+    INTACT = "intact"
+    ENDED = "ended"
+    OPEN = "open"
+
+
 class TransactionalProvider(ABC):
     """Capacité de gestion des transactions."""
+
+    def transaction_outcome(self) -> TransactionOutcome:
+        """Report whether the script kept, ended or left open the engine's transaction."""
+        return TransactionOutcome.INTACT
 
     @abstractmethod
     def check_transaction_state(self) -> None:
@@ -277,6 +290,18 @@ class TransactionalProvider(ABC):
     def is_caller_owned(self) -> bool:
         """Return True if the caller supplied the connection and owns its transactions."""
         return False
+
+    def supports_script_session(self) -> bool:
+        """Return True if a script may manage its own transactions on this provider."""
+        return False
+
+    def begin_script_session(self) -> None:
+        """Put the connection in a state where a script's own transactions are real."""
+        raise NotImplementedError
+
+    def end_script_session(self) -> bool:
+        """Roll back what the script left open, restore the connection, say whether any was."""
+        raise NotImplementedError
 
     def caller_transaction_active(self) -> Optional[bool]:
         """Return transaction state for an explicitly supplied connection, else None."""

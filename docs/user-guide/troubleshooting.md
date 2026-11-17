@@ -200,6 +200,21 @@ resolved placeholders. A message you raise yourself (`RAISE EXCEPTION '...'` in 
 `SIGNAL ... MESSAGE_TEXT` in MySQL, or `RAISE_APPLICATION_ERROR` in Oracle, whose `ORA-20000`
 to `ORA-20999` text is kept as written) is your own text and is kept.
 
+## PostgreSQL: `invalid transaction termination`
+
+**Problem**: A migration that runs a `DO` block or a procedure containing `COMMIT` or
+`ROLLBACK` fails with:
+
+```
+ERROR: invalid transaction termination
+```
+
+**Cause**: `migrate` runs the script inside a transaction, and PostgreSQL does not let code
+inside it end that transaction (SQLSTATE `2D000`).
+
+**Fix**: Add `-- dblift:no-transaction` as the first line of the script so that it manages its
+own transactions. See [Scripts That Manage Their Own Transactions](commands.md#scripts-that-manage-their-own-transactions).
+
 ## SQL Server: Full-text Catalog and Index Fail in Transactional Migration
 
 **Problem**: A SQL Server migration containing `CREATE FULLTEXT CATALOG` or `CREATE FULLTEXT INDEX` fails with:

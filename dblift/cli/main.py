@@ -9,34 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterator, List, Optional, Set
 
-# Add project root to Python path when running as a script
-# This allows imports to work when running: python3 cli/main.py
-# Get the project root (parent of cli directory)
-_script_dir = Path(__file__).parent.absolute()
-_project_root = _script_dir.parent.absolute()
-if str(_project_root) not in sys.path:
-    sys.path.insert(0, str(_project_root))
-
-from dblift.core.exceptions import InvalidTargetVersionError
-from dblift.core.logger import LogFactory
-from dblift.core.logger.console import (
-    PresentationUnavailableError,
-    get_stderr_console,
-    install_rich_traceback,
-    module_available,
-    require_presentation_extras,
-    rich_available,
-)
-from dblift.core.utils.url_masking import mask_database_url
-
-# Backward compatibility alias (used by tests and re-exports)
-_mask_database_url = mask_database_url
 from dblift.cli._command_handlers import (  # noqa: F401
     _AVAILABLE_COMMANDS,
     _COMMAND_HANDLERS,
     PREMIUM_STUB_COMMANDS,
     CliCommandContext,
-    _extract_version_filters,
     _validate_migrate_options,
     _validate_target_version_option,
     execute_single_command,
@@ -60,16 +37,34 @@ from dblift.cli._constants import EXIT_LICENSE_REQUIRED
 from dblift.cli._output import CommandOutput, from_args
 from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
 from dblift.cli.extensions import load_terminal_commands
-from dblift.cli.handlers._shared import reported_exception_name
-from dblift.cli.premium_manifest import render_upsell
+from dblift.cli.handlers._shared import ConfigOnlyClient, reported_exception_name
+from dblift.cli.premium_manifest import premium_root_flags_missing_from, render_upsell
 from dblift.config.property_registry import PROPERTY_REGISTRY
+from dblift.core.exceptions import InvalidTargetVersionError
+from dblift.core.logger import LogFactory
+from dblift.core.logger.console import (
+    PresentationUnavailableError,
+    get_stderr_console,
+    install_rich_traceback,
+    module_available,
+    require_presentation_extras,
+    rich_available,
+)
+from dblift.core.migration.commands import base_command
+from dblift.core.migration.commands.base_command import _render_main_header_panel
+from dblift.core.premium_manifest import ENTERPRISE_DISTRIBUTION, PRO_DISTRIBUTION
 from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.feature_loading import load_feature_extensions
 from dblift.core.seams.license_info import get_license_info
 from dblift.core.seams.tier_resolver import resolve_tier
 
-# Module-level placeholder; main() uses a local 'log' variable (no global declaration)
-log = None
+# Add project root to Python path when running as a script
+# This allows imports to work when running: python3 cli/main.py
+# Get the project root (parent of cli directory)
+_script_dir = Path(__file__).parent.absolute()
+_project_root = _script_dir.parent.absolute()
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
 
 # argv tokens that are owned by the top-level parser only. Used by phase 1 to
 # split the user-supplied argv between global flags and subcommand args. Lives
@@ -306,8 +301,8 @@ def _format_version() -> str:
             return None
 
     core = _resolve_core_version()
-    pro = _get("dblift-pro")
-    enterprise = _get("dblift-enterprise")
+    pro = _get(PRO_DISTRIBUTION)
+    enterprise = _get(ENTERPRISE_DISTRIBUTION)
 
     # Headline = manifest version (bundled distribution) if present, else the
     # most-derived installed tier (the product actually running).
@@ -393,7 +388,7 @@ def _apply_config_backed_defaults(args: Any, config: Optional[Any]) -> None:
         return
 
     for spec in PROPERTY_REGISTRY:
-        if spec.cli_only or "." in spec.name:
+        if "." in spec.name:
             continue
         if not hasattr(args, spec.name):
             continue
@@ -463,6 +458,20 @@ def _require_analysis_extras(commands: List[str], args: argparse.Namespace) -> N
     sys.exit(1)
 
 
+def _reject_unregistered_root_flags(argv: List[str], parser: argparse.ArgumentParser) -> None:
+    """Exit with the install guidance when a root flag has no registering parser.
+
+    A root flag that only an extension package registers would otherwise fail
+    in argparse as an unrecognized argument. It is never accepted silently:
+    without a registered owner it gets the same message as a command stub.
+    """
+    registered = {opt for action in parser._actions for opt in action.option_strings}
+    for flag in premium_root_flags_missing_from(registered):
+        if any(arg == flag.name or arg.startswith(flag.name + "=") for arg in argv):
+            CommandOutput("console").error(render_upsell(flag))
+            sys.exit(EXIT_LICENSE_REQUIRED)
+
+
 def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     """Phase 1: extract commands, build args namespace, load config.
 
@@ -483,6 +492,7 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
     # boolean set, or its value-lookahead swallows the following command token.
     # See _root_only_long_flags / _root_only_boolean_flags.
     _parser = create_parser()
+    _reject_unregistered_root_flags(argv, _parser)
     global_only_args = list(_GLOBAL_ONLY_ARGS) + sorted(
         _root_only_long_flags(_parser) - set(_GLOBAL_ONLY_ARGS)
     )
@@ -510,7 +520,7 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
 
     if commands and commands[0] in terminal_commands:
         args = _build_terminal_args(commands[0], global_arguments, subcommand_args)
-        if hasattr(args, "version") and args.version:
+        if args.version:
             print(_format_version())  # lint: allow-print  --version terminal action
             sys.exit(0)
         sys.exit(terminal_commands[commands[0]](args))
@@ -532,7 +542,7 @@ def _parse_argv_and_load_config(argv: List[str]) -> _CliContext:
         print(_format_version())  # lint: allow-print  --version terminal action
         sys.exit(0)
 
-    if not commands and (not hasattr(args, "command") or not args.command):
+    if not commands and not args.command:
         create_parser().print_help()
         sys.exit(0)
     if not commands and hasattr(args, "command"):
@@ -662,7 +672,6 @@ def _build_command_client(ctx: "_CliContext") -> Any:
     ``dblift.client`` seam lets paid tiers substitute their DBLiftClient
     subclass so tier-provided handlers receive the methods they call.
     """
-    from dblift.cli.handlers._shared import ConfigOnlyClient
     from dblift.core.seams.client_factory import resolve_client_class
 
     config_only = len(ctx.commands) == 1 and bool(
@@ -815,11 +824,7 @@ def _dispatch_command(ctx: _CliContext, command_output: CommandOutput) -> int:
         formatter.license_info = ctx.license_info
         main_header = formatter.format_header(schema_name, database_name)
 
-        from dblift.core.migration.commands import base_command
-
         if main_header:
-            from dblift.core.migration.commands.base_command import _render_main_header_panel
-
             command_output.banner(_render_main_header_panel(main_header))
         # Always mark the header as printed so that _print_main_header_once()
         # in base_command does not re-emit it (it also has no format awareness).

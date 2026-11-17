@@ -40,6 +40,7 @@ class Trigger(SqlObject):
         precedes_trigger: Optional[
             str
         ] = None,  # Name of trigger this precedes (MySQL/Oracle) - SQL-generation-only
+        table_schema: Optional[str] = None,
     ):
         """Initialize a trigger.
 
@@ -57,9 +58,11 @@ class Trigger(SqlObject):
             execution_order: Execution order/priority - SQL-generation-only (implementation detail)
             follows_trigger: Name of trigger this follows (MySQL/Oracle) - SQL-generation-only
             precedes_trigger: Name of trigger this precedes (MySQL/Oracle) - SQL-generation-only
+            table_schema: Subject table schema; defaults to the trigger schema when None
         """
         super().__init__(name, SqlObjectType.TRIGGER, schema, dialect)
         self.table_name = table_name
+        self.table_schema = table_schema if table_schema is not None else schema
         self.timing = timing  # BEFORE, AFTER, INSTEAD OF
         self.events = events or []  # INSERT, UPDATE, DELETE, TRUNCATE (grammar-based)
         self.orientation = orientation  # ROW, STATEMENT
@@ -90,9 +93,10 @@ class Trigger(SqlObject):
         Returns:
             Qualified table name
         """
-        if self.schema:
+        if self.table_schema:
             return (
-                f"{self.format_identifier(self.schema)}.{self.format_identifier(self.table_name)}"
+                f"{self.format_identifier(self.table_schema)}."
+                f"{self.format_identifier(self.table_name)}"
             )
         return self.format_identifier(self.table_name)
 
@@ -143,6 +147,7 @@ class Trigger(SqlObject):
         return (
             super().__eq__(other)
             and self.table_name == other.table_name
+            and self.table_schema == other.table_schema
             and self.timing == other.timing
             and self.events == other.events
             and self.orientation == other.orientation
@@ -171,12 +176,13 @@ class Trigger(SqlObject):
         """Create trigger from dictionary representation.
 
         Args:
-            data: Dictionary with trigger attributes
+            data: Dictionary with trigger attributes. A missing table_schema uses schema;
+                an explicit null leaves the subject table unqualified.
 
         Returns:
             Trigger object
         """
-        return cls(
+        trigger = cls(
             name=data["name"],
             table_name=data["table_name"],
             schema=data.get("schema"),
@@ -198,6 +204,9 @@ class Trigger(SqlObject):
             follows_trigger=data.get("follows_trigger"),
             precedes_trigger=data.get("precedes_trigger"),
         )
+        if "table_schema" in data:
+            trigger.table_schema = data["table_schema"]
+        return trigger
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert trigger to dictionary representation.
@@ -208,6 +217,7 @@ class Trigger(SqlObject):
         return {
             "name": self.name,
             "table_name": self.table_name,
+            "table_schema": self.table_schema,
             "schema": self.schema,
             "object_type": self.object_type.value,
             "dialect": self.dialect,

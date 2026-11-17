@@ -148,7 +148,8 @@ class CosmosDbLockingManager(DocumentLockingManager):
                 return True
         except Exception as e:
             self.log.warning(
-                f"Error acquiring native migration lock for schema {schema}: {str(e)}; falling back to document-based locking"
+                f"Error acquiring native migration lock for schema {schema}: {str(e)}; "
+                "falling back to document-based locking"
             )
 
         # Fall back to document-based locking
@@ -205,7 +206,8 @@ class CosmosDbLockingManager(DocumentLockingManager):
                                     time.sleep(0.2)  # Small delay after deletion
                                     continue
                             except Exception as delete_error:
-                                # ETag mismatch or other error - another process might have deleted it
+                                # ETag mismatch or other error - another process might have
+                                # deleted it
                                 error_str = str(delete_error).lower()
                                 if "precondition" in error_str or "412" in error_str:
                                     # ETag mismatch - another process modified it, retry
@@ -230,14 +232,17 @@ class CosmosDbLockingManager(DocumentLockingManager):
                         # Document doesn't exist, try to create it atomically
                         if self._create_lock_document():
                             self.log.debug(
-                                "Successfully acquired migration lock using native optimistic concurrency"
+                                "Successfully acquired migration lock using native "
+                                "optimistic concurrency"
                             )
                             return True
-                        # Creation failed - document was created by another process between read and create
-                        # This is expected in concurrent scenarios, wait and retry
+                        # Creation failed - document was created by another process between
+                        # read and create. This is expected in concurrent scenarios, wait and
+                        # retry
                         elapsed = int(time.time() - start_time)
                         self.log.debug(
-                            f"Lock document created by another process, retrying... (elapsed: {elapsed}s)"
+                            "Lock document created by another process, retrying... "
+                            f"(elapsed: {elapsed}s)"
                         )
                         time.sleep(0.5)
                         continue
@@ -332,7 +337,8 @@ class CosmosDbLockingManager(DocumentLockingManager):
                         # Document doesn't exist, but creation failed - might be a timing issue
                         elapsed = int(time.time() - start_time)
                         self.log.debug(
-                            f"Lock document not found after failed creation, retrying... (elapsed: {elapsed}s)"
+                            "Lock document not found after failed creation, retrying... "
+                            f"(elapsed: {elapsed}s)"
                         )
                         time.sleep(0.5)
                         continue

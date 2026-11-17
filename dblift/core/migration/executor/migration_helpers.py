@@ -66,21 +66,16 @@ class MigrationHelpers:
             placeholder_service.add_placeholders(placeholders)
 
         # Set command type
-        if hasattr(self.log, "set_command_type"):
-            self.log.set_command_type("MIGRATE")
+        self.log.set_command_type("MIGRATE")
 
-        # Use the recursive and additional_dirs parameters if provided, otherwise use config defaults
-        use_recursive = (
-            recursive
-            if recursive is not None
-            else getattr(self.config.migrations, "recursive", True)
-        )
+        # Use the recursive and additional_dirs parameters if provided, otherwise use config
+        # defaults
+        use_recursive = recursive if recursive is not None else self.config.migrations.recursive
         use_additional_dirs = (
             additional_dirs
             if additional_dirs is not None
             else [
-                _as_migration_dir_path(dir_path)
-                for dir_path in getattr(self.config.migrations, "directories", [])
+                _as_migration_dir_path(dir_path) for dir_path in self.config.migrations.directories
             ]
         )
 
@@ -96,8 +91,7 @@ class MigrationHelpers:
         validation_result = validator.validate_snapshot(snapshot, "migrate")
         validation_time = time.time() - start_validation_time
 
-        error_message_raw = getattr(validation_result, "error_message", "") or ""
-        error_message_str = str(error_message_raw)
+        error_message_str = str(validation_result.error_message or "")
         lowered_error_message = error_message_str.lower()
 
         # Store validation errors but don't stop migration on validation failures
@@ -106,17 +100,13 @@ class MigrationHelpers:
             # Continue with migration instead of stopping, to show the actual migration errors
             # We'll display validation errors after migration fails
             self.log.debug(f"Migration validation found issues: {error_message_str}")
-            # Only stop if it's not a checksum error (those will be shown in proper order after migration fails)
+            # Only stop if it's not a checksum error (those will be shown in proper order after
+            # migration fails)
             if "modified migration scripts" not in lowered_error_message:
                 # Log all validation issues
-                issues = getattr(validation_result, "issues", None)
-                if issues:
-                    try:
-                        for issue in issues:
-                            self.log.error(issue)
-                    except TypeError:
-                        # issues is not iterable (likely a Mock); fall back to error message
-                        self.log.error(f"Migration validation failed: {error_message_str}")
+                if validation_result.issues:
+                    for issue in validation_result.issues:
+                        self.log.error(issue)
                 else:
                     # Fallback to error_message if issues list is not available
                     self.log.error(f"Migration validation failed: {error_message_str}")

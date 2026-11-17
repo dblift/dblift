@@ -4,11 +4,8 @@ from typing import Any, Dict
 
 from sqlalchemy.engine import URL, make_url
 
-
-def _string_mapping(values: Any) -> Dict[str, str]:
-    if not isinstance(values, dict):
-        return {}
-    return {str(key): str(value) for key, value in values.items()}
+from dblift.db.sqlalchemy_url_utils import merge_config_credentials
+from dblift.db.value_utils import string_mapping
 
 
 def _truthy(value: Any) -> bool:
@@ -33,9 +30,9 @@ def _pop_case_insensitive(query: Dict[str, str], names: set[str]) -> str | None:
 
 
 def _query_mapping(database_config: Any, base_query: Any = None) -> Dict[str, str]:
-    query = _string_mapping(base_query)
-    query.update(_string_mapping(getattr(database_config, "extra_params", None)))
-    query.update(_string_mapping(getattr(database_config, "options", None)))
+    query = string_mapping(base_query)
+    query.update(string_mapping(database_config.extra_params))
+    query.update(string_mapping(database_config.options))
 
     integrated_keys = {
         "integrated_security",
@@ -78,7 +75,7 @@ def _query_mapping(database_config: Any, base_query: Any = None) -> Dict[str, st
     elif hasattr(database_config, "encrypt"):
         query["encryption"] = "require" if getattr(database_config, "encrypt") else "off"
 
-    connection_timeout = getattr(database_config, "connection_timeout", None)
+    connection_timeout = database_config.connection_timeout
     if connection_timeout:
         query["login_timeout"] = str(connection_timeout)
 
@@ -96,16 +93,13 @@ def build_sqlalchemy_url(database_config: Any) -> str:
       When ``instance`` is set it is encoded as ``host\\INSTANCE`` in the host
       portion (pymssql convention).
     """
-    raw_url = getattr(database_config, "url", None)
+    raw_url = database_config.url
     if isinstance(raw_url, str) and raw_url:
         if raw_url.startswith(("mssql+", "mssql://")):
             url = make_url(raw_url)
             if url.drivername == "mssql":
                 url = url.set(drivername="mssql+pymssql")
-            username = getattr(database_config, "username", None) or url.username or None
-            password = getattr(database_config, "password", None) or url.password or None
-            if username != url.username or password != url.password:
-                url = url.set(username=username, password=password)
+            url = merge_config_credentials(url, database_config)
             query = _query_mapping(database_config, url.query)
             if query != dict(url.query):
                 url = url.set(query=query)
@@ -115,17 +109,17 @@ def build_sqlalchemy_url(database_config: Any) -> str:
             f"(mssql+pymssql://...), got: {raw_url!r}"
         )
 
-    host = getattr(database_config, "host", None) or "localhost"
+    host = database_config.host or "localhost"
     instance = getattr(database_config, "instance", None)
     if instance:
         host = f"{host}\\{instance}"
 
     return URL.create(
         "mssql+pymssql",
-        username=getattr(database_config, "username", None) or None,
-        password=getattr(database_config, "password", None) or None,
+        username=database_config.username or None,
+        password=database_config.password or None,
         host=host,
-        port=getattr(database_config, "port", None),
-        database=getattr(database_config, "database", None),
+        port=database_config.port,
+        database=database_config.database,
         query=_query_mapping(database_config),
     ).render_as_string(hide_password=False)

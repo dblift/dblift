@@ -12,19 +12,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
-from dblift.core.logger import Log
+from dblift.core.exceptions import UnsafeStatementSplitError
+from dblift.core.logger import DbliftLogger, Log
 from dblift.core.migration.encoding import read_migration_text
 from dblift.core.migration.formats import MigrationFormat, MigrationFormatDetector
 from dblift.core.migration.migration_types import (  # noqa: F401 - public compatibility re-export
     VERSIONED_SCRIPT_TYPES,
     MigrationType,
 )
-from dblift.core.migration.scripting.filename_parser import (  # noqa: F401 - compatibility for existing callback imports
+from dblift.core.migration.scripting.filename_parser import (  # noqa: F401 - callback re-exports
     _CALLBACK_PREFIXES,
     strip_migration_tags,
 )
 from dblift.core.migration.sql.migration_sql_parser import (  # noqa: F401 - compatibility re-export
     _default_splitter_dialect,
+    parse_migration_sql,
+    resolve_migration_sql_dialect,
 )
 
 
@@ -148,7 +151,8 @@ class AppliedMigration:
 
     @classmethod
     def from_history_row(cls, row: Dict[str, Any]) -> "AppliedMigration":
-        """Construct an :class:`AppliedMigration` from a history-table row (case-insensitive keys)."""
+        """Construct an :class:`AppliedMigration` from a history-table row
+        (case-insensitive keys)."""
         normalized = {k.lower() if isinstance(k, str) else k: v for k, v in row.items()}
         type_str = normalized.get("type")
         type_enum = (
@@ -183,7 +187,8 @@ class AppliedMigration:
         tags: Optional[List[str]] = None,
         _filename_metadata: Optional[Tuple[MigrationType, Optional[str], str, List[str]]] = None,
     ) -> "Migration":
-        """Build a mutable :class:`Migration` from this applied record (empty content, raw fields copied)."""
+        """Build a mutable :class:`Migration` from this applied record (empty content, raw fields
+        copied)."""
         migration = Migration(
             script_name=self.script_name,
             content="",
@@ -468,18 +473,11 @@ class Migration:
             return []
 
         # Use the provided logger or create a standard logger
-        from dblift.core.logger import DbliftLogger
-
         logger = self.logger
         if logger is None:
             logger = DbliftLogger()
         log = cast(Log, logger)
 
-        from dblift.core.exceptions import UnsafeStatementSplitError
-        from dblift.core.migration.sql.migration_sql_parser import (
-            parse_migration_sql,
-            resolve_migration_sql_dialect,
-        )
         from dblift.core.migration.sql.statement_reader import StatementReader
 
         if dialect:
@@ -512,30 +510,21 @@ class Migration:
         metadata = parse_migration_filename(self.script_name)
         return metadata.migration_type, metadata.version, metadata.description, list(metadata.tags)
 
-    def _extract_version(self) -> Optional[str]:
-        """Extract version from script name through the canonical parser."""
-        return self._parse_filename()[1]
-
-    def _extract_description(self) -> str:
-        """Extract description from script name through the canonical parser."""
-        return self._parse_filename()[2]
-
     def _determine_type(self) -> MigrationType:
         """Determine the type of migration based on the script name."""
         if not self.script_name:
             return MigrationType.UNKNOWN
         return self._parse_filename()[0]
 
-    def _extract_tags(self) -> List[str]:
-        """Extract tags from script name through the canonical parser."""
-        return self._parse_filename()[3]
-
     def __repr__(self) -> str:
         # Import the shared type matcher only when formatting a migration.
         from dblift.core.migration._type_match import migration_type_name
 
         type_str = migration_type_name(self.type)
-        return f"<Migration script_name='{self.script_name}' type='{type_str}' version='{self.version}'>"
+        return (
+            f"<Migration script_name='{self.script_name}' type='{type_str}' "
+            f"version='{self.version}'>"
+        )
 
     def __str__(self) -> str:
         from dblift.core.migration._type_match import migration_type_name

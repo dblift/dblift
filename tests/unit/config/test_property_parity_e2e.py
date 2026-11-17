@@ -15,7 +15,7 @@ from dblift.config.property_registry import PROPERTY_REGISTRY
 
 # Top-level scalar properties (nested database.* fields are exercised separately
 # via their own connection tests; structured/cli-only specs are excluded).
-_TOP_LEVEL = [s for s in PROPERTY_REGISTRY if not s.cli_only and "." not in s.name]
+_TOP_LEVEL = [s for s in PROPERTY_REGISTRY if "." not in s.name]
 
 _SAMPLE = {"str": "xval", "int": 7, "float": 1.5, "bool": True}
 _ENV_RAW = {"str": "xval", "int": "7", "float": "1.5", "bool": "true"}

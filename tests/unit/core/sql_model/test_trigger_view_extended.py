@@ -224,11 +224,3 @@ class TestViewFromDict(unittest.TestCase):
         v2 = View.from_dict(d)
         self.assertEqual(v.name, v2.name)
         self.assertEqual(v.query, v2.query)
-
-
-class TestViewFormatMysqlDefiner(unittest.TestCase):
-    def test_formats_definer(self):
-        from dblift.core.sql_model.view import View
-
-        result = View._format_mysql_definer("root@localhost")
-        self.assertIsNotNone(result)

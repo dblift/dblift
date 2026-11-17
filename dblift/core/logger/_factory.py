@@ -12,7 +12,6 @@ from typing import Any, ClassVar, List, Optional, Tuple, Union
 
 from dblift.core.logger._base import Log
 from dblift.core.logger._levels import LogFormat, LogLevel
-from dblift.core.utils.output_paths import refuse_symlink_output
 
 
 class LogFactory:
@@ -104,7 +103,7 @@ class LogFactory:
     @classmethod
     def configure(
         cls,
-        log_dir: Path,
+        log_dir: Optional[Path],
         log_format: Union[LogFormat, List[LogFormat]] = LogFormat.TEXT,
         schema: Optional[str] = None,
         database_name: Optional[str] = None,
@@ -120,7 +119,7 @@ class LogFactory:
         """Configure the log factory.
 
         Args:
-            log_dir: Directory for log files
+            log_dir: Directory for log files; None means console only
             log_format: Primary log format or list of formats
             schema: Database schema name
             database_name: Database name
@@ -161,7 +160,7 @@ class LogFactory:
         # Set custom log file if provided
         if log_file:
             log_file_path = Path(log_file)
-            if not log_file_path.is_absolute():
+            if log_dir and not log_file_path.is_absolute():
                 # Make sure path is absolute by combining with log_dir
                 log_file_path = Path(log_dir) / log_file_path
             cls._existing_log_file = log_file_path
@@ -222,7 +221,6 @@ class LogFactory:
         # Add file logger for primary format if enabled
         if cls._use_file and cls._log_dir:
             if cls._existing_log_file:
-                refuse_symlink_output(cls._existing_log_file)
                 # Create a FileLog that points to the existing file
                 file_log = FileLog(
                     name=class_name,
@@ -232,9 +230,8 @@ class LogFactory:
                     database_name=cls._database_name,
                     enable_debug=cls._debug_enabled,
                     log_level=cls._log_level,
+                    existing_log_file=cls._existing_log_file,
                 )
-                # Override the auto-generated log file path with our specified one
-                file_log.log_file = cls._existing_log_file
                 logs.append(file_log)
             else:
                 # Create a file logger for the primary format

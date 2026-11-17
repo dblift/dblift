@@ -9,18 +9,18 @@ statement-execution path, so ``--dry-run``, ``--validate-only``, and plain
 ``validate`` never reached it — none of them execute anything.
 
 All three resolve their migrations through
-``MigrationValidator.validate_migrations``:
+``MigrationValidator.validate_snapshot``:
 
 * plain ``validate`` -> ``ValidateCommand.execute`` ->
-  ``self.validator.validate_migrations(scripts_dir, "validate", ...)``
+  ``self.validator.validate_snapshot(snapshot, "validate")``
 * ``migrate --validate-only`` -> ``cli/handlers/migrate.py`` calls
   ``ctx.client.validate(...)``, i.e. the exact same ``ValidateCommand`` path
 * ``migrate --dry-run`` -> ``MigrateCommand.execute`` runs
   ``MigrationHelpers.validate_migrations_for_migrate``, which calls
-  ``validate_migrations(scripts_dir, "migrate", ...)`` as a pre-flight,
+  ``validate_snapshot(snapshot, "migrate")`` as a pre-flight,
   before ``_handle_dry_run`` ever lists a migration as "would execute".
 
-So a single check inside ``validate_migrations`` — reusing the same pure
+So a single check inside ``validate_snapshot`` — reusing the same pure
 ``check_format_supported`` predicate the real execution path calls — fixes
 all three call sites at once.
 """
@@ -32,6 +32,7 @@ from dblift.core.migration.migration import Migration
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.provider_registry import ProviderRegistry
 from tests.unit._migration_factory import make_migration
+from tests.unit._validation_snapshot import validate_snapshot_for
 
 
 def _validator(dialect: str) -> MigrationValidator:
@@ -48,7 +49,6 @@ def _validator(dialect: str) -> MigrationValidator:
         quirks=ProviderRegistry.get_quirks(dialect),
     )
     validator.state_manager.get_resolved_migrations = MagicMock()
-    validator._handle_baseline_filtering = MagicMock(side_effect=lambda scripts: scripts)
     return validator
 
 
@@ -70,7 +70,7 @@ def test_plain_validate_rejects_sql_migration_on_cosmosdb(tmp_path):
         _sql_migration(tmp_path, "V1_0_0__create.sql")
     ]
 
-    result = validator.validate_migrations(tmp_path, command="validate")
+    result = validate_snapshot_for(validator, tmp_path, "validate")
 
     assert result.success is False
     assert "DBLIFT-NOSQL-001" in result.error_message
@@ -79,14 +79,14 @@ def test_plain_validate_rejects_sql_migration_on_cosmosdb(tmp_path):
 
 def test_validate_only_rejects_sql_migration_on_cosmosdb(tmp_path):
     """``migrate --validate-only`` calls ``ValidateCommand.execute`` too — same
-    ``validate_migrations(..., "validate", ...)`` call as plain ``validate``.
+    ``validate_snapshot(..., "validate")`` call as plain ``validate``.
     """
     validator = _validator("cosmosdb")
     validator.state_manager.get_resolved_migrations.return_value = [
         _sql_migration(tmp_path, "V1_0_1__seed.sql")
     ]
 
-    result = validator.validate_migrations(tmp_path, command="validate")
+    result = validate_snapshot_for(validator, tmp_path, "validate")
 
     assert result.success is False
     assert "DBLIFT-NOSQL-001" in result.error_message
@@ -94,13 +94,13 @@ def test_validate_only_rejects_sql_migration_on_cosmosdb(tmp_path):
 
 
 def test_migrate_dry_run_preflight_rejects_sql_migration_on_cosmosdb(tmp_path):
-    """``migrate --dry-run``'s pre-flight calls ``validate_migrations(..., "migrate", ...)``."""
+    """``migrate --dry-run``'s pre-flight calls ``validate_snapshot(..., "migrate")``."""
     validator = _validator("cosmosdb")
     validator.state_manager.get_resolved_migrations.return_value = [
         _sql_migration(tmp_path, "V1_0_2__index.sql")
     ]
 
-    result = validator.validate_migrations(tmp_path, command="migrate")
+    result = validate_snapshot_for(validator, tmp_path, "migrate")
 
     assert result.success is False
     assert "DBLIFT-NOSQL-001" in result.error_message
@@ -113,7 +113,7 @@ def test_python_migration_on_cosmosdb_is_unaffected(tmp_path):
         _python_migration(tmp_path, "V1_0_0__create.py")
     ]
 
-    result = validator.validate_migrations(tmp_path, command="validate")
+    result = validate_snapshot_for(validator, tmp_path, "validate")
 
     assert result.success is True
 
@@ -124,6 +124,6 @@ def test_sql_migration_on_relational_dialect_is_unaffected(tmp_path):
         _sql_migration(tmp_path, "V1_0_0__create.sql")
     ]
 
-    result = validator.validate_migrations(tmp_path, command="validate")
+    result = validate_snapshot_for(validator, tmp_path, "validate")
 
     assert result.success is True

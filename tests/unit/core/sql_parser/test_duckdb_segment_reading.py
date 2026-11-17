@@ -667,10 +667,9 @@ BOM, NBSP, LS, NEL, ZWNJ = chr(0xFEFF), chr(0xA0), chr(0x2028), chr(0x85), chr(0
 E_ACUTE, EURO, SQUARED, ARABIC_THREE = chr(0xE9), chr(0x20AC), chr(0xB2), chr(0x663)
 
 
-def test_strict_tokenizer_has_no_effect_for_duckdb():
+def test_unclaimed_symbols_pass_through_for_duckdb_without_warning():
     script = "SELECT @ # \\ ` ~ ^ % & | ? !;"
     tokenizer = LexicalTokenizer(script, spec=DUCKDB_SPEC)
-    tokenizer.strict_unknown_chars = True
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         tokens = tokenizer.tokenize()

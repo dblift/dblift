@@ -2,9 +2,8 @@
 
 Counts six debt signals across ``dblift/`` and compares each with the cap in
 ``.debt-ratchet.json``. Counts must stay within their declared caps. Narrow compatibility-boundary
-exceptions must record their measured delta and rationale in the ratchet policy. Mirrors
-``scripts/check_line_length.py``: exit 0 at or below every cap (with a nudge
-to tighten loose caps), exit 1 when any cap is exceeded.
+exceptions must record their measured delta and rationale in the ratchet policy. Exit 0 at or
+below every cap (with a nudge to tighten loose caps), exit 1 when any cap is exceeded.
 
 Running
 =======

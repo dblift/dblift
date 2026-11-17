@@ -26,7 +26,8 @@ class TerminatorScript:
         origin: int,
         text_blanks: str,
     ) -> None:
-        """Classify the lines of ``text``: the script without its byte order mark (``origin`` long)."""
+        """Classify the lines of ``text``: the script without its byte order mark
+        (``origin`` long)."""
         self.rules = rules
         self.text_blanks = text_blanks
         self.client_name = client_name
@@ -143,7 +144,8 @@ class _Walk:
             if any(self._state(line.start)):
                 raise UnsafeStatementSplitError(
                     f"{rules.directive_name} on line {line.number} stands inside a string, a "
-                    f"quoted identifier or a comment: the {self.client} honours it there and cuts the "
+                    f"quoted identifier or a comment: the {self.client} honours it there and cuts "
+                    "the "
                     "statement; close it first"
                 )
         if self.script.malformed == line.number:
@@ -321,7 +323,8 @@ class _Walk:
         self.epilogues.append(epilogue)
 
     def _keeps_a_character(self, statement: str) -> bool:
-        """Whether a statement of comments and white space holds a character outside ``text_blanks``."""
+        """Whether a statement of comments and white space holds a character outside
+        ``text_blanks``."""
         blanks, line_comment = self.text_blanks, self.rules.line_comment
         level, i, size = 0, 0, len(statement)
         while i < size:

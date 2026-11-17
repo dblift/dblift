@@ -56,12 +56,10 @@ def test_descriptor_aliases_match_legacy_and_package_metadata():
     for name, reference in points["dblift.provider_descriptors"].items():
         module_name, attribute = reference.split(":")
         descriptor = getattr(importlib.import_module(module_name), attribute)
-        package_name = module_name.rsplit(".", 1)[0]
-        package = importlib.import_module(package_name)
         legacy_module, legacy_attribute = points["dblift.providers"][name].split(":")
         plugin = getattr(importlib.import_module(legacy_module), legacy_attribute)
-        assert descriptor.name == plugin.name == package.__plugin_name__
-        assert descriptor.dialects == tuple(plugin.dialects) == tuple(package.__plugin_dialects__)
+        assert descriptor.name == plugin.name
+        assert descriptor.dialects == tuple(plugin.dialects)
 
 
 def test_legacy_provider_class_import_remains_canonical():

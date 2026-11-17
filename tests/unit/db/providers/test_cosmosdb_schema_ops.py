@@ -88,23 +88,6 @@ class TestTableExists(unittest.TestCase):
         self.assertTrue(result)
 
 
-class TestGetTables(unittest.TestCase):
-    def test_returns_container_list(self):
-        ops, qe, _ = _make_ops()
-        qe.connection_manager.database.list_containers.return_value = [
-            {"id": "users"},
-            {"id": "orders"},
-        ]
-        tables = ops.get_tables(MagicMock(), "mydb")
-        self.assertEqual(len(tables), 2)
-
-    def test_empty_database(self):
-        ops, qe, _ = _make_ops()
-        qe.connection_manager.database.list_containers.return_value = []
-        tables = ops.get_tables(MagicMock(), "mydb")
-        self.assertEqual(tables, [])
-
-
 class TestGetDatabaseVersion(unittest.TestCase):
     def test_returns_version_string(self):
         ops, *_ = _make_ops()

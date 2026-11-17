@@ -28,6 +28,7 @@ import pytest
 from dblift.core.migration.migration import MigrationType
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from tests.unit._migration_factory import make_migration
+from tests.unit._validation_snapshot import validate_snapshot_for
 
 pytestmark = [pytest.mark.unit]
 
@@ -121,7 +122,7 @@ class TestDuplicateRepeatableNameCrossDirectory:
 
 
 class TestDuplicateRepeatableNameWiredIntoAllRepeatableEarlyReturn:
-    """validate_resolved_migrations / validate_migrations short-circuit with
+    """``validate_snapshot`` short-circuits with
     an early return when every script is REPEATABLE/CALLBACK, *before* the
     point where _validate_duplicate_versions normally runs. A repeatable-only
     secondary-directory migration set is exactly the common case for this
@@ -150,7 +151,9 @@ class TestDuplicateRepeatableNameWiredIntoAllRepeatableEarlyReturn:
         )
         secondary.path = Path("/proj/extra-migrations/R__cleanup.sql")
 
-        result = v.validate_resolved_migrations([primary, secondary], command="migrate")
+        result = validate_snapshot_for(
+            v, command="migrate", resolved_migrations=[primary, secondary]
+        )
 
         assert result.success is False
         assert any("R__cleanup.sql" in issue for issue in result.issues)

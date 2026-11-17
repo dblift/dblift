@@ -1,6 +1,5 @@
 """Tests for MigrationDataService."""
 
-from pathlib import Path
 from unittest.mock import MagicMock, Mock
 
 import pytest
@@ -43,32 +42,7 @@ def logger():
 
 @pytest.fixture
 def service(logger):
-    return MigrationDataService(logger, scripts_dir=Path("/tmp/scripts"), target_version="5")
-
-
-# ---------- _get_migration_type ----------
-
-
-@pytest.mark.unit
-class TestGetMigrationType:
-    def test_string_type(self, service):
-        m = make_migration(type="SQL")
-        assert service._get_migration_type(m) == "SQL"
-
-    def test_string_lowercase_uppercased(self, service):
-        m = make_migration(type="sql")
-        assert service._get_migration_type(m) == "SQL"
-
-    def test_enum_type_with_name(self, service):
-        enum_type = Mock()
-        enum_type.name = "REPEATABLE"
-        m = make_migration()
-        m.type = enum_type
-        assert service._get_migration_type(m) == "REPEATABLE"
-
-    def test_empty_type(self, service):
-        m = make_migration(type="")
-        assert service._get_migration_type(m) == ""
+    return MigrationDataService(logger, target_version="5")
 
 
 # ---------- _is_migration_successful ----------
@@ -317,14 +291,12 @@ class TestBuildAnalysisContext:
             "out_of_order_migrations",
             "current_version",
             "target_version",
-            "scripts_dir",
         }
         assert set(ctx.keys()) == expected_keys
 
-    def test_includes_target_version_and_scripts_dir(self, service):
+    def test_includes_target_version(self, service):
         ctx = service._build_analysis_context([])
         assert ctx["target_version"] == "5"
-        assert ctx["scripts_dir"] == Path("/tmp/scripts")
 
 
 # ---------- Constructor ----------
@@ -333,12 +305,10 @@ class TestBuildAnalysisContext:
 @pytest.mark.unit
 class TestConstructor:
     def test_stores_attributes(self, logger):
-        svc = MigrationDataService(logger, scripts_dir=Path("/scripts"), target_version="3")
+        svc = MigrationDataService(logger, target_version="3")
         assert svc.logger is logger
-        assert svc.scripts_dir == Path("/scripts")
         assert svc.target_version == "3"
 
     def test_defaults(self, logger):
         svc = MigrationDataService(logger)
-        assert svc.scripts_dir is None
         assert svc.target_version is None

@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.core.migration.migration import MigrationType
+from dblift.core.migration.migration import Migration, MigrationType
 from dblift.core.migration.state.migrate_plan import MigratePlan, StrictModeError
 from dblift.core.migration.state.migration_state import (
     CatalogMigration,
@@ -16,12 +15,13 @@ from dblift.core.migration.state.migration_state import (
     MigrationState,
 )
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from tests.unit._migration_factory import make_migration
 
 PENDING = MigrationEligibility.PENDING
 
 
-def _migration(version: str) -> SimpleNamespace:
-    return SimpleNamespace(
+def _migration(version: str) -> Migration:
+    return make_migration(
         script_name=f"V{version}__m.sql",
         version=version,
         description="m",
@@ -133,7 +133,7 @@ def test_filtered_out_migration_does_not_trip_strict_ordering() -> None:
 
 
 def test_versionless_pending_is_skipped_by_the_ordering_check() -> None:
-    repeatable = SimpleNamespace(
+    repeatable = make_migration(
         script_name="R__v.sql",
         version=None,
         description="v",

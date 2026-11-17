@@ -10,15 +10,18 @@ from dblift.integrations.django._client import get_client
 
 
 class Command(BaseCommand):
+    """Management command behind ``manage.py dblift_migrate``."""
+
     help = "Apply pending dblift migrations."
     requires_system_checks: list[str] = []
 
     def handle(self, *args: Any, **options: Any) -> None:
+        """Apply the pending migrations, raising CommandError on failure."""
         client = get_client()
         try:
             result = client.migrate()
         finally:
             client.close()
-        if not getattr(result, "success", False):
-            raise CommandError(getattr(result, "error_message", "dblift migrate failed"))
+        if not result.success:
+            raise CommandError(result.error_message)
         self.stdout.write(self.style.SUCCESS("dblift: migrations applied"))

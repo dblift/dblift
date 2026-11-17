@@ -1,6 +1,5 @@
 """Base abstract class for database history managers."""
 
-import datetime
 import os
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
@@ -8,30 +7,13 @@ from typing import Any, Dict, List, Optional
 from dblift.core.constants import DEFAULT_HISTORY_TABLE
 from dblift.core.logger import Log, NullLog
 from dblift.core.migration.migration import MigrationType
+from dblift.db.provider_registry import ProviderRegistry
 
-# Migration type names that identify a *versioned* history row, whichever
-# script format produced it. ``MigrationType.SQL`` does not mean "SQL format":
-# ``parse_filename`` returns it for every versioned extension, and ``Migration``
-# then relabels non-SQL formats as ``MigrationType.PYTHON``. A history predicate
-# spelled ``type = 'SQL'`` therefore drops every Python migration.
-#
-# Built from ``.name``, not ``.value``: history rows are written with
-# ``migration.type.name`` and read back by ``AppliedMigration.from_history_row``
-# through the name-based ``MigrationType[...]`` lookup. The two spellings
-# coincide for every member today, but only the name is the persisted contract.
-#
-# The persisted vocabulary is frozen. Widen predicates against it; never rename
-# or add stored values — historical rows would silently degrade to ``UNKNOWN``.
-VERSIONED_HISTORY_TYPES: frozenset[str] = frozenset(
-    {MigrationType.SQL.name, MigrationType.PYTHON.name}
-)
-
-#: ``VERSIONED_HISTORY_TYPES`` rendered as a SQL ``IN`` list, e.g. ``('PYTHON', 'SQL')``.
-#: Sorted so the emitted SQL is stable. Dialects must interpolate this rather
-#: than hand-rolling a literal, so a new dialect cannot invent its own predicate.
-VERSIONED_HISTORY_TYPES_SQL_IN: str = (
-    "(" + ", ".join(f"'{name}'" for name in sorted(VERSIONED_HISTORY_TYPES)) + ")"
-)
+# History rows are written with ``migration.type.name`` and read back by
+# ``AppliedMigration.from_history_row`` through the name-based ``MigrationType[...]``
+# lookup, so the name is the persisted contract. The persisted vocabulary is frozen:
+# never rename or add stored values — historical rows would silently degrade to
+# ``UNKNOWN``.
 
 #: History ``type`` written for a synthetic undo row, derived rather than typed.
 UNDO_HISTORY_TYPE: str = MigrationType.UNDO_SQL.name
@@ -330,8 +312,6 @@ class BaseHistoryManager(ABC):
         Resolved from the plugin quirks so no command has to know that
         Oracle/SQL Server/SQLite spell it ``0``.
         """
-        from dblift.db.provider_registry import ProviderRegistry
-
         dialect = getattr(self.query_executor, "dialect_name", "") or ""
         if not dialect:
             config = getattr(
@@ -339,232 +319,6 @@ class BaseHistoryManager(ABC):
             )
             dialect = str(getattr(getattr(config, "database", None), "type", "") or "")
         return ProviderRegistry.get_quirks(dialect.lower()).boolean_false_literal
-
-    def _validate_migration_info(self, migration_info: Dict[str, Any]) -> None:
-        """Validate migration information dictionary.
-
-        Args:
-            migration_info: Migration information to validate
-
-        Raises:
-            ValueError: If required fields are missing
-        """
-        required_fields = ["version", "description", "type", "script"]
-        missing_fields = [field for field in required_fields if field not in migration_info]
-
-        if missing_fields:
-            raise ValueError(f"Missing required migration fields: {', '.join(missing_fields)}")
-
-    def _normalize_migration_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Normalize migration results to handle database-specific variations.
-
-        This method standardizes column names, data types, and formats across
-        different database implementations.
-
-        Args:
-            results: Raw migration results from database
-
-        Returns:
-            Normalized migration results
-        """
-        normalized = []
-
-        for result in results:
-            normalized_result: Dict[str, Any] = {}
-
-            # Normalize common column names (handle case variations)
-            for key, value in result.items():
-                normalized_key = key.lower()
-
-                # Handle common column name variations
-                if normalized_key in ["installed_rank", "installedrank"]:
-                    normalized_result["installed_rank"] = self._to_int(value)
-                elif normalized_key in ["version"]:
-                    normalized_result["version"] = str(value) if value is not None else None
-                elif normalized_key in ["description"]:
-                    normalized_result["description"] = str(value) if value is not None else None
-                elif normalized_key in ["type"]:
-                    normalized_result["type"] = str(value) if value is not None else None
-                elif normalized_key in ["script", "script_name", "scriptname"]:
-                    normalized_result["script"] = str(value) if value is not None else None
-                elif normalized_key in ["checksum"]:
-                    normalized_result["checksum"] = str(value) if value is not None else None
-                elif normalized_key in ["installed_by", "installedby"]:
-                    normalized_result["installed_by"] = str(value) if value is not None else None
-                elif normalized_key in ["installed_on", "installedon"]:
-                    normalized_result["installed_on"] = self._convert_timestamp(value)
-                elif normalized_key in ["execution_time", "executiontime"]:
-                    normalized_result["execution_time"] = self._to_int(value)
-                elif normalized_key in ["success"]:
-                    normalized_result["success"] = self._to_boolean(value)
-                else:
-                    # Keep other fields as-is
-                    normalized_result[normalized_key] = value
-
-            normalized.append(normalized_result)
-
-        return normalized
-
-    def _to_int(self, value: Any) -> int:
-        """Convert various numeric types to int safely.
-
-        Handles decimal-like driver values, numeric types, and string representations.
-
-        Args:
-            value: Value to convert
-
-        Returns:
-            Integer value, 0 if conversion fails
-        """
-        try:
-            if value is None:
-                return 0
-
-            # Handle decimal-like driver objects that expose intValue().
-            if hasattr(value, "intValue"):
-                return int(value.intValue())
-
-            # Handle standard numeric types
-            if isinstance(value, (int, float)):
-                return int(value)
-
-            # Handle string representations
-            str_value = str(value).strip()
-            if str_value == "":
-                return 0
-
-            # Handle decimal strings
-            if "." in str_value:
-                return int(float(str_value))
-
-            return int(str_value)
-
-        except (ValueError, TypeError, AttributeError):
-            return 0
-
-    def _to_boolean(self, value: Any) -> bool:
-        """Convert various types to boolean safely.
-
-        Handles database-specific boolean representations (0/1, true/false, etc.).
-
-        Args:
-            value: Value to convert
-
-        Returns:
-            Boolean value
-        """
-        if value is None:
-            return False
-
-        # Handle numeric representations
-        if isinstance(value, (int, float)):
-            return value != 0
-
-        # Handle numeric driver objects.
-        if hasattr(value, "intValue"):
-            return int(value.intValue()) != 0
-
-        # Handle string representations
-        str_value = str(value).lower().strip()
-        return str_value in ("true", "1", "yes", "on", "t", "y")
-
-    def _convert_timestamp(self, value: Any) -> Any:
-        """Convert database timestamp to Python datetime.
-
-        Handles various database timestamp formats and timestamp-like driver objects.
-
-        Args:
-            value: Timestamp value to convert
-
-        Returns:
-            Python datetime object or original value if conversion fails
-        """
-        if value is None:
-            return None
-
-        # If it's already a datetime, return as-is
-        if isinstance(value, datetime.datetime):
-            return value
-
-        # Handle timestamp-like driver objects.
-        if hasattr(value, "toLocalDateTime"):
-            try:
-                # Convert timestamp-like object to Python datetime.
-                local_dt = value.toLocalDateTime()
-                return datetime.datetime(
-                    local_dt.getYear(),
-                    local_dt.getMonthValue(),
-                    local_dt.getDayOfMonth(),
-                    local_dt.getHour(),
-                    local_dt.getMinute(),
-                    local_dt.getSecond(),
-                    local_dt.getNano() // 1000,
-                )
-            except Exception as e:
-                self.log.debug(f"Could not convert database timestamp to datetime: {e}")
-
-        # Return original value if conversion fails
-        return value
-
-    def _get_first_value(self, result: Any) -> Any:
-        """Get the first value from a database result safely.
-
-        Handles different result formats and extracts the first column value.
-
-        Args:
-            result: Database result (dict or list)
-
-        Returns:
-            First value or None if not found
-        """
-        if not result:
-            return None
-
-        if isinstance(result, dict):
-            # Get first value from dictionary
-            return next(iter(result.values())) if result else None
-
-        if isinstance(result, (list, tuple)) and result:
-            first_item = result[0]
-            if isinstance(first_item, dict):
-                # Get first value from first dictionary
-                return next(iter(first_item.values())) if first_item else None
-            else:
-                # Return first item directly
-                return first_item
-
-        return None
-
-    def _build_migration_params(
-        self, migration_info: Dict[str, Any], success_value: Any
-    ) -> List[Any]:
-        """Build the standard params list for INSERT INTO history table.
-
-        Extracts and normalises the common fields shared across all database
-        dialect implementations of record_migration().  The caller is
-        responsible for computing the dialect-specific ``success_value``
-        (integer 0/1, boolean, or string "true"/"false") before calling
-        this helper.
-
-        Args:
-            migration_info: Dictionary containing migration information.
-            success_value: Dialect-specific representation of the success flag.
-
-        Returns:
-            List of 8 parameter values in standard column order:
-            version, description, type, script, checksum,
-            installed_by, execution_time, success_value.
-        """
-        return [
-            migration_info.get("version"),
-            migration_info.get("description") or "",
-            migration_info.get("type") or "SQL",
-            migration_info.get("script") or "",
-            migration_info.get("checksum"),
-            migration_info.get("installed_by") or "unknown",
-            migration_info.get("execution_time", 0),
-            success_value,
-        ]
 
     def record_undo(
         self,
@@ -621,60 +375,3 @@ class BaseHistoryManager(ABC):
         if script_name:
             return script_name if os.path.splitext(script_name)[1] else f"{script_name}.sql"
         return f"UNDO_{version}.sql"
-
-    def get_row_limit_clause(self, n: int = 1) -> str:
-        """Return SQL clause to limit the number of rows returned.
-
-        Defaults to MySQL/PostgreSQL syntax. Override in dialect-specific history managers.
-
-        Args:
-            n: Maximum number of rows to return
-
-        Returns:
-            str: SQL LIMIT clause appropriate for this database dialect
-        """
-        return f"LIMIT {n}"
-
-    def get_current_version(
-        self, connection: Any, schema: str, table_name: Optional[str] = None
-    ) -> Optional[str]:
-        """Get the current schema version from the history table.
-
-        Default implementation finds the highest version number among versioned
-        rows — ``SQL`` for ``.sql`` scripts and ``PYTHON`` for scripted formats.
-        Undo rows are deliberately outside the predicate, so the version they
-        refer to is still reported by its own row.
-        Database-specific implementations can override for custom logic.
-
-        Args:
-            connection: Active database connection (provided by Provider)
-            schema: Schema name
-            table_name: Custom history table name
-
-        Returns:
-            Current version string or None if no migrations found
-        """
-        try:
-            table_name = table_name or self._get_default_table_name()
-
-            if not self.query_executor.table_exists(connection, schema, table_name):
-                return None
-
-            qualified_table = self.query_executor.get_schema_qualified_name(schema, table_name)
-            query = f"""
-                SELECT version FROM {qualified_table}
-                WHERE type IN {VERSIONED_HISTORY_TYPES_SQL_IN} AND success = TRUE
-                ORDER BY installed_rank DESC
-                {self.get_row_limit_clause(1)}
-            """
-
-            results = self.query_executor.execute_query(connection, query)
-            if results:
-                version = self._get_first_value(results)
-                return str(version) if version is not None else None
-
-            return None
-
-        except Exception as e:
-            self.log.error(f"Error getting current version: {str(e)}")
-            return None

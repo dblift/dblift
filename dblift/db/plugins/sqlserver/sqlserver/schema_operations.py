@@ -234,10 +234,9 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
                 if type_name:
                     candidates.append(
                         _CleanCandidate(
-                            sql=(
-                                "DROP TYPE "
-                                f"{self.query_executor.get_schema_qualified_name(schema, type_name)}"
-                            ),
+                            sql=f"""DROP TYPE {self.query_executor.get_schema_qualified_name(
+                                schema, type_name
+                            )}""",
                             object_type="type",
                             name=type_name,
                         )
@@ -282,7 +281,9 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
         # via the only path that connects a catalog to a schema:
         # sys.fulltext_indexes.object_id -> sys.tables.schema_id ->
         # sys.schemas. Only a catalog referenced by at least one full-text
-        # index on a table in the target schema is enumerated here.
+        # index on a table in the target schema is enumerated here. A catalog
+        # that is also used by a full-text index on a table in another schema
+        # is skipped: DROP FULLTEXT CATALOG fails while any index still uses it.
         fulltext_catalogs_query = """
         SELECT DISTINCT fc.name AS catalog_name
         FROM sys.fulltext_catalogs fc
@@ -290,6 +291,13 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
         INNER JOIN sys.tables t ON fi.object_id = t.object_id
         INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
         WHERE s.name = ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM sys.fulltext_indexes fi2
+            INNER JOIN sys.tables t2 ON fi2.object_id = t2.object_id
+            WHERE fi2.fulltext_catalog_id = fc.fulltext_catalog_id
+              AND t2.schema_id <> s.schema_id
+          )
         """
         try:
             fulltext_catalogs = self.query_executor.execute_query(
@@ -443,119 +451,3 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
             "SqlServerSchemaOperations.set_current_schema is not used; "
             "SqlServerProvider.set_current_schema is the real implementation"
         )
-
-    def get_columns_query(self, schema: str, table: str) -> tuple[str, List[str]]:
-        """Get a SQL Server-specific query to retrieve column information from a table.
-
-        Args:
-            schema: Schema name
-            table: Table name
-
-        Returns:
-            tuple: (sql, params) with ? placeholders — no f-string interpolation
-        """
-        sql = """
-        SELECT COLUMN_NAME as column_name, DATA_TYPE as data_type
-        FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-        ORDER BY ORDINAL_POSITION
-        """
-        return (sql, [schema, table])
-
-    def get_add_column_sql(self, schema: str, table: str, column: str, type_def: str) -> str:
-        """Generate SQL Server-specific SQL to add a column to a table.
-
-        Args:
-            schema: Schema name
-            table: Table name
-            column: Column name to add
-            type_def: Column data type definition
-
-        Returns:
-            str: SQL for adding the column
-        """
-        qualified_table = self.query_executor.get_schema_qualified_name(schema, table)
-        return f"ALTER TABLE {qualified_table} ADD [{column}] {type_def}"
-
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Get SQL Server-specific parameter placeholders for prepared statements.
-
-        Args:
-            count: Number of parameters
-
-        Returns:
-            str: Parameter placeholders string
-        """
-        # SQL Server uses ? placeholders
-        return ", ".join(["?" for _ in range(count)])
-
-    def get_tables(self, connection: Any, schema: str) -> List[str]:
-        """Get list of table names in the specified schema.
-
-        Args:
-            schema: Schema name
-
-        Returns:
-            List of table names in the schema
-        """
-        self.log.debug(f"Getting tables in schema: {schema}")
-
-        try:
-            # Use INFORMATION_SCHEMA to get table names
-            query = """
-            SELECT TABLE_NAME as table_name
-            FROM INFORMATION_SCHEMA.TABLES
-            WHERE TABLE_SCHEMA = ? AND TABLE_TYPE = 'BASE TABLE'
-            ORDER BY TABLE_NAME
-            """
-
-            result = self.query_executor.execute_query(connection, query, params=[schema])
-            tables = [
-                str(row["table_name"] if "table_name" in row else row["TABLE_NAME"])
-                for row in result
-            ]
-
-            self.log.debug(f"Found {len(tables)} tables in schema {schema}: {tables}")
-
-            return tables
-        except Exception as e:
-            error_msg = f"Error getting tables in schema {schema}: {str(e)}"
-            self.log.error(error_msg)
-            return []
-
-    def get_schemas(self, connection: Any) -> List[str]:
-        """Get list of schema names available in the SQL Server database.
-
-        Returns:
-            List of schema names that the current user can access
-        """
-        self.log.debug("Getting available schemas from SQL Server")
-
-        try:
-            # Query to get schemas that the current user can access
-            # Exclude system schemas
-            query = """
-            SELECT SCHEMA_NAME as schema_name
-            FROM INFORMATION_SCHEMA.SCHEMATA
-            WHERE SCHEMA_NAME NOT IN (
-                'information_schema', 'sys', 'db_owner', 'db_accessadmin',
-                'db_securityadmin', 'db_ddladmin', 'db_backupoperator',
-                'db_datareader', 'db_datawriter', 'db_denydatareader',
-                'db_denydatawriter', 'guest'
-            )
-            ORDER BY SCHEMA_NAME
-            """
-
-            result = self.query_executor.execute_query(connection, query)
-            schemas = [
-                str(row["schema_name"] if "schema_name" in row else row["SCHEMA_NAME"])
-                for row in result
-            ]
-
-            self.log.debug(f"Found {len(schemas)} accessible schemas")
-
-            return schemas
-        except Exception as e:
-            error_msg = f"Error getting schemas: {str(e)}"
-            self.log.error(error_msg)
-            return []

@@ -155,6 +155,7 @@ def test_trigger_to_dict_pins_keys():
     assert _make_trigger().to_dict() == {
         "name": "audit_trg",
         "table_name": "orders",
+        "table_schema": "app",
         "schema": "app",
         "object_type": "TRIGGER",
         "dialect": "mysql",

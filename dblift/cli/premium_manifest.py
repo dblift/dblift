@@ -14,6 +14,7 @@ from dblift.core.premium_manifest import (
     UPGRADE_URL,
     PremiumCommand,
     premium_commands_missing_from,
+    premium_root_flags_missing_from,
     premium_stub_index,
     render_upsell,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "UPGRADE_URL",
     "PremiumCommand",
     "premium_commands_missing_from",
+    "premium_root_flags_missing_from",
     "premium_stub_index",
     "render_upsell",
 ]

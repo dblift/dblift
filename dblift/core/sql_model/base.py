@@ -15,11 +15,9 @@ from __future__ import annotations
 
 from dblift.core.sql_model._base_parse_result import ParseResult
 from dblift.core.sql_model._base_sql_column import SqlColumn
-from dblift.core.sql_model._base_sql_constraint import (  # noqa: F401
+from dblift.core.sql_model._base_sql_constraint import (
     ConstraintType,
     SqlConstraint,
-    _norm_constraint_deferrable,
-    _norm_constraint_enabled,
     get_constraint_type_name,
 )
 from dblift.core.sql_model._base_sql_object import (

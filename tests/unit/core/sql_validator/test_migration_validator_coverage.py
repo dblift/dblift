@@ -6,9 +6,17 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from dblift.core.migration.state.checksum_drift import find_checksum_drift
+from dblift.core.migration.state.migration_selector import (
+    normalize_filter,
+    passes_filters,
+    prune_baseline_migrations,
+    select_migrations,
+)
 from dblift.core.migration.state.missing_scripts import missing_applied
 from dblift.core.migration.state.ordering import out_of_order
 from dblift.core.migration.state.repeatable_status import repeatable_runs
+from tests.unit._migration_factory import migration_with_attrs
+from tests.unit._validation_snapshot import validate_snapshot_for
 
 # ---------------------------------------------------------------------------
 # Helper factories
@@ -55,7 +63,7 @@ def _make_migration(
 
     if mtype is None:
         mtype = MigrationType.SQL
-    m = SimpleNamespace(
+    return migration_with_attrs(
         script_name=script_name,
         type=mtype,
         version=version,
@@ -64,19 +72,17 @@ def _make_migration(
         installed_rank=installed_rank,
         execution_time=execution_time,
         tags=tags or [],
-        path=None,
     )
-    return m
 
 
 # ---------------------------------------------------------------------------
-# Lines 56-80: _last_successful_non_delete_record edge cases
+# Lines 56-80: _successful_non_delete_records edge cases
 # ---------------------------------------------------------------------------
 
 
-class TestLastSuccessfulNonDeleteRecord(unittest.TestCase):
+class TestSuccessfulNonDeleteRecords(unittest.TestCase):
     def _make(self, script_name, mtype, success=True):
-        return SimpleNamespace(
+        return migration_with_attrs(
             script_name=script_name,
             type=mtype,
             success="1" if success else "0",
@@ -84,37 +90,31 @@ class TestLastSuccessfulNonDeleteRecord(unittest.TestCase):
 
     def test_skips_delete_type(self):
         from dblift.core.migration.migration import MigrationType
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.migration.scripting.migration_script_manager import (
+            _successful_non_delete_records,
+        )
 
         m = self._make("V1__test.sql", MigrationType.DELETE)
-        result = _last_successful_non_delete_record([m], "V1__test.sql")
-        self.assertIsNone(result)
+        self.assertEqual(list(_successful_non_delete_records([m])), [])
 
     def test_skips_undo_sql_type(self):
         from dblift.core.migration.migration import MigrationType
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.migration.scripting.migration_script_manager import (
+            _successful_non_delete_records,
+        )
 
         m = self._make("V1__test.sql", MigrationType.UNDO_SQL)
-        result = _last_successful_non_delete_record([m], "V1__test.sql")
-        self.assertIsNone(result)
-
-    def test_returns_latest_of_multiple_successful(self):
-        from dblift.core.migration.migration import MigrationType
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
-
-        m1 = self._make("V1__test.sql", MigrationType.SQL, success=True)
-        m2 = self._make("V1__test.sql", MigrationType.SQL, success=True)
-        result = _last_successful_non_delete_record([m1, m2], "V1__test.sql")
-        self.assertIs(result, m2)
+        self.assertEqual(list(_successful_non_delete_records([m])), [])
 
     def test_skips_failed_migration(self):
         from dblift.core.migration.migration import MigrationType
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
+        from dblift.core.migration.scripting.migration_script_manager import (
+            _successful_non_delete_records,
+        )
 
         m_fail = self._make("V1__test.sql", MigrationType.SQL, success=False)
         m_ok = self._make("V1__test.sql", MigrationType.SQL, success=True)
-        result = _last_successful_non_delete_record([m_fail, m_ok], "V1__test.sql")
-        self.assertIs(result, m_ok)
+        self.assertEqual(list(_successful_non_delete_records([m_fail, m_ok])), [m_ok])
 
 
 # ---------------------------------------------------------------------------
@@ -221,7 +221,7 @@ class TestValidateFlywayCompatibilityBranches(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Lines 324-410: check_flyway_history_table + _check_table_compatibility
+# Lines 324-410: check_flyway_history_table
 # ---------------------------------------------------------------------------
 
 
@@ -254,20 +254,6 @@ class TestCheckFlywayHistoryTableCoverage(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("crash", result.error_message)
 
-    def test_check_table_compatibility_no_history_table(self):
-        v, _, hm, _ = _make_validator()
-        hm.has_history_table = False
-        issues = []
-        v._check_table_compatibility(issues)
-        hm.create_schema_and_history_table.assert_called_once()
-
-    def test_check_table_compatibility_with_history_table(self):
-        v, _, hm, _ = _make_validator()
-        hm.has_history_table = True
-        issues = []
-        # Should not raise - just a pass
-        v._check_table_compatibility(issues)
-
 
 # ---------------------------------------------------------------------------
 # Lines 412-476: _load_and_filter_migrations, _handle_baseline_filtering
@@ -278,7 +264,7 @@ class TestLoadAndFilterMigrations(unittest.TestCase):
     def _make_script(self, name, mtype):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             script_name=name,
             type=mtype,
             version=None,
@@ -320,7 +306,7 @@ class TestLoadAndFilterMigrations(unittest.TestCase):
 
 class TestHandleBaselineFiltering(unittest.TestCase):
     def _make_migration(self, mtype, version, script_name):
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=mtype, version=version, script_name=script_name, checksum=None, path=None
         )
 
@@ -332,7 +318,7 @@ class TestHandleBaselineFiltering(unittest.TestCase):
             self._make_migration(MigrationType.SQL, "1", "V1__a.sql"),
             self._make_migration(MigrationType.SQL, "2", "V2__b.sql"),
         ]
-        result = v._handle_baseline_filtering(scripts)
+        result = prune_baseline_migrations(scripts)
         self.assertEqual(len(result), 2)
 
     def test_baseline_filters_older_versioned(self):
@@ -344,7 +330,7 @@ class TestHandleBaselineFiltering(unittest.TestCase):
             self._make_migration(MigrationType.SQL, "1", "V1__old.sql"),
             self._make_migration(MigrationType.SQL, "3", "V3__new.sql"),
         ]
-        result = v._handle_baseline_filtering(scripts)
+        result = prune_baseline_migrations(scripts)
         names = [s.script_name for s in result]
         self.assertNotIn("V1__old.sql", names)
         self.assertIn("V3__new.sql", names)
@@ -358,7 +344,7 @@ class TestHandleBaselineFiltering(unittest.TestCase):
             self._make_migration(MigrationType.BASELINE, "2", "B2__base.sql"),
             self._make_migration(MigrationType.REPEATABLE, None, "R__rep.sql"),
         ]
-        result = v._handle_baseline_filtering(scripts)
+        result = prune_baseline_migrations(scripts)
         names = [s.script_name for s in result]
         self.assertIn("R__rep.sql", names)
 
@@ -372,24 +358,24 @@ class TestNormalizeFilter(unittest.TestCase):
     def test_none_returns_none(self):
         from dblift.core.sql_validator.migration_validator import MigrationValidator
 
-        self.assertIsNone(MigrationValidator._normalize_filter(None))
+        self.assertIsNone(normalize_filter(None))
 
     def test_string_splits_by_comma(self):
         from dblift.core.sql_validator.migration_validator import MigrationValidator
 
-        result = MigrationValidator._normalize_filter("a, b, c")
+        result = normalize_filter("a, b, c")
         self.assertEqual(result, ["a", "b", "c"])
 
     def test_list_returns_stripped(self):
         from dblift.core.sql_validator.migration_validator import MigrationValidator
 
-        result = MigrationValidator._normalize_filter(["x ", " y"])
+        result = normalize_filter(["x ", " y"])
         self.assertEqual(result, ["x", "y"])
 
     def test_empty_list_returns_empty(self):
         from dblift.core.sql_validator.migration_validator import MigrationValidator
 
-        result = MigrationValidator._normalize_filter([])
+        result = normalize_filter([])
         self.assertEqual(result, [])
 
 
@@ -397,7 +383,7 @@ class TestPassesFilters(unittest.TestCase):
     def _make_migration_with_tags(self, version="1", tags=None):
         from dblift.core.migration.migration import MigrationType
 
-        m = SimpleNamespace(
+        m = migration_with_attrs(
             type=MigrationType.SQL,
             version=version,
             script_name=f"V{version}__test.sql",
@@ -409,53 +395,53 @@ class TestPassesFilters(unittest.TestCase):
         v, sm, *_ = _make_validator()
         sm.compare_versions.return_value = 0
         m = self._make_migration_with_tags("1")
-        self.assertTrue(v._passes_filters(m, None, None, None, None, None))
+        self.assertTrue(passes_filters(m, None, None, None, None, None))
 
     def test_target_version_filters_higher(self):
         v, sm, *_ = _make_validator()
         sm.compare_versions.return_value = 1  # script version > target
         m = self._make_migration_with_tags("3")
-        self.assertFalse(v._passes_filters(m, "2", None, None, None, None))
+        self.assertFalse(passes_filters(m, "2", None, None, None, None))
 
     def test_versions_filter_includes_matching(self):
         v, sm, *_ = _make_validator()
         m = self._make_migration_with_tags("2")
-        self.assertTrue(v._passes_filters(m, None, None, None, ["2"], None))
+        self.assertTrue(passes_filters(m, None, None, None, ["2"], None))
 
     def test_versions_filter_excludes_non_matching(self):
         v, sm, *_ = _make_validator()
         m = self._make_migration_with_tags("3")
-        self.assertFalse(v._passes_filters(m, None, None, None, ["2"], None))
+        self.assertFalse(passes_filters(m, None, None, None, ["2"], None))
 
     def test_exclude_versions_excludes(self):
         v, sm, *_ = _make_validator()
         m = self._make_migration_with_tags("2")
-        self.assertFalse(v._passes_filters(m, None, None, None, None, ["2"]))
+        self.assertFalse(passes_filters(m, None, None, None, None, ["2"]))
 
     def test_tags_filter_passes_matching(self):
         v, sm, *_ = _make_validator()
         m = self._make_migration_with_tags("1", tags=["hotfix"])
-        self.assertTrue(v._passes_filters(m, None, ["hotfix"], None, None, None))
+        self.assertTrue(passes_filters(m, None, ["hotfix"], None, None, None))
 
     def test_tags_filter_fails_non_matching(self):
         v, sm, *_ = _make_validator()
         m = self._make_migration_with_tags("1", tags=["release"])
-        self.assertFalse(v._passes_filters(m, None, ["hotfix"], None, None, None))
+        self.assertFalse(passes_filters(m, None, ["hotfix"], None, None, None))
 
     def test_exclude_tags_excludes(self):
         v, sm, *_ = _make_validator()
         m = self._make_migration_with_tags("1", tags=["hotfix"])
-        self.assertFalse(v._passes_filters(m, None, None, ["hotfix"], None, None))
+        self.assertFalse(passes_filters(m, None, None, ["hotfix"], None, None))
 
     def test_exclude_tags_passes_without_tag(self):
         v, sm, *_ = _make_validator()
         m = self._make_migration_with_tags("1", tags=["release"])
-        self.assertTrue(v._passes_filters(m, None, None, ["hotfix"], None, None))
+        self.assertTrue(passes_filters(m, None, None, ["hotfix"], None, None))
 
     def test_tags_filter_fails_when_no_tags_on_migration(self):
         v, sm, *_ = _make_validator()
         m = self._make_migration_with_tags("1", tags=[])
-        self.assertFalse(v._passes_filters(m, None, ["hotfix"], None, None, None))
+        self.assertFalse(passes_filters(m, None, ["hotfix"], None, None, None))
 
 
 # ---------------------------------------------------------------------------
@@ -467,7 +453,7 @@ class TestValidateNoScriptsCase(unittest.TestCase):
     def test_no_scripts_returns_early_true(self):
         v, _, hm, _ = _make_validator()
         hm.provider.config = None
-        result = v.validate_resolved_migrations([])
+        result = validate_snapshot_for(v, resolved_migrations=[])
         self.assertTrue(result.success)
 
     def test_no_scripts_strict_mode_with_applied_returns_false(self):
@@ -475,24 +461,24 @@ class TestValidateNoScriptsCase(unittest.TestCase):
         config = SimpleNamespace(strict_mode=True)
         hm.provider.config = config
         hm.get_applied_migrations.return_value = [_make_migration()]
-        result = v.validate_resolved_migrations([])
+        result = validate_snapshot_for(v, resolved_migrations=[])
         self.assertFalse(result.success)
 
     def test_with_scripts_does_not_return_early(self):
         from dblift.core.migration.migration import MigrationType
 
         v, *_ = _make_validator()
-        script = SimpleNamespace(
+        script = migration_with_attrs(
             type=MigrationType.SQL, version="1", script_name="V1__t.sql", checksum=1, path=None
         )
         v.state_manager.history_manager.has_history_table = False
-        result = v.validate_resolved_migrations([script])
+        result = validate_snapshot_for(v, resolved_migrations=[script])
         self.assertEqual(result.migrations, [script])
         self.assertTrue(result.success)
 
 
 # ---------------------------------------------------------------------------
-# Lines 649-740: validate_resolved_migrations
+# Lines 649-740: validate_snapshot over a resolved list
 # ---------------------------------------------------------------------------
 
 
@@ -500,7 +486,7 @@ class TestValidateResolvedMigrations(unittest.TestCase):
     def _sql_script(self, name="V1__test.sql", version="1"):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=MigrationType.SQL,
             version=version,
             script_name=name,
@@ -511,7 +497,7 @@ class TestValidateResolvedMigrations(unittest.TestCase):
     def _repeatable_script(self, name="R__rep.sql"):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=MigrationType.REPEATABLE,
             version=None,
             script_name=name,
@@ -522,7 +508,7 @@ class TestValidateResolvedMigrations(unittest.TestCase):
     def test_empty_migrations_returns_success(self):
         v, sm, hm, _ = _make_validator()
         hm.provider.config = None
-        result = v.validate_resolved_migrations([])
+        result = validate_snapshot_for(v, resolved_migrations=[])
         self.assertTrue(result.success)
 
     def test_only_unknown_type_returns_success(self):
@@ -530,19 +516,18 @@ class TestValidateResolvedMigrations(unittest.TestCase):
 
         v, sm, hm, _ = _make_validator()
         hm.provider.config = None
-        unknown = SimpleNamespace(
+        unknown = migration_with_attrs(
             type=MigrationType.UNKNOWN, version=None, script_name="X.sql", checksum=None, path=None
         )
         # UNKNOWN type will be filtered out, then no-scripts path
-        result = v.validate_resolved_migrations([unknown])
+        result = validate_snapshot_for(v, resolved_migrations=[unknown])
         self.assertTrue(result.success)
 
     def test_all_repeatable_returns_success(self):
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = False
-        sm.has_script_changed.return_value = False
         rep = self._repeatable_script()
-        result = v.validate_resolved_migrations([rep])
+        result = validate_snapshot_for(v, resolved_migrations=[rep])
         self.assertTrue(result.success)
 
     def test_duplicate_versions_returns_failure(self):
@@ -550,14 +535,14 @@ class TestValidateResolvedMigrations(unittest.TestCase):
         hm.has_history_table = False
         s1 = self._sql_script("V1__a.sql", "1")
         s2 = self._sql_script("V1__b.sql", "1")
-        result = v.validate_resolved_migrations([s1, s2])
+        result = validate_snapshot_for(v, resolved_migrations=[s1, s2])
         self.assertFalse(result.success)
 
     def test_no_history_table_no_issues(self):
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = False
         s1 = self._sql_script()
-        result = v.validate_resolved_migrations([s1])
+        result = validate_snapshot_for(v, resolved_migrations=[s1])
         self.assertTrue(result.success)
 
     def test_exception_returns_failure(self):
@@ -565,8 +550,7 @@ class TestValidateResolvedMigrations(unittest.TestCase):
         hm.has_history_table = True
         hm.get_applied_migrations.side_effect = RuntimeError("boom")
         s1 = self._sql_script()
-        sm.has_script_changed.return_value = False
-        result = v.validate_resolved_migrations([s1])
+        result = validate_snapshot_for(v, resolved_migrations=[s1])
         # An unreadable history must not validate against an empty history
         self.assertFalse(result.success)
         self.assertIn("could not read migration history: boom", result.error_message)
@@ -577,10 +561,9 @@ class TestValidateResolvedMigrations(unittest.TestCase):
         config = SimpleNamespace(strict_mode=True)
         hm.provider.config = config
         hm.get_applied_migrations.return_value = []
-        sm.has_script_changed.return_value = False
         s1 = self._sql_script()
         with patch.object(v, "_validate_strict_mode_rules", return_value=True) as mock_strict:
-            result = v.validate_resolved_migrations([s1], command="migrate")
+            result = validate_snapshot_for(v, command="migrate", resolved_migrations=[s1])
         mock_strict.assert_called_once()
         self.assertTrue(result.success)
 
@@ -590,7 +573,6 @@ class TestValidateResolvedMigrations(unittest.TestCase):
         config = SimpleNamespace(strict_mode=False)
         hm.provider.config = config
         hm.get_applied_migrations.return_value = []
-        sm.has_script_changed.return_value = False
         s1 = self._sql_script()
         # Force issues by having strict mode validation fail
         with patch.object(v, "_validate_failed_migrations") as mock_fail:
@@ -600,12 +582,12 @@ class TestValidateResolvedMigrations(unittest.TestCase):
                 result.success = False
 
             mock_fail.side_effect = add_issue
-            result = v.validate_resolved_migrations([s1])
+            result = validate_snapshot_for(v, resolved_migrations=[s1])
         self.assertFalse(result.success)
 
 
 # ---------------------------------------------------------------------------
-# Lines 783-900: validate_migrations
+# Lines 783-900: validate_snapshot over a scripts directory
 # ---------------------------------------------------------------------------
 
 
@@ -613,7 +595,7 @@ class TestValidateMigrations(unittest.TestCase):
     def _sql_script(self, name="V1__test.sql", version="1"):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=MigrationType.SQL,
             version=version,
             script_name=name,
@@ -624,7 +606,7 @@ class TestValidateMigrations(unittest.TestCase):
 
     def test_missing_scripts_dir_fails(self):
         v, sm, hm, _ = _make_validator()
-        result = v.validate_migrations(Path("/nonexistent/dir"))
+        result = validate_snapshot_for(v, Path("/nonexistent/dir"))
         self.assertFalse(result.success)
         self.assertIn("not found", result.error_message)
 
@@ -636,7 +618,7 @@ class TestValidateMigrations(unittest.TestCase):
         hm.provider.config = None
         sm.get_migration_scripts.return_value = []
         with tempfile.TemporaryDirectory() as tmpdir:
-            result = v.validate_migrations(Path(tmpdir))
+            result = validate_snapshot_for(v, Path(tmpdir))
         self.assertTrue(result.success)
 
     def test_valid_scripts_no_history(self):
@@ -646,7 +628,7 @@ class TestValidateMigrations(unittest.TestCase):
         hm.has_history_table = False
         with tempfile.TemporaryDirectory() as tmpdir:
             sm.get_migration_scripts.return_value = [self._sql_script()]
-            result = v.validate_migrations(Path(tmpdir))
+            result = validate_snapshot_for(v, Path(tmpdir))
         self.assertTrue(result.success)
 
     def test_fresh_project_message_does_not_claim_history_checked(self):
@@ -664,7 +646,7 @@ class TestValidateMigrations(unittest.TestCase):
         hm.has_history_table = False
         with tempfile.TemporaryDirectory() as tmpdir:
             sm.get_migration_scripts.return_value = [self._sql_script()]
-            validation_result = v.validate_migrations(Path(tmpdir))
+            validation_result = validate_snapshot_for(v, Path(tmpdir))
         self.assertTrue(validation_result.success)
 
         log = MagicMock()
@@ -699,7 +681,7 @@ class TestValidateMigrations(unittest.TestCase):
         s2 = self._sql_script("V1__b.sql", "1")
         with tempfile.TemporaryDirectory() as tmpdir:
             sm.get_migration_scripts.return_value = [s1, s2]
-            result = v.validate_migrations(Path(tmpdir))
+            result = validate_snapshot_for(v, Path(tmpdir))
         self.assertFalse(result.success)
 
     def test_strict_mode_missing_applied_scripts_fails(self):
@@ -711,7 +693,7 @@ class TestValidateMigrations(unittest.TestCase):
         hm.has_history_table = True
         config = SimpleNamespace(strict_mode=True)
         hm.provider.config = config
-        applied = SimpleNamespace(
+        applied = migration_with_attrs(
             type=MigrationType.SQL,
             script_name="V0__old.sql",
             version="0",
@@ -723,7 +705,7 @@ class TestValidateMigrations(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             sm.get_migration_scripts.return_value = [self._sql_script("V1__new.sql", "1")]
             sm.compare_versions.return_value = -1  # applied has lower version
-            result = v.validate_migrations(Path(tmpdir), command="migrate")
+            result = validate_snapshot_for(v, Path(tmpdir), command="migrate")
         self.assertFalse(result.success)
 
     def test_all_repeatable_scripts_returns_success(self):
@@ -733,7 +715,7 @@ class TestValidateMigrations(unittest.TestCase):
 
         v, sm, hm, _ = _make_validator()
         hm.has_history_table = False
-        rep = SimpleNamespace(
+        rep = migration_with_attrs(
             type=MigrationType.REPEATABLE,
             version=None,
             script_name="R__rep.sql",
@@ -741,10 +723,9 @@ class TestValidateMigrations(unittest.TestCase):
             path=None,
             tags=[],
         )
-        sm.has_script_changed.return_value = False
         with tempfile.TemporaryDirectory() as tmpdir:
             sm.get_migration_scripts.return_value = [rep]
-            result = v.validate_migrations(Path(tmpdir))
+            result = validate_snapshot_for(v, Path(tmpdir))
         self.assertTrue(result.success)
 
     def test_exception_in_validate_migrations_returns_failure(self):
@@ -753,7 +734,7 @@ class TestValidateMigrations(unittest.TestCase):
         v, sm, hm, _ = _make_validator()
         sm.get_migration_scripts.side_effect = RuntimeError("unexpected")
         with tempfile.TemporaryDirectory() as tmpdir:
-            result = v.validate_migrations(Path(tmpdir))
+            result = validate_snapshot_for(v, Path(tmpdir))
         self.assertFalse(result.success)
         self.assertIn("Validation failed", result.error_message)
 
@@ -770,7 +751,7 @@ class TestValidateMigrations(unittest.TestCase):
         sm.compare_versions.side_effect = lambda a, b: int(a) - int(b)
         with tempfile.TemporaryDirectory() as tmpdir:
             sm.get_migration_scripts.return_value = [s1, s2]
-            result = v.validate_migrations(Path(tmpdir), target_version="1")
+            result = validate_snapshot_for(v, Path(tmpdir), target_version="1")
         self.assertTrue(result.success)
 
 
@@ -783,7 +764,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
     def _sql_script(self, name, version):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=MigrationType.SQL,
             version=version,
             script_name=name,
@@ -794,7 +775,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
     def _repeatable_script(self, name):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=MigrationType.REPEATABLE,
             version=None,
             script_name=name,
@@ -803,7 +784,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
     def _callback_script(self, name):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=MigrationType.CALLBACK,
             version=None,
             script_name=name,
@@ -812,7 +793,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
     def _python_script(self, name, version):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=MigrationType.PYTHON,
             version=version,
             script_name=name,
@@ -821,7 +802,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
     def _baseline_script(self, name, version):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=MigrationType.BASELINE,
             version=version,
             script_name=name,
@@ -830,7 +811,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
     def _undo_script(self, name, version):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=MigrationType.UNDO_SQL,
             version=version,
             script_name=name,
@@ -931,7 +912,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
         v, *_ = _make_validator()
         result = ValidationResult()
         issues = []
-        no_version = SimpleNamespace(
+        no_version = migration_with_attrs(
             type=MigrationType.SQL, version=None, script_name="V__noversion.sql"
         )
         r = v._validate_duplicate_versions([no_version], result, issues)
@@ -945,7 +926,7 @@ class TestValidateDuplicateVersions(unittest.TestCase):
 
 class TestValidateChecksums(unittest.TestCase):
     def _make_applied(self, name, mtype, version="1", success=True, checksum=100, installed_rank=1):
-        return SimpleNamespace(
+        return migration_with_attrs(
             script_name=name,
             type=mtype,
             version=version,
@@ -1035,7 +1016,6 @@ class TestValidateChecksums(unittest.TestCase):
         result = ValidationResult()
         issues = []
         applied = self._make_applied("V1__missing.sql", MigrationType.SQL, version="1")
-        sm.has_script_changed.return_value = False
         v._validate_checksums(
             [],
             [applied],
@@ -1055,7 +1035,6 @@ class TestValidateChecksums(unittest.TestCase):
         result = ValidationResult()
         issues = []
         applied = self._make_applied("V1__missing.sql", MigrationType.SQL, version="1")
-        sm.has_script_changed.return_value = False
         v._validate_checksums(
             [],
             [applied],
@@ -1077,7 +1056,6 @@ class TestValidateChecksums(unittest.TestCase):
         issues = []
         applied = self._make_applied("V1__deleted.sql", MigrationType.SQL, version="1")
         delete_record = self._make_applied("V1__deleted.sql", MigrationType.DELETE, version="1")
-        sm.has_script_changed.return_value = False
         v._validate_checksums(
             [],
             [applied, delete_record],
@@ -1099,14 +1077,13 @@ class TestValidateChecksums(unittest.TestCase):
         issues = []
         applied = self._make_applied("V1__old.sql", MigrationType.SQL, version="1")
         # Script with same version but different name exists on disk
-        alt_script = SimpleNamespace(
+        alt_script = migration_with_attrs(
             script_name="V1__new.sql",
             type=MigrationType.SQL,
             version="1",
             checksum=100,
             path=None,
         )
-        sm.has_script_changed.return_value = False
         v._validate_checksums(
             [alt_script],
             [applied],
@@ -1126,16 +1103,14 @@ class TestValidateChecksums(unittest.TestCase):
         result = ValidationResult()
         issues = []
         applied = self._make_applied("V1__test.sql", MigrationType.SQL, version="1", checksum=100)
-        script = SimpleNamespace(
+        script = migration_with_attrs(
             script_name="V1__test.sql",
             type=MigrationType.SQL,
             version="1",
             checksum=200,
             path=None,
         )
-        sm.has_script_changed.return_value = True
         # applied record has checksum 100, but script checksum is 200
-        # _last_successful_non_delete_record will be called; we need applied to have script_name set
         applied.success = True
         applied.type = MigrationType.SQL
         v._validate_checksums(
@@ -1161,7 +1136,7 @@ class TestValidateChecksums(unittest.TestCase):
         issues = []
         applied = self._make_applied("V1__test.sql", MigrationType.SQL, version="1", checksum=100)
         applied.success = True
-        script = SimpleNamespace(
+        script = migration_with_attrs(
             script_name="V1__test.sql",
             type=MigrationType.SQL,
             version="1",
@@ -1190,7 +1165,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
     def _rep_script(self, name="R__rep.sql", checksum=100):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=MigrationType.REPEATABLE,
             version=None,
             script_name=name,
@@ -1202,7 +1177,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
     def _applied_rep(self, name="R__rep.sql", success=True, checksum=100, execution_time=0):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=MigrationType.REPEATABLE,
             script_name=name,
             success=success,
@@ -1311,7 +1286,7 @@ class TestCheckRepeatableMigrations(unittest.TestCase):
 
         v, sm, *_ = _make_validator()
         result = ValidationResult()
-        sql_script = SimpleNamespace(
+        sql_script = migration_with_attrs(
             type=MigrationType.SQL, version="1", script_name="V1__t.sql", checksum=100, path=None
         )
         v._check_repeatable_migrations(
@@ -1369,7 +1344,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
     def _sql_script(self, name, version):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=MigrationType.SQL,
             version=version,
             script_name=name,
@@ -1382,7 +1357,7 @@ class TestValidateStrictModeRules(unittest.TestCase):
 
         if mtype is None:
             mtype = MigrationType.SQL
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=mtype,
             script_name=name,
             version=version,
@@ -1500,11 +1475,11 @@ class TestValidateReappearedMigrations(unittest.TestCase):
         result = ValidationResult()
         issues = []
         applied = [
-            SimpleNamespace(
+            migration_with_attrs(
                 type=MigrationType.SQL, script_name="V1__a.sql", version="1", checksum=100
             )
         ]
-        scripts = [SimpleNamespace(script_name="V1__a.sql", checksum=100)]
+        scripts = [migration_with_attrs(script_name="V1__a.sql", checksum=100)]
         v._validate_reappeared_migrations(scripts, applied, result, issues)
         self.assertEqual(issues, [])
         self.assertTrue(result.success)
@@ -1519,13 +1494,13 @@ class TestValidateReappearedMigrations(unittest.TestCase):
         hm.history_table = "dblift_schema_history"
         result = ValidationResult()
         issues = []
-        deleted = SimpleNamespace(
+        deleted = migration_with_attrs(
             type=MigrationType.DELETE,
             script_name="V1__deleted.sql",
             version="1",
             checksum=100,
         )
-        reappeared_script = SimpleNamespace(
+        reappeared_script = migration_with_attrs(
             script_name="V1__deleted.sql",
             checksum=200,
         )
@@ -1540,7 +1515,7 @@ class TestValidateReappearedMigrations(unittest.TestCase):
         v, *_ = _make_validator()
         result = ValidationResult()
         issues = []
-        deleted = SimpleNamespace(
+        deleted = migration_with_attrs(
             type=MigrationType.DELETE,
             script_name="V1__gone.sql",
             version="1",
@@ -1558,7 +1533,7 @@ class TestValidateFailedMigrations(unittest.TestCase):
 
         if mtype is None:
             mtype = MigrationType.SQL
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=mtype,
             script_name=name,
             version=version,
@@ -1639,7 +1614,7 @@ class TestValidateFailedMigrations(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------
-# Lines 993-1046: validate_migrations issues/exception paths
+# Lines 993-1046: validate_snapshot issues/exception paths
 # ---------------------------------------------------------------------------
 
 
@@ -1647,7 +1622,7 @@ class TestValidateMigrationsIssuesPaths(unittest.TestCase):
     def _sql_script(self, name="V1__test.sql", version="1"):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=MigrationType.SQL,
             version=version,
             script_name=name,
@@ -1665,7 +1640,7 @@ class TestValidateMigrationsIssuesPaths(unittest.TestCase):
         hm.provider.config = config
         from dblift.core.migration.migration import MigrationType
 
-        failed = SimpleNamespace(
+        failed = migration_with_attrs(
             type=MigrationType.SQL,
             script_name="V1__test.sql",
             version="1",
@@ -1674,10 +1649,9 @@ class TestValidateMigrationsIssuesPaths(unittest.TestCase):
             installed_rank=1,
         )
         hm.get_applied_migrations.return_value = [failed]
-        sm.has_script_changed.return_value = False
         with tempfile.TemporaryDirectory() as tmpdir:
             sm.get_migration_scripts.return_value = [self._sql_script()]
-            result = v.validate_migrations(Path(tmpdir))
+            result = validate_snapshot_for(v, Path(tmpdir))
         self.assertFalse(result.success)
         self.assertTrue(len(result.issues) > 0)
 
@@ -1690,7 +1664,7 @@ class TestValidateMigrationsIssuesPaths(unittest.TestCase):
         hm.has_history_table = True
         config = SimpleNamespace(strict_mode=False)
         hm.provider.config = config
-        deleted = SimpleNamespace(
+        deleted = migration_with_attrs(
             type=MigrationType.DELETE,
             script_name="V1__test.sql",
             version="1",
@@ -1699,12 +1673,11 @@ class TestValidateMigrationsIssuesPaths(unittest.TestCase):
             installed_rank=1,
         )
         hm.get_applied_migrations.return_value = [deleted]
-        sm.has_script_changed.return_value = False
         with tempfile.TemporaryDirectory() as tmpdir:
             sm.get_migration_scripts.return_value = [self._sql_script()]
             hm.schema = "public"
             hm.history_table = "dblift_schema_history"
-            result = v.validate_migrations(Path(tmpdir))
+            result = validate_snapshot_for(v, Path(tmpdir))
         self.assertFalse(result.success)
 
 
@@ -1717,7 +1690,7 @@ class TestApplyFilters(unittest.TestCase):
     def _sql_script(self, version, name=None, tags=None):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
+        return migration_with_attrs(
             type=MigrationType.SQL,
             version=version,
             script_name=name or f"V{version}__test.sql",
@@ -1729,19 +1702,19 @@ class TestApplyFilters(unittest.TestCase):
     def test_no_filters_returns_all(self):
         v, sm, *_ = _make_validator()
         scripts = [self._sql_script("1"), self._sql_script("2")]
-        result = v._apply_filters(scripts)
+        result = select_migrations(scripts)
         self.assertEqual(len(result), 2)
 
     def test_version_filter(self):
         v, sm, *_ = _make_validator()
         scripts = [self._sql_script("1"), self._sql_script("2"), self._sql_script("3")]
-        result = v._apply_filters(scripts, versions=["1", "3"])
+        result = select_migrations(scripts, versions=["1", "3"])
         self.assertEqual(len(result), 2)
 
     def test_exclude_versions_filter(self):
         v, sm, *_ = _make_validator()
         scripts = [self._sql_script("1"), self._sql_script("2"), self._sql_script("3")]
-        result = v._apply_filters(scripts, exclude_versions=["2"])
+        result = select_migrations(scripts, exclude_versions=["2"])
         self.assertEqual(len(result), 2)
 
     def test_scope_applied_only_uses_version_filters(self):
@@ -1754,7 +1727,7 @@ class TestApplyFilters(unittest.TestCase):
         v, sm, *_ = _make_validator()
         sm.compare_versions.side_effect = lambda a, b: int(a) - int(b)
         scripts = [self._sql_script("1"), self._sql_script("2"), self._sql_script("3")]
-        result = v._apply_filters(scripts, target_version="2")
+        result = select_migrations(scripts, target_version="2")
         # Only versions <= 2 should be included
         versions = [s.version for s in result]
         self.assertNotIn("3", versions)

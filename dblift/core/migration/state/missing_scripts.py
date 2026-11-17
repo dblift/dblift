@@ -14,12 +14,12 @@ from dblift.core.migration.scripting.migration_script_manager import (
 
 def is_delete_marker(row: Migration) -> bool:
     """Return True for the history row ``repair`` writes to record a script as deleted."""
-    return is_migration_type(getattr(row, "type", None), MigrationType.DELETE)
+    return is_migration_type(row.type, MigrationType.DELETE)
 
 
 def deleted_script_names(history: Sequence[Migration]) -> Set[str]:
     """Return the scripts that have a DELETE marker row."""
-    return {getattr(row, "script_name", "") for row in history if is_delete_marker(row)}
+    return {row.script_name for row in history if is_delete_marker(row)}
 
 
 def missing_applied(
@@ -46,7 +46,7 @@ def missing_applied(
     # Latest successful row of each script, ordered by where that row sits in the history.
     latest: Dict[str, Migration] = {}
     for row in _successful_non_delete_records(history):
-        script_name = getattr(row, "script_name", None)
+        script_name = row.script_name
         if script_name:
             latest.pop(script_name, None)
             latest[script_name] = row
@@ -54,8 +54,8 @@ def missing_applied(
     return tuple(
         row
         for script_name, row in latest.items()
-        if not is_migration_type(getattr(row, "type", None), MigrationType.BASELINE)
-        and str(getattr(row, "version", "")).lower() != "baseline"
+        if not is_migration_type(row.type, MigrationType.BASELINE)
+        and str(row.version).lower() != "baseline"
         and script_name not in deleted
         and script_name not in present
         and Path(script_name).name not in present

@@ -138,62 +138,6 @@ class TestDb2SchemaOperations(unittest.TestCase):
 
         self.assertEqual("DB2 Unknown Version", result)
 
-    # --- get_tables ---
-
-    def test_get_tables_returns_list(self):
-        ops, qe, log = self._make_ops()
-        conn = _make_connection()
-        qe.execute_query.return_value = [{"table_name": "ORDERS"}, {"table_name": "USERS"}]
-
-        tables = ops.get_tables(conn, "myschema")
-
-        self.assertEqual(["ORDERS", "USERS"], tables)
-
-    def test_get_tables_returns_empty_on_exception(self):
-        ops, qe, log = self._make_ops()
-        conn = _make_connection()
-        qe.execute_query.side_effect = RuntimeError("query failed")
-
-        tables = ops.get_tables(conn, "myschema")
-
-        self.assertEqual([], tables)
-
-    # --- get_schemas ---
-
-    def test_get_schemas_returns_list(self):
-        ops, qe, log = self._make_ops()
-        conn = _make_connection()
-        qe.execute_query.return_value = [{"schema_name": "HR"}, {"schema_name": "SALES"}]
-
-        schemas = ops.get_schemas(conn)
-
-        self.assertIn("HR", schemas)
-        self.assertIn("SALES", schemas)
-
-    # --- get_columns_query ---
-
-    def test_get_columns_query_returns_tuple(self):
-        ops, qe, log = self._make_ops()
-        sql, params = ops.get_columns_query("myschema", "mytable")
-        self.assertIn("syscat.columns", sql.lower())
-        self.assertEqual(["myschema", "mytable"], params)
-
-    # --- get_add_column_sql ---
-
-    def test_get_add_column_sql_format(self):
-        ops, qe, log = self._make_ops()
-        sql = ops.get_add_column_sql("myschema", "mytable", "mycolumn", "VARCHAR(100)")
-        self.assertIn("ALTER TABLE", sql)
-        self.assertIn("ADD COLUMN", sql)
-        self.assertIn("mycolumn", sql)
-
-    # --- get_parameter_placeholders ---
-
-    def test_get_parameter_placeholders(self):
-        ops, qe, log = self._make_ops()
-        result = ops.get_parameter_placeholders(3)
-        self.assertEqual("?, ?, ?", result)
-
     # --- clean_schema ---
 
     def test_clean_schema_calls_drop_methods(self):

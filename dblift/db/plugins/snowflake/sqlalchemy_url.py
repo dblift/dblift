@@ -4,16 +4,12 @@ from typing import Any, Dict, Optional
 
 from sqlalchemy.engine import URL, make_url
 
-
-def _string_mapping(values: Any) -> Dict[str, str]:
-    if not isinstance(values, dict):
-        return {}
-    return {str(key): str(value) for key, value in values.items()}
+from dblift.db.value_utils import string_mapping
 
 
 def _database_path(database_config: Any) -> Optional[str]:
-    database = getattr(database_config, "database", None)
-    schema = getattr(database_config, "schema", None)
+    database = database_config.database
+    schema = database_config.schema
     if database and schema:
         return f"{database}/{schema}"
     if database:
@@ -25,16 +21,14 @@ def _account(database_config: Any) -> Optional[str]:
     account = getattr(database_config, "account", None)
     if account:
         return str(account)
-    host = getattr(database_config, "host", None)
+    host = database_config.host
     return str(host) if host else None
 
 
 def _query_mapping(cfg: Any, base_query: Any = None) -> Dict[str, str]:
-    query = _string_mapping(base_query)
-    extra_params = getattr(cfg, "extra_params", None)
-    options = getattr(cfg, "options", None)
-    query.update(_string_mapping(extra_params))
-    query.update(_string_mapping(options))
+    query = string_mapping(base_query)
+    query.update(string_mapping(cfg.extra_params))
+    query.update(string_mapping(cfg.options))
 
     for attr in ("warehouse", "role", "authenticator"):
         value = getattr(cfg, attr, None)
@@ -46,15 +40,15 @@ def _query_mapping(cfg: Any, base_query: Any = None) -> Dict[str, str]:
 
 def build_sqlalchemy_url(database_config: Any) -> str:
     """Build a Snowflake SQLAlchemy URL from plugin config fields."""
-    raw_url = getattr(database_config, "url", None)
+    raw_url = database_config.url
     if isinstance(raw_url, str) and raw_url:
         url = make_url(raw_url)
         if not url.drivername.startswith("snowflake"):
             message = "Snowflake connections require snowflake:// URL"
             raise ValueError(message)
 
-        config_username = getattr(database_config, "username", None)
-        config_password = getattr(database_config, "password", None)
+        config_username = database_config.username
+        config_password = database_config.password
         username = config_username or url.username or None
         password = config_password or url.password or None
         account = _account(database_config)
@@ -74,8 +68,8 @@ def build_sqlalchemy_url(database_config: Any) -> str:
     account = _account(database_config)
     created_url: str = URL.create(
         "snowflake",
-        username=getattr(database_config, "username", None) or None,
-        password=getattr(database_config, "password", None) or None,
+        username=database_config.username or None,
+        password=database_config.password or None,
         host=account,
         database=_database_path(database_config),
         query=_query_mapping(database_config),

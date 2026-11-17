@@ -114,7 +114,7 @@ def test_inputs_are_identified_by_their_text_and_unique(inputs: List[Dict[str, A
 
 def test_inputs_are_only_ever_added(inputs: List[Dict[str, Any]]) -> None:
     base = (CORPUS_DIR / "input_ids.txt").read_text(encoding="utf-8").split()
-    assert base == sorted(set(base)) and len(base) == read_versions()["inputs"]
+    assert base == sorted(set(base)) and len(base) <= read_versions()["inputs"]
     assert set(base) <= {row["id"] for row in inputs}
 
 

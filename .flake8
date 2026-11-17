@@ -22,22 +22,14 @@ exclude =
     tests/,
     scripts/
 
-# Ignore policy — two categories, and they are not the same thing:
+# Ignore policy. Only the two codes below are ignored, and only because they
+# are not actionable:
+#   E203  whitespace before ':'        — pycodestyle disagrees with black
+#   W503  line break before binary op  — pycodestyle disagrees with black
 #
-#   Permanent (never actionable):
-#     E203  whitespace before ':'        — pycodestyle disagrees with black
-#     W503  line break before binary op  — pycodestyle disagrees with black
-#
-#   Deferred legacy debt, counted on develop 17b03f02 (2026-07-27):
-#     E402  (48)   module-level import not at top of file. Most sites are
-#                  deliberate deferred/lazy imports that break a cycle;
-#                  each needs case-by-case review, not a blanket rewrite.
-#     E501  (501)  line too long. Ignored HERE so the main flake8 run stays
-#                  actionable, and re-enforced per-root under a cap by
-#                  scripts/check_line_length.py + .flake8-e501-ratchet.json.
-#                  That ratchet — not this ignore — is what keeps E501 from
-#                  growing; the two are designed as a pair.
-#
-# F-codes and I-codes are fully enforced at zero on api/ cli/ config/ core/ db/.
-# Do not add an entry here without recording its count and cleanup plan.
-ignore = E203,W503,E402,E501
+# Everything else, including E402 (module-level import not at top of file) and
+# E501 (line too long, max-line-length above), is enforced at zero over all of
+# dblift/. To break an import cycle or defer a heavy import, import inside the
+# function that needs it. Use an inline `# noqa: E402` only as a last resort,
+# with the reason. Do not add an entry here to make a failure go away.
+ignore = E203,W503

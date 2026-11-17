@@ -29,6 +29,9 @@ from dblift.core.logger.results import (
 )
 from dblift.core.migration.history.migration_history_manager import MigrationHistoryManager
 from dblift.core.migration.journals.migration_journal import MigrationJournal
+from dblift.core.migration.placeholders.placeholder_service import (
+    PlaceholderService,
+)
 from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.sql.statement_reader import StatementReader
@@ -37,6 +40,7 @@ from dblift.core.migration.ui.migration_ui import MigrationUI
 from dblift.core.sql_validator.migration_validator import MigrationValidator
 from dblift.db.base_provider import BaseProvider
 
+from ..sql.sql_execution_service import SqlExecutionService
 from .execution_engine import ExecutionEngine
 from .migration_helpers import MigrationHelpers
 from .placeholder_manager import PlaceholderManager
@@ -105,12 +109,8 @@ class MigrationExecutor:
         self.placeholders = self.placeholder_manager.init_placeholders()
 
         # Initialize PlaceholderService
-        from dblift.core.migration.placeholders.placeholder_service import (
-            PlaceholderService,
-        )
 
         self.placeholder_service = PlaceholderService(self.placeholders, log)
-        self.placeholder_manager.placeholder_service = self.placeholder_service
 
         # Debug: Track schema usage at executor instantiation
         schema = getattr(config.database, "schema", None)
@@ -133,7 +133,8 @@ class MigrationExecutor:
             table_name=custom_table,
         )
         self.log.debug(
-            f"[DEBUG] MigrationExecutor: history_manager.history_table = {self.history_manager.history_table}"
+            "[DEBUG] MigrationExecutor: history_manager.history_table = "
+            f"{self.history_manager.history_table}"
         )
 
         # Link components together
@@ -162,10 +163,9 @@ class MigrationExecutor:
             dialect=config.database.type, analysis_mode=analysis_mode
         )
         # In-process statement journal is always on (not user-configurable).
-        self.journal = MigrationJournal(enabled=True, capture_objects=analysis_mode == "full")
+        self.journal = MigrationJournal(capture_objects=analysis_mode == "full")
 
         # Initialize SqlExecutionService for journal support
-        from ..sql.sql_execution_service import SqlExecutionService
 
         self.sql_execution_service = SqlExecutionService(
             provider=self.provider,
@@ -175,7 +175,8 @@ class MigrationExecutor:
             schema=config.database.schema,
         )
 
-        # Pass SqlExecutionService and history manager to ExecutionEngine for journal tracking and transaction management
+        # Pass SqlExecutionService and history manager to ExecutionEngine for journal tracking and
+        # transaction management
         self.execution_engine = ExecutionEngine(
             self.provider,
             self.sql_analyzer,
@@ -352,7 +353,8 @@ class MigrationExecutor:
 
         command = CleanCommand(self._make_command_context())
 
-        # Explicit clean() parameters win over duplicate keys in kwargs (e.g. client forwards **kwargs).
+        # Explicit clean() parameters win over duplicate keys in kwargs (e.g. client forwards
+        # **kwargs).
         _clean_explicit_keys = frozenset(
             {
                 "dry_run",

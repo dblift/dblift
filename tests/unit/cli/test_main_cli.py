@@ -512,55 +512,30 @@ class TestMainCLI:
 class TestDatabaseUrlMasking:
     """Test that database URLs are masked before logging in CLI."""
 
-    def test_mask_database_url_imported_in_cli_main(self):
-        """dblift.cli.main doit exposer _mask_database_url (importée depuis snapshot_command)."""
-        import dblift.cli.main as m
+    def test_masks_sqlserver_url(self):
+        """SQL Server URL with a password query parameter is masked."""
+        from dblift.core.utils.url_masking import mask_database_url
 
-        assert hasattr(m, "_mask_database_url"), "_mask_database_url must be imported in cli.main"
-
-    def test_cli_main_masks_sqlserver_url(self):
-        """Réplication de la logique main.py:1296 — URL SQL Server masquée avant log."""
-        import dblift.cli.main as m
-
-        raw_url = "mssql+pymssql://host/mydb?password=mysecret"
-        masked_url = (
-            m._mask_database_url(str(raw_url)) if raw_url and raw_url != "Not set" else raw_url
-        )
+        masked_url = mask_database_url("mssql+pymssql://host/mydb?password=mysecret")
         assert "mysecret" not in masked_url
         assert "***" in masked_url
 
-    def test_cli_main_masks_oracle_url(self):
-        """Réplication de la logique main.py:1296 — URL Oracle thin masquée avant log."""
-        import dblift.cli.main as m
+    def test_masks_oracle_url(self):
+        """Oracle thin URL credentials are masked."""
+        from dblift.core.utils.url_masking import mask_database_url
 
-        raw_url = "oracle+oracledb://admin:secret@host:1521?service_name=orcl"
-        masked_url = (
-            m._mask_database_url(str(raw_url)) if raw_url and raw_url != "Not set" else raw_url
-        )
+        masked_url = mask_database_url("oracle+oracledb://admin:secret@host:1521?service_name=orcl")
         assert "secret" not in masked_url
         assert "***" in masked_url
 
-    def test_cli_main_masks_standard_database_url(self):
-        """Standard //user:password@host format (PostgreSQL, MySQL) must be masked before log."""
-        import dblift.cli.main as m
+    def test_masks_standard_database_url(self):
+        """Standard //user:password@host format (PostgreSQL, MySQL) is masked."""
+        from dblift.core.utils.url_masking import mask_database_url
 
-        raw_url = "postgresql+psycopg://admin:secret@host:5432/db"
-        masked_url = (
-            m._mask_database_url(str(raw_url)) if raw_url and raw_url != "Not set" else raw_url
-        )
+        masked_url = mask_database_url("postgresql+psycopg://admin:secret@host:5432/db")
         assert "secret" not in masked_url
         assert "***" in masked_url
         assert "//admin:***@host" in masked_url
-
-    def test_cli_main_not_set_url_unchanged(self):
-        """Si l'URL vaut 'Not set', elle ne doit pas passer par _mask_database_url."""
-        import dblift.cli.main as m
-
-        raw_url = "Not set"
-        masked_url = (
-            m._mask_database_url(str(raw_url)) if raw_url and raw_url != "Not set" else raw_url
-        )
-        assert masked_url == "Not set"
 
 
 def test_main_missing_database_url_subprocess():

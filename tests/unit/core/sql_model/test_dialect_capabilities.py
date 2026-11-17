@@ -17,14 +17,8 @@ import pytest
 
 from dblift.core.sql_model.dialect import (
     _CAPABILITIES,
-    SCHEMA_OPTIONAL_DIALECTS,
-    SCHEMA_OPTIONAL_DIALECTS_FROM_MATRIX,
     DialectCapabilities,
-    dialect_clean_strategy,
     dialect_requires_schema,
-    dialect_supports_transactional_ddl,
-    dialect_supports_transactions,
-    dialect_uses_uppercase_identifiers,
     get_dialect_capabilities,
 )
 from dblift.db.provider_interfaces import TransactionalProvider
@@ -60,10 +54,6 @@ class TestMatrixInvariants:
         # make ``is`` comparisons true).
         assert _CAPABILITIES["sqlite"] is _CAPABILITIES["sqlite3"]
 
-    def test_schema_optional_derived_matches_legacy_frozenset(self):
-        # The legacy SIMP-37 frozenset must match what the matrix produces.
-        assert SCHEMA_OPTIONAL_DIALECTS == SCHEMA_OPTIONAL_DIALECTS_FROM_MATRIX
-
 
 # --- Helper contract --------------------------------------------------------
 
@@ -73,17 +63,17 @@ class TestHelpers:
         # All ``supports_*`` return False for unknown inputs, but
         # schema_required is True — force explicit config rather than
         # silently defaulting to a schemaless model.
-        assert dialect_supports_transactions("not-a-dialect") is False
-        assert dialect_supports_transactional_ddl("not-a-dialect") is False
+        assert get_dialect_capabilities("not-a-dialect").supports_transactions is False
+        assert get_dialect_capabilities("not-a-dialect").supports_transactional_ddl is False
         assert dialect_requires_schema("not-a-dialect") is True
 
     def test_none_dialect_matches_unknown_behaviour(self):
-        assert dialect_supports_transactions(None) is False
+        assert get_dialect_capabilities(None).supports_transactions is False
         assert dialect_requires_schema(None) is True
 
     def test_dialect_lookup_is_case_insensitive(self):
-        assert dialect_supports_transactions("PostgreSQL") is True
-        assert dialect_supports_transactions("POSTGRESQL") is True
+        assert get_dialect_capabilities("PostgreSQL").supports_transactions is True
+        assert get_dialect_capabilities("POSTGRESQL").supports_transactions is True
         assert dialect_requires_schema("SQLite") is False
 
     def test_get_dialect_capabilities_returns_a_frozen_dataclass(self):
@@ -101,27 +91,27 @@ class TestHelpers:
 
 class TestPostgreSQL:
     def test_supports_transactions_and_transactional_ddl(self):
-        assert dialect_supports_transactions("postgresql") is True
-        assert dialect_supports_transactional_ddl("postgresql") is True
+        assert get_dialect_capabilities("postgresql").supports_transactions is True
+        assert get_dialect_capabilities("postgresql").supports_transactional_ddl is True
 
     def test_schema_required(self):
         assert dialect_requires_schema("postgresql") is True
 
     def test_lowercase_identifiers(self):
-        assert dialect_uses_uppercase_identifiers("postgresql") is False
+        assert get_dialect_capabilities("postgresql").uppercase_identifiers is False
 
     def test_clean_strategy_uses_introspector(self):
-        assert dialect_clean_strategy("postgresql") == "introspector"
+        assert get_dialect_capabilities("postgresql").clean_strategy == "introspector"
 
 
 class TestOracle:
     def test_supports_transactions_but_not_ddl(self):
-        assert dialect_supports_transactions("oracle") is True
+        assert get_dialect_capabilities("oracle").supports_transactions is True
         # Oracle auto-commits DDL; rollback cannot undo CREATE/ALTER/DROP.
-        assert dialect_supports_transactional_ddl("oracle") is False
+        assert get_dialect_capabilities("oracle").supports_transactional_ddl is False
 
     def test_uppercase_identifiers(self):
-        assert dialect_uses_uppercase_identifiers("oracle") is True
+        assert get_dialect_capabilities("oracle").uppercase_identifiers is True
 
     def test_schema_required(self):
         assert dialect_requires_schema("oracle") is True
@@ -129,8 +119,8 @@ class TestOracle:
 
 class TestMySQL:
     def test_supports_transactions_but_not_ddl(self):
-        assert dialect_supports_transactions("mysql") is True
-        assert dialect_supports_transactional_ddl("mysql") is False
+        assert get_dialect_capabilities("mysql").supports_transactions is True
+        assert get_dialect_capabilities("mysql").supports_transactional_ddl is False
 
     def test_schema_required(self):
         assert dialect_requires_schema("mysql") is True
@@ -138,16 +128,16 @@ class TestMySQL:
 
 class TestSQLServer:
     def test_supports_transactions_and_ddl(self):
-        assert dialect_supports_transactions("sqlserver") is True
-        assert dialect_supports_transactional_ddl("sqlserver") is True
+        assert get_dialect_capabilities("sqlserver").supports_transactions is True
+        assert get_dialect_capabilities("sqlserver").supports_transactional_ddl is True
 
 
 class TestDB2:
     def test_uppercase_identifiers(self):
-        assert dialect_uses_uppercase_identifiers("db2") is True
+        assert get_dialect_capabilities("db2").uppercase_identifiers is True
 
     def test_supports_transactional_ddl(self):
-        assert dialect_supports_transactional_ddl("db2") is True
+        assert get_dialect_capabilities("db2").supports_transactional_ddl is True
 
 
 class TestSQLite:
@@ -160,25 +150,25 @@ class TestSQLite:
         # Bugbot flagged on PR 160 ("Snapshot skipped for SQLite despite
         # supporting transactions"). If somebody ever switches this to
         # False, this test red-lines the regression.
-        assert dialect_supports_transactional_ddl("sqlite") is True
+        assert get_dialect_capabilities("sqlite").supports_transactional_ddl is True
 
     def test_clean_strategy_is_native(self):
         # SQLite enumerates drop candidates via the provider directly,
         # not via generic introspection.
-        assert dialect_clean_strategy("sqlite") == "native"
+        assert get_dialect_capabilities("sqlite").clean_strategy == "native"
 
 
 class TestCosmosDB:
     def test_no_transactions(self):
         # Cosmos DB is NoSQL; begin/commit/rollback are no-ops.
-        assert dialect_supports_transactions("cosmosdb") is False
-        assert dialect_supports_transactional_ddl("cosmosdb") is False
+        assert get_dialect_capabilities("cosmosdb").supports_transactions is False
+        assert get_dialect_capabilities("cosmosdb").supports_transactional_ddl is False
 
     def test_no_schema_required(self):
         assert dialect_requires_schema("cosmosdb") is False
 
     def test_clean_strategy_is_native(self):
-        assert dialect_clean_strategy("cosmosdb") == "native"
+        assert get_dialect_capabilities("cosmosdb").clean_strategy == "native"
 
 
 # --- Provider conformance ---------------------------------------------------
@@ -233,7 +223,10 @@ class TestProviderConformance:
     )
     def test_supports_transactions_matches_matrix(self, dialect, module_path, class_name):
         stub = self._stub(module_path, class_name)
-        assert isinstance(stub, TransactionalProvider) is dialect_supports_transactions(dialect), (
+        assert (
+            isinstance(stub, TransactionalProvider)
+            is get_dialect_capabilities(dialect).supports_transactions
+        ), (
             f"{class_name} transaction interface does not match "
             f"DialectCapabilities for {dialect!r}. Update either the override "
             f"or the matrix — both must agree."
@@ -247,7 +240,10 @@ class TestProviderConformance:
     def test_supports_transactional_ddl_matches_matrix(self, dialect, module_path, class_name):
         """Bugbot PR-07 guard: this is the axis that used to go unchecked."""
         stub = self._stub(module_path, class_name)
-        assert stub.supports_transactional_ddl() is dialect_supports_transactional_ddl(dialect), (
+        assert (
+            stub.supports_transactional_ddl()
+            is get_dialect_capabilities(dialect).supports_transactional_ddl
+        ), (
             f"{class_name}.supports_transactional_ddl() does not match "
             f"DialectCapabilities for {dialect!r}. Update either the override "
             f"or the matrix — both must agree."
@@ -274,7 +270,7 @@ class TestProviderConformance:
     )
     def test_clean_strategy_is_declared_for_every_provider(self, dialect, module_path, class_name):
         self._stub(module_path, class_name)
-        assert dialect_clean_strategy(dialect) in {"introspector", "native"}
+        assert get_dialect_capabilities(dialect).clean_strategy in {"introspector", "native"}
 
     @pytest.mark.parametrize(
         "dialect,module_path,class_name",
@@ -288,7 +284,7 @@ class TestProviderConformance:
 
         module = importlib.import_module(module_path)
         cls = getattr(module, class_name)
-        if dialect_clean_strategy(dialect) == "native":
+        if get_dialect_capabilities(dialect).clean_strategy == "native":
             assert hasattr(cls, "get_clean_preview"), (
                 f"{class_name} declares native clean strategy for {dialect!r} "
                 "but does not expose get_clean_preview()."

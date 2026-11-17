@@ -7,7 +7,6 @@ message at all.
 """
 
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from dblift.core.migration.commands.migrate_command import MigrateCommand
@@ -17,6 +16,7 @@ from dblift.core.migration.state.migration_state import (
     MigrationEligibility,
     MigrationState,
 )
+from tests.unit._migration_factory import make_migration
 from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 REFUSAL = "Could not acquire migration lock - another migration may be running"
@@ -72,7 +72,7 @@ def _cmd(pending, execute_side_effect=None):
 
 
 def _repeatable(script_name="R__view.sql", checksum=999):
-    return SimpleNamespace(
+    return make_migration(
         script_name=script_name,
         version=None,
         description="view",

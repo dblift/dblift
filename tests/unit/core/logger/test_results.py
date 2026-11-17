@@ -8,7 +8,6 @@ import pytest
 from dblift.core.logger.results import (
     BaselineResult,
     CleanResult,
-    CommandResult,
     InfoResult,
     MigrateResult,
     MigrationInfo,
@@ -217,38 +216,6 @@ class TestMigrationInfo:
         migration = MigrationInfo("test.sql", version=1)
 
         assert migration.version == 1
-
-
-class TestCommandResult:
-    """Test CommandResult class."""
-
-    def test_command_result_initialization(self):
-        """Test CommandResult initialization."""
-        result = CommandResult()
-
-        assert result.success is True
-        assert result.command_type == ""
-        assert result.output == []
-
-    def test_add_output(self):
-        """Test adding output."""
-        result = CommandResult()
-
-        result.add_output("Line 1")
-        result.add_output("Line 2")
-
-        assert len(result.output) == 2
-        assert result.output[0] == "Line 1"
-        assert result.output[1] == "Line 2"
-
-    def test_get_output(self):
-        """Test getting output."""
-        result = CommandResult()
-        result.add_output("Test output")
-
-        output = result.get_output()
-
-        assert output == ["Test output"]
 
 
 class TestMigrateResult:

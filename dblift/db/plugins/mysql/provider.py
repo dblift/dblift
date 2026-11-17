@@ -12,7 +12,7 @@ from dblift.core.constants import MIGRATION_LOCK_TABLE as _MIGRATION_LOCK_TABLE
 from dblift.core.logger import Log
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.core.migration.migration import success_to_bool
-from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
+from dblift.db.plugins.base_history_manager import installed_on_to_bind
 from dblift.db.plugins.mysql.mysql.schema_operations import SYSTEM_DATABASES, MySqlSchemaOperations
 from dblift.db.plugins.mysql.sql_literals import string_literal
 from dblift.db.provider_interfaces import CleanTargetProvider, DroppableObject
@@ -251,8 +251,9 @@ class MySqlProvider(SqlAlchemyProvider, CleanTargetProvider):
     def create_migration_lock_table_if_not_exists(self, schema: str) -> None:
         """Create the MySQL migration lock table if it is missing."""
         self.create_schema_if_not_exists(schema)
+        lock_table = self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)
         self.execute_statement(f"""
-            CREATE TABLE IF NOT EXISTS {self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)} (
+            CREATE TABLE IF NOT EXISTS {lock_table} (
                 lock_name VARCHAR(128) NOT NULL,
                 acquired_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 acquired_by VARCHAR(128) NOT NULL,
@@ -275,21 +276,6 @@ class MySqlProvider(SqlAlchemyProvider, CleanTargetProvider):
             [f"{_LOCK_NAME_STEM}_{schema}"],
         )
         return bool(rows and rows[0].get("lock_result") == 1)
-
-    def create_migration_history_table_if_not_exists(
-        self,
-        schema: str,
-        create_schema: bool = False,
-        table_name: str = DEFAULT_HISTORY_TABLE,
-    ) -> None:
-        """Create the migration history table if it is missing."""
-        if create_schema:
-            self.create_schema_if_not_exists(schema)
-        if self.table_exists(schema, table_name):
-            if create_schema:
-                self._check_baseline_safety(schema, table_name)
-            return
-        self.execute_statement(self.create_history_table(schema, table_name))
 
     def _check_baseline_safety(self, schema: str, table_name: str) -> None:
         """Refuse baseline when the history table already contains migrations."""
@@ -359,37 +345,18 @@ class MySqlProvider(SqlAlchemyProvider, CleanTargetProvider):
         ]
         if installed_on is not None:
             params.append(installed_on)
+        insert_columns = (
+            "(version, description, type, script, checksum, installed_by, execution_time, "
+            f"success{installed_on_column})"
+        )
         self.execute_statement(
             f"""
             INSERT INTO {self.get_schema_qualified_name(schema, table_name)}
-                (version, description, type, script, checksum, installed_by, execution_time, success{installed_on_column})
+                {insert_columns}
             VALUES (?, ?, ?, ?, ?, ?, ?, ?{installed_on_value})
             """,
             params=params,
         )
-
-    def record_undo(
-        self,
-        schema: str,
-        version: str,
-        table_name: Optional[str] = None,
-        script_name: Optional[str] = None,
-    ) -> bool:
-        """Record a successful undo operation in MySQL migration history."""
-        undo_script = script_name or f"UNDO_{version}.sql"
-        self.record_migration(
-            schema,
-            {
-                "version": version,
-                "description": f"Undo migration {version}",
-                "type": UNDO_HISTORY_TYPE,
-                "script": undo_script,
-                "checksum": 0,
-                "success": True,
-            },
-            table_name or DEFAULT_HISTORY_TABLE,
-        )
-        return True
 
     def repair_migration_history(
         self,
@@ -427,10 +394,6 @@ class MySqlProvider(SqlAlchemyProvider, CleanTargetProvider):
             f"ALTER TABLE {self.get_schema_qualified_name(schema, table)} "
             f"ADD COLUMN {_quote_identifier(column)} {type_def}"
         )
-
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Return DBLift positional placeholders."""
-        return ", ".join(["?"] * count)
 
     def is_connection_error(self, exception: Any) -> bool:
         """Check if exception indicates a connection error."""

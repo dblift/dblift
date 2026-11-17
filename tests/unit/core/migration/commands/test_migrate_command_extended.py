@@ -13,7 +13,6 @@ Covers previously untested paths to push coverage toward 70%+:
 
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 from sqlalchemy.exc import OperationalError
@@ -28,6 +27,7 @@ from dblift.core.migration.state.migration_state import (
     MigrationState,
 )
 from dblift.db.provider_interfaces import TransactionalProvider
+from tests.unit._migration_factory import make_migration
 from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 # ---------------------------------------------------------------------------
@@ -96,12 +96,10 @@ def _make_migration(
 ):
     """Minimal migration stand-in.
 
-    Use SimpleNamespace so we can pass it freely without enum attribute restrictions.
-    The type is kept as the real MigrationType enum so comparisons (m.type == MigrationType.REPEATABLE)
-    work correctly. type_.value is the enum's own property and is never assigned here.
+    The type is a real MigrationType so comparisons (m.type == MigrationType.REPEATABLE) work.
     """
     actual_type = type_ if type_ is not None else MigrationType.SQL
-    return SimpleNamespace(
+    return make_migration(
         script_name=script_name,
         version=version,
         description=description,

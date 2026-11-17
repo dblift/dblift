@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from dblift.core.migration.commands.migrate_command import MigrateCommand
@@ -14,11 +13,12 @@ from dblift.core.migration.state.migration_state import (
     MigrationEligibility,
     MigrationState,
 )
+from tests.unit._migration_factory import make_migration
 from tests.unit.core.migration.commands._plan_migrate_wiring import wire_plan_migrate
 
 
 def _migration(script_name, version, type_=MigrationType.SQL):
-    return SimpleNamespace(
+    return make_migration(
         script_name=script_name,
         version=version,
         description="test",

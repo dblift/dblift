@@ -13,8 +13,8 @@ from dblift.core.migration.sql.execution_statement import classify_execution_sta
 from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
 from dblift.db.plugins.sqlserver.config import SqlServerConfig
 from dblift.db.plugins.sqlserver.sqlserver.schema_operations import SqlServerSchemaOperations
+from dblift.db.plugins.sqlserver.transaction_guard import SqlServerTransactionProvider
 from dblift.db.provider_interfaces import DroppableObject
-from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
 def _q(name: str) -> str:
@@ -27,7 +27,7 @@ def _schema_object(schema: str, obj: str) -> str:
     return f"{_q(schema)}.{_q(obj)}"
 
 
-class SqlServerProvider(SqlAlchemyProvider):
+class SqlServerProvider(SqlServerTransactionProvider):
     """SQL Server provider implementation using native SQLAlchemy/pymssql."""
 
     canonical_dialect_key = "sqlserver"
@@ -130,10 +130,6 @@ class SqlServerProvider(SqlAlchemyProvider):
     def get_add_column_sql(self, schema: str, table: str, column: str, type_def: str) -> str:
         """Return SQL Server DDL to add a column."""
         return f"ALTER TABLE {_schema_object(schema, table)} ADD {_q(column)} {type_def}"
-
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Return SQL Server parameter placeholders."""
-        return ", ".join(["?" for _ in range(count)])
 
     def set_current_schema(self, schema: str) -> None:
         """Align the connecting user's default schema so unqualified DDL lands here.
@@ -356,21 +352,6 @@ class SqlServerProvider(SqlAlchemyProvider):
                 success BIT NOT NULL
             )
         """
-
-    def create_migration_history_table_if_not_exists(
-        self,
-        schema: str,
-        create_schema: bool = False,
-        table_name: str = DEFAULT_HISTORY_TABLE,
-    ) -> None:
-        """Create the migration history table if it is missing."""
-        if create_schema:
-            self.create_schema_if_not_exists(schema)
-        if self.table_exists(schema, table_name):
-            if create_schema:
-                self._check_baseline_safety(schema, table_name)
-            return
-        self.execute_statement(self.create_history_table(schema, table_name))
 
     def _check_baseline_safety(self, schema: str, table_name: str) -> None:
         """Refuse baseline when the history table already has migrations."""

@@ -28,3 +28,15 @@ def make_migration(*args: Any, **kwargs: Any) -> Migration:
             text = kwargs.get("content") or ""
         kwargs["checksum"] = _SCRIPT_MANAGER.calculate_checksum(text)
     return Migration(*args, **kwargs)
+
+
+def migration_with_attrs(*, script_name: str, **attrs: Any) -> Migration:
+    """Return a real ``Migration`` whose attributes are set exactly as given.
+
+    For tests that need a value no parser would produce, such as a version that disagrees with
+    the file name or an unrecognised type, while still reading like a ``Migration`` everywhere else.
+    """
+    migration = make_migration(script_name=script_name, checksum=attrs.pop("checksum", None))
+    for name, value in attrs.items():
+        setattr(migration, name, value)
+    return migration

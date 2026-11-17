@@ -24,6 +24,9 @@ from dblift.db.plugins.sql_lease_store import (
     ensure_owner_column,
 )
 from dblift.db.provider_interfaces import DroppableObject
+from dblift.db.value_utils import clean_identifier as _clean_identifier
+from dblift.db.value_utils import double_quote_identifier as _q
+from dblift.db.value_utils import row_value as _row_value
 
 _HISTORY_TABLE = DEFAULT_HISTORY_TABLE.upper()
 
@@ -49,11 +52,6 @@ def _is_lock_conflict(error: BaseException) -> bool:
         if candidate is not None
         for marker in ("sql0911n", "sql0913n", "57033")
     )
-
-
-def _q(name: str) -> str:
-    """Return a double-quoted DB2 identifier."""
-    return '"' + name.replace('"', '""') + '"'
 
 
 def _without_nested_comments(sql: str) -> str:
@@ -82,11 +80,6 @@ def _without_nested_comments(sql: str) -> str:
     return stripped if stripped != strip(False) else sql
 
 
-def _clean_identifier(name: str) -> str:
-    """Return a bare identifier for DB2 catalog lookups."""
-    return name.replace('"', "").strip()
-
-
 def _schema_object(schema: str, obj: str) -> str:
     """Return a quoted schema-qualified DB2 object name."""
     return f"{_q(_clean_identifier(schema))}.{_q(_clean_identifier(obj))}"
@@ -95,20 +88,6 @@ def _schema_object(schema: str, obj: str) -> str:
 def _db2_object_name(name: str) -> str:
     """Return the DB2-normalized object name."""
     return get_normalized_object_name(_clean_identifier(name), "db2")
-
-
-def _row_value(row: Dict[str, Any], *names: str, default: Any = None) -> Any:
-    """Read a value from a DB2 row mapping with case tolerance."""
-    for name in names:
-        if name in row:
-            return row[name]
-        upper = name.upper()
-        if upper in row:
-            return row[upper]
-        lower = name.lower()
-        if lower in row:
-            return row[lower]
-    return default
 
 
 class _Db2ProviderQueryExecutor:
@@ -298,10 +277,6 @@ class Db2Provider(SqlLeaseLockingProvider):
         """Return DB2 DDL to add a column."""
         return f"ALTER TABLE {_schema_object(schema, table)} ADD COLUMN {_q(column)} {type_def}"
 
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Return DB2 parameter placeholders."""
-        return ", ".join(["?" for _ in range(count)])
-
     def create_migration_lock_table_if_not_exists(self, schema: str) -> None:
         """Create the DB2 migration lock table if it is missing.
 
@@ -472,10 +447,14 @@ class Db2Provider(SqlLeaseLockingProvider):
         ]
         if installed_on is not None:
             params.append(installed_on)
+        insert_columns = (
+            "(VERSION, DESCRIPTION, TYPE, SCRIPT, CHECKSUM, INSTALLED_BY, EXECUTION_TIME, "
+            f"SUCCESS{installed_on_column})"
+        )
         self.execute_statement(
             f"""
             INSERT INTO {_schema_object(schema, table_name)}
-                (VERSION, DESCRIPTION, TYPE, SCRIPT, CHECKSUM, INSTALLED_BY, EXECUTION_TIME, SUCCESS{installed_on_column})
+                {insert_columns}
             VALUES (?, ?, ?, ?, ?, ?, ?, ?{installed_on_value})
             """,
             params=params,

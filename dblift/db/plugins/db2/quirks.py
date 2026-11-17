@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, Tuple
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.db.base_quirks import BaseQuirks
 from dblift.db.error import ErrorCategory
+from dblift.db.plugins.db2.parser.lexical_spec import DB2_SPEC
 from dblift.db.plugins.db2.parser.statement_facts import Db2StatementFactsReader
 
 if TYPE_CHECKING:
@@ -53,8 +54,6 @@ class Db2Quirks(BaseQuirks):
 
     def lexical_spec(self) -> "LexicalSpec":
         """The lexical specification the shared engine splits Db2 scripts with."""
-        from dblift.db.plugins.db2.parser.lexical_spec import DB2_SPEC
-
         return DB2_SPEC
 
     def redaction_tokenizer(self) -> "Optional[type]":
