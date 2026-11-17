@@ -122,8 +122,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `plan/apply/status`. The `license` description no longer carries a subcommand list that could
   drift from the real subcommands.
 
-### Removed
-
 ## [5.1.7] - 2026-11-09
 
 ### Added
@@ -5893,7 +5891,8 @@ All additions are backward compatible (MINOR): two new modules, two new
 - Cross-platform distributions (Windows, Linux, macOS).
 - Modular provider architecture for easy database support extension.
 
-[Unreleased]: https://github.com/dblift/dblift/compare/v5.1.7...develop
+[Unreleased]: https://github.com/dblift/dblift/compare/v5.2.0...develop
+[5.2.0]: https://github.com/dblift/dblift/compare/v5.1.7...v5.2.0
 [5.1.7]: https://github.com/dblift/dblift/compare/v5.1.6...v5.1.7
 [5.1.6]: https://github.com/dblift/dblift/compare/v5.1.5...v5.1.6
 [5.1.5]: https://github.com/dblift/dblift/compare/v5.1.4...v5.1.5
