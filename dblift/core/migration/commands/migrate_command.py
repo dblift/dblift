@@ -617,6 +617,15 @@ class MigrateCommand(BaseCommand):
                 )
 
             if dry_run:
+                # The same refusal the real run makes before anything starts.
+                try:
+                    self._refuse_unsupported_script_sessions(
+                        pending_migrations
+                        + self._callbacks_for(self._events_fired_by(pending_migrations))
+                    )
+                except SqlPreflightError as e:
+                    self._report_refusal(result, e)
+                    return
                 self._handle_dry_run(pending_migrations, result, show_sql=show_sql)
                 return
 

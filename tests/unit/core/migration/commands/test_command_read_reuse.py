@@ -435,10 +435,12 @@ def test_migrate_dry_run_keeps_database_bytes_and_pending_results(database_clien
     assert [row.script for row in result.migrations] == ["V2__second.sql"]
     assert result.dry_run_count == 1
     assert database.read_bytes() == original
+    # The second scan is the callback catalog: a dry run checks the callbacks the run
+    # would fire for the same refusal the real run makes.
     assert counts == {
         "history": 2,
-        "files": {"V1__app.sql": 1, "V2__second.sql": 1},
-        "scans": 1,
+        "files": {"V1__app.sql": 2, "V2__second.sql": 2},
+        "scans": 2,
     }
 
 

@@ -307,7 +307,8 @@ $$;
   normal, and records the failure.
 - **Refusals.** On any other engine, or on a connection passed to
   `DBLiftClient.from_sqlalchemy`, a script that carries the directive is refused before any
-  script or callback of the command runs: `none of its statements were executed`.
+  script or callback of the command runs: `none of its statements were executed`. A
+  `--dry-run` of `migrate` or `undo` refuses it the same way.
 
 ### Rolling Back Changes
 

@@ -124,6 +124,42 @@ def test_undo_refuses_a_callback_carrying_the_directive_before_any_undo_script(
 
 
 @MODES
+@pytest.mark.parametrize("event", ["beforeMigrate", "beforeEachMigrate", "afterMigrate"])
+def test_migrate_dry_run_refuses_a_callback_carrying_the_directive(tmp_path, analysis_mode, event):
+    with _client(
+        tmp_path,
+        analysis_mode,
+        V1__first="CREATE TABLE first_ran (id INTEGER);",
+        **{f"{event}__cb": DIRECTIVE + "CREATE TABLE cb_ran (id INTEGER);"},
+    ) as client:
+        result = client.migrate(dry_run=True)
+    assert not result.success
+    assert f"{event}__cb.sql: -- dblift:no-transaction" in result.error_message
+    assert "none of its statements were executed" in result.error_message
+    assert not {"first_ran", "cb_ran"} & _tables(tmp_path)
+
+
+@MODES
+def test_undo_dry_run_refuses_a_callback_carrying_the_directive(tmp_path, analysis_mode):
+    with _client(
+        tmp_path,
+        analysis_mode,
+        V1__one="CREATE TABLE one (id INTEGER);",
+    ) as client:
+        assert client.migrate().success
+        folder = tmp_path / "sql"
+        (folder / "U1__one.sql").write_text("DROP TABLE one;")
+        (folder / "beforeUndo__cb.sql").write_text(
+            DIRECTIVE + "CREATE TABLE before_undo_ran (id INTEGER);"
+        )
+        result = client.undo(target_version="0", dry_run=True)
+    assert not result.success
+    assert "beforeUndo__cb.sql: -- dblift:no-transaction" in result.error_message
+    assert "one" in _tables(tmp_path)
+    assert "before_undo_ran" not in _tables(tmp_path)
+
+
+@MODES
 @pytest.mark.parametrize("command", ["validate", "clean"])
 def test_validate_and_clean_refuse_a_callback_carrying_the_directive(
     tmp_path, analysis_mode, command
