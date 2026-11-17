@@ -15,6 +15,7 @@ from dblift.core.migration._type_match import is_migration_type, migration_type_
 from dblift.core.migration.migration import VERSIONED_SCRIPT_TYPES, Migration
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_display_state import MigrationDisplayState
+from dblift.core.migration.state.migration_selector import passes_tag_filters
 from dblift.core.migration.state.migration_state import MigrationEligibility, MigrationState
 from dblift.core.migration.version_utils import compare_versions
 
@@ -264,17 +265,7 @@ class MigrationDataCollector:
         # Extract tags from the script name
         migration_tags = self.script_manager.extract_tags(script_name) or []
 
-        # Tags inclusion filter: migration must have at least one matching tag
-        if tags:
-            if not migration_tags or not any(tag in migration_tags for tag in tags):
-                return True
-
-        # Tags exclusion filter: migration must not have any excluded tags
-        if exclude_tags:
-            if migration_tags and any(tag in migration_tags for tag in exclude_tags):
-                return True
-
-        return False
+        return not passes_tag_filters(migration_tags, tags, exclude_tags)
 
     def _clean_delete_description(self, description: str) -> str:
         """Remove [DELETE:TYPE] prefix from description.

@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `info --tags` and `--exclude-tags` now match tags case-insensitively, as `migrate` already did.
+  Before, `--tags foo` left out a migration tagged `Foo`.
 - SQL Server: a SQL script (migration, undo script or callback) that ends its transaction itself (a
   `COMMIT` or `ROLLBACK` in the script) is now reported as applied. Before, the run failed with
   `Can't reconnect until invalid transaction is rolled back` although the script's work and its

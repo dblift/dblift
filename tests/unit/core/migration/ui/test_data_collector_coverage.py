@@ -707,3 +707,21 @@ class TestPendingMigrationsNumericSort(unittest.TestCase):
         )
         result = coll.get_migration_data(migration_state=state)
         assert [r["script"] for r in result] == ["R__a.sql", "R__b.sql"]
+
+
+class TestShouldExcludeMigrationTagCase(unittest.TestCase):
+    """Tag filters are case-insensitive, matching the migrate-side selection."""
+
+    def _excluded(self, migration_tags, tags, exclude_tags):
+        sm = MagicMock()
+        sm.extract_tags.return_value = migration_tags
+        coll = _make_collector(sm)[0]
+        return coll._should_exclude_migration("1.0", "V1.sql", tags, exclude_tags, [], [])
+
+    def test_include_filter_ignores_case(self):
+        assert self._excluded(["Foo"], ["foo"], []) is False
+        assert self._excluded(["foo"], ["FOO"], []) is False
+
+    def test_exclude_filter_ignores_case(self):
+        assert self._excluded(["Foo"], [], ["foo"]) is True
+        assert self._excluded(["foo"], [], ["FOO"]) is True
