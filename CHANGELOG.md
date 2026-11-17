@@ -57,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The JSON report of `migrate` now includes `performance_summary` and
+  `performance_by_object_type`. They were never emitted because the formatter looked up the
+  migration name under the wrong attribute.
 - A config file with `logging.level: warn` is no longer rejected as an invalid log level. `warn`
   now means `WARNING`, as it already did for `--log-level warn`.
 - `--db-url`, `--db-username` and `--db-password` values containing `${VAR}` placeholders are

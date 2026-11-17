@@ -278,8 +278,8 @@ class JsonFormatter:
             migration_id = None
             if hasattr(result, "migrations") and result.migrations:
                 for migration in result.migrations:
-                    if hasattr(migration, "script_name"):
-                        migration_id = migration.script_name
+                    if getattr(migration, "script", None):
+                        migration_id = migration.script
                         break
 
             if migration_id:
