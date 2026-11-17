@@ -1,3 +1,5 @@
+"""Top-level DBLift configuration: loading, merging and validation."""
+
 import fnmatch
 import functools
 import json
@@ -15,9 +17,18 @@ from dblift.config.database_config import (
     BaseDatabaseConfig,
     _file_dialect,
     _infer_type_from_url_scheme,
+    _url_scheme,
 )
 from dblift.config.errors import ConfigurationError
-from dblift.config.file_path_anchoring import URL_SCHEME, anchor_file_data, file_url, left_relative
+from dblift.config.file_path_anchoring import (
+    URL_SCHEME,
+    anchor_file_data,
+    anchor_log_file,
+    default_migrations_directory,
+    file_url,
+    left_relative,
+    retain_log_file_fallback,
+)
 from dblift.config.secrets import SecretsConfig, resolve_secret_refs
 from dblift.config.secrets._registry import is_secret_uri
 from dblift.core.constants import (
@@ -26,6 +37,7 @@ from dblift.core.constants import (
     ENV_PREFIX,
 )
 from dblift.core.exceptions import InvalidTargetVersionError
+from dblift.core.utils.path_checks import path_exists
 
 _log = logging.getLogger(__name__)
 
@@ -240,6 +252,7 @@ def _resolve_env_placeholders(data: Any) -> Any:
     if isinstance(data, str):
 
         def replace(match: re.Match[str]) -> str:
+            """Return the environment value for a placeholder, or its default."""
             var_name = match.group(1)
             default = match.group(2)
             env_value = os.environ.get(var_name)
@@ -395,6 +408,8 @@ def refuse_unusable_database_locators(database: object) -> None:
 
 
 _DATABASE_LOCATORS = ("path", "database", "url")
+# ``warn`` is the spelling ``--log-level`` documents; it means WARNING.
+_LOG_LEVEL_ALIASES = {"WARN": "WARNING"}
 
 
 def _file_sources(
@@ -525,12 +540,12 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
     # If a config path was provided explicitly, it must exist and be loadable. Silently
     # falling back to defaults hides typos in --config and produces surprising downstream errors.
     if config_file_path:
-        if not os.path.exists(config_file_path):
-            raise FileNotFoundError(f"Config file not found: {config_file_path}")
         try:
+            if not path_exists(config_file_path):
+                raise FileNotFoundError(f"Config file not found: {config_file_path}")
             file_data = DbliftConfig.load_config_data_from_yaml(config_file_path)
             config_data = DbliftConfig.merge_config_data(config_data, file_data)
-        except (InvalidTargetVersionError, ConfigurationError):
+        except (FileNotFoundError, InvalidTargetVersionError, ConfigurationError):
             raise
         except _CONFIG_LOAD_EXC as e:
             raise RuntimeError(f"Error loading config file {config_file_path}: {e}") from e
@@ -553,14 +568,18 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
     # config.database before calling create(), so a lone DBLIFT_DB_SCHEMA never
     # triggers an "Unsupported database type" crash.
     env_dict = DbliftConfig.from_env_dict()
+    log_file_override = env_dict.get("log_file")
     if env_dict:
         config_data = DbliftConfig.merge_config_data(config_data, env_dict)
 
     # Override with command line arguments if provided
     if args:
         args_dict = DbliftConfig.from_args_dict(args)
+        log_file_override = args_dict.get("log_file", log_file_override)
         if args_dict:
             config_data = DbliftConfig.merge_config_data(config_data, args_dict)
+
+    log_file_fallback = anchor_log_file(config_data, config_file_path, bool(log_file_override))
 
     # ``validate-sql`` does not need a real database, but static linting does
     # need an explicit SQL dialect or a database type from config.
@@ -568,7 +587,8 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
         dialect = _validate_sql_effective_dialect(args, config_data)
         if not dialect:
             raise ConfigurationError(
-                "validate-sql requires --dialect for offline validation when no database type is configured."
+                "validate-sql requires --dialect for offline validation "
+                "when no database type is configured."
             )
         filler = _validate_sql_lint_filler(dialect)
         if filler:
@@ -593,6 +613,7 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
     )
     refuse_empty_database_locator(file_data, active_environment, config_data)
     config = DbliftConfig.from_dict(config_data, resolve_secrets=not is_offline_cmd)
+    retain_log_file_fallback(config, log_file_fallback)
     if active_environment:
         setattr(config, "_active_environment", active_environment)
     if config_file_path:
@@ -607,7 +628,10 @@ def load_config(config_file_path: Optional[str], args: Optional[Any] = None) -> 
 
 
 def deep_merge_dicts(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
-    """Recursively merge two dictionaries, with override taking precedence for non-empty, non-None values."""
+    """Recursively merge two dictionaries.
+
+    The override takes precedence for non-empty, non-None values.
+    """
     result = base.copy()
     for k, v in override.items():
         if isinstance(v, dict) and k in result and isinstance(result[k], dict):
@@ -671,7 +695,8 @@ class MigrationsConfig:
             directory: Main migrations directory (deprecated, use directories)
             directories: Migration directories (can be strings or DirectoryConfig objects)
             table: Schema history table name
-            recursive: Global recursive setting (used as default for directories without explicit recursive)
+            recursive: Global recursive setting (used as default for directories without
+                explicit recursive)
             script_encoding: Encoding for reading migration script files
             detect_encoding: Detect migration script encoding before reading
         """
@@ -769,8 +794,6 @@ class DbliftConfig:
     log_format: Optional[str] = None
     log_level: Optional[str] = None
     log_dir: Optional[str] = None
-    # Set by path anchoring when it fills in ``log_dir``; a default, not a user setting.
-    derived_log_dir: Optional[str] = field(default=None, repr=False, compare=False)
 
     def merge(self, other_config: Dict[str, Any]) -> None:
         """Merge another configuration into this one.
@@ -808,7 +831,8 @@ class DbliftConfig:
                 )
 
                 # Update directories if provided
-                # Support both old format (list of strings) and new format (list of dicts with path/recursive)
+                # Support both old format (list of strings) and new format
+                # (list of dicts with path/recursive)
                 if "directories" in migrations:
                     dirs = migrations.get("directories", [])
                     normalized_dirs: List[Union[str, DirectoryConfig]] = []
@@ -925,9 +949,7 @@ class DbliftConfig:
         if url and not db_type:
             from dblift.db.provider_registry import ProviderRegistry
 
-            url_lower = url.lower()
-            scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
-            db_type = ProviderRegistry.canonical_dialect_name(scheme) or ""
+            db_type = ProviderRegistry.canonical_dialect_name(_url_scheme(url)) or ""
             if not db_type:
                 from dblift.config.secrets._registry import is_secret_uri as _is_secret_uri_inline
 
@@ -999,6 +1021,7 @@ class DbliftConfig:
         # Validate log level (case-insensitive)
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         log_level_upper = log_level.upper() if isinstance(log_level, str) else log_level
+        log_level_upper = _LOG_LEVEL_ALIASES.get(log_level_upper, log_level_upper)
         if log_level_upper not in valid_levels:
             raise ValueError(f"Invalid log level: {log_level}. Must be one of {valid_levels}")
         log_level = log_level_upper  # Normalize to uppercase
@@ -1049,6 +1072,16 @@ class DbliftConfig:
     def merge_config_data(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
         """Merge raw config dictionaries before constructing typed config objects."""
         merged = deep_merge_dicts(base or {}, override or {})
+        # Flat and nested spellings are aliases: a newer source wins independently for
+        # each destination field, regardless of the spelling the older source used.
+        logging_override = override.get("logging")
+        section = logging_override if isinstance(logging_override, dict) else {}
+        for flat, nested in (("log_file", "file"), ("log_dir", "directory")):
+            if override.get(flat):
+                if isinstance(merged.get("logging"), dict):
+                    merged["logging"] = {k: v for k, v in merged["logging"].items() if k != nested}
+            elif section.get(nested):
+                merged.pop(flat, None)
         base_db = base.get("database") if base else None
         override_db = override.get("database") if override else None
         if (
@@ -1077,9 +1110,7 @@ class DbliftConfig:
         db_type = str(database.get("type") or "").strip().lower()
         url = str(database.get("url") or "").strip()
         if not db_type and url:
-            url_lower = url.lower()
-            scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
-            db_type = ProviderRegistry.canonical_dialect_name(scheme) or ""
+            db_type = ProviderRegistry.canonical_dialect_name(_url_scheme(url)) or ""
 
         if not db_type:
             if url:
@@ -1102,7 +1133,8 @@ class DbliftConfig:
             )
             if not use_managed_identity and not database.get("account_key"):
                 raise ConfigurationError(
-                    "Cosmos DB configuration requires account_key unless use_managed_identity is true"
+                    "Cosmos DB configuration requires account_key "
+                    "unless use_managed_identity is true"
                 )
             if not (database.get("database_name") or database.get("database")):
                 raise ConfigurationError(
@@ -1226,7 +1258,7 @@ class DbliftConfig:
         from dblift.config.property_registry import PROPERTY_REGISTRY
 
         for spec in PROPERTY_REGISTRY:
-            if spec.cli_only or "." in spec.name:
+            if "." in spec.name:
                 continue  # nested database.* fields are handled by the DBLIFT_DB_* loop above
             raw = env.get(spec.env)
             if not raw:
@@ -1282,9 +1314,9 @@ class DbliftConfig:
             if not _is_secret_uri_args(url_val):
                 from dblift.db.provider_registry import ProviderRegistry
 
-                url_lower = url_val.strip().lower()
-                scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
-                inferred_type = ProviderRegistry.canonical_dialect_name(scheme) or ""
+                inferred_type = (
+                    ProviderRegistry.canonical_dialect_name(_url_scheme(url_val.strip())) or ""
+                )
                 if inferred_type:
                     db_cfg["type"] = inferred_type
 
@@ -1297,9 +1329,7 @@ class DbliftConfig:
         # Registry covers the persistent scalar properties; undo is arg-only
         # (subcommand-driven) and not modeled in the registry.
         _arg_only_keys = ("undo",)
-        registry_keys = [
-            spec.name for spec in PROPERTY_REGISTRY if not spec.cli_only and "." not in spec.name
-        ]
+        registry_keys = [spec.name for spec in PROPERTY_REGISTRY if "." not in spec.name]
         # Every flag backed by a property defaults to None, so None means "not
         # given" and the environment and the file keep their value. Any other
         # value was typed by the user and wins, even when it equals the property
@@ -1328,7 +1358,10 @@ class DbliftConfig:
 
     @classmethod
     def from_all_sources(cls, cli_args: Dict[str, Any]) -> "DbliftConfig":
-        """Load config from file, env, and CLI args, with correct precedence (args > env > file > defaults)."""
+        """Load config from file, env, and CLI args.
+
+        Precedence is args > env > file > defaults.
+        """
         # Load from file if specified
         config_file = cli_args.get("config_file")
         file_config = {}
@@ -1387,9 +1420,11 @@ class DbliftConfig:
             return {}
         _refuse_empty_target_version(resolved)
         anchor_file_data(resolved, Path(config_file).resolve().parent)
+        default_migrations_directory(resolved, Path(config_file).resolve().parent)
         return resolved
 
     def to_dict(self) -> Dict[str, Any]:
+        """Return the configuration as a plain dictionary."""
         result = {
             "database": self.database.to_dict(),
             "migrations": {

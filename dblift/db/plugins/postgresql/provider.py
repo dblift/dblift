@@ -19,7 +19,7 @@ from dblift.core.sql_parser.lexical_tokenizer import (
     copy_header_reads,
 )
 from dblift.core.sql_parser.tokens import Token, TokenType
-from dblift.db.plugins.base_history_manager import UNDO_HISTORY_TYPE, installed_on_to_bind
+from dblift.db.plugins.base_history_manager import installed_on_to_bind
 from dblift.db.plugins.postgresql._provider_query_executor import ProviderQueryExecutor
 from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
 from dblift.db.plugins.postgresql.postgresql._lock_key import _get_advisory_lock_key
@@ -27,6 +27,8 @@ from dblift.db.plugins.postgresql.postgresql.schema_operations import PostgreSql
 from dblift.db.plugins.postgresql.search_path import search_path_schemas
 from dblift.db.provider_interfaces import DroppableObject
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
+
+_LIBPQ_TRANSACTION_IDLE = 0
 
 
 def _quote_identifier(identifier: str) -> str:
@@ -130,6 +132,22 @@ class PostgreSqlProvider(SqlAlchemyProvider):
             super()._end_open_transaction(conn)
             if undoes_set:
                 self._schema_applied_for = None
+
+    def supports_script_session(self) -> bool:
+        """Only PostgreSQL itself: engines built on this class are not enabled by inheriting."""
+        return self.canonical_dialect_key == "postgresql"
+
+    def _script_transaction_open(self, conn: Connection) -> bool:
+        """Whether the driver reports a transaction, in progress or failed."""
+        try:
+            driver = conn.connection.dbapi_connection
+            status = driver.info.transaction_status  # type: ignore[union-attr]
+        except AttributeError as exc:
+            raise ExecutionError(
+                "-- dblift:no-transaction needs a database driver that reports the "
+                "transaction status; this one does not"
+            ) from exc
+        return int(status) != _LIBPQ_TRANSACTION_IDLE
 
     def drop_object(self, obj: DroppableObject) -> None:
         """Drop one object without letting a failure abort the whole clean.
@@ -318,8 +336,9 @@ class PostgreSqlProvider(SqlAlchemyProvider):
         """Create the PostgreSQL migration lock table if it is missing."""
         self.create_schema_if_not_exists(schema)
         try:
+            lock_table = self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)
             self.execute_statement(f"""
-                CREATE TABLE IF NOT EXISTS {self.get_schema_qualified_name(schema, self.MIGRATION_LOCK_TABLE)} (
+                CREATE TABLE IF NOT EXISTS {lock_table} (
                     lock_name VARCHAR(255) PRIMARY KEY,
                     locked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -378,35 +397,6 @@ class PostgreSqlProvider(SqlAlchemyProvider):
             ORDER BY installed_rank
             """)
 
-    def create_migration_history_table_if_not_exists(
-        self,
-        schema: str,
-        create_schema: bool = False,
-        table_name: str = DEFAULT_HISTORY_TABLE,
-    ) -> None:
-        """Create the migration history table if it is missing."""
-        if create_schema:
-            self.create_schema_if_not_exists(schema)
-        if self.table_exists(schema, table_name):
-            if create_schema:
-                self._check_baseline_safety(schema, table_name)
-            return
-        self.execute_statement(self.create_history_table(schema, table_name))
-
-    def _check_baseline_safety(self, schema: str, table_name: str) -> None:
-        """Refuse baseline when the history table already contains migrations."""
-        qualified_table = self.get_schema_qualified_name(schema, table_name)
-        rows = self.execute_query(f"SELECT COUNT(1) as count FROM {qualified_table}")
-        migration_count = 0
-        if rows:
-            migration_count = int(rows[0].get("count", rows[0].get("COUNT", 0)) or 0)
-        if migration_count > 0:
-            raise RuntimeError(
-                f"Schema {schema} already contains a migration history table "
-                f"{table_name} with {migration_count} migration(s). "
-                "Baseline cannot be applied to a schema with existing migrations."
-            )
-
     def record_migration(
         self, schema: str, migration_info: Dict[str, Any], table_name: str = DEFAULT_HISTORY_TABLE
     ) -> None:
@@ -446,37 +436,18 @@ class PostgreSqlProvider(SqlAlchemyProvider):
             if has_rank_default
             else f", (SELECT COALESCE(MAX(installed_rank), 0) + 1 FROM {qualified_table})"
         )
+        insert_columns = (
+            "(version, description, type, script, checksum, installed_by, execution_time, "
+            f"success{installed_on_column}{rank_column})"
+        )
         self.execute_statement(
             f"""
             INSERT INTO {qualified_table}
-                (version, description, type, script, checksum, installed_by, execution_time, success{installed_on_column}{rank_column})
+                {insert_columns}
             VALUES (?, ?, ?, ?, ?, ?, ?, ?{installed_on_value}{rank_value})
             """,
             params=params,
         )
-
-    def record_undo(
-        self,
-        schema: str,
-        version: str,
-        table_name: Optional[str] = None,
-        script_name: Optional[str] = None,
-    ) -> bool:
-        """Record a successful undo operation in PostgreSQL migration history."""
-        undo_script = script_name or f"UNDO_{version}.sql"
-        self.record_migration(
-            schema,
-            {
-                "version": version,
-                "description": f"Undo migration {version}",
-                "type": UNDO_HISTORY_TYPE,
-                "script": undo_script,
-                "checksum": 0,
-                "success": True,
-            },
-            table_name or DEFAULT_HISTORY_TABLE,
-        )
-        return True
 
     def repair_migration_history(
         self,

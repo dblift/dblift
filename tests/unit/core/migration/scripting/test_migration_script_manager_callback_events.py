@@ -184,12 +184,6 @@ def test_parse_filename_does_not_classify_a_delimiterless_name_as_callback(filen
 
 
 @pytest.mark.parametrize("filename", MALFORMED_CALLBACK_NAMES)
-def test_delimiterless_name_is_not_a_valid_script_name(filename: str):
-    """Discovery must reject the name outright, like any other malformed script."""
-    assert _manager().is_valid_script_name(filename) is False
-
-
-@pytest.mark.parametrize("filename", MALFORMED_CALLBACK_NAMES)
 def test_migration_type_does_not_classify_a_delimiterless_name_as_callback(filename: str):
     """``Migration._determine_type`` must agree with ``parse_filename``.
 

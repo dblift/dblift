@@ -19,6 +19,7 @@ from dblift.core.migration.sql.lint import (
     lint_targets,
 )
 from dblift.core.migration.sql.script_analysis import dialect_of
+from dblift.core.utils.path_checks import path_is_file
 
 
 def _target_files(ctx: CliCommandContext) -> List[Path]:
@@ -76,11 +77,12 @@ def _handle_validate_sql(ctx: CliCommandContext) -> Tuple[bool, Any]:
     def call() -> OperationResult:
         dialect = _dialect(ctx)
         paths = _target_files(ctx)
-        missing = [p for p in paths if not p.is_file()]
+        present = [p for p in paths if path_is_file(p)]
+        missing = [p for p in paths if p not in present]
         # Files named with --files are checked in apply order. A directory holds
         # scripts already applied, so each of its scripts is read in filename order.
         scripts = lint_files(
-            [p for p in paths if p.is_file()],
+            present,
             dialect,
             ctx.placeholders,
             ctx.log,

@@ -26,8 +26,9 @@ class ImportFlywayCommand(BaseCommand):
         """Import migration history from Flyway.
 
         Args:
-            scripts_dir: Directory containing migration scripts (accepted for interface compatibility,
-            not used in this command — Flyway history is read directly from the database)
+            scripts_dir: Directory containing migration scripts (accepted for interface
+                compatibility, not used in this command — Flyway history is read directly from
+                the database)
             dry_run: If True, only show what would be imported without actually importing
             flyway_table: Source Flyway schema history table name
 
@@ -196,7 +197,8 @@ class ImportFlywayCommand(BaseCommand):
         return rows_to_import, skipped_count
 
     def _row_with_mapped_type(self, row: Dict[str, Any]) -> Dict[str, Any]:
-        """Return a copy of ``row`` with Flyway's ``type`` vocabulary translated to a Dblift ``MigrationType`` member name.
+        """Return a copy of ``row`` with Flyway's ``type`` vocabulary translated to a Dblift
+        ``MigrationType`` member name.
 
         Flyway writes values like ``JDBC``/``SPRING_JDBC``/``SCRIPT`` that are
         not Dblift ``MigrationType`` members. Writing them verbatim would

@@ -3199,7 +3199,10 @@
     "sql": "DROP TASK IF EXISTS \"S\".\"NIGHTLY\""
   },
   "607c660c33102b24/hybrid": {
-    "class": "opaque-reader-gap",
+    "class": {
+      "floor": "opaque-reader-gap",
+      "newest": "disagree"
+    },
     "facts": {
       "diagnostic": "table: postgres Command is opaque to statement facts",
       "kind": "DDL",
@@ -3224,7 +3227,7 @@
       ]
     },
     "path": "hybrid",
-    "reason": "The table carries WITH (fillfactor=70) TABLESPACE ts, which sqlglot parses as a Command: the reader keeps the head identity only as opaque, and the declared columns are not read, and the diagnostic names the TABLESPACE clause, where the old extraction named TABLE Case. PostgreSQL 16.14 parses it (SQLSTATE 3F000 at run time).",
+    "reason": "The table carries WITH (fillfactor=70) TABLESPACE ts, which sqlglot parses as a Command: the reader keeps the head identity only as opaque, and the declared columns are not read, and the diagnostic names the TABLESPACE clause, where the old extraction named TABLE Case. PostgreSQL 16.14 parses it (SQLSTATE 3F000 at run time). On sqlglot 30.30 the clause is parsed and the declared column is read; the reader keeps `MySchema` as written while the extraction folded the schema to `myschema` (PostgreSQL folds an unquoted name itself), and the quoted `Case` is the same on both sides (disagree, as the schema differs by case).",
     "sql": "CREATE TABLE MySchema.\"Case\" (a int) WITH (fillfactor=70) TABLESPACE ts"
   },
   "6197595503f01ee2": {
@@ -5745,7 +5748,10 @@
     "sql": "CREATE TABLE test1 (id INTEGER)@\nCREATE TABLE test2 (id INTEGER)@\n--#SET TERMINATOR ;\nINSERT INTO test1 VALUES (1)"
   },
   "ac3b4e6330ff34e5/hybrid": {
-    "class": "opaque-reader-gap",
+    "class": {
+      "floor": "opaque-reader-gap",
+      "newest": "case-folded"
+    },
     "facts": {
       "diagnostic": "table: postgres Command is opaque to statement facts",
       "kind": "DDL",
@@ -5770,7 +5776,7 @@
       ]
     },
     "path": "hybrid",
-    "reason": "The table carries WITH (fillfactor=70) TABLESPACE ts, which sqlglot parses as a Command: the reader keeps the head identity only as opaque, and the declared columns are not read, and the diagnostic names the TABLESPACE clause, where the old extraction named TABLE mixed. PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time).",
+    "reason": "The table carries WITH (fillfactor=70) TABLESPACE ts, which sqlglot parses as a Command: the reader keeps the head identity only as opaque, and the declared columns are not read, and the diagnostic names the TABLESPACE clause, where the old extraction named TABLE mixed. PostgreSQL 16.14 parses it (SQLSTATE 42704 at run time). On sqlglot 30.30 the clause is parsed and the declared column is read; the names then differ by PostgreSQL's folding only (case-folded).",
     "sql": "CREATE TABLE MiXed (a int) WITH (fillfactor=70) TABLESPACE ts"
   },
   "adfa881b55d4dbc2/analyzer": {
@@ -6575,7 +6581,10 @@
     "sql": "CREATE VIRTUAL TABLE IF NOT EXISTS s.t USING rtree(id,a,b)"
   },
   "bc4a113a98d24f65/hybrid": {
-    "class": "opaque-reader-gap",
+    "class": {
+      "floor": "opaque-reader-gap",
+      "newest": "disagree"
+    },
     "facts": {
       "diagnostic": "table: postgres Command is opaque to statement facts",
       "kind": "DDL",
@@ -6600,7 +6609,7 @@
       ]
     },
     "path": "hybrid",
-    "reason": "The table carries WITH (fillfactor=70) TABLESPACE ts, which sqlglot parses as a Command: the reader keeps the head identity only as opaque, and the declared columns are not read, and the diagnostic names the TABLESPACE clause, where the old extraction named TABLE mixed. PostgreSQL 16.14 parses it (SQLSTATE 3F000 at run time).",
+    "reason": "The table carries WITH (fillfactor=70) TABLESPACE ts, which sqlglot parses as a Command: the reader keeps the head identity only as opaque, and the declared columns are not read, and the diagnostic names the TABLESPACE clause, where the old extraction named TABLE mixed. PostgreSQL 16.14 parses it (SQLSTATE 3F000 at run time). On sqlglot 30.30 the clause is parsed and the declared column is read; the reader keeps `MiXed` as written under the quoted schema `S` while the extraction folded it to `mixed` (disagree, as the schema is quoted).",
     "sql": "CREATE TABLE \"S\".MiXed (a int) WITH (fillfactor=70) TABLESPACE ts"
   },
   "bcdb4a2a108573f6/analyzer": {
@@ -8956,5 +8965,39 @@
       "yugabytedb 2026.1.2": "42601"
     },
     "sql": "CREATE FULLTEXT INDEX idx_description ON products(description)"
+  },
+  "6e46fc27b60686e4": {
+    "sql": "INSERT OVERWRITE INTO target SELECT * FROM source",
+    "path": "both",
+    "class": "no-old",
+    "reason": "Input harvested after this family's extraction was frozen (the Snowflake INSERT OVERWRITE form): no extraction can be recomputed for it, so there is nothing to compare. The reader reads it as INSERT \u2026 SELECT: `target` altered, `source` referenced.",
+    "issue": "",
+    "old": {
+      "hybrid": null,
+      "analyzer": null
+    },
+    "facts": {
+      "events": [
+        "INSERT"
+      ],
+      "kind": "DML",
+      "objects": [
+        [
+          "target",
+          "TABLE",
+          "altered",
+          null
+        ],
+        [
+          "source",
+          "TABLE",
+          "referenced",
+          null
+        ]
+      ],
+      "operation": "INSERT",
+      "target": "target",
+      "target_sql": "target"
+    }
   }
 }

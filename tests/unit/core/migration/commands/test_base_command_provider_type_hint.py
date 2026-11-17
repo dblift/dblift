@@ -28,7 +28,6 @@ _COMMAND_MODULES = [
 # re-declaring the provider parameter do not need the import.
 _MODULES_WITH_BASE_PROVIDER_IMPORT = [
     "dblift.core.migration.commands.base_command",
-    "dblift.core.migration.commands.migrate_command",
 ]
 
 

@@ -15,6 +15,113 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+## [5.2.0] - 2026-11-16
+
+### Added
+
+- A SQL script whose leading `--` comments contain `-- dblift:no-transaction` runs with no
+  transaction opened by DBLift, on PostgreSQL and SQL Server: its own `BEGIN`, `COMMIT` and
+  `ROLLBACK` take effect across statements. A transaction the script leaves open is rolled
+  back and the script fails; a failure after the script committed leaves that work applied.
+  It applies to versioned and repeatable migrations, undo scripts and SQL callbacks. On any
+  other engine, or on a connection passed to `DBLiftClient.from_sqlalchemy`, such a script is
+  refused before any script or callback of the command runs, by a dry run as well. On
+  PostgreSQL, `invalid transaction termination` now suggests the directive.
+- Trigger models can retain a subject table schema distinct from the trigger's schema through
+  qualification, comparison and dictionary/JSON round trips. Older dictionaries keep their
+  same-schema meaning; an explicit null subject schema remains unqualified.
+
+### Changed
+
+- Importing `dblift.integrations.fastapi` no longer loads the `dblift.cli` package.
+- The PyPI page now shows project links (homepage, documentation, source, issues, changelog), the
+  Apache-2.0 licence as an SPDX expression, the author and the database topic. The licence
+  classifier is replaced by that expression.
+- The package declares Python 3.13 and 3.14 in its classifiers, and CI runs the unit tests on
+  Python 3.11 to 3.14.
+- The HTML report (`--log-format html`) follows the flat DBLift blue identity of dblift.com: blue
+  accents in place of teal and cyan, emerald for success, flat panels, banners and timeline bars
+  with no gradients or glow, and the single-blue mark with a plain white wordmark. The mark is now
+  inline SVG instead of an embedded PNG, so a report is about 115 KB smaller.
+- The analysis extra accepts SQLGlot 30.23 through 30.30. The statement-facts corpus is recorded
+  on both ends of that range and CI runs it on each.
+- A `CREATE INDEX … TABLESPACE` clause on MySQL, MariaDB, SQL Server, SQLite, DuckDB or Snowflake,
+  and a `DROP TRIGGER … ON table` clause outside PostgreSQL, name no object: the engine rejects the
+  clause. DuckDB `CREATE`, `ALTER` and `DROP TRIGGER` are reported the same way (DuckDB has no
+  triggers).
+- A DML statement read from its head reports its predicate without the leading `WHERE` on every
+  dialect, as the parsed path and MySQL already did.
+- **Default change:** dblift no longer writes a log file by default. Logging goes to the console
+  only, and no `logs/` directory is created in the working directory (CLI, Python API and MCP
+  server), unless a directory or a file is requested with `--log-dir`, `--log-file`,
+  `DBLIFT_LOG_DIR`, `DBLIFT_LOG_FILE`, `log_dir`, `log_file` or `logging.directory`. From the
+  command line, a bare `--log-file` name is written to the working directory. The CLI now honours
+  `logging.directory` in the configuration file, which it ignored before. A client built from a
+  configuration file no longer derives `<config folder>/logs`, and a relative `log_file` there is
+  resolved against the file's folder. To keep the previous layout, pass `--log-dir logs`, set
+  `DBLIFT_LOG_DIR=logs`, or set `log_dir: logs` in the configuration file; a relative `log_dir`
+  in the configuration file resolves against the file's folder, so `log_dir: logs` keeps the
+  layout when the file sits in the working directory.
+
+### Fixed
+
+- A configuration file that sets neither `migrations.directory` nor `migrations.directories` now
+  uses the `migrations` directory in the file's folder for the Python client (and so `migrate`,
+  `info` and `validate`) as well as the CLI. Before, the client used `migrations` in the working
+  directory while `validate-sql` used the one next to the file. This changes which directory is
+  scanned only when such a file is loaded from another working directory.
+- SQL Server: `clean` no longer fails on a full-text catalog that a full-text index in another
+  schema also uses. Such a shared catalog is left in place; a catalog used only by the cleaned
+  schema is still dropped.
+- The JSON report of `migrate` now includes `performance_summary` and
+  `performance_by_object_type`. They were never emitted because the formatter looked up the
+  migration name under the wrong attribute.
+- A config file with `logging.level: warn` is no longer rejected as an invalid log level. `warn`
+  now means `WARNING`, as it already did for `--log-level warn`.
+- `--db-url`, `--db-username` and `--db-password` values containing `${VAR}` placeholders are
+  now expanded from the environment, as the same placeholders in a config file are. Before, the
+  literal `${VAR}` text reached the database driver.
+- `info --tags` and `--exclude-tags` now match tags case-insensitively, as `migrate` already did.
+  Before, `--tags foo` left out a migration tagged `Foo`.
+- SQL Server: a SQL script (migration, undo script or callback) that ends its transaction itself (a
+  `COMMIT` or `ROLLBACK` in the script) is now reported as applied. Before, the run failed with
+  `Can't reconnect until invalid transaction is rolled back` although the script's work and its
+  history row were in place. A script that leaves a transaction open now fails, with that open work
+  rolled back and a failed history row. Before, the run reported success and either lost the work
+  and its history row when the connection closed, or committed the open work.
+- Requested log filenames now reach the Python API logger, including timestamp patterns.
+  Ordinary commands and `db check-connection` honour flat and nested configuration, environment
+  variables and flags consistently. Configured relative filenames resolve from the config folder;
+  explicit overrides retain their working-directory meaning. Unusable destinations report a
+  friendly error before command success, and a filename with its own directory no longer creates
+  an unused log directory. Configured output symlinks are refused, and later API directory
+  overrides preserve a configured bare filename. Utility audit logs retain failure diagnostics,
+  including provider cleanup errors.
+
+- Statement facts now report simple primary, unique and foreign keys added by `ALTER TABLE`, including
+  composite keys, constraint names and referenced tables. Unread key details remain opaque.
+- A config file or migration scripts directory that cannot be examined (a parent directory that is
+  not searchable, a name that is too long) is reported as a read error instead of "not found" or
+  being silently skipped, on Python 3.11 to 3.14.
+- A capability denial raised while the configuration loads (for example by a registered secrets
+  provider) now exits with code 4 (`EXIT_LICENSE_REQUIRED`) and one `Error:` line on stderr, as a
+  denial at command dispatch does, including from `db validate-config` and `db check-connection`.
+  It used to exit 1 or end in a traceback. `dblift mcp` reports
+  such a denial in its start announcement and still serves; each tool call then reports exit 4.
+- A root flag that only an extension package registers (`--license-key`) is no longer reported by
+  argparse as an unrecognized argument when that package is not installed. It now gets the same
+  install guidance as a command stub and exits with code 4, and is never accepted silently.
+- When an extension package is installed without the package that provides a command, the
+  command stubs and the stub `DBLiftClient` methods now say which package to install instead of
+  the default message. A distribution whose metadata cannot be read no longer makes the check raise.
+- PostgreSQL `CREATE TABLE … TABLESPACE` and `CREATE INDEX … TABLESPACE` read their declared
+  columns, indexed table and indexed columns on SQLGlot 30.30. On 30.23 the statement stays
+  opaque with the object named from its head.
+- The one-line descriptions of the `data` and `license` command stubs now match the commands' own
+  help. The `data` description listed an `undo` subcommand that does not exist; it now names
+  `plan/apply/status`. The `license` description no longer carries a subcommand list that could
+  drift from the real subcommands.
+
 ## [5.1.7] - 2026-11-09
 
 ### Added
@@ -5784,7 +5891,8 @@ All additions are backward compatible (MINOR): two new modules, two new
 - Cross-platform distributions (Windows, Linux, macOS).
 - Modular provider architecture for easy database support extension.
 
-[Unreleased]: https://github.com/dblift/dblift/compare/v5.1.7...develop
+[Unreleased]: https://github.com/dblift/dblift/compare/v5.2.0...develop
+[5.2.0]: https://github.com/dblift/dblift/compare/v5.1.7...v5.2.0
 [5.1.7]: https://github.com/dblift/dblift/compare/v5.1.6...v5.1.7
 [5.1.6]: https://github.com/dblift/dblift/compare/v5.1.5...v5.1.6
 [5.1.5]: https://github.com/dblift/dblift/compare/v5.1.4...v5.1.5

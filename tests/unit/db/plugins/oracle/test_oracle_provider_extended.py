@@ -527,30 +527,6 @@ class TestSchemaHelpers:
         assert p.get_parameter_placeholders(3) == "?, ?, ?"
 
 
-class TestGetTables:
-    def test_returns_table_names(self):
-        p = _Provider()
-        p.query_results["TABLE_NAME NOT LIKE 'BIN$%'"] = [
-            {"table_name": "ORDERS"},
-            {"table_name": "ITEMS"},
-        ]
-        assert p.get_tables("MYSCHEMA") == ["ORDERS", "ITEMS"]
-
-    def test_empty(self):
-        p = _Provider()
-        assert p.get_tables("MYSCHEMA") == []
-
-
-class TestGetSchemas:
-    def test_returns_usernames(self):
-        p = _Provider()
-        p.query_results["ALL_USERS ORDER BY USERNAME"] = [
-            {"username": "APP"},
-            {"username": "DBLIFT"},
-        ]
-        assert p.get_schemas() == ["APP", "DBLIFT"]
-
-
 class TestCreateMigrationLockTableIfNotExists:
     def test_skips_when_exists(self):
         p = _Provider(username="MYSCHEMA")
@@ -1018,6 +994,26 @@ class TestCleanSchema:
         assert any("procedure" in e for e in summary.errors)
         assert any("synonym" in e for e in summary.errors)
 
+    def test_drop_failure_errors_name_the_kind_the_object_and_the_cause(self):
+        """Each failed drop leaves one error naming it, and is not counted as dropped."""
+        p = _Provider()
+        p.query_results = self._query_map()
+        p.statement_results["DROP DATABASE LINK"] = Exception("link drop failed")
+        p.statement_results["DROP VIEW"] = Exception("view drop failed")
+        p.statement_results["DROP PROCEDURE"] = Exception("procedure drop failed")
+        p.statement_results["DROP SYNONYM"] = Exception("synonym drop failed")
+
+        summary = p.clean_schema("MYSCHEMA")
+
+        assert summary.errors == [
+            "Failed to drop database_link REMOTE_LINK: link drop failed",
+            "Failed to drop view V1: view drop failed",
+            "Failed to drop procedure PROC1: procedure drop failed",
+            "Failed to drop synonym SYN1: synonym drop failed",
+        ]
+        dropped = {obj.name for obj in summary.objects}
+        assert not dropped & {"REMOTE_LINK", "V1", "PROC1", "SYN1"}
+
     def test_trigger_ora_04080_is_swallowed_because_owning_table_already_dropped(self):
         p = _Provider()
         query_map = self._query_map()
@@ -1094,6 +1090,25 @@ class TestCleanSchema:
         table_drops = [s[0] for s in p.statements if s[0].startswith("DROP TABLE")]
         assert any("CUSTOMERS" in s for s in table_drops)
         assert not any("DR$" in s for s in table_drops)
+        assert summary.errors == []
+
+    def test_lowercase_text_index_support_tables_are_not_dropped_directly(self):
+        """The support-table prefix check ignores case: a quoted ``dr$...`` table is skipped too."""
+        p = _Provider()
+
+        def execute_query(sql, params=None):
+            p.queries.append((sql, params))
+            if "ALL_TABLES t" in sql:
+                return [{"object_name": "CUSTOMERS"}, {"object_name": "dr$idx_text$i"}]
+            return []
+
+        p.execute_query = execute_query
+
+        summary = p.clean_schema("MYSCHEMA")
+
+        assert [s[0] for s in p.statements] == [
+            'DROP TABLE "MYSCHEMA"."CUSTOMERS" CASCADE CONSTRAINTS PURGE'
+        ]
         assert summary.errors == []
 
     def test_reference_partition_query_failure_falls_back_to_unordered_drop(self):

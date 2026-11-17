@@ -3,26 +3,33 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, NoReturn, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from dblift.api._cli_support import ConnectionProvider
-from dblift.api._client_factory import apply_derived_schema
+from dblift.api._cli_support import ConnectionProvider, ProviderRegistry
+from dblift.api._client_factory import apply_derived_schema, effective_log_file_from_config
+from dblift.cli._capability_exit import exit_on_capability_denial
+from dblift.cli._output import _exit_log_location_error
 from dblift.cli._parser_setup import create_parser, parse_with_selective_errors
 from dblift.config.config_builder import ConfigBuilder
 from dblift.config.dblift_config import (
     DbliftConfig,
     _placeholder_tokens,
+    _resolve_env_placeholders,
     load_config,
     refuse_empty_migrations_path,
 )
 from dblift.config.errors import ConfigurationError
 from dblift.config.secrets._provider_base import SecretsResolutionError
+from dblift.config.secrets._resolver import resolve_secret_refs
 from dblift.core.logger import LogFactory, LogFormat, LogLevel
+from dblift.core.logger.console import set_progress_disabled
 from dblift.core.migration.commands.base_command import (
     SCHEMA_REQUIRED_ERROR,
     is_required_schema_missing,
 )
 from dblift.core.utils.database_url_parser import DatabaseUrlParser
+from dblift.core.utils.output_paths import requested_log_dir
+from dblift.core.utils.path_checks import path_exists, path_is_file
 from dblift.core.utils.string_utils import safe_split_first
 from dblift.core.utils.url_masking import mask_database_url
 
@@ -262,7 +269,11 @@ def _discover_default_config(log: Any = None) -> Optional[str]:
     cwd = Path.cwd()
     for name in _DEFAULT_CONFIG_NAMES:
         candidate = cwd / name
-        if candidate.is_file():
+        try:
+            found = path_is_file(candidate)
+        except OSError as e:
+            raise ConfigurationError(f"Cannot read default config file {candidate}: {e}") from e
+        if found:
             if log:
                 log.debug(f"Using discovered config file: {candidate}")
             return str(candidate)
@@ -278,13 +289,13 @@ def _load_and_merge_config(args: argparse.Namespace, log: Any) -> Any:
     # Auto-discover a config file in the cwd when the user passed neither
     # --config nor --db-url, so `dblift <command>` works from a project that has
     # a dblift.yaml without forcing an explicit --config on every invocation.
-    if not getattr(args, "config", None) and not getattr(args, "database_url", None):
-        discovered = _discover_default_config(log)
-        if discovered:
-            args.config = discovered
-
     try:
-        config = load_config(args.config, args)
+        if not getattr(args, "config", None) and not getattr(args, "database_url", None):
+            discovered = _discover_default_config(log)
+            if discovered:
+                args.config = discovered
+        with exit_on_capability_denial():
+            config = load_config(args.config, args)
     except CONFIG_LOAD_ERRORS as e:
         message = str(e)
         if isinstance(e, ConfigurationError) and (
@@ -307,14 +318,15 @@ def _load_and_merge_config(args: argparse.Namespace, log: Any) -> Any:
         db_overrides["schema"] = args.database_schema
 
     if db_overrides:
+        # load_config() already expanded ${VAR} in these values; this second pass
+        # re-applies the raw flags, so it must expand them the same way.
+        db_overrides = _resolve_env_placeholders(db_overrides)
         command = getattr(args, "command", None)
         commands_list = getattr(args, "commands_list", None) or ([command] if command else [])
         is_offline = len(commands_list) == 1 and bool(
             _command_handler_attr(command, "_dblift_skip_secret_resolution", False)
         )
         if not is_offline:
-            from dblift.config.secrets._resolver import resolve_secret_refs
-
             try:
                 db_overrides = resolve_secret_refs({"database": db_overrides}, config.secrets).get(
                     "database", db_overrides
@@ -397,8 +409,6 @@ def _validate_db_config(
         else ""
     )
 
-    from dblift.api._cli_support import ProviderRegistry
-
     _qcs = ProviderRegistry.get_quirks((db_type or "").lower())
     if _qcs.url_optional_when_file_path_given:
         if not hasattr(config, "database") or not config.database:
@@ -438,12 +448,14 @@ def _validate_db_config(
 
         if not getattr(config.database, "username", None) and not url_username:
             parser.error(
-                "Database username is required. Specify it in the config file, environment variables, or command line."
+                "Database username is required. Specify it in the config file, "
+                "environment variables, or command line."
             )
 
         if not getattr(config.database, "password", None) and not url_password:
             parser.error(
-                "Database password is required. Specify it in the config file, environment variables, or command line."
+                "Database password is required. Specify it in the config file, "
+                "environment variables, or command line."
             )
 
         apply_derived_schema(config.database)
@@ -498,12 +510,10 @@ def _configure_logging(
     Returns:
         Configured log instance
     """
-    log_dir_path = Path(args.log_dir or "logs")
-    try:
-        log_dir_path.mkdir(parents=True, exist_ok=True)
-    except OSError as e:
-        _exit_log_location_error(e)
-
+    log_file = args.log_file or effective_log_file_from_config(config)
+    log_dir_path = requested_log_dir(
+        args.log_dir or config.log_dir, log_file, config.logging.directory
+    )
     log_level = _LOG_LEVEL_MAP.get(_effective_log_level_name(args, config), LogLevel.INFO)
     # ``--quiet`` raises the *console* threshold to NOTICE so info/debug
     # lines disappear from the terminal while NOTICE (success
@@ -522,8 +532,6 @@ def _configure_logging(
     ):
         console_log_level = LogLevel.NOTICE
     if getattr(args, "no_progress", False):
-        from dblift.core.logger.console import set_progress_disabled
-
         set_progress_disabled(True)
 
     format_strings = [f.strip().lower() for f in (args.log_format or "text").split(",")]
@@ -562,7 +570,7 @@ def _configure_logging(
         log_format=primary_log_format,
         schema=config.database.schema,
         database_name=db_name,
-        log_file_pattern=args.log_file,
+        log_file_pattern=log_file,
         log_level=log_level,
         additional_formats=additional_formats,
         console_log_level=console_log_level,
@@ -576,15 +584,13 @@ def _configure_logging(
     return log
 
 
-def _exit_log_location_error(e: OSError) -> NoReturn:
-    """Report an unusable log location (unwritable dir, bad name) without a traceback."""
-    target = f": {e.filename}" if e.filename else ""
-    print(
-        f"Error: cannot write log file ({e.strerror or e}){target}. "
-        "Use --log-dir or --log-file to choose a writable location.",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+def _scripts_dir_exists(parser: argparse.ArgumentParser, path: Path, shown: str, kind: str) -> bool:
+    """Whether *path* exists; a path that cannot be examined is a parser error, not 'not found'."""
+    try:
+        return path_exists(path)
+    except OSError as e:
+        parser.error(f"Cannot read {kind} directory: {shown} ({e})")
+        return False
 
 
 def _resolve_scripts_directories(
@@ -602,15 +608,6 @@ def _resolve_scripts_directories(
     additional_scripts_dirs = []
     dir_recursive_map = {}
 
-    # Determine base directory for resolving relative paths.
-    # If a config file was specified, resolve relative to its parent directory;
-    # otherwise fall back to CWD.
-    config_base_dir = Path.cwd()
-    if hasattr(args, "config") and args.config:
-        config_path = Path(args.config)
-        if config_path.exists():
-            config_base_dir = config_path.resolve().parent
-
     if hasattr(args, "scripts_list") and args.scripts_list:
         for scripts_path in args.scripts_list:
             try:
@@ -618,7 +615,8 @@ def _resolve_scripts_directories(
             except ConfigurationError as e:
                 parser.error(str(e))
         scripts_dir = Path(args.scripts_list[0]).resolve()
-        if not scripts_dir.exists() and args.command not in ["baseline"]:
+        found = _scripts_dir_exists(parser, scripts_dir, args.scripts_list[0], "migration scripts")
+        if not found and args.command not in ["baseline"]:
             parser.error(f"Migration scripts directory not found: {args.scripts_list[0]}")
 
         config.migrations.directory = str(scripts_dir)
@@ -633,33 +631,22 @@ def _resolve_scripts_directories(
         if len(args.scripts_list) > 1:
             for scripts_path in args.scripts_list[1:]:
                 add_dir = Path(scripts_path).resolve()
-                if not add_dir.exists():
+                if not _scripts_dir_exists(parser, add_dir, scripts_path, "additional scripts"):
                     parser.error(f"Additional scripts directory not found: {scripts_path}")
                 additional_scripts_dirs.append(add_dir)
 
         recursive = getattr(config.migrations, "recursive", True)
     else:
+        # Relative paths written in a config file were anchored to its folder when the
+        # file was loaded; any other relative path is relative to the working directory.
         dir_configs = config.migrations.get_directory_configs()
-
-        if dir_configs:
-            scripts_dir = Path(dir_configs[0].path)
-            # Resolve relative paths against config file directory
-            if not scripts_dir.is_absolute():
-                scripts_dir = config_base_dir / scripts_dir
-            if len(dir_configs) > 1:
-                for dir_config in dir_configs[1:]:
-                    add_dir = Path(dir_config.path)
-                    if not add_dir.is_absolute():
-                        add_dir = config_base_dir / add_dir
-                    additional_scripts_dirs.append(add_dir)
-                    dir_recursive_map[add_dir] = dir_config.recursive
-
-            dir_recursive_map[scripts_dir] = dir_configs[0].recursive
-
-            recursive = dir_configs[0].recursive
-        else:
-            scripts_dir = config_base_dir / "migrations"
-            recursive = getattr(config.migrations, "recursive", True)
+        scripts_dir = Path(dir_configs[0].path).absolute()
+        for dir_config in dir_configs[1:]:
+            add_dir = Path(dir_config.path).absolute()
+            additional_scripts_dirs.append(add_dir)
+            dir_recursive_map[add_dir] = dir_config.recursive
+        dir_recursive_map[scripts_dir] = dir_configs[0].recursive
+        recursive = dir_configs[0].recursive
 
     # CLI --recursive / --no-recursive wins over config and
     # default. ``recursive_flag`` is ``None`` when neither is passed, so the

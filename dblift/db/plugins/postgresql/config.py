@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from dblift.config.database_config import BaseDatabaseConfig, register_database_type
+from dblift.db.provider_registry import ProviderRegistry
 
 
 # lint: allow-dialect-string: config type registration
@@ -57,8 +58,6 @@ class PostgreSqlConfig(BaseDatabaseConfig):
 
     def build_database_url(self) -> str:
         """Build the PostgreSQL plugin-owned SQLAlchemy URL."""
-        from dblift.db.provider_registry import ProviderRegistry
-
         return ProviderRegistry.build_sqlalchemy_url(self)
 
     def get_connection_props(self) -> Dict[str, str]:

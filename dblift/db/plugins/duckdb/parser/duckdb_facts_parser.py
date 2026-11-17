@@ -4,6 +4,7 @@ import re
 from typing import Optional
 
 from dblift.core.sql_model.base import SqlObjectType
+from dblift.core.sql_parser.dialects.identifier_tokens import strip_identifier_quotes
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement_facts import (
     NamedObject,
@@ -47,10 +48,6 @@ _NULL_TABLE_COMMENT = re.compile(
 _MACRO_OPAQUE = "duckdb macro identity and body are opaque to statement facts"
 
 
-def _unquoted(identifier: str) -> str:
-    return identifier[1:-1].replace('""', '"') if identifier.startswith('"') else identifier
-
-
 def _created_macro(text: str, diagnostic: Optional[str]) -> Optional[NamedObject]:
     """The function a ``CREATE MACRO`` defines, or None when its head cannot be read."""
     head = _CREATE_MACRO_HEAD.match(text)
@@ -58,7 +55,7 @@ def _created_macro(text: str, diagnostic: Optional[str]) -> Optional[NamedObject
         return None
     if diagnostic != _MACRO_OPAQUE and head.group(1).upper() != "MACRO":
         return None
-    parts = [_unquoted(part) for part in _QUALIFIER_PART.findall(head.group(2))]
+    parts = [strip_identifier_quotes(part) for part in _QUALIFIER_PART.findall(head.group(2))]
     schema = parts[-2] if len(parts) > 1 else None
     return NamedObject(
         parts[-1],
@@ -100,8 +97,8 @@ def _null_table_comment(text: str) -> Optional[StatementFacts]:
     if match is None:
         return None
     parts = _QUALIFIER_PART.findall(match.group(1))
-    name = _unquoted(parts[-1])
-    schema = ".".join(_unquoted(part) for part in parts[:-1]) or None
+    name = strip_identifier_quotes(parts[-1])
+    schema = ".".join(strip_identifier_quotes(part) for part in parts[:-1]) or None
     return StatementFacts(
         "COMMENT",
         "DDL",
@@ -113,7 +110,7 @@ def _null_table_comment(text: str) -> Optional[StatementFacts]:
                 schema,
                 name_quoted=parts[-1].startswith('"'),
                 schema_quoted=parts[0].startswith('"') if len(parts) == 2 else None,
-                catalog=_unquoted(parts[0]) if len(parts) == 3 else None,
+                catalog=strip_identifier_quotes(parts[0]) if len(parts) == 3 else None,
             ),
         ),
         target_sql=match.group(1),

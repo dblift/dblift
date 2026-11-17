@@ -49,7 +49,7 @@ def test_cli_extra_carries_presentation_and_analysis():
 def test_analysis_extra_carries_sqlglot_with_its_bounds():
     (requirement,) = [Requirement(spec) for spec in _EXTRAS["analysis"]]
     assert canonicalize_name(requirement.name) == "sqlglot"
-    assert str(requirement.specifier) == "<30.24,>=30.23.0"
+    assert str(requirement.specifier) == "<30.31,>=30.23.0"
     requirements = [
         Requirement(line)
         for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines()

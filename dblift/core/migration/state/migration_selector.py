@@ -15,6 +15,29 @@ def normalize_filter(value: Optional[Sequence[str]]) -> Optional[List[str]]:
     return [str(item).strip() for item in value if str(item).strip()]
 
 
+def _normalize_tags(values: Optional[Sequence[str]]) -> List[str]:
+    return [str(tag).strip().lower() for tag in values or [] if str(tag).strip()]
+
+
+def passes_tag_filters(
+    migration_tags: Optional[Sequence[str]],
+    tags: Optional[Sequence[str]],
+    exclude_tags: Optional[Sequence[str]],
+) -> bool:
+    """Return True iff *migration_tags* satisfy the include/exclude tag filters.
+
+    Matching is case-insensitive and ignores surrounding whitespace.
+    """
+    present = set(_normalize_tags(migration_tags))
+    wanted = _normalize_tags(tags)
+    if tags and (not present or not any(tag in present for tag in wanted)):
+        return False
+    unwanted = _normalize_tags(exclude_tags)
+    if exclude_tags and present and any(tag in present for tag in unwanted):
+        return False
+    return True
+
+
 def passes_filters(
     migration: Migration,
     target_version: Optional[str],
@@ -24,8 +47,7 @@ def passes_filters(
     exclude_versions: Optional[List[str]],
 ) -> bool:
     """Return True iff *migration* passes the version + tag filters."""
-    version = getattr(migration, "version", None)
-    migration_tags = getattr(migration, "tags", []) or []
+    version = migration.version
 
     if target_version and version:
         if compare_versions(str(version), str(target_version)) > 0:
@@ -37,27 +59,8 @@ def passes_filters(
     if exclude_versions and version and str(version) in exclude_versions:
         return False
 
-    if tags:
-        normalized_migration_tags = [
-            str(tag).strip().lower() for tag in migration_tags if str(tag).strip()
-        ]
-        normalized_filter_tags = [str(tag).strip().lower() for tag in tags if str(tag).strip()]
-        if not normalized_migration_tags or not any(
-            tag in normalized_migration_tags for tag in normalized_filter_tags
-        ):
-            return False
-
-    if exclude_tags:
-        normalized_migration_tags = [
-            str(tag).strip().lower() for tag in migration_tags if str(tag).strip()
-        ]
-        normalized_exclude_tags = [
-            str(tag).strip().lower() for tag in exclude_tags if str(tag).strip()
-        ]
-        if normalized_migration_tags and any(
-            tag in normalized_migration_tags for tag in normalized_exclude_tags
-        ):
-            return False
+    if not passes_tag_filters(migration.tags, tags, exclude_tags):
+        return False
 
     return True
 
@@ -102,6 +105,5 @@ def prune_baseline_migrations(migrations: List[Migration]) -> List[Migration]:
     return [
         m
         for m in migrations
-        if getattr(m.type, "name", m.type) not in VERSIONED_SCRIPT_TYPES
-        or compare_versions(m.version, highest) > 0
+        if m.type.name not in VERSIONED_SCRIPT_TYPES or compare_versions(m.version, highest) > 0
     ]

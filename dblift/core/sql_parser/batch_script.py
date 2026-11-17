@@ -92,7 +92,8 @@ class BatchScript:
         count: Optional[int],
         end: int,
     ) -> None:
-        """Append the record of ``source[start:cut]`` when the batch holds code, not just ``;`` and blanks."""
+        """Append the record of ``source[start:cut]`` when the batch holds code, not just ``;`` and
+        blanks."""
         code = has_code(positions, start, cut - 1)
         if self._server_spec is not None and self._comment_nests(start, cut):
             code = self._server_has_code(start, cut)

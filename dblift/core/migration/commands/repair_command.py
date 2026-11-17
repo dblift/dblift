@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 from dblift.core.exceptions import ExecutionError
 from dblift.core.logger.results import RepairResult
 from dblift.core.migration.history.history_transaction import history_transaction
-from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.state.repair_plan import RepairAction, RepairSafetyError
 from dblift.db.error import engine_error_message, redact_driver_error_text
@@ -51,7 +50,8 @@ class RepairCommand(BaseCommand):
 
                 if not plan.actions:
                     self.log.info(
-                        "Repair check completed: no checksum, failed migration, or history issues detected."
+                        "Repair check completed: no checksum, failed migration, or history issues "
+                        "detected."
                     )
                     return
 
@@ -117,7 +117,7 @@ class RepairCommand(BaseCommand):
         )
 
     def _delete_failed_migration_entry(
-        self, repair: Dict[str, Any], result: RepairResult, migration_state: Any = None
+        self, repair: Dict[str, Any], result: RepairResult, migration_state: MigrationState
     ) -> bool:
         """Delete a failed migration row from history so it can be retried.
 
@@ -170,7 +170,7 @@ class RepairCommand(BaseCommand):
         self,
         actions: Sequence[RepairAction],
         result: RepairResult,
-        migration_state: Any = None,
+        migration_state: MigrationState,
     ) -> "tuple[int, bool]":
         """Execute all repair actions in a transaction, rolling back on any failure.
 
@@ -233,27 +233,11 @@ class RepairCommand(BaseCommand):
                             script_name = repair.get("script", "")
                             version = repair.get("version")
                             description = repair.get("description", "")
-                            original_type_obj = repair.get(
-                                "original_type"
-                            )  # Get original type from repair dict
+                            original_type_obj = repair["original_type"]
 
                             try:
                                 # Convert original type to string for storing in description
-                                if original_type_obj:
-                                    if hasattr(original_type_obj, "name"):
-                                        original_type_name = original_type_obj.name
-                                    else:
-                                        original_type_name = str(original_type_obj).upper()
-                                else:
-                                    # Infer from script name
-                                    if script_name.startswith("V"):
-                                        original_type_name = MigrationType.SQL.name
-                                    elif script_name.startswith("R"):
-                                        original_type_name = MigrationType.REPEATABLE.name
-                                    elif script_name.startswith("U"):
-                                        original_type_name = MigrationType.UNDO_SQL.name
-                                    else:
-                                        original_type_name = MigrationType.SQL.name
+                                original_type_name = original_type_obj.name
 
                                 # Create DELETE entry with original type embedded in description
                                 delete_reason = (
@@ -264,7 +248,8 @@ class RepairCommand(BaseCommand):
                                 )
 
                                 self.log.debug(
-                                    f"Creating DELETE entry for missing migration: {script_name} (version: {version})"
+                                    f"Creating DELETE entry for missing migration: {script_name} "
+                                    f"(version: {version})"
                                 )
 
                                 # Record the DELETE entry in the history table
@@ -280,7 +265,8 @@ class RepairCommand(BaseCommand):
                                 )
                             except Exception as delete_err:
                                 self.log.error(
-                                    f"Failed to mark migration as deleted {script_name}: {delete_err}"
+                                    f"Failed to mark migration as deleted {script_name}: "
+                                    f"{delete_err}"
                                 )
                                 raise
 

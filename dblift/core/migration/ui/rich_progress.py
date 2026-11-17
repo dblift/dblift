@@ -3,6 +3,8 @@
 from contextlib import contextmanager
 from typing import Iterator
 
+from dblift.core.logger.console import get_stderr_console, is_progress_disabled
+
 from .progress import ProgressSink
 
 
@@ -17,8 +19,6 @@ def rich_migration_progress(total: int) -> Iterator[ProgressSink]:
         TextColumn,
         TimeElapsedColumn,
     )
-
-    from dblift.core.logger.console import get_stderr_console, is_progress_disabled
 
     with Progress(
         SpinnerColumn(),

@@ -1,6 +1,5 @@
 """Provider registry for auto-discovery and registration of database provider plugins."""
 
-import dataclasses
 import importlib.util
 import logging
 from dataclasses import dataclass
@@ -217,7 +216,7 @@ class ProviderRegistry:
 
     @classmethod
     def _discover_via_filesystem(cls) -> None:
-        """Index bundled descriptors, loading older layouts without one."""
+        """Index bundled descriptors; a plugin directory without one is skipped."""
         plugins_dir = Path(__file__).parent / "plugins"
         if not plugins_dir.exists():
             return
@@ -233,231 +232,6 @@ class ProviderRegistry:
                     key.lower() in cls._plugins or key.lower() in cls._pending for key in keys
                 ):
                     cls._register_descriptor(descriptor)
-                continue
-
-            try:
-                plugin_info = cls._load_plugin(plugin_dir)
-            except Exception as e:
-                _logger.warning(f"Failed to load plugin from {plugin_dir}: {e}")
-                continue
-
-            if plugin_info is None:
-                continue
-
-            already_registered = plugin_info.name.lower() in cls._plugins or any(
-                dialect.lower() in cls._plugins for dialect in plugin_info.dialects
-            )
-            if already_registered:
-                continue
-
-            cls.register_plugin(plugin_info)
-
-    @classmethod
-    def _load_plugin(cls, plugin_dir: Path) -> Optional[PluginInfo]:
-        """Load plugin metadata from a plugin directory.
-
-        Args:
-            plugin_dir: Path to plugin directory
-
-        Returns:
-            PluginInfo if plugin is valid, None otherwise
-        """
-        init_file = plugin_dir / "__init__.py"
-        if not init_file.exists():
-            return None
-
-        plugin_name = plugin_dir.name
-
-        # Use ``importlib.import_module`` rather than
-        # ``importlib.util.spec_from_file_location`` so the plugin
-        # ends up in ``sys.modules`` once. The spec-from-file path
-        # creates an isolated module instance — call sites that
-        # later ``import db.plugins.<X>`` get a *different* class
-        # object with the same name, breaking ``isinstance`` /
-        # ``is`` checks downstream.
-        import importlib
-
-        try:
-            module = importlib.import_module(f"dblift.db.plugins.{plugin_name}")
-        except Exception as exc:  # pragma: no cover - defensive
-            _logger.warning(f"Failed to import dblift.db.plugins.{plugin_name}: {exc}")
-            return None
-
-        # Extract metadata
-        name = getattr(module, "__plugin_name__", plugin_name)
-        version = getattr(module, "__plugin_version__", "1.0.0")
-        description = getattr(module, "__plugin_description__", f"{name} database provider")
-        dialects = getattr(module, "__plugin_dialects__", [name])
-        transport: ProviderTransport = "native"
-
-        # Read the exported ``plugin.py:PLUGIN`` constant
-        # (entry-point-style declaration) up front. Importing plugin.py also
-        # triggers any ``@register_database_type`` decorators on the config
-        # class so the legacy ``BaseDatabaseConfig._registry`` lookup keeps
-        # working. This declaration is also the fallback source for the
-        # provider/quirks classes below, so factory-built engines that ship no
-        # ``provider.py`` / ``quirks.py`` (the PostgreSQL-compatible family) are
-        # discovered identically to how the entry-point path loads them.
-        declared: Optional[PluginInfo] = None
-        plugin_py = plugin_dir / "plugin.py"
-        if plugin_py.exists():
-            try:
-                pm = importlib.import_module(f"dblift.db.plugins.{plugin_name}.plugin")
-                candidate = getattr(pm, "PLUGIN", None)
-                if isinstance(candidate, PluginInfo):
-                    declared = candidate
-            except Exception as exc:
-                # A broken ``plugin.py`` must not silently drop the plugin: for
-                # factory-built engines ``PLUGIN`` is the only source of the
-                # provider/quirks classes, so failing to import it means the
-                # engine disappears from discovery. Log loudly rather than
-                # swallow it.
-                _logger.warning(
-                    f"Failed to load PLUGIN from dblift.db.plugins.{plugin_name}.plugin: {exc}"
-                )
-                declared = None
-
-        # Get provider class: prefer ``__plugin_class__`` / ``__all__`` /
-        # naming convention from the package, then fall back to the class
-        # declared on ``PLUGIN``.
-        provider_class: Optional[Type[BaseProvider]] = None
-        provider_class_name = getattr(module, "__plugin_class__", None)
-        if provider_class_name:
-            provider_class = getattr(module, provider_class_name, None)
-        elif hasattr(module, "__all__") and module.__all__:
-            provider_class = getattr(module, module.__all__[0], None)
-        else:
-            for attr_name in dir(module):
-                if attr_name.endswith("Provider") and not attr_name.startswith("_"):
-                    maybe = getattr(module, attr_name)
-                    if isinstance(maybe, type) and issubclass(maybe, BaseProvider):
-                        provider_class = maybe
-                        break
-
-        if not (isinstance(provider_class, type) and issubclass(provider_class, BaseProvider)):
-            # Package derivation found nothing usable — fall back to the class
-            # declared on PLUGIN, then validate once.
-            provider_class = declared.provider_class if declared else None
-            if not (isinstance(provider_class, type) and issubclass(provider_class, BaseProvider)):
-                return None
-
-        # Optional quirks class. Resolve by importing
-        # ``db/plugins/<X>/quirks.py`` and picking the first class whose name
-        # ends in ``Quirks``; fall back to the quirks class declared on
-        # ``PLUGIN`` (factory-built engines carry it there and ship no
-        # ``quirks.py``). Plugins declaring neither fall back to BaseQuirks.
-        quirks_class = cls._discover_quirks_class(plugin_dir, plugin_name)
-        if quirks_class is None and declared is not None:
-            quirks_class = declared.quirks_class
-
-        return cls._merge_declared_metadata(
-            declared,
-            name=name,
-            version=version,
-            description=description,
-            dialects=dialects,
-            provider_class=provider_class,
-            transport=transport,
-            quirks_class=quirks_class,
-        )
-
-    @staticmethod
-    def _merge_declared_metadata(
-        declared: Optional[PluginInfo],
-        *,
-        name: str,
-        version: str,
-        description: str,
-        dialects: List[str],
-        provider_class: Type[BaseProvider],
-        transport: ProviderTransport,
-        quirks_class: Optional[Type[BaseQuirks]],
-    ) -> PluginInfo:
-        """Build the ``PluginInfo`` the filesystem scan registers.
-
-        ``name``, ``version``, ``description``, ``dialects``,
-        ``provider_class``, ``transport`` and ``quirks_class`` are the fields
-        the filesystem/package scan derives itself (module dunder attrs and
-        class introspection, with ``provider_class``/``quirks_class`` already
-        resolved to fall back to ``declared`` by the caller when the package
-        ships no ``provider.py``/``quirks.py`` of its own) — those always come
-        from the arguments here, never from ``declared``.
-
-        Every other field — ``config_dialect``, ``config_class``,
-        ``sqlalchemy_url_builder``, ``native_driver_module``,
-        ``install_extra``, and anything added to ``PluginInfo`` later — is
-        not something the filesystem can derive, so it must come from the
-        plugin's own declaration. Building the result with
-        ``dataclasses.replace(declared, **overrides)`` instead of naming each
-        field threads those fields through automatically: a field added to
-        ``PluginInfo`` in the future is carried without this function needing
-        an update. The previous version named each field individually, which
-        is exactly how ``install_extra`` was silently dropped here before —
-        the enumeration wasn't updated when the field was added.
-
-        When there is no ``declared`` ``PLUGIN`` at all (the plugin ships no
-        ``plugin.py``), there is nothing to replace onto, so a fresh
-        ``PluginInfo`` is built from just the filesystem-derived fields and
-        every other field keeps its ``PluginInfo`` default.
-        """
-        overrides: Dict[str, Any] = dict(
-            name=name,
-            version=version,
-            description=description,
-            dialects=dialects,
-            provider_class=provider_class,
-            transport=transport,
-            quirks_class=quirks_class,
-        )
-        if declared is None:
-            return PluginInfo(**overrides)
-        return dataclasses.replace(declared, **overrides)
-
-    @classmethod
-    def _discover_quirks_class(
-        cls, plugin_dir: Path, plugin_name: str
-    ) -> Optional[Type[BaseQuirks]]:
-        """Locate the plugin's ``Quirks`` subclass if present.
-
-        Returns ``None`` when the plugin has not yet declared a
-        ``quirks.py``; the registry then serves a vanilla
-        :class:`BaseQuirks` instance to callers.
-        """
-        quirks_file = plugin_dir / "quirks.py"
-        if not quirks_file.exists():
-            return None
-
-        # Same reasoning as ``_load_plugin``: import via the public
-        # module name so there's only one class object in
-        # ``sys.modules``. ``spec_from_file_location`` creates an
-        # isolated module whose classes don't compare ``is``-equal to
-        # the same class imported normally elsewhere.
-        import importlib
-
-        try:
-            module = importlib.import_module(f"dblift.db.plugins.{plugin_name}.quirks")
-        except Exception as exc:
-            _logger.warning(f"Failed to load quirks for plugin {plugin_name}: {exc}")
-            return None
-
-        # Respect an explicit ``__all__`` declaration — including an
-        # explicit empty list, which means "export nothing". The
-        # naive ``getattr(...) or dir(module)`` collapses ``[]`` to
-        # ``dir(module)`` because empty lists are falsy, defeating
-        # an intentional opt-out.
-        declared = getattr(module, "__all__", None)
-        attr_names = declared if declared is not None else dir(module)
-        for attr_name in attr_names:
-            if not attr_name.endswith("Quirks") or attr_name.startswith("_"):
-                continue
-            candidate = getattr(module, attr_name, None)
-            if (
-                isinstance(candidate, type)
-                and issubclass(candidate, BaseQuirks)
-                and candidate is not BaseQuirks
-            ):
-                return candidate
-        return None
 
     @classmethod
     def register_plugin(cls, plugin_info: PluginInfo) -> None:
@@ -732,7 +506,8 @@ class ProviderRegistry:
                 supported_types = []
             raise ValueError(
                 f"Unsupported database type: {db_type}. "
-                f"Supported types: {', '.join(supported_types) if supported_types else 'none available'}"
+                "Supported types: "
+                f"{', '.join(supported_types) if supported_types else 'none available'}"
             )
 
         return provider_class(config, log)

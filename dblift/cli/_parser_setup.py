@@ -145,7 +145,7 @@ def collect_option_strings(parser: argparse.ArgumentParser) -> "set[str]":
 def _add_registry_flags(parser: argparse.ArgumentParser) -> None:
     """Emit a --flag for every registry property that lacks one.
 
-    Skips properties that are cli_only, cli_exempt, nested (database.*), or
+    Skips properties that are cli_exempt, nested (database.*), or
     already covered by a legacy flag recorded in cli_aliases. Ensures any NEW
     persistent property added to the registry automatically gets a CLI flag,
     so the CLI surface can never silently drift from config/env again.
@@ -162,7 +162,7 @@ def _add_registry_flags(parser: argparse.ArgumentParser) -> None:
     # therefore runs AFTER subparsers are registered so the tree walk sees them.
     existing = collect_option_strings(parser)
     for spec in PROPERTY_REGISTRY:
-        if spec.cli_only or spec.cli_exempt or "." in spec.name:
+        if spec.cli_exempt or "." in spec.name:
             continue
         if spec.name in deferred_specs:
             continue
@@ -311,7 +311,10 @@ def _add_diff_and_target_options(
         "--mark-as-executed",
         action="store_true",
         default=None,
-        help="Mark migrations as executed without running them (for migration applied outside dblift)",
+        help=(
+            "Mark migrations as executed without running them "
+            "(for migration applied outside dblift)"
+        ),
     )
     migrate_parser.add_argument(
         "--show-sql",
@@ -354,21 +357,6 @@ def _add_diff_and_target_options(
         default=None,
         help="Disable destructive clean execution (default).",
     )
-
-
-def _register_builtin_command_parsers(
-    parser: argparse.ArgumentParser,
-) -> list[argparse.ArgumentParser]:
-    """Register first-party command parsers that remain in the OSS CLI."""
-    subparser_actions = [
-        action for action in parser._actions if isinstance(action, argparse._SubParsersAction)
-    ]
-    if not subparser_actions:
-        return []
-
-    registered: list[argparse.ArgumentParser] = []
-
-    return registered
 
 
 def _register_premium_stub_parsers(parser: argparse.ArgumentParser) -> None:
@@ -546,8 +534,13 @@ def create_parser(
     )
     # No defaults on --log-dir/--log-format, for the reason given at --log-level
     # below: a non-None default would always beat DBLIFT_LOG_DIR / DBLIFT_LOG_FORMAT
-    # and the config file. _configure_logging() falls back to "logs" and "text".
-    parser.add_argument("--log-dir", default=None, help="Log directory (default: logs)")
+    # and the config file. No log file is written unless a directory or file is
+    # requested; _configure_logging() falls back to "text" for the format.
+    parser.add_argument(
+        "--log-dir",
+        default=None,
+        help="Directory for log files (default: no log file is written)",
+    )
     parser.add_argument(
         "--log-format", default=None, help="Log format (text, json, html; default: text)"
     )
@@ -637,7 +630,6 @@ def create_parser(
         default="flyway_schema_history",
         help="Source Flyway schema history table name (default: flyway_schema_history)",
     )
-    builtin_extension_parsers = _register_builtin_command_parsers(parser)
     # Configure arguments via extracted functions
     _add_baseline_options(baseline_parser)
     _add_diff_and_target_options(
@@ -748,11 +740,7 @@ def create_parser(
             repair_parser,
             import_flyway_parser,
             db_parser,
-            *builtin_extension_parsers,
         ]
-
-        def silent_error(message: str) -> None:
-            pass
 
         for subparser in all_subparsers:
             subparser.error = silent_error  # type: ignore[method-assign,assignment]

@@ -143,3 +143,27 @@ class TestJsonFormatterOutputFilename:
         assert len(filename) <= 255
         assert "app.db" in filename
         assert filename.endswith(".json")
+
+
+class TestJsonFormatterPerformanceSummary:
+    """The migrate JSON report carries the journal's performance data keyed by script name."""
+
+    def test_migrate_output_includes_performance_summary(self):
+        from dblift.core.logger.results import MigrationInfo
+        from dblift.core.migration.journals.migration_journal import MigrationJournal
+
+        journal = MigrationJournal()
+        journal.start_migration("V1__init.sql", details={"version": "1"})
+        journal.record_statement_start("CREATE TABLE t (id INT)", 0)
+        journal.record_statement_complete("CREATE TABLE t (id INT)", 0, 12)
+        journal.end_migration("V1__init.sql", success=True)
+
+        result = MigrateResult()
+        result.journal = journal
+        result.add_migration(MigrationInfo(script="V1__init.sql", version="1", status="SUCCESS"))
+        result.complete()
+
+        data = json.loads(JsonFormatter().format_result(result, "public", "testdb", "MIGRATE"))
+
+        assert data["performance_summary"]["total_statements"] == 1
+        assert data["performance_summary"]["total_execution_time"] == 12

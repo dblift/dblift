@@ -29,6 +29,7 @@ from dblift.core.logger.results import (
     ValidateResult,
 )
 from dblift.core.migration.commands.base_command import PreflightConnectionError
+from tests.unit._client_factory import bare_client
 
 _HISTORY = "Could not create the schema-history table: permission denied"
 _CONNECTION = "Connection failed: refused"
@@ -48,7 +49,7 @@ _IDS = [command[0] for command in _COMMANDS]
 
 
 def _make_client(executor_method, outcome):
-    client = DBLiftClient.__new__(DBLiftClient)
+    client = bare_client()
     client.config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
     client.config.database.schema = "app"
     client.provider = MagicMock()

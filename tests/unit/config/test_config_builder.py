@@ -174,7 +174,7 @@ class TestConfigBuilder:
 
     def test_build_with_file_path_exists(self):
         """Test build with existing file path merges YAML dict before construction."""
-        with patch("dblift.config.config_builder.Path.exists", return_value=True):
+        with patch("dblift.config.config_builder.path_exists", return_value=True):
             with patch.object(
                 DbliftConfig,
                 "load_config_data_from_yaml",
@@ -210,7 +210,7 @@ class TestConfigBuilder:
 
     def test_build_with_file_load_failure(self):
         """Test build when file load fails."""
-        with patch("dblift.config.config_builder.Path.exists", return_value=True):
+        with patch("dblift.config.config_builder.path_exists", return_value=True):
             with patch(
                 "dblift.config.dblift_config.DbliftConfig.load_config_data_from_yaml",
                 side_effect=Exception("Error"),

@@ -20,7 +20,7 @@ Remove credentials from URLs and logs before pasting.
 
 ## Development setup
 
-Python 3.11 or 3.12.
+Python 3.11 to 3.14.
 
 ```bash
 git clone https://github.com/dblift/dblift.git
@@ -51,7 +51,7 @@ Integration tests under `tests/integration/` run against real databases in conta
 ./scripts/check_code_quality.sh
 ```
 
-It runs the same black, isort, flake8 and mypy checks as CI. Line length is 100.
+It runs the same checks as CI. Line length is 100, and flake8 (including line length and import position), the AST lint patterns and the public docstring check run at zero tolerance over all of `dblift/`: there are no caps to stay under, so a new violation fails. Run it from the repository root; a script that cannot find `dblift/` fails rather than passing on an empty scan.
 
 ## Pull requests
 
@@ -89,3 +89,9 @@ SQLite history table, the `info --format json` keys or the exit codes change.
 `scripts/check_debt_ratchet.py` fails when a structural-debt count grows. Fix
 the new occurrence rather than raising the cap; when your change lowers a
 count, lower the cap in `.debt-ratchet.json` in the same pull request.
+
+`scripts/check_complexity_ceiling.py` fails when a function's cyclomatic
+complexity exceeds the ceiling in `.complexity-ceiling.json`. Split the
+function rather than listing it; when you simplify a listed hotspot, lower its
+entry to the new value, or remove it once it is at or under the ceiling. A
+renamed or moved function's entry moves to its new key at the same value.

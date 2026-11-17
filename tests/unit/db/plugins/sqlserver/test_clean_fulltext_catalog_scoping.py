@@ -96,3 +96,34 @@ def test_enumerate_clean_candidates_does_not_enumerate_other_schemas_fulltext_ca
         f"owned by tables in the 'dbo' schema, got {catalog_names!r} — a catalog "
         "belonging only to another schema's tables must not be enumerated at all."
     )
+
+
+@pytest.mark.unit
+def test_enumerate_clean_candidates_skips_catalog_shared_with_another_schema():
+    """A catalog also used by a full-text index in another schema cannot be
+    dropped (``DROP FULLTEXT CATALOG`` fails while any index still uses it),
+    so it must not be selected when cleaning one schema."""
+    query_executor = MagicMock()
+    query_executor.get_schema_qualified_name.side_effect = (
+        lambda schema, name: f"[{schema}].[{name}]"
+    )
+
+    def execute_query(_connection, query, params=None):
+        if "sys.fulltext_catalogs" not in query:
+            return []
+        # "shared_catalog" is used by indexes in both "dbo" and "reporting";
+        # "dbo_catalog" only by "dbo". Only a query that excludes catalogs
+        # with an index on a table in another schema keeps just the latter.
+        excludes_other_schemas = "NOT EXISTS" in query and "schema_id <>" in query
+        rows = [{"catalog_name": "dbo_catalog"}]
+        if not excludes_other_schemas:
+            rows.append({"catalog_name": "shared_catalog"})
+        return rows
+
+    query_executor.execute_query.side_effect = execute_query
+    operations = SqlServerSchemaOperations(query_executor, MagicMock())
+
+    candidates = operations.enumerate_clean_candidates(object(), "dbo")
+
+    catalog_names = {c.name for c in candidates if c.object_type == "fulltext_catalog"}
+    assert catalog_names == {"dbo_catalog"}

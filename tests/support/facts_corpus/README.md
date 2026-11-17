@@ -112,8 +112,8 @@ was harvested from.
 `no-old` and `no-reader` need a reason. Reasons live in `<family>.review.json`, keyed by the statement id
 (`<id>` for both paths, `<id>/hybrid` or `<id>/analyzer` for one) with `path`, `class`, `reason`
 and, for a reader gap, an `issue` (or `rejected_by`, below): the OSS issue number (`#N`) for a gap still to be closed, or `by design: <doc section>` for an outcome the reader's documentation states. `class` is one string, or `{"floor": ..., "newest": ...}` for a
-row whose class depends on the sqlglot release (`same` is allowed there for the arm that agrees,
-never on every arm). An entry whose row is gone, whose class is no longer the row's class on the arm
+row whose class depends on the sqlglot release (`same` or a mechanical class is allowed there for
+the arm that needs no reason, never on every arm). An entry whose row is gone, whose class is no longer the row's class on the arm
 being run (an entry without a key for that arm included), or that explains nothing is stale. A
 stale entry fails `diff` and the test module in every family, gated or not.
 

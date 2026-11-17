@@ -7,6 +7,7 @@ Covers the three stub surfaces:
 """
 
 import argparse
+import importlib
 from argparse import ArgumentParser
 from unittest.mock import Mock
 
@@ -26,6 +27,7 @@ from dblift.cli.premium_manifest import (
     premium_stub_index,
     render_upsell,
 )
+from dblift.core.premium_manifest import ENTERPRISE_DISTRIBUTION, PRO_DISTRIBUTION
 
 
 def test_exit_code_is_distinct_from_failure_and_usage_codes():
@@ -65,7 +67,10 @@ def test_stub_index_empty_when_everything_registered():
     assert premium_stub_index({cmd.name for cmd in PREMIUM_COMMANDS}) == {}
 
 
-def test_render_upsell_names_command_edition_and_url():
+def test_render_upsell_names_command_edition_and_url(monkeypatch):
+    # Hermetic: a dev venv with a partially installed extension gets the
+    # install guidance instead (covered by the tests below).
+    _pretend_installed(monkeypatch, "dblift")
     for cmd in PREMIUM_COMMANDS:
         message = render_upsell(cmd)
         assert f"'{cmd.name}'" in message
@@ -197,3 +202,147 @@ def test_capability_denied_maps_to_license_exit_code():
         assert "license" in logged.lower()
     finally:
         handlers._COMMAND_HANDLERS["migrate"] = original
+
+
+# --- An extension installed without the package that provides the command ---
+#
+# Every command the installed extension does not provide lands on these stubs;
+# the message then names the package to install instead of the default text.
+
+
+def _pretend_installed(monkeypatch, *names):
+    from dblift.core import premium_manifest
+
+    monkeypatch.setattr(premium_manifest, "distribution_installed", lambda name: name in names)
+
+
+@pytest.mark.parametrize("cmd", PREMIUM_COMMANDS, ids=lambda cmd: cmd.name)
+def test_stub_on_a_partial_extension_install_names_the_package_to_install(monkeypatch, cmd):
+    _pretend_installed(monkeypatch, "dblift", PRO_DISTRIBUTION)
+    message = render_upsell(cmd)
+    assert f"'{cmd.name}'" in message
+    assert ENTERPRISE_DISTRIBUTION in message
+    assert "dblift license activate" in message
+    assert UPGRADE_URL not in message
+
+
+@pytest.mark.parametrize("cmd", PREMIUM_COMMANDS, ids=lambda cmd: cmd.name)
+def test_stub_on_a_plain_oss_install_keeps_the_upgrade_message(monkeypatch, cmd):
+    _pretend_installed(monkeypatch, "dblift")
+    message = render_upsell(cmd)
+    assert "not included in the open-source edition" in message
+    assert UPGRADE_URL in message
+    assert ENTERPRISE_DISTRIBUTION not in message
+
+
+def test_distribution_installed_reads_the_real_environment():
+    # Guards the seam the tests above patch: it must see this very package.
+    from dblift.core.premium_manifest import distribution_installed
+
+    assert distribution_installed("dblift")
+    assert not distribution_installed("dblift-no-such-distribution")
+
+
+def test_a_broken_add_on_install_counts_as_absent(monkeypatch, tmp_path):
+    # version(PRO_DISTRIBUTION) resolves this dist-info and cannot decode its
+    # metadata; the stub must still print the open-source message.
+    dist_info = tmp_path / f"{PRO_DISTRIBUTION.replace('-', '_')}-0.0.0.dist-info"
+    dist_info.mkdir()
+    (dist_info / "METADATA").write_bytes(b"Name: \xff\xfe\x80broken\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    importlib.invalidate_caches()
+    for cmd in PREMIUM_COMMANDS[:2]:
+        message = render_upsell(cmd)
+        assert "not included in the open-source edition" in message
+        assert UPGRADE_URL in message
+
+
+def test_api_stub_on_a_partial_extension_install_names_the_package_to_install(monkeypatch):
+    from dblift.api.client import DBLiftClient
+    from dblift.core.seams.capabilities import CapabilityDeniedError
+
+    _pretend_installed(monkeypatch, "dblift", PRO_DISTRIBUTION)
+    with pytest.raises(CapabilityDeniedError) as excinfo:
+        DBLiftClient.diff(Mock())
+    assert ENTERPRISE_DISTRIBUTION in str(excinfo.value)
+    assert UPGRADE_URL not in str(excinfo.value)
+
+
+# --- A root flag that only an extension package registers ---
+#
+# Without the package that registers the flag, argparse would reject it as
+# "unrecognized arguments" (exit 2). It must get the install guidance and
+# EXIT_LICENSE_REQUIRED instead, and must never be accepted silently.
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--license-key", "x", "migrate"],
+        ["--license-key=x", "info"],
+        ["migrate", "--license-key", "x"],
+    ],
+)
+def test_root_flag_on_a_partial_extension_install_names_the_package_to_install(
+    monkeypatch, capsys, argv
+):
+    import dblift.cli.main as cli_main
+
+    _pretend_installed(monkeypatch, "dblift", PRO_DISTRIBUTION)
+    monkeypatch.setattr("sys.argv", ["dblift"] + argv)
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main.main()
+
+    assert excinfo.value.code == EXIT_LICENSE_REQUIRED
+    captured = capsys.readouterr()
+    output = captured.err + captured.out
+    assert "'--license-key'" in output
+    assert ENTERPRISE_DISTRIBUTION in output
+    assert "unrecognized arguments" not in output
+    assert UPGRADE_URL not in output
+
+
+def test_root_flag_on_a_plain_oss_install_gets_the_upgrade_message(monkeypatch, capsys):
+    import dblift.cli.main as cli_main
+
+    _pretend_installed(monkeypatch, "dblift")
+    monkeypatch.setattr("sys.argv", ["dblift", "--license-key", "x", "migrate"])
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main.main()
+
+    assert excinfo.value.code == EXIT_LICENSE_REQUIRED
+    captured = capsys.readouterr()
+    output = captured.err + captured.out
+    assert "'--license-key'" in output
+    assert "not included in the open-source edition" in output
+    assert " option and is not included" in output
+    assert UPGRADE_URL in output
+    assert "unrecognized arguments" not in output
+
+
+def test_root_flag_registered_by_a_parser_is_left_to_argparse():
+    import dblift.cli.main as cli_main
+
+    parser = ArgumentParser()
+    parser.add_argument("--license-key")
+    # Must return normally: the flag has a real owner, so nothing is rejected.
+    cli_main._reject_unregistered_root_flags(["--license-key", "x", "migrate"], parser)
+
+
+def test_root_flag_check_ignores_argv_without_the_flag():
+    import dblift.cli.main as cli_main
+
+    cli_main._reject_unregistered_root_flags(["migrate", "--target-version", "1"], ArgumentParser())
+
+
+def test_data_stub_summary_mirrors_the_command_help():
+    """The summary lists the subcommands that exist (plan, apply, status)."""
+    summary = {cmd.name: cmd.summary for cmd in PREMIUM_COMMANDS}["data"]
+    assert summary == "Manage data corrections (Lane B) - audited DML with plan/apply/status"
+
+
+def test_license_stub_summary_does_not_enumerate_subcommands():
+    """A subcommand list in the summary can drift from the real subcommands."""
+    summary = {cmd.name: cmd.summary for cmd in PREMIUM_COMMANDS}["license"]
+    assert "(" not in summary
+    assert summary == "Manage the dblift license"

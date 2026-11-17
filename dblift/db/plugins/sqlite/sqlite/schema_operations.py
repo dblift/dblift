@@ -125,7 +125,10 @@ class SQLiteSchemaOperations:
     def get_clean_preview(
         self, connection: sqlite3.Connection, schema: str
     ) -> CleanExecutionSummary:
-        """Return a CleanExecutionSummary listing what a clean would drop, without executing anything."""
+        """Return a CleanExecutionSummary listing what a clean would drop.
+
+        Nothing is executed.
+        """
         summary = CleanExecutionSummary()
         for object_type, name, drop_sql in self.enumerate_clean_candidates(connection, schema):
             summary.add_object(object_type=object_type, name=name, schema=None)
@@ -245,60 +248,3 @@ class SQLiteSchemaOperations:
         clean_table = table.replace('"', '""')
         clean_column = column.replace('"', '""')
         return f'ALTER TABLE "{clean_table}" ADD COLUMN "{clean_column}" {type_def}'
-
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Get SQLite-specific parameter placeholders for prepared statements.
-
-        Args:
-            count: Number of parameters
-
-        Returns:
-            str: Parameter placeholders string
-        """
-        # SQLite uses ? for positional parameters
-        return ", ".join(["?"] * count)
-
-    def get_tables(self, connection: sqlite3.Connection, schema: str) -> List[str]:
-        """Get list of table names in the database.
-
-        Args:
-            connection: Active SQLite connection (provided by Provider)
-            schema: Schema name (ignored for SQLite)
-
-        Returns:
-            List of table names
-        """
-        self.log.debug("Getting tables in SQLite database")
-
-        try:
-            query = """
-            SELECT name
-            FROM sqlite_master
-            WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-            ORDER BY name
-            """
-
-            result = self.query_executor.execute_query(connection, query)
-            shadow_names = self._fts5_shadow_table_names(connection)
-            tables = [str(row["name"]) for row in result if row["name"] not in shadow_names]
-
-            self.log.debug(f"Found {len(tables)} tables: {tables}")
-
-            return tables
-        except Exception as e:
-            self.log.error(f"Error getting tables: {str(e)}")
-            return []
-
-    def get_schemas(self, connection: sqlite3.Connection) -> List[str]:
-        """Get list of schema names.
-
-        Note: SQLite doesn't support schemas. Returns ['main'] for compatibility.
-
-        Args:
-            connection: Active SQLite connection (provided by Provider)
-
-        Returns:
-            List containing 'main' (SQLite's default schema name)
-        """
-        # SQLite uses 'main' as the default schema for the primary database
-        return ["main"]

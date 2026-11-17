@@ -16,17 +16,7 @@ import pytest
 
 from dblift.cli._parser_setup import create_parser
 from dblift.config.dblift_config import DbliftConfig
-from dblift.config.property_registry import PROPERTY_REGISTRY, PropertySpec
-
-# Runtime-only meta flags: intentionally NOT persistent properties (absent from
-# PROPERTY_REGISTRY). Declared here so this test can assert they are never read
-# from a DBLIFT_* environment variable — i.e. that they are CLI-only by design.
-CLI_ONLY_FLAGS = [
-    PropertySpec("version", "bool", False, cli_only=True),
-    PropertySpec("quiet", "bool", False, cli_only=True),
-    PropertySpec("no_progress", "bool", False, cli_only=True),
-    PropertySpec("config", "str", None, cli_only=True),
-]
+from dblift.config.property_registry import PROPERTY_REGISTRY
 
 # Populated empirically (see module history). Names are spec.name.
 _PENDING_CLI: set = set()
@@ -90,7 +80,7 @@ _PRO_DEFERRED_CLI = {"max_snapshots", "snapshot_table"}
 
 @pytest.mark.parametrize(
     "spec",
-    [_cli_param(s) for s in PROPERTY_REGISTRY if not s.cli_exempt and not s.cli_only],
+    [_cli_param(s) for s in PROPERTY_REGISTRY if not s.cli_exempt],
 )
 def test_cli_flag_exists(spec):
     flags = _all_option_strings(create_parser(exit_on_error=False))
@@ -107,12 +97,3 @@ def test_env_var_recognised(spec, monkeypatch):
     monkeypatch.setenv(spec.env, _sample_value(spec))
     env_dict = DbliftConfig.from_env_dict()
     assert _present(env_dict, spec.name), f"{spec.name}: {spec.env} not read by from_env_dict"
-
-
-@pytest.mark.parametrize("spec", CLI_ONLY_FLAGS, ids=lambda s: s.name)
-def test_cli_only_flags_have_no_env(spec, monkeypatch):
-    monkeypatch.setenv(spec.env, "x")
-    env_dict = DbliftConfig.from_env_dict()
-    assert not _present(
-        env_dict, spec.name
-    ), f"{spec.name} is cli_only but from_env_dict read {spec.env}"

@@ -81,52 +81,6 @@ class TestJournalEntry:
 
 
 # ---------------------------------------------------------------------------
-# MigrationJournal — disabled journal
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestMigrationJournalDisabled:
-    """When disabled, all record methods are no-ops."""
-
-    def test_init_disabled(self):
-        j = MigrationJournal(enabled=False)
-        assert j.enabled is False
-        assert j.current_migration_id is None
-        assert j.entries == []
-
-    def test_start_migration_noop(self):
-        j = MigrationJournal(enabled=False)
-        j.start_migration("V1__init.sql")
-        assert j.current_migration_id is None
-        assert j.entries == []
-
-    def test_record_statement_start_noop(self):
-        j = MigrationJournal(enabled=False)
-        j.record_statement_start("SELECT 1", 0)
-        assert j.entries == []
-
-    def test_record_statement_complete_noop(self):
-        j = MigrationJournal(enabled=False)
-        j.record_statement_complete("SELECT 1", 0, 10)
-        assert j.entries == []
-
-    def test_record_statement_failed_noop(self):
-        j = MigrationJournal(enabled=False)
-        j.record_statement_failed("SELECT 1", 0, "err")
-        assert j.entries == []
-
-    def test_record_object_changes_noop(self):
-        j = MigrationJournal(enabled=False)
-        j.record_object_changes("CREATE TABLE t (id INT)", 0, [])
-        assert j.entries == []
-
-    def test_get_migration_journal_returns_empty(self):
-        j = MigrationJournal(enabled=False)
-        assert j.get_migration_journal("V1__init.sql") == []
-
-
-# ---------------------------------------------------------------------------
 # MigrationJournal — guards (no current migration)
 # ---------------------------------------------------------------------------
 
@@ -136,7 +90,7 @@ class TestMigrationJournalGuards:
     """record_* methods are no-ops when there is no active migration."""
 
     def _make_journal(self):
-        j = MigrationJournal(enabled=True)
+        j = MigrationJournal()
         # Do NOT call start_migration, so current_migration_id is None
         return j
 
@@ -554,37 +508,6 @@ class TestGetMigrationPerformanceSummary:
         assert op["object_type"] == "TABLE"
         assert op["object_name"] == "users"
         assert op["schema"] == "public"
-
-    def test_summary_with_object_operations_object_form(self):
-        """SqlObject-like instances (non-dict) are handled via getattr."""
-        j = MigrationJournal()
-        mid = "V1__init.sql"
-        j.start_migration(mid)
-
-        sql_obj = MagicMock()
-        sql_obj.name = "orders"
-        sql_obj.schema = "sales"
-        sql_obj.object_type = "TABLE"
-
-        j.record_statement_complete("DROP TABLE sales.orders", 0, 20)
-        # Manually inject an OBJECT_CHANGE with a non-dict object
-        entry = JournalEntry(
-            migration_id=mid,
-            entry_type=EntryType.OBJECT_CHANGE,
-            statement="DROP TABLE sales.orders",
-            statement_index=0,
-            details={"objects_affected": [sql_obj]},
-        )
-        j._write_entry(entry)
-        j.end_migration(mid, success=True)
-
-        summary = j.get_migration_performance_summary(mid)
-        assert len(summary["object_operations"]) == 1
-        op = summary["object_operations"][0]
-        assert op["operation"] == "DROP"
-        assert op["object_type"] == "TABLE"
-        assert op["object_name"] == "orders"
-        assert op["schema"] == "sales"
 
     def test_summary_strips_schema_prefix_from_object_name(self):
         j = MigrationJournal()

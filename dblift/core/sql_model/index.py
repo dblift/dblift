@@ -51,7 +51,8 @@ class Index(SqlObject):
             include_columns: Optional INCLUDE columns (SQL Server)
             sort_directions: Optional sort directions (ASC/DESC) for each column
             dialect: SQL dialect
-            online: Whether index was created with ONLINE (True) or OFFLINE (False) (MySQL grammar-based)
+            online: Whether index was created with ONLINE (True) or OFFLINE (False) (MySQL
+                grammar-based)
             concurrently: Whether index was created CONCURRENTLY (PostgreSQL grammar-based)
             tablespace: Tablespace name for the index (Oracle grammar-based)
             fillfactor: Fillfactor percentage (PostgreSQL, SQL Server) - SQL-generation-only
@@ -135,9 +136,7 @@ class Index(SqlObject):
             comment=data.get("comment"),
             definition=data.get("definition"),
         )
-        for plugin, opts in (data.get("dialect_options") or {}).items():
-            for key, value in opts.items():
-                index.set_dialect_option(plugin, key, value)
+        index._restore_dialect_options(data)
         return index
 
     def to_dict(self) -> Dict[str, Any]:

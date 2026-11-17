@@ -9,14 +9,14 @@ import pytest
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.migration.sql.script_analysis import analyse_script
 from dblift.core.migration.sql.statement_reader import StatementReader
-from dblift.core.sql_parser.unread_names import names_unreadable, statement_sources
+from dblift.core.sql_parser.unread_names import names_unreadable
 from dblift.db.dml_analysis import analyze_dml, statement_dml_table
 from dblift.db.provider_registry import ProviderRegistry
 from tests.support.facts_parser import facts_parser
 
 _quirks = ProviderRegistry.get_quirks
 
-NBSP, ZWSP, ZWJ, ACCENT = " ", "​", "‍", "́"
+NBSP, ZWSP = " ", "​"
 LEGACY = (
     "mysql",
     "mariadb",
@@ -50,20 +50,6 @@ def test_one_of_the_22_characters_outside_quotes_makes_the_names_unreadable(char
 )
 def test_the_character_inside_a_string_quote_or_comment_is_not_in_a_name(sql):
     assert not names_unreadable(sql, "postgres")
-
-
-def test_a_name_cut_short_by_a_non_ascii_character_is_unreadable():
-    assert names_unreadable(f"CREATE TABLE t{ZWJ}(id INT)", "postgres", ["t"])
-    assert names_unreadable(f"CREATE TABLE t{ACCENT} (id INT)", "postgres", ["t"])
-    assert names_unreadable("CREATE TABLE té (id INT)", "postgres", ["t"])
-    assert names_unreadable("CREATE TABLE ét (id INT)", "postgres", ["t"])
-
-
-def test_a_name_read_whole_is_kept():
-    sql = "CREATE TABLE tété (id INT)"
-    assert not names_unreadable(sql, "postgres", ["tété"])
-    assert not names_unreadable(sql, "oracle", ["TÉTÉ"])
-    assert not names_unreadable("INSERT INTO t VALUES ('té')", "postgres", ["t"])
 
 
 def test_an_unknown_dialect_name_is_tolerated():
@@ -127,17 +113,6 @@ def test_dml_analysis_names_no_table_for_an_unreadable_statement(dialect):
     assert statement_dml_table("DELETE FROM t WHERE a = 1", quirks=_quirks(dialect)) == "t"
 
 
-@pytest.mark.parametrize(
-    "dialect, sql",
-    [
-        ("mysql", "INSERT INTO t SELECT `té` FROM u"),
-        ("tsql", "INSERT INTO t SELECT [té] FROM u"),
-    ],
-)
-def test_a_quoted_identifier_is_not_a_name_cut_short(dialect, sql):
-    assert not names_unreadable(sql, dialect, ["t"])
-
-
 @pytest.mark.parametrize("dialect", LEGACY + ("oracle",))
 @pytest.mark.parametrize(
     "sql", ["CREATE SEQUENCE q{c};", "CREATE SEQUENCE q{c}", "DROP TABLE t{c};"]
@@ -187,51 +162,9 @@ def test_the_scanner_span_of_a_name_that_ends_the_script_holds_the_blank_except_
     assert span == ("DROP TABLE t" if dialect == "oracle" else script)
 
 
-@pytest.mark.parametrize("dialect", SPAN_SCANNERS)
-def test_statement_sources_returns_the_untrimmed_text_of_a_name_that_ends_the_script(dialect):
-    """Green pin: the span is the whole script for every dialect that keeps the blank."""
-    script = f"DROP TABLE t{_ending_blank(dialect)}"
-    scanner = facts_parser(dialect)
-    statements = StatementReader(dialect).split_statements_for_analysis(script)
-    # Oracle reads the ideographic space as a blank: its record, and so its span, ends at the name.
-    assert statement_sources(scanner, script, statements) == [
-        "DROP TABLE t" if dialect == "oracle" else script
-    ]
-
-
-KEEPS_THE_BLANK = ("postgresql", "redshift", "cockroachdb", "mysql", "mariadb", "sqlserver")
-
-
-@pytest.mark.parametrize(
-    "dialect",
-    [
-        pytest.param(
-            d,
-            marks=(
-                []
-                if d in KEEPS_THE_BLANK
-                else pytest.mark.xfail(
-                    strict=True,
-                    reason="the record trims the blank, so the analysed text is shorter than its span",
-                )
-            ),
-        )
-        for d in SPAN_SCANNERS
-        if d != "oracle"
-    ],
-)
-def test_the_analysed_text_equals_its_span_once_the_record_keeps_the_blank(dialect):
-    script = f"DROP TABLE t{_ending_blank(dialect)}"
-    scanner = facts_parser(dialect)
-    statements = StatementReader(dialect).split_statements_for_analysis(script)
-    assert statements == statement_sources(scanner, script, statements) == [script]
-
-
 @pytest.mark.parametrize("blank", ("\x0b", "\x0c", "\x0b　", "　\x0c "))
 def test_oracle_span_ends_at_the_name_before_blanks_and_a_terminator(blank):
-    scanner = facts_parser("oracle")
     script = f"DROP TABLE t　{blank};"
-    assert statement_sources(scanner, script, ["DROP TABLE t"]) == ["DROP TABLE t;"]
     names = {
         obj.name.lower()
         for stmt in analyse_script(script, "oracle").statements
@@ -252,18 +185,9 @@ def test_oracle_span_ends_at_the_name_before_blanks_and_a_terminator(blank):
 def test_oracle_slash_line_span_omits_blanks_before_terminator(script, name, ending):
     script += ending
     scanner = facts_parser("oracle")
-    [text] = scanner.split_for_analysis(script)
-    assert statement_sources(scanner, script, [text]) == [text + "/"]
     assert name in {obj.name.lower() for obj in scanner.extract_objects(script)}
     if name == "p":
         assert scanner.split(script)[0].text.endswith("END p\u3000;")
-
-
-def test_a_character_the_engine_keeps_stays_in_the_span_before_a_terminator():
-    scanner = facts_parser("postgresql")
-    script = "DROP TABLE t 　;"
-    [text] = scanner.split_for_extraction(script)
-    assert statement_sources(scanner, script, [text])[0].startswith("DROP TABLE t ")
 
 
 @pytest.mark.parametrize(

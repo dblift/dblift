@@ -1732,7 +1732,7 @@
    "kind": "DDL",
    "operation": "CREATE"
   },
-  "issue": "by design: docs/sql-parsing/sqlserver.md#13-statement-facts",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "analyzer": [
     [
@@ -1742,7 +1742,7 @@
    ]
   },
   "path": "analyzer",
-  "reason": "The index DDL falls back to Command around the tablespace/storage placement clause; the index and ON-table relation are not available as a trusted AST pair. Old analyzer extracted [INDEX/idx_name]; these object assertions are now omitted.",
+  "reason": "T-SQL's CREATE INDEX places an index with ON <filegroup> and has no TABLESPACE clause; the statement is a syntax error (102). The reader reports the CREATE with a diagnostic and names nothing, where the extraction took the index name.",
   "sql": "CREATE INDEX idx_name ON employees(name) TABLESPACE users;"
  },
  "1e50fff5d2623959/hybrid": {
@@ -1752,7 +1752,7 @@
    "kind": "DDL",
    "operation": "CREATE"
   },
-  "issue": "by design: docs/sql-parsing/sqlserver.md#13-statement-facts",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "hybrid": [
     [
@@ -1763,7 +1763,7 @@
    ]
   },
   "path": "hybrid",
-  "reason": "The index DDL falls back to Command around the tablespace/storage placement clause; the index and ON-table relation are not available as a trusted AST pair. Old hybrid extracted [INDEX/idx_name/dbo]; these object assertions are now omitted.",
+  "reason": "T-SQL's CREATE INDEX places an index with ON <filegroup> and has no TABLESPACE clause; the statement is a syntax error (102). The reader reports the CREATE with a diagnostic and names nothing, where the extraction took the index name.",
   "sql": "CREATE INDEX idx_name ON employees(name) TABLESPACE users;"
  },
  "1e8352018bd2242a/analyzer": {
@@ -5457,7 +5457,7 @@
    "kind": "DDL",
    "operation": "DROP"
   },
-  "issue": "by design: docs/sql-parsing/sqlserver.md#13-statement-facts",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "analyzer": [
     [
@@ -5467,7 +5467,7 @@
    ]
   },
   "path": "analyzer",
-  "reason": "SQLGlot's T-SQL parser could not construct a statement AST around the IF EXISTS modifier; the reader reports the grammar gap without reviving text-derived objects. Old analyzer extracted [TRIGGER/default_schema.trg_items_touch]; these object assertions are now omitted.",
+  "reason": "SQL Server's DROP TRIGGER takes [schema.]trigger_name [, …] and scopes a DDL trigger with ON DATABASE or ON ALL SERVER; ON <table> is PostgreSQL's form and a syntax error (102). The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
   "sql": "DROP TRIGGER IF EXISTS trg_items_touch ON public.items;"
  },
  "53e756d1eed4dbe5/hybrid": {
@@ -5477,7 +5477,7 @@
    "kind": "DDL",
    "operation": "DROP"
   },
-  "issue": "by design: docs/sql-parsing/sqlserver.md#13-statement-facts",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "hybrid": [
     [
@@ -5488,7 +5488,7 @@
    ]
   },
   "path": "hybrid",
-  "reason": "SQLGlot's T-SQL parser could not construct a statement AST around the IF EXISTS modifier; the reader reports the grammar gap without reviving text-derived objects. Old hybrid extracted [TRIGGER/trg_items_touch/dbo]; these object assertions are now omitted.",
+  "reason": "SQL Server's DROP TRIGGER takes [schema.]trigger_name [, …] and scopes a DDL trigger with ON DATABASE or ON ALL SERVER; ON <table> is PostgreSQL's form and a syntax error (102). The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
   "sql": "DROP TRIGGER IF EXISTS trg_items_touch ON public.items;"
  },
  "5452e6a8590e822e/analyzer": {
@@ -8241,7 +8241,7 @@
    "kind": "DDL",
    "operation": "CREATE"
   },
-  "issue": "by design: docs/sql-parsing/sqlserver.md#13-statement-facts",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "analyzer": [
     [
@@ -8251,7 +8251,7 @@
    ]
   },
   "path": "analyzer",
-  "reason": "The index DDL falls back to Command around the tablespace/storage placement clause; the index and ON-table relation are not available as a trusted AST pair. Old analyzer extracted [INDEX/Ix]; these object assertions are now omitted.",
+  "reason": "T-SQL's CREATE INDEX places an index with ON <filegroup> and has no TABLESPACE clause; the statement is a syntax error (102). The reader reports the CREATE with a diagnostic and names nothing, where the extraction took the index name.",
   "sql": "CREATE INDEX \"Ix\" ON \"T\" (a) TABLESPACE ts;"
  },
  "791bcc2fb4403b87/hybrid": {
@@ -8261,7 +8261,7 @@
    "kind": "DDL",
    "operation": "CREATE"
   },
-  "issue": "by design: docs/sql-parsing/sqlserver.md#13-statement-facts",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "hybrid": [
     [
@@ -8272,7 +8272,7 @@
    ]
   },
   "path": "hybrid",
-  "reason": "The index DDL falls back to Command around the tablespace/storage placement clause; the index and ON-table relation are not available as a trusted AST pair. Old hybrid extracted [INDEX/Ix/dbo]; these object assertions are now omitted.",
+  "reason": "T-SQL's CREATE INDEX places an index with ON <filegroup> and has no TABLESPACE clause; the statement is a syntax error (102). The reader reports the CREATE with a diagnostic and names nothing, where the extraction took the index name.",
   "sql": "CREATE INDEX \"Ix\" ON \"T\" (a) TABLESPACE ts;"
  },
  "79657b036e0b0868": {
@@ -9954,7 +9954,7 @@
    "kind": "DDL",
    "operation": "DROP"
   },
-  "issue": "by design: docs/sql-parsing/sqlserver.md#13-statement-facts",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "analyzer": [
     [
@@ -9964,7 +9964,7 @@
    ]
   },
   "path": "analyzer",
-  "reason": "SQLGlot's T-SQL parser could not construct a statement AST around the IF EXISTS modifier; the reader reports the grammar gap without reviving text-derived objects. Old analyzer extracted [TRIGGER/default_schema.my_trigger]; these object assertions are now omitted.",
+  "reason": "SQL Server's DROP TRIGGER takes [schema.]trigger_name [, …] and scopes a DDL trigger with ON DATABASE or ON ALL SERVER; ON <table> is PostgreSQL's form and a syntax error (102). The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
   "sql": "DROP TRIGGER IF EXISTS my_trigger ON myschema.my_table;"
  },
  "8ef1574e5465f9e1/hybrid": {
@@ -9974,7 +9974,7 @@
    "kind": "DDL",
    "operation": "DROP"
   },
-  "issue": "by design: docs/sql-parsing/sqlserver.md#13-statement-facts",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
   "old": {
    "hybrid": [
     [
@@ -9985,7 +9985,7 @@
    ]
   },
   "path": "hybrid",
-  "reason": "SQLGlot's T-SQL parser could not construct a statement AST around the IF EXISTS modifier; the reader reports the grammar gap without reviving text-derived objects. Old hybrid extracted [TRIGGER/my_trigger/dbo]; these object assertions are now omitted.",
+  "reason": "SQL Server's DROP TRIGGER takes [schema.]trigger_name [, …] and scopes a DDL trigger with ON DATABASE or ON ALL SERVER; ON <table> is PostgreSQL's form and a syntax error (102). The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
   "sql": "DROP TRIGGER IF EXISTS my_trigger ON myschema.my_table;"
  },
  "9044bd95b55c7381/analyzer": {
@@ -17007,5 +17007,120 @@
   "path": "hybrid",
   "reason": "The procedure contains a SELECT inside the stored body; SQLGlot exposes a program/Block shape without a verified header/body effect boundary. The reader withholds even the header object rather than asserting effects from body text. Old hybrid extracted [PROCEDURE/p/dbo]; these object assertions are now omitted.",
   "sql": "CREATE PROCEDURE p() BEGIN SELECT 1; END;"
+ },
+ "6e46fc27b60686e4": {
+  "sql": "INSERT OVERWRITE INTO target SELECT * FROM source",
+  "path": "both",
+  "class": "no-old",
+  "reason": "Input harvested after this family's extraction was frozen (the Snowflake INSERT OVERWRITE form): no extraction can be recomputed for it, so there is nothing to compare. The reader reads it as INSERT … SELECT: `target` altered, `source` referenced.",
+  "issue": "",
+  "old": {
+   "hybrid": null,
+   "analyzer": null
+  },
+  "facts": {
+   "events": [
+    "INSERT"
+   ],
+   "kind": "DML",
+   "objects": [
+    [
+     "target",
+     "TABLE",
+     "altered",
+     null
+    ],
+    [
+     "source",
+     "TABLE",
+     "referenced",
+     null
+    ]
+   ],
+   "operation": "INSERT",
+   "target": "target",
+   "target_sql": "target"
+  }
+ },
+ "3924c2ff839ce47d": {
+  "sql": "DROP TRIGGER users_bi ON users",
+  "path": "both",
+  "class": "opaque-reader-gap",
+  "reason": "SQL Server's DROP TRIGGER takes [schema.]trigger_name [, …] and scopes a DDL trigger with ON DATABASE or ON ALL SERVER; ON <table> is PostgreSQL's form and a syntax error (102). The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TRIGGER",
+     "users_bi",
+     "dbo"
+    ]
+   ],
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.users_bi"
+    ]
+   ]
+  },
+  "facts": {
+   "diagnostic": "tsql DROP TRIGGER ON clause is not supported",
+   "kind": "DDL",
+   "operation": "DROP"
+  }
+ },
+ "a47b1726c52bfb7e": {
+  "sql": "DROP TRIGGER my_trigger ON my_table;",
+  "path": "both",
+  "class": "opaque-reader-gap",
+  "reason": "SQL Server's DROP TRIGGER takes [schema.]trigger_name [, …] and scopes a DDL trigger with ON DATABASE or ON ALL SERVER; ON <table> is PostgreSQL's form and a syntax error (102). The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TRIGGER",
+     "my_trigger",
+     "dbo"
+    ]
+   ],
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.my_trigger"
+    ]
+   ]
+  },
+  "facts": {
+   "diagnostic": "tsql DROP TRIGGER ON clause is not supported",
+   "kind": "DDL",
+   "operation": "DROP"
+  }
+ },
+ "b2a6903722d2c431": {
+  "sql": "DROP TRIGGER \"my trigger\" ON my_table;",
+  "path": "both",
+  "class": "opaque-reader-gap",
+  "reason": "SQL Server's DROP TRIGGER takes [schema.]trigger_name [, …] and scopes a DDL trigger with ON DATABASE or ON ALL SERVER; ON <table> is PostgreSQL's form and a syntax error (102). The reader reports the DROP with a diagnostic and names nothing, where the extraction took the trigger name.",
+  "issue": "by design: docs/sql-parsing/README.md#statement-facts-identities",
+  "old": {
+   "hybrid": [
+    [
+     "TRIGGER",
+     "my trigger",
+     "dbo"
+    ]
+   ],
+   "analyzer": [
+    [
+     "TRIGGER",
+     "default_schema.my trigger"
+    ]
+   ]
+  },
+  "facts": {
+   "diagnostic": "tsql DROP TRIGGER ON clause is not supported",
+   "kind": "DDL",
+   "operation": "DROP"
+  }
  }
 }

@@ -5,7 +5,7 @@ This module handles MySQL-specific schema operations including database creation
 cleaning, and metadata queries for tables, columns, and other database objects.
 """
 
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -13,7 +13,6 @@ from dblift.core.logger import Log, NullLog
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.error import engine_error_message
 from dblift.db.plugins.base_schema_operations import BaseSchemaOperations
-from dblift.db.plugins.mysql.sql_literals import string_literal
 
 SYSTEM_DATABASES = frozenset({"mysql", "sys", "information_schema", "performance_schema"})
 
@@ -525,120 +524,3 @@ class MySqlSchemaOperations(BaseSchemaOperations):
             )
         except Exception as e:
             self.log.warning(f"Error checking for events: {str(e)}")
-
-    def get_columns_query(self, schema: str, table: str) -> str:
-        """Get a MySQL-specific query to retrieve column information from a table.
-
-        Args:
-            schema: Database name
-            table: Table name
-
-        Returns:
-            str: SQL query to get column information
-        """
-        return f"""
-        SELECT COLUMN_NAME as column_name, DATA_TYPE as data_type,
-               COLUMN_TYPE as column_type
-        FROM information_schema.COLUMNS
-        WHERE TABLE_SCHEMA = {string_literal(schema)} AND TABLE_NAME = {string_literal(table)}
-        ORDER BY ORDINAL_POSITION
-        """
-
-    def get_add_column_sql(self, schema: str, table: str, column: str, type_def: str) -> str:
-        """Generate MySQL-specific SQL to add a column to a table.
-
-        Args:
-            schema: Database name
-            table: Table name
-            column: Column name to add
-            type_def: Column data type definition
-
-        Returns:
-            str: SQL for adding the column
-        """
-        qualified_table = self.query_executor.get_schema_qualified_name(schema, table)
-        return f"ALTER TABLE {qualified_table} ADD COLUMN `{column}` {type_def}"
-
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Get MySQL-specific parameter placeholders for prepared statements.
-
-        Args:
-            count: Number of parameters
-
-        Returns:
-            str: Parameter placeholders string
-        """
-        # MySQL uses ? placeholders
-        return ", ".join(["?" for _ in range(count)])
-
-    def get_tables(self, connection: Any, schema: str) -> List[str]:
-        """Get list of table names in the specified database.
-
-        Args:
-            connection: Active database connection (provided by Provider)
-            schema: Database name
-
-        Returns:
-            List of table names in the database
-        """
-        self.log.debug(f"Getting tables in database: {schema}")
-
-        try:
-            # Use information_schema to get table names
-            query = f"""
-            SELECT TABLE_NAME as table_name
-            FROM information_schema.TABLES
-            WHERE TABLE_SCHEMA = ? AND {_TABLE_TYPES_FILTER}
-            ORDER BY TABLE_NAME
-            """
-
-            result = self.query_executor.execute_query(connection, query, params=[schema])
-            tables = [
-                str(row["table_name"] if "table_name" in row else row["TABLE_NAME"])
-                for row in result
-            ]
-
-            self.log.debug(f"Found {len(tables)} tables in database {schema}: {tables}")
-
-            return tables
-        except Exception as e:
-            error_msg = f"Error getting tables in database {schema}: {str(e)}"
-            self.log.error(error_msg)
-            return []
-
-    def get_schemas(self, connection: Any) -> List[str]:
-        """Get list of database names available in the MySQL server.
-
-        Args:
-            connection: Active database connection (provided by Provider)
-
-        Returns:
-            List of database names that the current user can access
-        """
-        self.log.debug("Getting available databases from MySQL")
-
-        try:
-            # Query to get databases that the current user can access
-            # Exclude system databases
-            query = """
-            SELECT SCHEMA_NAME as schema_name
-            FROM information_schema.SCHEMATA
-            WHERE SCHEMA_NAME NOT IN (
-                'information_schema', 'performance_schema', 'mysql', 'sys'
-            )
-            ORDER BY SCHEMA_NAME
-            """
-
-            result = self.query_executor.execute_query(connection, query)
-            schemas = [
-                str(row["schema_name"] if "schema_name" in row else row["SCHEMA_NAME"])
-                for row in result
-            ]
-
-            self.log.debug(f"Found {len(schemas)} accessible databases")
-
-            return schemas
-        except Exception as e:
-            error_msg = f"Error getting databases: {str(e)}"
-            self.log.error(error_msg)
-            return []

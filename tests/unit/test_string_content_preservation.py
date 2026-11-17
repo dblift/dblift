@@ -2,14 +2,12 @@
 
 This test verifies the fix for the issue where _handle_single_quoted_string
 and _handle_double_quoted_string returned empty text fields, causing string
-literals to be lost when _tokens_to_string reconstructed SQL.
+literals to be lost when SQL statements were rebuilt from their tokens.
 """
 
 import pytest
 
-from dblift.core.sql_parser.lexical_statement_parser import (
-    LexicalStatementParser,
-)
+from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
 from dblift.db.plugins.mysql.parser.mysql_tokenizer import MySQLTokenizer
 from dblift.db.plugins.postgresql.parser.lexical_spec import POSTGRESQL_SPEC
@@ -72,11 +70,7 @@ class TestPostgreSQLStringPreservation:
     def test_single_quoted_string_preserved(self):
         """Test that single-quoted strings are preserved in reconstructed SQL."""
         sql = "SELECT 'hello' FROM users;"
-        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
-        tokens = tokenizer.tokenize()
-
-        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
-        statements = parser.split_statements()
+        statements = LexicalEngine(POSTGRESQL_SPEC).split_statements(sql)
 
         assert len(statements) == 1
         assert "'hello'" in statements[0]
@@ -85,11 +79,7 @@ class TestPostgreSQLStringPreservation:
     def test_dollar_quoted_string_preserved(self):
         """Test that dollar-quoted strings are preserved in reconstructed SQL."""
         sql = "SELECT $$Hello World$$ FROM users;"
-        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
-        tokens = tokenizer.tokenize()
-
-        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
-        statements = parser.split_statements()
+        statements = LexicalEngine(POSTGRESQL_SPEC).split_statements(sql)
 
         assert len(statements) == 1
         assert "$$Hello World$$" in statements[0]
@@ -98,11 +88,7 @@ class TestPostgreSQLStringPreservation:
     def test_tagged_dollar_quote_preserved(self):
         """Test that tagged dollar-quoted strings are preserved."""
         sql = "SELECT $tag$Content with 'quotes'$tag$ FROM users;"
-        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
-        tokens = tokenizer.tokenize()
-
-        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
-        statements = parser.split_statements()
+        statements = LexicalEngine(POSTGRESQL_SPEC).split_statements(sql)
 
         assert len(statements) == 1
         assert "$tag$Content with 'quotes'$tag$" in statements[0]
@@ -111,11 +97,7 @@ class TestPostgreSQLStringPreservation:
     def test_double_quoted_identifier_preserved(self):
         """Test that double-quoted identifiers are preserved."""
         sql = 'SELECT "MyColumn" FROM "MyTable";'
-        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
-        tokens = tokenizer.tokenize()
-
-        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
-        statements = parser.split_statements()
+        statements = LexicalEngine(POSTGRESQL_SPEC).split_statements(sql)
 
         assert len(statements) == 1
         assert '"MyColumn"' in statements[0]
@@ -128,11 +110,7 @@ BEGIN
     RETURN 'Hello World';
 END;
 $$ LANGUAGE plpgsql;"""
-        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
-        tokens = tokenizer.tokenize()
-
-        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
-        statements = parser.split_statements()
+        statements = LexicalEngine(POSTGRESQL_SPEC).split_statements(sql)
 
         assert len(statements) == 1
         # Check that the dollar quotes are preserved
@@ -143,11 +121,7 @@ $$ LANGUAGE plpgsql;"""
     def test_insert_with_string_values_preserved(self):
         """Test that INSERT statements with string values are preserved."""
         sql = "INSERT INTO users (name, email) VALUES ('Jane Doe', 'jane@example.com');"
-        tokenizer = LexicalTokenizer(sql, spec=POSTGRESQL_SPEC)
-        tokens = tokenizer.tokenize()
-
-        parser = LexicalStatementParser(tokens, spec=POSTGRESQL_SPEC)
-        statements = parser.split_statements()
+        statements = LexicalEngine(POSTGRESQL_SPEC).split_statements(sql)
 
         assert len(statements) == 1
         assert "'Jane Doe'" in statements[0]

@@ -4,6 +4,8 @@ import datetime
 import unittest
 from types import SimpleNamespace
 
+from tests.unit._migration_factory import make_migration
+
 
 class TestChecksumChange(unittest.TestCase):
     def test_to_dict(self):
@@ -61,39 +63,25 @@ class TestMigrationEntry(unittest.TestCase):
         self.assertIsInstance(result, str)
 
     def test_from_migration_basic(self):
+        from dblift.core.migration.migration_types import MigrationType
         from dblift.core.migration.state.migration_state import MigrationEntry
+        from tests.unit._migration_factory import make_migration
 
-        m = SimpleNamespace(
+        m = make_migration(
             script_name="V1__test.sql",
+            content="CREATE TABLE t (id INT);",
             version="1",
             description="test",
-            type="SQL",
-            success=True,
-            checksum="abc",
-            installed_on=None,
-            installed_by="user",
-            execution_time=100,
+            type=MigrationType.SQL,
         )
+        m.installed_by = "user"
+        m.execution_time = 100
         entry = MigrationEntry.from_migration(m, "SUCCESS")
         self.assertEqual(entry.script, "V1__test.sql")
         self.assertEqual(entry.status, "SUCCESS")
-
-    def test_from_migration_no_status(self):
-        from dblift.core.migration.state.migration_state import MigrationEntry
-
-        m = SimpleNamespace(
-            script_name="V2.sql",
-            version="2",
-            description=None,
-            type=None,
-            success=False,
-            checksum=None,
-            installed_on=None,
-            installed_by=None,
-            execution_time=0,
-        )
-        entry = MigrationEntry.from_migration(m)
-        self.assertEqual(entry.script, "V2.sql")
+        self.assertEqual(entry.type, "SQL")
+        self.assertEqual(entry.installed_by, "user")
+        self.assertEqual(entry.execution_time_ms, 100)
 
 
 class TestMigrationState(unittest.TestCase):
@@ -132,7 +120,7 @@ class TestMigrationState(unittest.TestCase):
         state = MigrationState(
             catalog=(
                 CatalogMigration(
-                    SimpleNamespace(script_name="V2.sql", version="2"),
+                    make_migration(script_name="V2.sql", content="SELECT 1;", version="2"),
                     MigrationEligibility.PENDING,
                 ),
             )
@@ -197,10 +185,10 @@ class TestMigrationState(unittest.TestCase):
             MigrationState,
         )
 
-        below = SimpleNamespace(script_name="V1__a.sql")
-        pending_obj = SimpleNamespace(script_name="V3__b.sql")
-        above = SimpleNamespace(script_name="V5__c.sql")
-        available = SimpleNamespace(script_name="U3__b.sql")
+        below = make_migration(script_name="V1__a.sql", content="SELECT 1;")
+        pending_obj = make_migration(script_name="V3__b.sql", content="SELECT 1;")
+        above = make_migration(script_name="V5__c.sql", content="SELECT 1;")
+        available = make_migration(script_name="U3__b.sql", content="SELECT 1;")
         state = MigrationState(
             catalog=(
                 CatalogMigration(below, MigrationEligibility.BELOW_BASELINE),
@@ -223,13 +211,16 @@ class TestMigrationState(unittest.TestCase):
         state = MigrationState(
             catalog=(
                 CatalogMigration(
-                    SimpleNamespace(script_name="V1__a.sql"), MigrationEligibility.BELOW_BASELINE
+                    make_migration(script_name="V1__a.sql", content="SELECT 1;"),
+                    MigrationEligibility.BELOW_BASELINE,
                 ),
                 CatalogMigration(
-                    SimpleNamespace(script_name="V5__c.sql"), MigrationEligibility.ABOVE_TARGET
+                    make_migration(script_name="V5__c.sql", content="SELECT 1;"),
+                    MigrationEligibility.ABOVE_TARGET,
                 ),
                 CatalogMigration(
-                    SimpleNamespace(script_name="U3__b.sql"), MigrationEligibility.UNDO_AVAILABLE
+                    make_migration(script_name="U3__b.sql", content="SELECT 1;"),
+                    MigrationEligibility.UNDO_AVAILABLE,
                 ),
             )
         )

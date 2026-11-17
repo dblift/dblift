@@ -11,18 +11,20 @@ from dblift.core.migration.rules.migration_rules import MigrationRules
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.state.migration_data_service import MigrationDataService
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
+from tests.unit._migration_factory import make_migration
 
 pytestmark = pytest.mark.unit
 
 
-def row(version, mtype="SQL", rank=1, success=True):
-    return SimpleNamespace(
-        version=version,
-        type=mtype,
-        installed_rank=rank,
-        success=success,
-        script_name=f"{mtype}{version}__test.sql",
-    )
+def row(version, mtype=MigrationType.SQL, rank=1, success=True):
+    """A history row; ``version`` and ``mtype`` are set as given, odd shapes included."""
+    label = mtype.name if isinstance(mtype, MigrationType) else mtype
+    record = make_migration(script_name=f"{label}{version}__test.sql")
+    record.version = version
+    record.type = mtype
+    record.installed_rank = rank
+    record.success = success
+    return record
 
 
 @pytest.fixture
@@ -97,19 +99,11 @@ def test_success_normalization_for_undo_and_reapply(manager, success):
         assert manager.resolve_current_schema_version() == expected
 
 
-def test_missing_rank_undo_still_excludes_version(manager):
-    rows = [row("2", rank=3), row("2", "UNDO_SQL")]
-    del rows[1].installed_rank
-    assert legacy_version(manager, rows) is None
-    manager.history_manager.get_applied_migrations.return_value = rows
-    assert manager.resolve_current_schema_version() is None
-
-
 @pytest.mark.parametrize(
     "rows,expected",
     [
-        ([row("3", "BASELINE")], "3"),
-        ([row("1"), row("2", rank=2), row("2", "UNDO_SQL", 3)], "1"),
+        ([row("3", MigrationType.BASELINE)], "3"),
+        ([row("1"), row("2", rank=2), row("2", MigrationType.UNDO_SQL, 3)], "1"),
     ],
 )
 def test_public_state_version_and_header_agree(manager, rows, expected):

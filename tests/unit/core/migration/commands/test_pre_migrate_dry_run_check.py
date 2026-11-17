@@ -20,6 +20,7 @@ from dblift.core.migration.commands.base_command import BaseCommandContext
 from dblift.core.migration.commands.migrate_command import MigrateCommand
 from dblift.core.migration.executor.migration_executor import MigrationExecutor
 from dblift.core.seams import runtime_checks
+from tests.unit._client_factory import bare_client
 
 
 class _CheckFired(Exception):
@@ -60,7 +61,7 @@ def _executor() -> MigrationExecutor:
 
 
 def _client(executor: MigrationExecutor, scripts_dir: Path) -> DBLiftClient:
-    client = DBLiftClient.__new__(DBLiftClient)
+    client = bare_client()
     client.executor = executor
     client.events = MagicMock()
     client.dialect = "sqlite"

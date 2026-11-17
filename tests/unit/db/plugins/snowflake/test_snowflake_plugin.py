@@ -240,7 +240,7 @@ def test_snowflake_config_requires_account_or_url(_reset_registry) -> None:
 def test_snowflake_builds_url_from_account_fields(_reset_registry) -> None:
     ProviderRegistry._plugins["snowflake"] = SNOWFLAKE_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = SnowflakeConfig(
         type="snowflake",
         account="xy12345.us-east-1",
         username="tempuser",
@@ -272,7 +272,7 @@ def test_snowflake_builds_url_from_host_and_query_options(
 ) -> None:
     ProviderRegistry._plugins["snowflake"] = SNOWFLAKE_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = SnowflakeConfig(
         type="snowflake",
         account=None,
         host="xy12345.us-east-1",
@@ -301,7 +301,7 @@ def test_snowflake_url_overrides_credentials(_reset_registry) -> None:
     ProviderRegistry._plugins["snowflake"] = SNOWFLAKE_PLUGIN
     ProviderRegistry._discovered = True
     raw_url = "snowflake://stale:old@xy12345.us-east-1/ANALYTICS/PUBLIC"
-    database_config = SimpleNamespace(
+    database_config = SnowflakeConfig(
         type="snowflake",
         url=raw_url,
         username="tempuser",
@@ -329,7 +329,7 @@ def test_snowflake_url_overrides_credentials(_reset_registry) -> None:
 def test_snowflake_rejects_non_snowflake_raw_url(_reset_registry) -> None:
     ProviderRegistry._plugins["snowflake"] = SNOWFLAKE_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = SnowflakeConfig(
         type="snowflake",
         url="postgresql://user:password@localhost/app",
         username="tempuser",

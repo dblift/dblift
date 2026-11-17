@@ -31,7 +31,8 @@ class MultiLog(Log):
             log.debug(message)
 
     def info(self, message: str, console_only: bool = False, *, dedupe: bool = True) -> None:
-        """Forward an info message, passing through ``console_only`` / ``dedupe`` where supported."""
+        """Forward an info message, passing through ``console_only`` / ``dedupe``
+        where supported."""
         for log in self.logs:
             if not hasattr(log, "info"):
                 continue

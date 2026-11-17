@@ -24,6 +24,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from tests.unit._client_factory import bare_client
+
 ADDITIONAL_SQL_MODEL_EXPORT_SOURCES = {
     "ConstraintType": "dblift.core.sql_model.base",
     "ServerInfo": "dblift.core.sql_model.server_info",
@@ -751,7 +753,7 @@ class TestDBLiftClientPublicMethods:
                 return nullcontext()
 
             sentinel = object()
-            stub = DBLiftClient.__new__(DBLiftClient)
+            stub = bare_client()
             stub.events = sentinel  # type: ignore[attr-defined]
 
             with patch.object(client_module, "use_client_emitter", side_effect=_spy):
@@ -791,9 +793,8 @@ class TestDBLiftClientPremiumStubs:
     STUB_METHOD_NAMES = frozenset({"diff", "export_schema", "snapshot", "plan", "preflight"})
 
     def _stub_client(self):
-        from dblift.api.client import DBLiftClient
 
-        return DBLiftClient.__new__(DBLiftClient)
+        return bare_client()
 
     def test_every_stub_method_exists(self):
         from dblift.api import DBLiftClient
@@ -813,8 +814,13 @@ class TestDBLiftClientPremiumStubs:
             with pytest.raises(CapabilityDeniedError):
                 method()
 
-    def test_stub_error_message_names_command_edition_and_upgrade_url(self):
+    def test_stub_error_message_names_command_edition_and_upgrade_url(self, monkeypatch):
+        from dblift.core import premium_manifest
         from dblift.core.premium_manifest import PREMIUM_COMMANDS, UPGRADE_URL
+
+        # Hermetic: a dev venv with a partially installed extension gets the
+        # install guidance instead (tests/unit/cli/test_premium_stubs.py covers it).
+        monkeypatch.setattr(premium_manifest, "distribution_installed", lambda name: False)
 
         by_api_method = {cmd.api_method: cmd for cmd in PREMIUM_COMMANDS if cmd.api_method}
         assert set(by_api_method) == self.STUB_METHOD_NAMES, (
@@ -860,10 +866,9 @@ class TestClientInfoDisplayHuman:
     def _stub_client(self, mock_executor):
         from unittest.mock import MagicMock
 
-        from dblift.api.client import DBLiftClient
         from dblift.config import DbliftConfig
 
-        client = DBLiftClient.__new__(DBLiftClient)
+        client = bare_client()
         client.config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
         client.events = MagicMock()
         client.events.emit = MagicMock()

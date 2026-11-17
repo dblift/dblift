@@ -121,3 +121,13 @@ class TestScriptManagerChecksumMatchesMigration:
         for content in ("", "SELECT 1;", "a\nb\n", "café"):
             assert sm.calculate_checksum(content) == calculate_migration_script_checksum(content)
             assert isinstance(sm.calculate_checksum(content), int)
+
+
+def test_repr_names_script_type_and_version() -> None:
+    from dblift.core.migration.migration import Migration
+
+    migration = Migration(script_name="V1_2__add_users.sql", content="SELECT 1;", checksum=0)
+
+    assert repr(migration) == (
+        "<Migration script_name='V1_2__add_users.sql' type='SQL' version='1.2'>"
+    )

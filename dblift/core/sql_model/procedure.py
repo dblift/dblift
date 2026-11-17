@@ -138,7 +138,8 @@ class Procedure(SqlObject):
             volatility: Volatility classification (IMMUTABLE, STABLE, VOLATILE)
             security_definer: Whether the procedure/function runs as SECURITY DEFINER
             definer: User who defined the routine (MySQL: user@host)
-            data_access: Data access classification (MySQL: NO SQL, CONTAINS SQL, READS SQL DATA, MODIFIES SQL DATA)
+            data_access: Data access classification (MySQL: NO SQL, CONTAINS SQL, READS SQL DATA,
+                MODIFIES SQL DATA)
         """
         object_type = SqlObjectType.FUNCTION if is_function else SqlObjectType.PROCEDURE
         super().__init__(name, object_type, schema, dialect)

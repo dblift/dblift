@@ -17,9 +17,7 @@ type-inference fallback to ``"UNDO"`` passes the pre-existing suite entirely.
 
 This module drives the real write path (``RepairCommand._execute_repair_loop``)
 and the real read path (``MigrationDataCollector._get_category_from_type``)
-together, and separately pins the fallback type inference (used when no
-``original_type`` object is available) against the ``MigrationType`` enum
-rather than the hardcoded literal strings it previously duplicated.
+together.
 """
 
 import unittest
@@ -29,6 +27,7 @@ from dblift.core.logger.results import RepairResult
 from dblift.core.migration.commands.repair_command import RepairCommand
 from dblift.core.migration.migration import MigrationType
 from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
+from dblift.core.migration.state.migration_state import MigrationState
 from dblift.core.migration.ui.data_collector import MigrationDataCollector
 from tests.unit.core.migration.commands._plan_repairs_wiring import as_actions
 
@@ -84,7 +83,9 @@ def _run_missing_script_repair(script_name: str, original_type):
     result = RepairResult()
 
     with patch("dblift.core.migration.commands.repair_command.ensure_provider_connection"):
-        executed, had_error = cmd._execute_repair_loop(as_actions(repairs), result)
+        executed, had_error = cmd._execute_repair_loop(
+            as_actions(repairs), result, MigrationState()
+        )
 
     assert not had_error, "repair loop reported an error"
     assert executed == 1
@@ -118,65 +119,12 @@ class TestDeleteMarkerRoundTrip(unittest.TestCase):
                 self.assertIn(f"[DELETE:{member.name}]", written.description)
 
     def test_written_marker_round_trips_through_data_collector(self) -> None:
-        collector = MigrationDataCollector(log=MagicMock())
+        collector = MigrationDataCollector(
+            log=MagicMock(), script_manager=MigrationScriptManager(MagicMock())
+        )
 
         for member, expected_category in EXPECTED_CATEGORY_BY_MEMBER.items():
             with self.subTest(member=member.name):
                 written = _run_missing_script_repair("V1__a.sql", member)
                 category = collector._get_category_from_type("DELETE", migration=written)
                 self.assertEqual(category, expected_category)
-
-
-class TestMissingScriptFallbackTypeInference(unittest.TestCase):
-    """When no ``original_type`` is available, repair_command infers the type
-    from the script name's Flyway-style prefix (V/R/U).
-
-    Pins the inferred marker strings against ``MigrationType`` member names
-    rather than the literal strings the production code previously
-    hardcoded in this branch, so a rename of e.g. ``MigrationType.UNDO_SQL``
-    changes this test's expectation instead of leaving a now-wrong literal
-    behind silently.
-    """
-
-    def test_v_prefix_infers_sql(self) -> None:
-        written = _run_missing_script_repair("V1__a.sql", None)
-        self.assertIn(f"[DELETE:{MigrationType.SQL.name}]", written.description)
-
-    def test_r_prefix_infers_repeatable(self) -> None:
-        written = _run_missing_script_repair("R__a.sql", None)
-        self.assertIn(f"[DELETE:{MigrationType.REPEATABLE.name}]", written.description)
-
-    def test_u_prefix_infers_undo_sql(self) -> None:
-        written = _run_missing_script_repair("U1__a.sql", None)
-        self.assertIn(f"[DELETE:{MigrationType.UNDO_SQL.name}]", written.description)
-
-    def test_unrecognised_prefix_falls_back_to_sql(self) -> None:
-        written = _run_missing_script_repair("X__a.sql", None)
-        self.assertIn(f"[DELETE:{MigrationType.SQL.name}]", written.description)
-
-
-class TestWriteBranchDisagreement(unittest.TestCase):
-    """Documents a real disagreement between the two write branches for a
-    versioned Python script, rather than papering over it.
-
-    When ``original_type`` is available, a versioned ``.py`` script is typed
-    ``PYTHON`` (``Migration.type`` rewrites ``SQL`` to ``PYTHON`` for
-    non-SQL scripted formats — see ``test_path_constructed_migration_type``
-    in ``test_persisted_type_vocabulary.py``). But the *fallback* branch,
-    used when ``original_type`` is unavailable, infers purely from the
-    ``V``/``R``/``U`` filename prefix and cannot distinguish ``.py`` from
-    ``.sql`` — a ``V1__x.py`` falling into the fallback is marked ``SQL``,
-    not ``PYTHON``. Same logical migration, two different markers depending
-    on whether the history row still carried a ``type``. This is a narrow,
-    pre-existing gap (the fallback only fires when the applied migration
-    object itself doesn't have the type attribute) and is left as-is per the
-    scope of this change; documented here so it isn't silently masked.
-    """
-
-    def test_python_original_type_and_py_fallback_disagree(self) -> None:
-        with_type = _run_missing_script_repair("V1__x.py", MigrationType.PYTHON)
-        without_type = _run_missing_script_repair("V1__x.py", None)
-
-        self.assertIn("[DELETE:PYTHON]", with_type.description)
-        self.assertIn("[DELETE:SQL]", without_type.description)
-        self.assertNotEqual(with_type.description, without_type.description)

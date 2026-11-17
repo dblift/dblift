@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import json
 from enum import Enum
-from types import SimpleNamespace
 
 import pytest
 
-from dblift.cli._command_handlers import _info_result_to_dict
+from dblift.cli.handlers.info import _info_result_to_dict
+from dblift.core.logger.results import InfoResult, MigrationInfo
 
 
 class _FakeMigrationType(Enum):
@@ -32,7 +32,7 @@ class _FakeStatus(Enum):
 
 
 def _make_migration(mtype, mstatus, version="1"):
-    return SimpleNamespace(
+    return MigrationInfo(
         script="V1__init.sql",
         version=version,
         description="init",
@@ -45,17 +45,21 @@ def _make_migration(mtype, mstatus, version="1"):
     )
 
 
+def _make_result(migrations, current_schema_version=None, target_schema="", success=True):
+    result = InfoResult()
+    result.migrations = migrations
+    result.current_schema_version = current_schema_version
+    result.target_schema = target_schema
+    result.success = success
+    return result
+
+
 @pytest.mark.unit
 class TestInfoResultJsonSerialization:
     def test_enum_type_and_status_are_serializable(self):
         """Enum members are converted to plain strings so json.dumps succeeds."""
-        result = SimpleNamespace(
-            migrations=[_make_migration(_FakeMigrationType.SQL, _FakeStatus.APPLIED)],
-            current_schema_version="1",
-            target_schema="public",
-            db_version=None,
-            database_url_masked=None,
-            native_driver=None,
+        result = _make_result(
+            [_make_migration(_FakeMigrationType.SQL, _FakeStatus.APPLIED)], "1", "public"
         )
 
         payload = _info_result_to_dict(result)
@@ -69,14 +73,7 @@ class TestInfoResultJsonSerialization:
 
     def test_string_type_and_status_pass_through_unchanged(self):
         """Already-string fields are emitted verbatim — no double wrapping."""
-        result = SimpleNamespace(
-            migrations=[_make_migration("SQL", "APPLIED")],
-            current_schema_version=None,
-            target_schema="",
-            db_version=None,
-            database_url_masked=None,
-            native_driver=None,
-        )
+        result = _make_result([_make_migration("SQL", "APPLIED")], None, "")
 
         payload = _info_result_to_dict(result)
         json.dumps(payload)
@@ -86,14 +83,7 @@ class TestInfoResultJsonSerialization:
 
     def test_none_type_and_status_survive_serialization(self):
         """None passes through — json.dumps handles None natively."""
-        result = SimpleNamespace(
-            migrations=[_make_migration(None, None)],
-            current_schema_version=None,
-            target_schema="",
-            db_version=None,
-            database_url_masked=None,
-            native_driver=None,
-        )
+        result = _make_result([_make_migration(None, None)], None, "")
 
         payload = _info_result_to_dict(result)
         json.dumps(payload)
@@ -107,14 +97,7 @@ class TestInfoResultJsonSerialization:
         repeatable.script = "R__refresh.sql"
         repeatable.description = "refresh"
         versioned = _make_migration("SQL", "PENDING", version="1")
-        result = SimpleNamespace(
-            migrations=[repeatable, versioned],
-            current_schema_version=None,
-            target_schema="",
-            db_version=None,
-            database_url_masked=None,
-            native_driver=None,
-        )
+        result = _make_result([repeatable, versioned], None, "")
 
         payload = _info_result_to_dict(result)
         json.dumps(payload)
@@ -127,45 +110,14 @@ class TestInfoResultJsonSerialization:
         consumers can do ``result["success"]`` without a KeyError. The error
         path already emits ``{"success": False, ...}`` — this test pins the
         symmetry."""
-        result = SimpleNamespace(
-            migrations=[_make_migration("SQL", "APPLIED")],
-            current_schema_version="1",
-            target_schema="public",
-            db_version=None,
-            database_url_masked=None,
-            native_driver=None,
-            success=True,
-        )
+        result = _make_result([_make_migration("SQL", "APPLIED")], "1", "public", success=True)
 
         payload = _info_result_to_dict(result)
         assert payload["success"] is True
 
     def test_success_key_reflects_result_success_attribute(self):
         """If ``result.success`` is False, the payload must report it as False."""
-        result = SimpleNamespace(
-            migrations=[],
-            current_schema_version=None,
-            target_schema="",
-            db_version=None,
-            database_url_masked=None,
-            native_driver=None,
-            success=False,
-        )
+        result = _make_result([], None, "", success=False)
 
         payload = _info_result_to_dict(result)
         assert payload["success"] is False
-
-    def test_success_key_defaults_to_true_when_attribute_missing(self):
-        """Legacy result objects without a ``success`` attribute default to True —
-        preserves the existing happy-path semantics."""
-        result = SimpleNamespace(
-            migrations=[],
-            current_schema_version=None,
-            target_schema="",
-            db_version=None,
-            database_url_masked=None,
-            native_driver=None,
-        )
-
-        payload = _info_result_to_dict(result)
-        assert payload["success"] is True

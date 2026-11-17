@@ -38,7 +38,7 @@ class TestTokenizerNoSilentDrop(unittest.TestCase):
 
     A silent drop would historically be a no-op: the bad character was
     consumed and ``None`` returned. Now it raises ``TokenizerWarning``,
-    which we turn into ``TokenizerError`` (an exception) for the test.
+    which the test turns into an exception.
     """
 
     def _assert_no_drops(self, tokenizer_cls, corpus: list[str], **kwargs) -> None:

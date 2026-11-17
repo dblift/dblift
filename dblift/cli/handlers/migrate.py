@@ -18,15 +18,15 @@ from dblift.core.logger.formatters.jsonformatter import JsonFormatter
 def _migrate_result_to_dict(result: Any, dry_run: bool) -> Dict[str, Any]:
     """Serialize a MigrateResult to a JSON-compatible dict."""
     data = {
-        "success": bool(getattr(result, "success", True)),
-        "error": getattr(result, "error_message", None),
+        "success": bool(result.success),
+        "error": result.error_message,
         "dry_run": bool(dry_run),
-        "target_schema": getattr(result, "target_schema", ""),
-        "current_schema_version": getattr(result, "current_schema_version", None),
-        "history_table_exists": getattr(result, "history_table_exists", True),
-        "dry_run_count": getattr(result, "dry_run_count", 0),
-        "migrations": [_migration_info_to_dict(m) for m in getattr(result, "migrations", [])],
-        "migrations_applied": list(getattr(result, "migrations_applied", [])),
+        "target_schema": result.target_schema,
+        "current_schema_version": result.current_schema_version,
+        "history_table_exists": result.history_table_exists,
+        "dry_run_count": result.dry_run_count,
+        "migrations": [_migration_info_to_dict(m) for m in result.migrations],
+        "migrations_applied": list(result.migrations_applied),
     }
     # Reuse the same show-sql shape/sanitization JsonFormatter uses for the
     # text/HTML log formats, instead of duplicating its getattr/sanitize pair
@@ -44,7 +44,7 @@ def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
     additional_dirs = ctx.additional_scripts_dirs if ctx.additional_scripts_dirs else None
 
     # Handle --validate-only by calling validate instead of migrate
-    if getattr(ctx.args, "validate_only", False):
+    if ctx.args.validate_only:
 
         def _validate_call() -> Any:
             return _reraise_preflight_failure(
@@ -62,7 +62,7 @@ def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
 
         return run_json_guarded(ctx, "VALIDATE", _validate_call, _validate_result_to_dict)
 
-    dry_run = bool(getattr(ctx.args, "dry_run", False))
+    dry_run = bool(ctx.args.dry_run)
 
     def migrate_call() -> Any:
         return _reraise_preflight_failure(
@@ -73,9 +73,9 @@ def _handle_migrate(ctx: CliCommandContext) -> Tuple[bool, Any]:
                 exclude_tags=exclude_tags,
                 versions=versions,
                 exclude_versions=exclude_versions,
-                mark_as_executed=bool(getattr(ctx.args, "mark_as_executed", False)),
-                show_sql=getattr(ctx.args, "show_sql", False),
-                show_query_results=getattr(ctx.args, "show_query_results", False),
+                mark_as_executed=bool(ctx.args.mark_as_executed),
+                show_sql=ctx.args.show_sql,
+                show_query_results=ctx.args.show_query_results,
                 placeholders=ctx.placeholders,
                 recursive=ctx.recursive,
                 dir_recursive_map=ctx.dir_recursive_map or None,

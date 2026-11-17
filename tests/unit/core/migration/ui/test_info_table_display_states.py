@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from dblift.core.logger import NullLog
+from dblift.core.migration.scripting.migration_script_manager import MigrationScriptManager
 from dblift.core.migration.ui.data_collector import MigrationDataCollector
 from dblift.core.migration.ui.table_renderer import TableRenderer
 from tests.unit.core.migration.test_migration_state_manager_extended import (
@@ -30,10 +31,8 @@ pytestmark = pytest.mark.unit
 def _pipeline(mgr, scripts_dir, **build_kwargs):
     """build_state → collector rows → table text. No hand-set statuses."""
     state = mgr.build_state(scripts_dir, **build_kwargs)
-    rows = MigrationDataCollector(NullLog())._get_migration_data_from_state(
+    rows = MigrationDataCollector(NullLog(), MigrationScriptManager(NullLog())).get_migration_data(
         migration_state=state,
-        all_applied_migrations=list(state.all_applied_objects),
-        scripts_dir=scripts_dir,
     )
     table = TableRenderer(NullLog()).format_migration_table(rows)
     return state, rows, table
@@ -285,11 +284,10 @@ def test_info_summary_counts_failed_when_pending_is_zero():
         (scripts_dir / on_disk.script_name).write_text(on_disk.content)
         state = mgr.build_state(scripts_dir)
         log = _CaptureLog()
-        MigrationUI(log).display_migration_info(  # type: ignore[arg-type]
-            migration_state=state,
-            all_applied_migrations=list(state.all_applied_objects),
-            scripts_dir=scripts_dir,
-        )
+        rows = MigrationDataCollector(
+            NullLog(), MigrationScriptManager(NullLog())
+        ).get_migration_data(migration_state=state)
+        MigrationUI(log).display_migration_info(rows)  # type: ignore[arg-type]
 
     summary = "\n".join(log.infos)
     assert "Pending Migrations: 0" in summary

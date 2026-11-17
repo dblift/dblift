@@ -450,17 +450,6 @@ class SQLiteProvider(NativeProvider, TransactionalProvider):
         """
         return self.query_executor.get_schema_qualified_name(schema, object_name)
 
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Get SQLite-specific parameter placeholders.
-
-        Args:
-            count: Number of placeholders
-
-        Returns:
-            str: Comma-separated placeholders
-        """
-        return self.schema_operations.get_parameter_placeholders(count)
-
     def record_migration(
         self,
         schema: str,

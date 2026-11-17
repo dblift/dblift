@@ -207,7 +207,8 @@ class StatementReader:
         return "UNKNOWN"
 
     def _reads_objects(self, quirks: Any) -> bool:
-        """Whether this analyzer reads objects: the plugin has a facts reader and the mode allows it.
+        """Whether this analyzer reads objects: the plugin has a facts reader and the mode allows
+        it.
 
         DuckDB's execution mode disables object extraction, which keeps it free of the SQL parser.
         """

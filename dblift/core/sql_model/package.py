@@ -108,7 +108,10 @@ class Package(SqlObject):
         unquoted_name = self.name.strip('"')
 
         # Allow definitions that already include CREATE [OR REPLACE]
-        pattern = rf"""^(?:CREATE\s+(?:OR\s+REPLACE\s+)?)?\s*PACKAGE(?:\s+BODY)?\s+{re.escape(unquoted_name)}\s+(IS|AS)\b"""
+        pattern = (
+            rf"^(?:CREATE\s+(?:OR\s+REPLACE\s+)?)?\s*PACKAGE(?:\s+BODY)?\s+"
+            rf"{re.escape(unquoted_name)}\s+(IS|AS)\b"
+        )
         match = re.match(pattern, text, re.IGNORECASE)
         if match:
             clause = match.group(1).upper()

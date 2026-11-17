@@ -1,3 +1,5 @@
+"""Database connection configuration and its per-dialect resolution."""
+
 import logging
 import re
 import urllib.parse
@@ -80,6 +82,11 @@ def register_database_type(
 # ---------------------------------------------------------------------------
 
 
+def _url_scheme(url: str) -> str:
+    """Return *url*'s lower-cased scheme without its driver (``Pg+psycopg://`` -> ``pg``)."""
+    return url.lower().split(":", 1)[0].split("+", 1)[0]
+
+
 def _infer_type_from_url_scheme(data: Dict[str, Any]) -> None:
     """Phase 1: infer a missing ``type`` from well-known URL prefixes.
 
@@ -91,8 +98,7 @@ def _infer_type_from_url_scheme(data: Dict[str, Any]) -> None:
     if not db_type and url:
         _normalize_sqlite_url_alias(data)
         url = str(data.get("url") or "")
-        url_lower = url.lower()
-        scheme = url_lower.split(":", 1)[0].split("+", 1)[0]
+        scheme = _url_scheme(url)
         if scheme:
             canonical = _native_canonical_from_scheme(scheme)
             if canonical:
@@ -163,8 +169,7 @@ def _infer_type_from_uri(data: Dict[str, Any], url: str) -> None:
     """
     _normalize_sqlite_url_alias(data)
     url = str(data.get("url") or url)
-    url_l = (url or "").strip().lower()
-    scheme = url_l.split(":", 1)[0].split("+", 1)[0]
+    scheme = _url_scheme((url or "").strip())
     canonical = _native_canonical_from_scheme(scheme)
     if canonical:
         data["type"] = canonical
@@ -486,16 +491,8 @@ class BaseDatabaseConfig(UrlBuilderMixin, ABC):
 
     def __post_init__(self) -> None:
         """Initialize the database config."""
-        if not hasattr(self, "type"):
-            raise ValueError("Database type is required")
-
         if self.schema and not self._configured_schema_allowed(self.schema):
             raise ValueError(self._invalid_schema_message())
-
-        # Convert port to int if needed
-        if isinstance(self.port, str):
-            # mypy unreachable workaround: do not attempt conversion here
-            pass
 
     def _configured_schema_allowed(self, schema: str) -> bool:
         """Unquoted names only. Oracle overrides this to allow one quoted form."""
@@ -520,6 +517,7 @@ class BaseDatabaseConfig(UrlBuilderMixin, ABC):
 
     @classmethod
     def create(cls, data: Dict[str, Any]) -> "BaseDatabaseConfig":
+        """Build the dialect-specific database config from a dictionary."""
         # NOTE: the config subclass for a dialect is resolved in
         # ``_resolve_config_class`` — first via the eager ``_registry`` (only the
         # non-dialect ``dummy`` config eager-imports here now), then via plugin
@@ -540,7 +538,8 @@ class BaseDatabaseConfig(UrlBuilderMixin, ABC):
         db_type = (data.get("type") or "").lower()
         config_class = _resolve_config_or_stub(cls, data, db_type)
         if not isinstance(config_class, type):
-            return config_class  # type: ignore[no-any-return]  # already a fully-built stub instance
+            # Already a fully-built stub instance.
+            return config_class  # type: ignore[no-any-return]
 
         # Phase 5: coerce port to int once a config class is in scope.
         _coerce_port_to_int(data)
@@ -688,10 +687,12 @@ class DatabaseConfig:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> BaseDatabaseConfig:
+        """Build the dialect-specific database config from a dictionary."""
         return BaseDatabaseConfig.create(data)
 
     @classmethod
     def from_url(cls, url: str) -> BaseDatabaseConfig:
+        """Build the dialect-specific database config from a connection URL."""
         return BaseDatabaseConfig.from_url(url)
 
 

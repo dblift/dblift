@@ -140,10 +140,12 @@ class ProgramRules:
 
 @dataclass(frozen=True)
 class DelimiterScriptRules:
-    """A client that reads a script line by line and ends a statement at a delimiter the script changes.
+    """A client that reads a script line by line and ends a statement at a delimiter the script
+    changes.
 
     It reads a CRLF pair as LF. ``initial`` is read for
-    the starting delimiter and for every place a plain ``;`` is meant: the terminator run of a command line, fragments,
+    the starting delimiter and for every place a plain ``;`` is meant: the terminator run of a
+    command line, fragments,
     and the stored-program condition (the extension runs only under the initial delimiter).
     """
 
@@ -251,7 +253,8 @@ class BlankPassRules:
 
 @dataclass(frozen=True)
 class SegmentScriptRules:
-    """A script cut at each ``;`` outside lexemes; a line that starts with the client's command prefix
+    """A script cut at each ``;`` outside lexemes; a line that starts with the client's command
+    prefix
     while no statement text is pending is a client command, refused.
 
     ``word``, ``number``, ``dollar_tag`` and ``parameter`` are regular expressions read at the

@@ -3,15 +3,11 @@ from sqlalchemy import text
 
 import dblift.db.native_connection_manager as connection_manager_module
 from dblift.db.native_connection_manager import NativeConnectionManager
-
-
-class _DB:
-    type = "sqlite"
-    path = ":memory:"
+from dblift.db.plugins.sqlite.config import SQLiteConfig
 
 
 class _Cfg:
-    database = _DB()
+    database = SQLiteConfig(type="sqlite", path=":memory:")
 
 
 def test_creates_usable_connection():

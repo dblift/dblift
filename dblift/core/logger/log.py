@@ -19,8 +19,6 @@ import logging
 import re
 import sys
 import traceback
-
-_logger = logging.getLogger(__name__)
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
@@ -54,6 +52,8 @@ if TYPE_CHECKING:
     from dblift.core.logger.formatters.jsonformatter import JsonFormatter  # noqa: F401
 
     JINJA_AVAILABLE: bool
+
+_logger = logging.getLogger(__name__)
 
 JSON_AVAILABLE = True
 
@@ -247,6 +247,33 @@ class _PlainStderr:
         print(renderable, file=sys.stderr)  # lint: allow-print  plain-text sink
 
 
+def _sql_section_lines(lines: list[str]) -> list[str]:
+    """Return the report lines of the "SQL Statements:" section the console shows.
+
+    A line equal to "SQL Statements:" once stripped opens the section and is kept, after an
+    added blank line when a kept line exists and the last one is not blank once stripped.
+    Every line of the open section is kept until a line equal to "Query Results:" once
+    stripped closes it. Lines outside the section are dropped.
+    """
+    in_sql_section = False
+    sql_lines: list[str] = []
+
+    for line in lines:
+        if line.strip() == "SQL Statements:":
+            in_sql_section = True
+            if sql_lines and sql_lines[-1].strip():
+                sql_lines.append("")
+            sql_lines.append(line)
+            continue
+
+        if in_sql_section and line.strip() == "Query Results:":
+            in_sql_section = False
+
+        if in_sql_section:
+            sql_lines.append(line)
+    return sql_lines
+
+
 # ConsoleLog implementation
 class ConsoleLog(AbstractLog):
     """Simple console-based logger implementation."""
@@ -331,7 +358,8 @@ class ConsoleLog(AbstractLog):
         command_type = normalized_command_type
 
         # Don't log completion messages here - they're already logged by _log_command_completion
-        # in migration_operations.py. This method is only for storing the result for HTML/JSON reports.
+        # in migration_operations.py. This method is only for storing the result for HTML/JSON
+        # reports.
         # If message is provided, it's already been logged, so we skip logging here.
         # Only log if no message is provided (for backward compatibility with other callers)
         if not message:
@@ -350,88 +378,32 @@ class ConsoleLog(AbstractLog):
             self._display_result_summary(result)
 
     def _display_result_summary(self, result) -> None:
-        """Display detailed result summary with journal data if available."""
+        """Display the SQL statements collected by --show-sql, if any."""
         has_visible_sql = getattr(result, "show_sql", False) and getattr(result, "sql", None)
-        # Only show detailed summaries for successful operations unless
-        # --show-sql explicitly collected SQL before the failure.
-        if not getattr(result, "success", True) and not has_visible_sql:
+        if not has_visible_sql:
             return
 
         try:
             # Import here to avoid circular imports
             from .formatters.formatter import OutputFormatter
 
-            has_journal = (
-                getattr(result, "success", True) and hasattr(result, "journal") and result.journal
-            )
-            if has_journal or has_visible_sql:
-                formatter = OutputFormatter()
+            formatter = OutputFormatter()
 
-                # Get schema name from result if available
-                schema_name = getattr(result, "target_schema", None) or "default"
+            # Get schema name from result if available
+            schema_name = getattr(result, "target_schema", None) or "default"
 
-                # Format the result as text and display it
-                formatted_result = formatter.format(
-                    result, format_type="text", schema_name=schema_name
-                )
+            # Format the result as text and display only the SQL section, not the
+            # full report.
+            formatted_result = formatter.format(result, format_type="text", schema_name=schema_name)
+            sql_lines = _sql_section_lines(formatted_result.split("\n"))
 
-                # Only display the performance and explicit SQL visibility
-                # sections, not the full report.
-                lines = formatted_result.split("\n")
-                in_performance_section = False
-                in_sql_section = False
-                performance_lines: list[str] = []
-
-                for line in lines:
-                    if has_visible_sql and line.strip() == "SQL Statements:":
-                        in_sql_section = True
-                        if performance_lines and performance_lines[-1].strip():
-                            performance_lines.append("")
-                        performance_lines.append(line)
-                        continue
-
-                    if in_sql_section and line.strip() == "Query Results:":
-                        in_sql_section = False
-
-                    if in_sql_section:
-                        performance_lines.append(line)
-                        continue
-
-                    if not has_journal:
-                        continue
-
-                    # Start capturing when we hit performance sections
-                    if "Performance Summary:" in line or "Performance by Object Type:" in line:
-                        in_performance_section = True
-                        performance_lines.append("")  # Add spacing
-                        performance_lines.append(line)
-                    elif in_performance_section:
-                        # Stop capturing when we hit warnings or a section after performance
-                        if line.strip().startswith("Warnings:") or line.strip().startswith(
-                            "Error Details:"
-                        ):
-                            break
-                        # Continue capturing unless we hit two consecutive empty lines
-                        performance_lines.append(line)
-
-                        # If we have enough content and hit an empty line followed by non-performance content, stop
-                        if (
-                            len(performance_lines) > 10
-                            and line.strip() == ""
-                            and len([ln for ln in performance_lines if ln.strip()]) > 5
-                        ):
-                            # Look ahead to see if next non-empty line is not performance related
-                            break
-
-                # Display the performance summary if we found any. This is
-                # human-facing console output, so keep stdout reserved for
-                # command payloads.
-                if performance_lines:
-                    for line in performance_lines:
-                        self._console.print(line, markup=False, highlight=False)
+            # This is human-facing console output, so keep stdout reserved for
+            # command payloads.
+            for line in sql_lines:
+                self._console.print(line, markup=False, highlight=False)
 
         except Exception as e:
-            # Don't let journal display errors break the console output
+            # Don't let display errors break the console output
             # Just log debug message if debug is enabled
             if self.is_debug_enabled():
                 self.debug(f"Could not display result summary: {e}")
@@ -453,6 +425,7 @@ class FileLog(AbstractLog):
         max_bytes: int = None,
         backup_count: int = None,
         log_level: Optional[LogLevel] = None,
+        existing_log_file: Optional[Path] = None,
     ):
         """Initialize a new file log.
 
@@ -466,6 +439,7 @@ class FileLog(AbstractLog):
             enable_debug: Whether debug messages should be displayed
             max_bytes: Maximum size of each log file before rotation
             backup_count: Number of backup files to keep
+            existing_log_file: Literal selected filename, without pattern expansion
         """
         super().__init__(name, enable_debug, log_level)
         self.log_dir = Path(log_dir)
@@ -473,19 +447,22 @@ class FileLog(AbstractLog):
         self.schema = schema
         self.database_name = database_name
         self.log_file_pattern = log_file_pattern
+        self._existing_log_file = existing_log_file
         self.max_bytes = max_bytes
         self.backup_count = backup_count
         self.current_size = 0
 
-        # Create log directory if it doesn't exist
-        self._ensure_log_dir()
-
-        # Get initial log file path
+        # Expand the actual file before creating directories: an absolute or
+        # own-directory pattern can ignore log_dir and contain placeholders.
         self.log_file = self._get_log_file()
         refuse_symlink_output(self.log_file)
         # Defense-in-depth: a custom pattern may legitimately nest directories;
         # ensure the file's parent exists so the header write never crashes.
-        self.log_file.parent.mkdir(parents=True, exist_ok=True)
+        self.log_dir = self.log_file.parent
+        self._ensure_log_dir()
+        # Validate the actual sink before command success, including deferred JSON/HTML writes.
+        with self.log_file.open("a", encoding="utf-8"):
+            pass
 
         # Create formatter based on format
         from typing import Union
@@ -502,7 +479,8 @@ class FileLog(AbstractLog):
         else:
             self.formatter = TextFormatter()
 
-        # Write header if this is a new file (skip for JSON format - will write complete JSON on close)
+        # Write header if this is a new file (skip for JSON format - will write complete JSON on
+        # close)
         if self.log_format != LogFormat.JSON:
             if not self.log_file.exists() or self.log_file.stat().st_size == 0:
                 self._write_header()
@@ -514,7 +492,9 @@ class FileLog(AbstractLog):
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_log_file(self) -> Path:
-        """Get the log file path using the specified naming pattern."""
+        """Get the literal selected file or expand the requested naming pattern."""
+        if self._existing_log_file is not None:
+            return self._existing_log_file
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Get the appropriate file extension based on the log format enum
@@ -802,18 +782,21 @@ class FileLog(AbstractLog):
         self.set_command_type(normalized_command_type)
         command_type = normalized_command_type
 
-        # Don't log completion messages to TEXT file logs - the footer is already logged by _log_command_completion
+        # Don't log completion messages to TEXT file logs - the footer is already logged by
+        # _log_command_completion
         # via _log_text_block. This method is only for storing the result for HTML/JSON reports.
         # For TEXT format, skip logging the message to avoid duplicate footers
         if self.log_format == LogFormat.TEXT:
-            # For TEXT format, don't log completion messages - footer is handled by _log_command_completion
+            # For TEXT format, don't log completion messages - footer is handled by
+            # _log_command_completion
             # via _log_text_block which writes the footer directly
             pass
         elif message:
             # For HTML/JSON formats, log the message if provided
             self.info(message)
         else:
-            # Fallback: generate message without execution time if not provided (only for non-TEXT formats)
+            # Fallback: generate message without execution time if not provided (only for non-TEXT
+            # formats)
             command_label = command_type.lower() if isinstance(command_type, str) else "command"
             if success:
                 self.info(f"Command {command_label} completed successfully")

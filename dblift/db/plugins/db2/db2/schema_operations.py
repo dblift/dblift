@@ -5,36 +5,19 @@ This module handles DB2-specific schema operations including schema creation,
 cleaning, and metadata queries for tables, columns, and other database objects.
 """
 
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, Optional
 
 from dblift.core.logger import Log, NullLog
 from dblift.core.migration.clean_summary import CleanExecutionSummary
 from dblift.db.exceptions import DB_OPERATION_EXCEPTIONS
 from dblift.db.plugins.base_schema_operations import BaseSchemaOperations
-
-
-def _clean_identifier(name: str) -> str:
-    """Return a bare DB2 identifier for catalog lookups."""
-    return name.replace('"', "").strip()
+from dblift.db.value_utils import clean_identifier as _clean_identifier
+from dblift.db.value_utils import row_value as _row_value
 
 
 def _quote_identifier(name: str) -> str:
     """Return a double-quoted DB2 identifier."""
     return '"' + str(name).replace('"', '""') + '"'
-
-
-def _row_value(row: Dict[str, Any], *names: str, default: Any = None) -> Any:
-    """Read a value from a DB2 row mapping with case tolerance."""
-    for name in names:
-        if name in row:
-            return row[name]
-        upper = name.upper()
-        if upper in row:
-            return row[upper]
-        lower = name.lower()
-        if lower in row:
-            return row[lower]
-    return default
 
 
 class Db2SchemaOperations(BaseSchemaOperations):
@@ -225,8 +208,10 @@ class Db2SchemaOperations(BaseSchemaOperations):
                 ("object_name", "CONSTNAME"),
                 lambda name, row: (
                     "ALTER TABLE "
-                    f"{self.query_executor.get_schema_qualified_name(schema, str(_row_value(row, 'table_name', 'TABNAME')))} "
-                    f"DROP CONSTRAINT {_quote_identifier(name)}"
+                    + self.query_executor.get_schema_qualified_name(
+                        schema, str(_row_value(row, "table_name", "TABNAME"))
+                    )
+                    + f" DROP CONSTRAINT {_quote_identifier(name)}"
                 ),
                 lambda row: {"table": str(_row_value(row, "table_name", "TABNAME"))},
             ),
@@ -297,8 +282,9 @@ class Db2SchemaOperations(BaseSchemaOperations):
                 "WHERE UPPER(FUNCSCHEMA) = UPPER(?) AND ORIGIN IN ('U', 'Q')",
                 ("object_name", "FUNCNAME"),
                 lambda name, row: (
-                    "DROP SPECIFIC FUNCTION "
-                    f"{self.query_executor.get_schema_qualified_name(schema, str(_row_value(row, 'SPECIFICNAME')))}"
+                    f"""DROP SPECIFIC FUNCTION {self.query_executor.get_schema_qualified_name(
+                        schema, str(_row_value(row, 'SPECIFICNAME'))
+                    )}"""
                 ),
                 None,
             ),
@@ -308,8 +294,9 @@ class Db2SchemaOperations(BaseSchemaOperations):
                 "WHERE UPPER(PROCSCHEMA) = UPPER(?)",
                 ("object_name", "PROCNAME"),
                 lambda name, row: (
-                    "DROP SPECIFIC PROCEDURE "
-                    f"{self.query_executor.get_schema_qualified_name(schema, str(_row_value(row, 'SPECIFICNAME')))}"
+                    f"""DROP SPECIFIC PROCEDURE {self.query_executor.get_schema_qualified_name(
+                        schema, str(_row_value(row, 'SPECIFICNAME'))
+                    )}"""
                 ),
                 None,
             ),
@@ -415,125 +402,3 @@ class Db2SchemaOperations(BaseSchemaOperations):
                 self.log.debug(f"Committed transaction after {operation}")
         except DB_OPERATION_EXCEPTIONS as e:
             self.log.debug(f"Could not commit after {operation}: {e}")
-
-    def get_columns_query(self, schema: str, table: str) -> tuple[str, List[str]]:
-        """Get a DB2-specific query to retrieve column information from a table.
-
-        Args:
-            schema: Schema name
-            table: Table name
-
-        Returns:
-            tuple[str, List[str]]: SQL query and parameters [schema, table]
-        """
-        # Use case-insensitive matching in WHERE clause (UPPER() in SQL)
-        # But preserve original case in results
-        # Clean schema and table of quotes for parameter passing
-        clean_schema = schema.replace('"', "").strip()
-        clean_table = table.replace('"', "").strip()
-        query = """
-        SELECT colname as column_name, typename as data_type
-        FROM syscat.columns
-        WHERE UPPER(tabschema) = UPPER(?) AND UPPER(tabname) = UPPER(?)
-        ORDER BY colno
-        """
-        return (query, [clean_schema, clean_table])
-
-    def get_add_column_sql(self, schema: str, table: str, column: str, type_def: str) -> str:
-        """Generate DB2-specific SQL to add a column to a table.
-
-        Args:
-            schema: Schema name
-            table: Table name
-            column: Column name to add
-            type_def: Column data type definition
-
-        Returns:
-            str: SQL for adding the column
-        """
-        qualified_table = self.query_executor.get_schema_qualified_name(schema, table)
-        return f'ALTER TABLE {qualified_table} ADD COLUMN "{column}" {type_def}'
-
-    def get_parameter_placeholders(self, count: int) -> str:
-        """Get DB2-specific parameter placeholders for prepared statements.
-
-        Args:
-            count: Number of parameters
-
-        Returns:
-            str: Parameter placeholders string
-        """
-        # DB2 uses ? placeholders
-        return ", ".join(["?" for _ in range(count)])
-
-    def get_tables(self, connection: Any, schema: str) -> List[str]:
-        """Get list of table names in the specified schema.
-
-        Args:
-            schema: Schema name
-
-        Returns:
-            List of table names in the schema
-        """
-        self.log.debug(f"Getting tables in schema: {schema}")
-
-        try:
-            # Use DB2 system catalogs to get table names
-            # Use case-insensitive matching in WHERE clause (UPPER() in SQL)
-            # But preserve original case in results
-            clean_schema = schema.replace('"', "").strip()
-            query = """
-            SELECT TABNAME as table_name
-            FROM SYSCAT.TABLES
-            WHERE UPPER(TABSCHEMA) = UPPER(?) AND TYPE = 'T'
-            ORDER BY TABNAME
-            """
-
-            result = self.query_executor.execute_query(connection, query, params=[clean_schema])
-            tables = [
-                str(row["table_name"] if "table_name" in row else row["TABLE_NAME"])
-                for row in result
-            ]
-
-            self.log.debug(f"Found {len(tables)} tables in schema {schema}: {tables}")
-
-            return tables
-        except DB_OPERATION_EXCEPTIONS as e:
-            error_msg = f"Error getting tables in schema {schema}: {str(e)}"
-            self.log.error(error_msg)
-            return []
-
-    def get_schemas(self, connection: Any) -> List[str]:
-        """Get list of schema names available in the DB2 database.
-
-        Returns:
-            List of schema names that the current user can access
-        """
-        self.log.debug("Getting available schemas from DB2")
-
-        try:
-            # Query to get schemas that the current user can access
-            # Exclude system schemas
-            query = """
-            SELECT SCHEMANAME as schema_name
-            FROM SYSCAT.SCHEMATA
-            WHERE SCHEMANAME NOT IN (
-                'SYSIBM', 'SYSCAT', 'SYSSTAT', 'SYSFUN', 'SYSPROC',
-                'SYSPUBLIC', 'SYSTOOLS', 'SYSIBMADM'
-            )
-            ORDER BY SCHEMANAME
-            """
-
-            result = self.query_executor.execute_query(connection, query)
-            schemas = [
-                str(row["schema_name"] if "schema_name" in row else row["SCHEMA_NAME"])
-                for row in result
-            ]
-
-            self.log.debug(f"Found {len(schemas)} accessible schemas")
-
-            return schemas
-        except DB_OPERATION_EXCEPTIONS as e:
-            error_msg = f"Error getting schemas: {str(e)}"
-            self.log.error(error_msg)
-            return []

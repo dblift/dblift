@@ -52,7 +52,8 @@ class PlaceholderService:
         if not sql_text or "${" not in sql_text:
             return sql_text
 
-        # Look for placeholders in the format ${placeholder_name} or ${placeholder_name:default_value}
+        # Look for placeholders in the format ${placeholder_name} or
+        # ${placeholder_name:default_value}
         pattern = r"\$\{([^}]+)\}"
 
         def replace_match(match: "re.Match[str]") -> str:

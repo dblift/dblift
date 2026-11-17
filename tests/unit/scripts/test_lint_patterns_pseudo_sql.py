@@ -103,3 +103,22 @@ def test_default_roots_point_at_packages_that_exist() -> None:
 
     scanned = list(lp._iter_py_files([repo_root / r for r in lp.DEFAULT_ROOTS]))
     assert scanned, "the default roots scan no Python files at all"
+
+
+def test_default_root_is_the_whole_package() -> None:
+    assert lp.DEFAULT_ROOTS == ("dblift",)
+
+
+def test_missing_root_fails_loudly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Running from the wrong directory must not pass on an empty scan."""
+    monkeypatch.chdir(tmp_path)
+    rc = lp.main([])
+    assert rc == 2
+    assert "not found" in capsys.readouterr().err
+
+
+def test_baseline_machinery_is_gone() -> None:
+    assert not hasattr(lp, "_check_baseline_is_empty")
+    assert not hasattr(lp, "DEFAULT_BASELINE")

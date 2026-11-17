@@ -28,6 +28,7 @@ class CockroachdbQuirks(PostgresqlQuirks):
     # comment. Block comments nest here the same way they do in PostgreSQL,
     # so this keeps inheriting the nesting parser unchanged.
     def __init__(self, dialect_name: str = "cockroachdb") -> None:
+        """Create the CockroachDB quirks under ``dialect_name``."""
         super().__init__(dialect_name=dialect_name)
 
     def type_equivalents(self) -> dict[str, str]:

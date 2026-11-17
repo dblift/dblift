@@ -1,8 +1,9 @@
 """Extended tests for core/sql_validator/migration_validator.py."""
 
 import unittest
-from types import SimpleNamespace
 from unittest.mock import MagicMock
+
+from tests.unit._migration_factory import make_migration
 
 
 def _make_validator(dialect="postgresql"):
@@ -50,47 +51,6 @@ class TestValidationResult(unittest.TestCase):
         self.assertEqual(entry["script"], "R__test.sql")
         self.assertEqual(entry["database_checksum"], 123)
         self.assertEqual(entry["filesystem_checksum"], 456)
-
-
-class TestLastSuccessfulRecord(unittest.TestCase):
-    def _make_migration(self, script_name, mtype, success=True):
-        from types import SimpleNamespace
-
-        return SimpleNamespace(script_name=script_name, type=mtype, success="1" if success else "0")
-
-    def test_returns_none_on_empty(self):
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
-
-        self.assertIsNone(_last_successful_non_delete_record([], "V1__test.sql"))
-
-    def test_finds_matching_successful_migration(self):
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
-
-        m = self._make_migration("V1__test.sql", "SQL")
-        result = _last_successful_non_delete_record([m], "V1__test.sql")
-        self.assertIs(result, m)
-
-    def test_skips_non_matching_script(self):
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
-
-        m = self._make_migration("V2__other.sql", "SQL")
-        result = _last_successful_non_delete_record([m], "V1__test.sql")
-        self.assertIsNone(result)
-
-    def test_skips_failed_migration(self):
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
-
-        m = self._make_migration("V1__test.sql", "SQL", success=False)
-        result = _last_successful_non_delete_record([m], "V1__test.sql")
-        self.assertIsNone(result)
-
-    def test_returns_latest_when_multiple(self):
-        from dblift.core.sql_validator.migration_validator import _last_successful_non_delete_record
-
-        m1 = self._make_migration("V1__test.sql", "SQL")
-        m2 = self._make_migration("V1__test.sql", "SQL")
-        result = _last_successful_non_delete_record([m1, m2], "V1__test.sql")
-        self.assertIs(result, m2)
 
 
 class TestMigrationValidatorInit(unittest.TestCase):
@@ -256,21 +216,20 @@ class TestCheckRepeatableMigrationsRankOrdering(unittest.TestCase):
     def _make_script(self, script_name, checksum=42):
         from dblift.core.migration.migration import MigrationType
 
-        return SimpleNamespace(
-            type=MigrationType.REPEATABLE,
-            script_name=script_name,
-            checksum=checksum,
-            path=None,
+        return make_migration(
+            script_name=script_name, type=MigrationType.REPEATABLE, checksum=checksum
         )
 
     def _make_applied(self, script_name, success, installed_rank, checksum=42, execution_time=100):
-        return SimpleNamespace(
-            script_name=script_name,
-            success=success,
-            installed_rank=installed_rank,
-            checksum=checksum,
-            execution_time=execution_time,
+        from dblift.core.migration.migration import MigrationType
+
+        applied = make_migration(
+            script_name=script_name, type=MigrationType.REPEATABLE, checksum=checksum
         )
+        applied.success = success
+        applied.installed_rank = installed_rank
+        applied.execution_time = execution_time
+        return applied
 
     def _run(self, scripts, applied):
         from dblift.core.migration.state.repeatable_status import repeatable_runs

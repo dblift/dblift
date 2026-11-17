@@ -18,6 +18,7 @@ from dblift.core.migration.state.migration_state import (
 )
 from dblift.core.migration.state.migration_state_manager import MigrationStateManager
 from dblift.core.migration.state.undo_plan import UndoPlan, UndoStep
+from tests.unit._migration_factory import make_migration
 
 AVAILABLE = MigrationEligibility.UNDO_AVAILABLE
 PENDING = MigrationEligibility.PENDING
@@ -30,22 +31,28 @@ def _applied(
     type_=MigrationType.SQL,
     success: bool = True,
     tags: Sequence[str] = (),
-) -> SimpleNamespace:
+) -> Migration:
     prefix = "U" if type_ == MigrationType.UNDO_SQL else "V"
-    return SimpleNamespace(
+    row = make_migration(
         script_name=f"{prefix}{version}__m.sql",
         version=version,
         description="m",
         type=type_,
         checksum=1,
-        success=success,
-        installed_rank=rank,
         tags=list(tags),
     )
+    row.success = success
+    row.installed_rank = rank
+    return row
 
 
-def _undo_script(version: str) -> SimpleNamespace:
-    return SimpleNamespace(script_name=f"U{version}__m.sql", version=version, tags=[])
+def _undo_script(version: str) -> Migration:
+    return make_migration(
+        script_name=f"U{version}__m.sql",
+        version=version,
+        content="SELECT 1;",
+        type=MigrationType.UNDO_SQL,
+    )
 
 
 def _manager(

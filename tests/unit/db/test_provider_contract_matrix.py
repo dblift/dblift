@@ -6,11 +6,6 @@ import inspect
 
 import pytest
 
-from dblift.core.sql_model.dialect import (
-    dialect_clean_strategy,
-    dialect_supports_transactional_ddl,
-    dialect_supports_transactions,
-)
 from dblift.db.base_provider import BaseProvider, NativeProvider
 from dblift.db.provider_interfaces import TransactionalProvider
 from dblift.db.provider_registry import ProviderRegistry
@@ -46,20 +41,16 @@ def test_transaction_capabilities_match_dialect_matrix(plugins):
     for plugin in plugins:
         provider = plugin.provider_class.__new__(plugin.provider_class)
         dialect = plugin.name
-        assert isinstance(provider, TransactionalProvider) is dialect_supports_transactions(
-            dialect
-        ), dialect
-        assert provider.supports_transactional_ddl() is dialect_supports_transactional_ddl(
-            dialect
-        ), dialect
+        quirks = ProviderRegistry.get_quirks(dialect)
+        assert isinstance(provider, TransactionalProvider) is quirks.supports_transactions, dialect
+        assert provider.supports_transactional_ddl() is quirks.supports_transactional_ddl, dialect
 
 
 @pytest.mark.unit
 def test_native_clean_dialects_expose_provider_clean_preview(plugins):
     for plugin in plugins:
-        for dialect in plugin.dialects:
-            if dialect_clean_strategy(dialect) == "native":
-                assert hasattr(plugin.provider_class, "get_clean_preview"), plugin.name
+        if ProviderRegistry.get_quirks(plugin.name).clean_strategy == "native":
+            assert hasattr(plugin.provider_class, "get_clean_preview"), plugin.name
 
 
 @pytest.mark.unit

@@ -8,15 +8,15 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-_logger = logging.getLogger(__name__)
-
-from dblift.core.logger._formatters import _safe_name
+from dblift.core.logger._formatters import _safe_name, resolve_dblift_package_version
 from dblift.core.logger.results import (
     CleanResult,
     MigrationInfo,
     OperationResult,
     ValidateResult,
 )
+
+_logger = logging.getLogger(__name__)
 
 
 class JsonFormatter:
@@ -137,8 +137,6 @@ class JsonFormatter:
 
     def _get_version_info(self) -> Dict[str, Any]:
         """Return a dict with log_format_version and dblift_version."""
-        from dblift.core.logger._formatters import resolve_dblift_package_version
-
         return {
             "log_format_version": "1.0",
             "dblift_version": resolve_dblift_package_version(),
@@ -280,8 +278,8 @@ class JsonFormatter:
             migration_id = None
             if hasattr(result, "migrations") and result.migrations:
                 for migration in result.migrations:
-                    if hasattr(migration, "script_name"):
-                        migration_id = migration.script_name
+                    if getattr(migration, "script", None):
+                        migration_id = migration.script
                         break
 
             if migration_id:
@@ -688,15 +686,3 @@ class JsonFormatter:
             return obj.__dict__
         else:
             return str(obj)
-
-    def _count_log_levels(self) -> Dict[str, int]:
-        """Count log entries by level.
-
-        Returns:
-            Dictionary with counts for each log level
-        """
-        counts: Dict[str, int] = {}
-        for entry in self.log_entries:
-            level = entry.get("level", "UNKNOWN")
-            counts[level] = counts.get(level, 0) + 1
-        return counts

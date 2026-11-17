@@ -1,9 +1,13 @@
 """SQL Server native provider unit tests (no live SQL Server needed)."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
+from sqlalchemy.exc import OperationalError
 
 from dblift.config.dblift_config import DbliftConfig
 from dblift.db.plugins.sqlserver.provider import SqlServerProvider
+from dblift.db.provider_interfaces import TransactionOutcome
 from dblift.db.sqlalchemy_provider import SqlAlchemyProvider
 
 
@@ -291,3 +295,92 @@ def test_non_dbo_login_is_not_blocked(monkeypatch):
     monkeypatch.setattr(SqlAlchemyProvider, "execute_statement", MagicMock(return_value=0))
 
     provider.set_current_schema("some_schema")  # must not raise
+
+
+def _row(count, txn_id):
+    return [{"transaction_count": count, "transaction_id": txn_id}]
+
+
+def _begun(baseline, *reads):
+    p = SqlServerProvider(_cfg())
+    p.execute_query = MagicMock(side_effect=[_row(*baseline), *[_row(*r) for r in reads]])
+    with patch.object(SqlAlchemyProvider, "begin_transaction"):
+        p.begin_transaction()
+    return p
+
+
+@pytest.mark.parametrize(
+    "current, expected",
+    [
+        ((1, 100), TransactionOutcome.INTACT),
+        ((0, 555), TransactionOutcome.ENDED),
+        ((2, 100), TransactionOutcome.OPEN),
+        ((1, 777), TransactionOutcome.OPEN),
+        ((2, 777), TransactionOutcome.OPEN),
+    ],
+)
+def test_sqlserver_transaction_outcome(current, expected):
+    p = _begun((1, 100), current)
+    assert p.transaction_outcome() is expected
+
+
+def test_sqlserver_outcome_is_intact_when_begin_opened_no_server_transaction():
+    p = _begun((0, 5))
+    assert p.transaction_outcome() is TransactionOutcome.INTACT
+    assert p.execute_query.call_count == 1
+
+
+def test_sqlserver_begin_survives_a_failing_state_query():
+    p = SqlServerProvider(_cfg())
+    p.execute_query = MagicMock(
+        side_effect=OperationalError("SELECT 1", {}, Exception("unknown function"))
+    )
+    with patch.object(SqlAlchemyProvider, "begin_transaction"):
+        p.begin_transaction()
+    assert p.transaction_outcome() is TransactionOutcome.INTACT
+
+
+def test_sqlserver_outcome_without_begin_sends_nothing():
+    p = SqlServerProvider(_cfg())
+    p.execute_query = MagicMock()
+    assert p.transaction_outcome() is TransactionOutcome.INTACT
+    p.execute_query.assert_not_called()
+
+
+@pytest.mark.parametrize("end", ["commit_transaction", "rollback_transaction"])
+def test_sqlserver_commit_and_rollback_forget_the_baseline(end):
+    p = _begun((1, 100), (0, 555))
+    with patch.object(SqlAlchemyProvider, end):
+        getattr(p, end)()
+    assert p.transaction_outcome() is TransactionOutcome.INTACT
+    assert p.execute_query.call_count == 1
+
+
+@pytest.mark.parametrize("count,expected", [(0, False), (1, True), (2, True)])
+def test_sqlserver_script_transaction_open_reads_the_transaction_count(count, expected):
+    p = object.__new__(SqlServerProvider)
+    conn = MagicMock()
+    result = MagicMock()
+    result.scalar.return_value = count
+    with patch.object(SqlAlchemyProvider, "_exec_unbound", return_value=result) as run:
+        assert p._script_transaction_open(conn) is expected
+    run.assert_called_once_with(conn, "SELECT @@TRANCOUNT")
+
+
+def test_sqlserver_script_rollback_sends_the_guarded_rollback_unbound():
+    p = object.__new__(SqlServerProvider)
+    conn = MagicMock()
+    with patch.object(SqlAlchemyProvider, "_exec_unbound") as run:
+        p._roll_back_script_transaction(conn)
+    run.assert_called_once_with(conn, "IF @@TRANCOUNT > 0 ROLLBACK")
+
+
+def test_sqlserver_supports_a_script_session():
+    assert object.__new__(SqlServerProvider).supports_script_session() is True
+
+
+def test_a_sqlserver_subclass_with_another_dialect_key_is_not_enabled():
+    class Other(SqlServerProvider):
+        canonical_dialect_key = "other"
+
+    assert object.__new__(Other).supports_script_session() is False

@@ -24,8 +24,6 @@ from typing import (
 from dblift.core.dialect_boundary import DialectQuirks
 from dblift.db.dml_analysis import (
     DEFAULT_QUOTE_PAIRS,
-    DEFAULT_UPSERT_MARKER_PAIRS,
-    DEFAULT_UPSERT_SET_MARKERS,
     DmlMutation,
     analyze_dml,
     dml_where_predicate,
@@ -123,22 +121,10 @@ class BaseQuirks:
     #: over. Default is the union of every dialect's string/identifier
     #: quoting; plugins may narrow it.
     sql_scan_quote_pairs: ClassVar[Dict[str, str]] = dict(DEFAULT_QUOTE_PAIRS)
-    #: Phrases that make an ``INSERT`` also take the UPDATE path without a
-    #: following ``SET`` keyword (e.g. MySQL ``ON DUPLICATE KEY UPDATE``).
-    upsert_update_set_markers: "tuple[str, ...]" = DEFAULT_UPSERT_SET_MARKERS
-    #: Two-token upsert markers (both must appear) introducing a standard
-    #: ``... DO UPDATE SET`` clause (e.g. PostgreSQL ``ON CONFLICT``).
-    upsert_update_marker_pairs: "tuple[tuple[str, str], ...]" = DEFAULT_UPSERT_MARKER_PAIRS
 
     def analyze_dml(self, statement: str) -> DmlMutation:
         """Classify a DML statement for undo-safety (table, events, updated columns)."""
-        return analyze_dml(
-            statement,
-            quirks=self,
-            quote_pairs=self.sql_scan_quote_pairs,
-            upsert_set_markers=self.upsert_update_set_markers,
-            upsert_marker_pairs=self.upsert_update_marker_pairs,
-        )
+        return analyze_dml(statement, quirks=self)
 
     def is_full_table_dml(self, statement: str) -> bool:
         """Whether the statement is an UPDATE/DELETE with no top-level WHERE."""
@@ -401,14 +387,6 @@ class BaseQuirks:
         ``None`` otherwise. Default: ``None``.
         """
         return None
-
-    def is_batch_separator(self, stmt: str) -> bool:
-        """Return ``True`` when *stmt* is a non-executable batch separator.
-
-        Default: ``False``. SQL Server overrides for the T-SQL ``GO``
-        separator emitted by SSMS / sqlcmd scripts.
-        """
-        return False
 
     def enable_session_output(self, connection: Any) -> None:
         """Enable dialect-specific session-level output capture.

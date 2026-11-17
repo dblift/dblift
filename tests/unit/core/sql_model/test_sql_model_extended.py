@@ -8,6 +8,10 @@ Targets uncovered paths in:
 
 import unittest
 
+from dblift.core.sql_model._base_sql_constraint import (
+    _norm_constraint_deferrable,
+    _norm_constraint_enabled,
+)
 from dblift.core.sql_model.base import (
     ConstraintType,
     ParseResult,
@@ -17,8 +21,6 @@ from dblift.core.sql_model.base import (
     SqlObjectType,
     SqlStatement,
     SqlStatementType,
-    _norm_constraint_deferrable,
-    _norm_constraint_enabled,
     get_constraint_type_name,
     get_object_type_name,
 )

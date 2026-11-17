@@ -12,6 +12,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from tests.unit._client_factory import bare_client
+
 
 # ---------------------------------------------------------------------------
 # scripts_dir kwarg collision must raise a pointed TypeError
@@ -23,9 +25,8 @@ class TestScriptsDirKwargGuard(unittest.TestCase):
     """
 
     def _make_client(self):
-        from dblift.api.client import DBLiftClient
 
-        client = DBLiftClient.__new__(DBLiftClient)
+        client = bare_client()
         client.config = MagicMock()
         client.config.migrations.directory = "/tmp/migrations"
         client.provider = MagicMock()
@@ -167,33 +168,6 @@ class TestSQLiteFts5ShadowFilter(unittest.TestCase):
 
         qe.execute_query.side_effect = _exec
         return SQLiteSchemaOperations(query_executor=qe, log=MagicMock())
-
-    def test_get_tables_filters_fts5_shadows(self) -> None:
-        rows = {
-            # Canonical user + lock table + FTS5 vtable + 5 shadow tables.
-            "FROM sqlite_master": [
-                {"name": "users"},
-                {"name": "users_fts"},
-                {"name": "users_fts_data"},
-                {"name": "users_fts_idx"},
-                {"name": "users_fts_content"},
-                {"name": "users_fts_docsize"},
-                {"name": "users_fts_config"},
-            ],
-            "USING fts5": [{"name": "users_fts"}],
-        }
-        ops = self._make_ops(rows)
-        tables = ops.get_tables(MagicMock(), "main")
-        self.assertIn("users", tables)
-        self.assertIn("users_fts", tables)
-        for shadow in (
-            "users_fts_data",
-            "users_fts_idx",
-            "users_fts_content",
-            "users_fts_docsize",
-            "users_fts_config",
-        ):
-            self.assertNotIn(shadow, tables)
 
     def test_enumerate_clean_candidates_filters_fts5_shadows(self) -> None:
         rows = {

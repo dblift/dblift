@@ -1,4 +1,4 @@
-"""CLI regression tests for the default log file location.
+"""CLI regression tests for the log file location.
 
 Runs the installed ``dblift`` console script so the whole startup path
 (URL parsing -> log configuration -> first log write) is exercised.
@@ -46,7 +46,10 @@ def test_info_with_sqlite_file_in_deeply_nested_dir(tmp_path):
     url = f"sqlite:///{deep / 'app.db'}"
     assert len(url) > 255
 
-    result = _run(["info", "--db-url", url, "--scripts", str(deep / "migrations")], tmp_path)
+    result = _run(
+        ["--log-dir", "logs", "info", "--db-url", url, "--scripts", str(deep / "migrations")],
+        tmp_path,
+    )
 
     output = result.stdout + result.stderr
     assert result.returncode == 0, output

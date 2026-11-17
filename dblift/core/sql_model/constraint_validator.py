@@ -114,7 +114,10 @@ class ConstraintValidator:
                 errors.append(
                     ValidationError(
                         severity="error",
-                        message=f"Duplicate PRIMARY KEY constraints detected ({len(pk_constraints)} constraints on same columns)",
+                        message=(
+                            f"Duplicate PRIMARY KEY constraints detected ({len(pk_constraints)} "
+                            "constraints on same columns)"
+                        ),
                         object_type="constraint",
                         object_name="PRIMARY KEY",
                         suggestion="Remove duplicate PK constraints or use a single composite PK",
@@ -128,7 +131,10 @@ class ConstraintValidator:
                         message="Multiple PRIMARY KEY constraints with different columns detected",
                         object_type="constraint",
                         object_name="PRIMARY KEY",
-                        suggestion="A table can only have one PRIMARY KEY. Use UNIQUE constraints for additional uniqueness requirements.",
+                        suggestion=(
+                            "A table can only have one PRIMARY KEY. Use UNIQUE constraints for "
+                            "additional uniqueness requirements."
+                        ),
                     )
                 )
 
@@ -172,7 +178,11 @@ class ConstraintValidator:
                     errors.append(
                         ValidationError(
                             severity="error",
-                            message=f"Conflicting PRIMARY KEY definitions: inline PK on {inline_pk_columns} vs table-level PK on {pk_constraints[0].column_names}",
+                            message=(
+                                "Conflicting PRIMARY KEY definitions: inline PK on "
+                                f"{inline_pk_columns} vs table-level PK on "
+                                f"{pk_constraints[0].column_names}"
+                            ),
                             object_type="constraint",
                             object_name="PRIMARY KEY",
                             suggestion="Use either inline PK or table-level PK, not both",
@@ -223,7 +233,9 @@ class ConstraintValidator:
                 errors.append(
                     ValidationError(
                         severity="warning",
-                        message="FOREIGN KEY missing referenced columns (will default to primary key)",
+                        message=(
+                            "FOREIGN KEY missing referenced columns (will default to primary key)"
+                        ),
                         object_type="constraint",
                         object_name=fk.name or "FOREIGN KEY",
                         suggestion="Explicitly specify referenced columns for clarity",
@@ -235,10 +247,15 @@ class ConstraintValidator:
                 errors.append(
                     ValidationError(
                         severity="error",
-                        message=f"FOREIGN KEY column count mismatch: {len(fk.column_names)} local columns vs {len(fk.reference_columns)} referenced columns",
+                        message=(
+                            f"FOREIGN KEY column count mismatch: {len(fk.column_names)} local "
+                            f"columns vs {len(fk.reference_columns)} referenced columns"
+                        ),
                         object_type="constraint",
                         object_name=fk.name or "FOREIGN KEY",
-                        suggestion="Ensure the number of columns matches on both sides of the FOREIGN KEY",
+                        suggestion=(
+                            "Ensure the number of columns matches on both sides of the FOREIGN KEY"
+                        ),
                     )
                 )
 
@@ -262,10 +279,14 @@ class ConstraintValidator:
                     errors.append(
                         ValidationError(
                             severity="error",
-                            message=f"UNIQUE constraint references non-existent column '{col_name}'",
+                            message=(
+                                f"UNIQUE constraint references non-existent column '{col_name}'"
+                            ),
                             object_type="constraint",
                             object_name=unique.name or "UNIQUE",
-                            suggestion=f"Add column '{col_name}' or remove it from the UNIQUE constraint",
+                            suggestion=(
+                                f"Add column '{col_name}' or remove it from the UNIQUE constraint"
+                            ),
                         )
                     )
 
@@ -379,7 +400,10 @@ class ConstraintValidator:
                             message=f"Constraint references non-existent column '{col_name}'",
                             object_type="constraint",
                             object_name=constraint.name or str(constraint.constraint_type),
-                            suggestion=f"Add column '{col_name}' to the table or remove it from the constraint",
+                            suggestion=(
+                                f"Add column '{col_name}' to the table or remove it from the "
+                                "constraint"
+                            ),
                         )
                     )
 

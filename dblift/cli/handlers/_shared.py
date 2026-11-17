@@ -11,20 +11,14 @@ import contextlib
 import io
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from dblift.core.migration.commands.base_command import (
-    PreflightConnectionError,
-    reported_exception_name,
-)
-from dblift.core.migration.scripting.filename_parser import (
-    MIGRATION_SQL_FILENAME_RE,
-    is_migration_sql_file,
-)
+from dblift.api._preflight import reraise_preflight_failure
+from dblift.core.logger.results import OperationResult
+from dblift.core.migration.commands.base_command import reported_exception_name
 
-# The migration SQL filename rule lives in core; these names stay for existing importers.
-_MIGRATION_FILENAME_RE = MIGRATION_SQL_FILENAME_RE
-_is_migration_sql_file = is_migration_sql_file
+# The preflight re-raise helper lives on the API layer; this name stays for CLI handlers.
+_reraise_preflight_failure = reraise_preflight_failure
 
 
 def _minimal_result(success: bool) -> Any:
@@ -71,35 +65,6 @@ class ConfigOnlyClient:
     """Config-only stand-in for commands that do not need a live provider."""
 
     config: Any
-
-
-class _FailedCommandResult(Protocol):
-    """The fields ``_reraise_preflight_failure`` reads off a command result."""
-
-    success: bool
-    error_message: Optional[str]
-    _preflight_error: Optional[BaseException]
-
-
-_ResultT = TypeVar("_ResultT", bound=_FailedCommandResult)
-
-
-def _reraise_preflight_failure(result: _ResultT) -> _ResultT:
-    """Keep the CLI, JSON and MCP error path for a preflight failure.
-
-    ``DBLiftClient`` command methods return a failed result when the
-    connection fails or the schema-history table cannot be created. These
-    surfaces still raise ``ConnectionError`` — the base type, so the
-    published text stays ``ConnectionError: ...`` — which ``run_json_guarded``
-    turns into ``{"success": false, "error": "ConnectionError: ..."}`` and
-    which ``dblift mcp`` reports as an error result. Any other result,
-    including one for another ``ConnectionError`` that was not a preflight
-    failure, is returned as the command's verdict.
-    """
-    error = getattr(result, "_preflight_error", None)
-    if isinstance(error, PreflightConnectionError) and result.success is False:
-        raise ConnectionError(str(error))
-    return result
 
 
 def _set_command_completed(log: Any, result: Any, command_type: str) -> None:
@@ -183,7 +148,7 @@ def _migration_info_to_dict(m: Any) -> Dict[str, Any]:
     contract, not three. ``analysis`` is what ``script_analysis`` read from a
     pending script, or ``None``.
     """
-    installed_on = getattr(m, "installed_on", None)
+    installed_on = m.installed_on
     return {
         "script": m.script,
         "version": str(m.version) if m.version else None,
@@ -198,8 +163,8 @@ def _migration_info_to_dict(m: Any) -> Dict[str, Any]:
         ),
         "installed_by": m.installed_by,
         "execution_time": m.execution_time,
-        "error": getattr(m, "error", None),
-        "analysis": getattr(m, "analysis", None),
+        "error": m.error,
+        "analysis": m.analysis,
     }
 
 
@@ -242,7 +207,6 @@ def run_json_guarded(
             if error is not None
             else f"{command_type.lower()}() returned no result"
         )
-        from dblift.core.logger.results import OperationResult
 
         failed_result = OperationResult(success=False, error_message=text)
         failed_result.complete()

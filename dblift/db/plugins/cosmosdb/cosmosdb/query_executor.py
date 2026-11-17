@@ -260,8 +260,8 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         This method ensures queries use proper syntax by:
         1. Adding 'c' alias to FROM clause if missing
         2. Adding 'c.' prefix to field references in SELECT list
-        3. Adding 'c.' prefix to field references in WHERE clause
-        4. Adding 'c.' prefix to field references in ORDER BY clause
+        3. Adding 'c.' prefix to field references in ORDER BY clause
+        4. Adding 'c.' prefix to field references in WHERE clause
 
         Args:
             sql: Original SQL query
@@ -291,135 +291,11 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
             )
             if not has_from_alias:
                 sql = from_pattern.sub(f"FROM {container_name} c ", sql, count=1)
-                sql_upper = sql.upper()
 
-            # Step 2: Normalize SELECT field list - add 'c.' prefix to unaliased fields
-            # Match: SELECT field1, field2, field3 FROM ...
-            select_match = re.search(r"SELECT\s+(.*?)\s+FROM", sql_upper, re.IGNORECASE | re.DOTALL)
-            if select_match:
-                select_clause = sql[select_match.start(1) : select_match.end(1)]
-                # Split by comma, but handle quoted strings and nested parentheses
-                fields = []
-                current_field = ""
-                paren_depth = 0
-                in_quotes = False
-                quote_char = None
-
-                for char in select_clause:
-                    if char in ("'", '"') and (not in_quotes or char == quote_char):
-                        in_quotes = not in_quotes
-                        quote_char = char if in_quotes else None
-                        current_field += char
-                    elif char == "(" and not in_quotes:
-                        paren_depth += 1
-                        current_field += char
-                    elif char == ")" and not in_quotes:
-                        paren_depth -= 1
-                        current_field += char
-                    elif char == "," and not in_quotes and paren_depth == 0:
-                        fields.append(current_field.strip())
-                        current_field = ""
-                    else:
-                        current_field += char
-
-                if current_field.strip():
-                    fields.append(current_field.strip())
-
-                # Normalize each field - add 'c.' prefix if not already present
-                normalized_fields = []
-                for field in fields:
-                    field_stripped = field.strip()
-                    # Special case: SELECT * should remain as-is
-                    if field_stripped == "*":
-                        normalized_fields.append(field)
-                    # Skip if already has alias (c.field, c['field'], or aggregate functions)
-                    elif (
-                        field_stripped.startswith("C.")
-                        or field_stripped.startswith("C[")
-                        or field_stripped.startswith("c.")
-                        or field_stripped.startswith("c[")
-                        or any(
-                            func in field_stripped.upper()
-                            for func in ["COUNT(", "SUM(", "AVG(", "MAX(", "MIN(", "DISTINCT "]
-                        )
-                    ):
-                        normalized_fields.append(field)
-                    else:
-                        # Add 'c.' prefix
-                        normalized_fields.append(f"c.{field_stripped}")
-
-                # Reconstruct SELECT clause
-                normalized_select = "SELECT " + ", ".join(normalized_fields)
-                sql = sql[: select_match.start()] + normalized_select + sql[select_match.end(1) :]
-                sql_upper = sql.upper()
-
-            # Step 3: Normalize ORDER BY clause
-            order_by_match = re.search(
-                r"ORDER\s+BY\s+(.*?)(?:\s+(?:ASC|DESC))?(?:\s|$)", sql_upper, re.IGNORECASE
-            )
-            if order_by_match:
-                order_by_clause = sql[order_by_match.start() : order_by_match.end()]
-                # Add 'c.' prefix to field references in ORDER BY
-                # Match field names that aren't already aliased
-                order_by_normalized = re.sub(
-                    r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b(?=\s*(?:ASC|DESC|,|$))",
-                    lambda m: (
-                        f"c.{m.group(1)}"
-                        if m.group(1).upper() not in ("ASC", "DESC", "C")
-                        and "c." not in order_by_clause[: m.start()]
-                        else m.group(0)
-                    ),
-                    order_by_clause,
-                    flags=re.IGNORECASE,
-                )
-                # Simple approach: replace bare field names with c.field.
-                order_by_normalized = re.sub(
-                    r"(?<!\.)\b([a-zA-Z_][a-zA-Z0-9_]*)\b",
-                    lambda m: (
-                        m.group(0)
-                        if m.group(1).upper() in ("ORDER", "BY", "ASC", "DESC", "C")
-                        else f"c.{m.group(1)}"
-                    ),
-                    order_by_clause,
-                    flags=re.IGNORECASE,
-                )
-                sql = (
-                    sql[: order_by_match.start()]
-                    + order_by_normalized
-                    + sql[order_by_match.end() :]
-                )
-                sql_upper = sql.upper()
-
-            # Step 4: Normalize WHERE clause (existing logic)
-            if "WHERE" in sql_upper:
-                where_pos = sql_upper.find("WHERE")
-                where_clause = sql[where_pos + 5 :].strip()
-                # Extract WHERE clause up to ORDER BY or end
-                order_by_pos = sql_upper.find("ORDER BY", where_pos)
-                if order_by_pos > 0:
-                    where_clause = sql[where_pos + 5 : order_by_pos].strip()
-                else:
-                    where_clause = sql[where_pos + 5 :].strip()
-
-                if " C." not in sql_upper[where_pos:] and " C[" not in sql_upper[where_pos:]:
-                    # Add 'c.' prefix to field references in WHERE clause
-                    where_clause_normalized = re.sub(
-                        r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b(?=\s*[=<>!])",
-                        r"c.\1",
-                        where_clause,
-                        flags=re.IGNORECASE,
-                    )
-                    # Reconstruct SQL with normalized WHERE clause
-                    if order_by_pos > 0:
-                        sql = (
-                            sql[: where_pos + 5]
-                            + " "
-                            + where_clause_normalized
-                            + " "
-                            + sql[order_by_pos:]
-                        )
-                    else:
-                        sql = sql[: where_pos + 5] + " " + where_clause_normalized
+            # Steps 2-4 each read the query as the previous step left it.
+            sql = _normalize_select_list(sql)
+            sql = _normalize_order_by(sql)
+            sql = _normalize_where(sql)
 
         return sql
 
@@ -525,3 +401,136 @@ class CosmosDbQueryExecutor(BaseQueryExecutor):
         """
         # Cosmos DB doesn't use schema qualification
         return object_name
+
+
+def _split_select_fields(select_clause: str) -> List[str]:
+    """Split a SELECT list by comma, but handle quoted strings and nested parentheses."""
+    fields = []
+    current_field = ""
+    paren_depth = 0
+    in_quotes = False
+    quote_char = None
+
+    for char in select_clause:
+        if char in ("'", '"') and (not in_quotes or char == quote_char):
+            in_quotes = not in_quotes
+            quote_char = char if in_quotes else None
+            current_field += char
+        elif char == "(" and not in_quotes:
+            paren_depth += 1
+            current_field += char
+        elif char == ")" and not in_quotes:
+            paren_depth -= 1
+            current_field += char
+        elif char == "," and not in_quotes and paren_depth == 0:
+            fields.append(current_field.strip())
+            current_field = ""
+        else:
+            current_field += char
+
+    if current_field.strip():
+        fields.append(current_field.strip())
+    return fields
+
+
+def _normalize_select_field(field: str) -> str:
+    """Add the 'c.' prefix to one SELECT field if not already present."""
+    field_stripped = field.strip()
+    # Special case: SELECT * should remain as-is
+    if field_stripped == "*":
+        return field
+    # Skip if already has alias (c.field, c['field'], or aggregate functions)
+    if (
+        field_stripped.startswith("C.")
+        or field_stripped.startswith("C[")
+        or field_stripped.startswith("c.")
+        or field_stripped.startswith("c[")
+        or any(
+            func in field_stripped.upper()
+            for func in ["COUNT(", "SUM(", "AVG(", "MAX(", "MIN(", "DISTINCT "]
+        )
+    ):
+        return field
+    # Add 'c.' prefix
+    return f"c.{field_stripped}"
+
+
+def _normalize_select_list(sql: str) -> str:
+    """Step 2: Normalize SELECT field list - add 'c.' prefix to unaliased fields."""
+    sql_upper = sql.upper()
+    # Match: SELECT field1, field2, field3 FROM ...
+    select_match = re.search(r"SELECT\s+(.*?)\s+FROM", sql_upper, re.IGNORECASE | re.DOTALL)
+    if not select_match:
+        return sql
+    select_clause = sql[select_match.start(1) : select_match.end(1)]
+    fields = _split_select_fields(select_clause)
+    normalized_fields = [_normalize_select_field(field) for field in fields]
+
+    # Reconstruct SELECT clause
+    normalized_select = "SELECT " + ", ".join(normalized_fields)
+    return sql[: select_match.start()] + normalized_select + sql[select_match.end(1) :]
+
+
+def _normalize_order_by(sql: str) -> str:
+    """Step 3: Normalize ORDER BY clause."""
+    sql_upper = sql.upper()
+    order_by_match = re.search(
+        r"ORDER\s+BY\s+(.*?)(?:\s+(?:ASC|DESC))?(?:\s|$)", sql_upper, re.IGNORECASE
+    )
+    if not order_by_match:
+        return sql
+    order_by_clause = sql[order_by_match.start() : order_by_match.end()]
+    # Add 'c.' prefix to field references in ORDER BY
+    # Match field names that aren't already aliased
+    order_by_normalized = re.sub(
+        r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b(?=\s*(?:ASC|DESC|,|$))",
+        lambda m: (
+            f"c.{m.group(1)}"
+            if m.group(1).upper() not in ("ASC", "DESC", "C")
+            and "c." not in order_by_clause[: m.start()]
+            else m.group(0)
+        ),
+        order_by_clause,
+        flags=re.IGNORECASE,
+    )
+    # Simple approach: replace bare field names with c.field.
+    order_by_normalized = re.sub(
+        r"(?<!\.)\b([a-zA-Z_][a-zA-Z0-9_]*)\b",
+        lambda m: (
+            m.group(0)
+            if m.group(1).upper() in ("ORDER", "BY", "ASC", "DESC", "C")
+            else f"c.{m.group(1)}"
+        ),
+        order_by_clause,
+        flags=re.IGNORECASE,
+    )
+    return sql[: order_by_match.start()] + order_by_normalized + sql[order_by_match.end() :]
+
+
+def _normalize_where(sql: str) -> str:
+    """Step 4: Normalize WHERE clause."""
+    sql_upper = sql.upper()
+    if "WHERE" not in sql_upper:
+        return sql
+    where_pos = sql_upper.find("WHERE")
+    where_clause = sql[where_pos + 5 :].strip()
+    # Extract WHERE clause up to ORDER BY or end
+    order_by_pos = sql_upper.find("ORDER BY", where_pos)
+    if order_by_pos > 0:
+        where_clause = sql[where_pos + 5 : order_by_pos].strip()
+    else:
+        where_clause = sql[where_pos + 5 :].strip()
+
+    if " C." in sql_upper[where_pos:] or " C[" in sql_upper[where_pos:]:
+        return sql
+    # Add 'c.' prefix to field references in WHERE clause
+    where_clause_normalized = re.sub(
+        r"\b([a-zA-Z_][a-zA-Z0-9_]*)\b(?=\s*[=<>!])",
+        r"c.\1",
+        where_clause,
+        flags=re.IGNORECASE,
+    )
+    # Reconstruct SQL with normalized WHERE clause
+    if order_by_pos > 0:
+        return sql[: where_pos + 5] + " " + where_clause_normalized + " " + sql[order_by_pos:]
+    return sql[: where_pos + 5] + " " + where_clause_normalized

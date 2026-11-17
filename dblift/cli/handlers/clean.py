@@ -18,7 +18,7 @@ def _handle_clean(ctx: CliCommandContext) -> Tuple[bool, Any]:
             recursive=ctx.recursive,
             dir_recursive_map=ctx.dir_recursive_map or None,
             additional_dirs=ctx.additional_scripts_dirs if ctx.additional_scripts_dirs else None,
-            show_query_results=getattr(ctx.args, "show_query_results", False),
+            show_query_results=ctx.args.show_query_results,
         )
     )
     _set_command_completed(ctx.log, result, "CLEAN")

@@ -102,13 +102,21 @@ def test_oss_cli_does_not_expose_license_key_surface():
         "tests/unit/cli/test_license_banner_wiring.py",
     }
 
+    # The declarative catalog names the root flag (never the ``license_key``
+    # identifier) so an install without the package that registers it gets
+    # install guidance instead of an argparse error; its test names it too.
+    root_flag_ok = {
+        "dblift/core/premium_manifest.py",
+        "tests/unit/cli/test_premium_stubs.py",
+    }
+
     key_offenders = []
     info_offenders = []
     for path in sorted(_tracked_files()):
         if path == current_test or not path.endswith(".py"):
             continue
         text = (ROOT / path).read_text(encoding="utf-8")
-        if "--license-key" in text or "license_key" in text:
+        if ("--license-key" in text and path not in root_flag_ok) or "license_key" in text:
             key_offenders.append(path)
         if "license_info" in text and path not in license_info_ok:
             info_offenders.append(path)

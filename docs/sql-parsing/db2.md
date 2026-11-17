@@ -320,7 +320,7 @@ The statement facts of a Db2 script (the kind of a statement, the objects it nam
 | `CREATE [LARGE, REGULAR, TEMPORARY, SYSTEM TEMPORARY, USER TEMPORARY] TABLESPACE name`, `CREATE STOGROUP name`, `CREATE BUFFERPOOL name` | CREATE | DDL | `TABLESPACE`, `STORAGE_GROUP` or `BUFFERPOOL` created (one part) | |
 | `CREATE [OR REPLACE] [DISTINCT] TYPE name`, `CREATE [OR REPLACE] MODULE name` | CREATE | DDL | `TYPE` or `MODULE` created | |
 | `CREATE [OR REPLACE] SYNONYM name` | CREATE | DDL | `SYNONYM` created (Db2 LUW keeps no separate synonym: the statement creates an alias, `SYSCAT.TABLES.TYPE = 'A'`, so it is typed as `ALIAS` is) | |
-| `ALTER {TABLE, VIEW, SEQUENCE, TRIGGER, PROCEDURE, FUNCTION} name`, `ALTER SCHEMA name` | ALTER | DDL | that type altered | `ALTER TABLE`: columns diagnostic |
+| `ALTER {TABLE, VIEW, SEQUENCE, TRIGGER, PROCEDURE, FUNCTION} name`, `ALTER SCHEMA name` | ALTER | DDL | that type altered | `ALTER TABLE`: added key declarations, otherwise columns diagnostic |
 | `ALTER {TABLESPACE, STOGROUP, BUFFERPOOL} name` (one part), `ALTER {TYPE, MODULE} name` | ALTER | DDL | that type altered | |
 | `DROP {TABLE, VIEW, INDEX, SEQUENCE, ALIAS, SCHEMA, TRIGGER, PROCEDURE, FUNCTION} [IF EXISTS] name` | DROP | DDL | that type dropped (`SCHEMA`: one part) | |
 | `DROP {TABLESPACE, STOGROUP, BUFFERPOOL} name` (one part), `DROP {TYPE, DISTINCT TYPE, DATA TYPE, MODULE, SYNONYM} name` | DROP | DDL | that type dropped | no `IF EXISTS`: the server rejects it for these |
@@ -367,4 +367,6 @@ A valid `CALL` head still names its referenced procedure. The procedure body may
 
 Unquoted names thus fold to upper case including non-ASCII letters, and U+00A0 and U+200B are name characters. `ALTER INDEX`, `ALTER ALIAS` and `LABEL ON` are rejected with SQL0104N; `CREATE TABLE IF NOT EXISTS` and `DROP TABLE IF EXISTS` run.
 
-**Unavailable.** The reader does not parse a column list, so `declared_columns`, `declared_constraints` and `indexed_columns` are never filled. `CREATE TABLE`, `DECLARE GLOBAL TEMPORARY TABLE`, `ALTER TABLE` and `CREATE INDEX` carry the diagnostic `db2 column-level facts are unavailable: declared columns, constraints and indexed columns are not read`, so that a check which needs a column reports that it was not evaluated instead of finding nothing.
+A plain `ALTER TABLE … ADD [CONSTRAINT name]` with a `UNIQUE`, `PRIMARY KEY` or `FOREIGN KEY` declaration reports its columns in order. A foreign key also names its referenced table and any explicitly listed parent columns. An omitted parent column list remains empty; the reader does not look up the parent key. Multiple consecutive `ADD` key clauses are read together. If any clause or modifier is unread, no key declaration is returned.
+
+Other `ALTER TABLE` forms, `CREATE TABLE`, `DECLARE GLOBAL TEMPORARY TABLE` and `CREATE INDEX` retain the diagnostic `db2 column-level facts are unavailable: declared columns, constraints and indexed columns are not read`. The reader does not extract declared table columns or indexed columns from those statements.

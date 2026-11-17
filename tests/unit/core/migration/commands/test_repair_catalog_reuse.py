@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -158,6 +157,12 @@ def test_recursion_map_and_additional_directories_use_same_catalog(database_clie
     assert {row[0] for row in _history(database)} == {"V1__app.sql", "V2__extra.sql"}
 
 
+def _applied_row(script_name):
+    row = make_migration(script_name=script_name, type=MigrationType.SQL, checksum=0)
+    row.success = True
+    return row
+
+
 def _command(script_manager):
     command = RepairCommand.__new__(RepairCommand)
     command.log = MagicMock()
@@ -175,9 +180,7 @@ def test_built_catalog_preserves_group_order_and_first_duplicate_wins(tmp_path):
     scripts.load_migration_scripts.return_value = catalog
     command = _command(scripts)
     command.state_manager.history_manager.get_applied_migrations.return_value = [
-        SimpleNamespace(
-            script_name=first.script_name, type=MigrationType.SQL, checksum=0, success=True
-        )
+        _applied_row(first.script_name)
     ]
     state = command.state_manager.build_state(tmp_path)
     repairs = _detect_checksum_drift(state, [])
@@ -193,9 +196,7 @@ def test_empty_built_catalog_is_authoritative(tmp_path, has_history):
     command = _command(scripts)
     if has_history:
         command.state_manager.history_manager.get_applied_migrations.return_value = [
-            SimpleNamespace(
-                script_name="V1__gone.sql", type=MigrationType.SQL, checksum=0, success=True
-            )
+            _applied_row("V1__gone.sql")
         ]
     state = command.state_manager.build_state(tmp_path)
     scripts.load_migration_scripts.side_effect = AssertionError("must reuse empty catalog")

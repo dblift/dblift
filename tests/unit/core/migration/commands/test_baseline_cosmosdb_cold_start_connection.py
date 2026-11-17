@@ -100,7 +100,9 @@ def _make_history_manager(provider: _ColdStartProvider, has_history_table: bool 
 
 
 def _make_config():
-    return SimpleNamespace(database=SimpleNamespace(schema="test", type="cosmosdb"))
+    return SimpleNamespace(
+        database=SimpleNamespace(schema="test", type="cosmosdb"), strict_mode=False
+    )
 
 
 def _make_command(command_cls, provider, history_manager, **extra_ctx):

@@ -8,7 +8,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from dblift.api.client import DBLiftClient
 from dblift.cli.handlers._shared import (
     CliCommandContext,
     _migration_info_to_dict,
@@ -16,8 +15,34 @@ from dblift.cli.handlers._shared import (
 )
 from dblift.config import DbliftConfig
 from dblift.core.logger.log import FileLog, LogFormat
-from dblift.core.logger.results import MigrationInfo, OperationResult, ValidateResult
+from dblift.core.logger.results import (
+    InfoResult,
+    MigrateResult,
+    MigrationInfo,
+    OperationResult,
+    ValidateResult,
+)
 from dblift.core.migration.commands.base_command import PreflightConnectionError
+from tests.unit._client_factory import bare_client
+
+
+def _result(result_cls, **fields):
+    """A real result object with *fields* set, as a command would leave it."""
+    result = result_cls()
+    for name, value in fields.items():
+        setattr(result, name, value)
+    return result
+
+
+def _args(command, **overrides):
+    """What the real parser builds for *command*, with *overrides* applied."""
+    from dblift.cli._parser_setup import create_parser
+
+    argv = [command] + (["--baseline-version", "1"] if command == "baseline" else [])
+    args = create_parser(exit_on_error=False).parse_args(argv)
+    for name, value in overrides.items():
+        setattr(args, name, value)
+    return args
 
 
 def _migration(**overrides):
@@ -203,7 +228,8 @@ def test_run_json_guarded_human_mode_reraises_and_reports_completion():
 def test_info_result_to_dict_payload_is_unchanged():
     from dblift.cli.handlers.info import _info_result_to_dict
 
-    result = SimpleNamespace(
+    result = _result(
+        InfoResult,
         success=True,
         error_message=None,
         current_schema_version="1",
@@ -246,7 +272,8 @@ def test_info_result_to_dict_payload_is_unchanged():
 def test_validate_result_to_dict_shape():
     from dblift.cli.handlers.validate import _validate_result_to_dict
 
-    result = SimpleNamespace(
+    result = _result(
+        ValidateResult,
         success=False,
         error_message="checksum mismatch",
         target_schema="main",
@@ -278,14 +305,14 @@ def test_handle_validate_json_emits_payload_only(capsys):
     from dblift.cli.handlers.validate import _handle_validate
 
     client = MagicMock()
-    client.validate.return_value = SimpleNamespace(
+    client.validate.return_value = _result(
+        ValidateResult,
         success=True,
         error_message=None,
         target_schema="main",
         error_count=0,
         validated_migrations=[],
         failed_migrations=[],
-        _preflight_error=None,
     )
     ctx = CliCommandContext(client=client, args=SimpleNamespace(format="json"), log=MagicMock())
 
@@ -301,7 +328,8 @@ _CONNECTION = "Connection failed: connection refused"
 
 
 def _preflight_failure_result(message):
-    return SimpleNamespace(
+    return _result(
+        ValidateResult,
         success=False,
         error_message=message,
         target_schema="public",
@@ -309,7 +337,6 @@ def _preflight_failure_result(message):
         issues=[],
         validated_migrations=[],
         failed_migrations=[],
-        execution_time=lambda: 0,
         _preflight_error=PreflightConnectionError(message),
     )
 
@@ -320,7 +347,7 @@ def _history_failure_result():
 
 def _real_preflight_client(message):
     """A real client whose validate() hits a preflight failure."""
-    client = DBLiftClient.__new__(DBLiftClient)
+    client = bare_client()
     client.config = DbliftConfig.from_dict({"database": {"type": "sqlite", "path": ":memory:"}})
     client.provider = MagicMock()
     client.executor = MagicMock()
@@ -435,7 +462,7 @@ def test_migrate_validate_only_json_preflight_stays_connection_error_when_warnin
     from dblift.cli.handlers.migrate import _handle_migrate
 
     client = _real_preflight_client(_CONNECTION)
-    args = SimpleNamespace(format="json", dry_run=False, validate_only=True)
+    args = _args("migrate", format="json", dry_run=False, validate_only=True)
 
     ok, returned = _handle_migrate(CliCommandContext(client=client, args=args, log=MagicMock()))
 
@@ -465,7 +492,11 @@ def _run_preflight_handler(module, handler, executor_method, args, message):
     client.executor.validate.side_effect = None
     getattr(client.executor, executor_method).side_effect = PreflightConnectionError(message)
     handle = getattr(importlib.import_module(f"dblift.cli.handlers.{module}"), handler)
-    return handle(CliCommandContext(client=client, args=SimpleNamespace(**args), log=MagicMock()))
+    return handle(
+        CliCommandContext(
+            client=client, args=_args(module.replace("_", "-"), **args), log=MagicMock()
+        )
+    )
 
 
 @pytest.mark.unit
@@ -516,7 +547,8 @@ def test_handle_validate_json_keeps_a_normal_failure_as_a_verdict(capsys):
     from dblift.cli.handlers.validate import _handle_validate
 
     client = MagicMock()
-    client.validate.return_value = SimpleNamespace(
+    client.validate.return_value = _result(
+        ValidateResult,
         success=False,
         error_message="checksum mismatch",
         target_schema="main",
@@ -524,7 +556,6 @@ def test_handle_validate_json_keeps_a_normal_failure_as_a_verdict(capsys):
         issues=["checksum mismatch"],
         validated_migrations=[],
         failed_migrations=[],
-        _preflight_error=None,
     )
     ctx = CliCommandContext(client=client, args=SimpleNamespace(format="json"), log=MagicMock())
 
@@ -544,7 +575,7 @@ def test_handle_migrate_validate_only_json_history_table_failure_stays_an_error(
 
     client = MagicMock()
     client.validate.return_value = _history_failure_result()
-    args = SimpleNamespace(format="json", dry_run=False, validate_only=True)
+    args = _args("migrate", format="json", dry_run=False, validate_only=True)
 
     ok, returned = _handle_migrate(CliCommandContext(client=client, args=args, log=MagicMock()))
 
@@ -569,14 +600,14 @@ def test_validate_parser_accepts_format_json():
 def test_migrate_result_to_dict_shape():
     from dblift.cli.handlers.migrate import _migrate_result_to_dict
 
-    result = SimpleNamespace(
+    result = _result(
+        MigrateResult,
         success=True,
         error_message=None,
         target_schema="main",
         current_schema_version="1",
         dry_run_count=2,
         migrations=[_migration(status="SUCCESS")],
-        migrations_applied=["1"],
     )
 
     data = _migrate_result_to_dict(result, dry_run=True)
@@ -599,14 +630,14 @@ def test_migrate_result_to_dict_carries_sql_only_when_show_sql_is_true():
     from dblift.cli.handlers.migrate import _migrate_result_to_dict
     from dblift.core.logger.results import MigrationSqlInfo
 
-    result_with_sql = SimpleNamespace(
+    result_with_sql = _result(
+        MigrateResult,
         success=True,
         error_message=None,
         target_schema="main",
         current_schema_version="1",
         dry_run_count=1,
         migrations=[],
-        migrations_applied=[],
         show_sql=True,
         sql=[
             MigrationSqlInfo(
@@ -628,14 +659,14 @@ def test_migrate_result_to_dict_carries_sql_only_when_show_sql_is_true():
         }
     ]
 
-    result_without_sql = SimpleNamespace(
+    result_without_sql = _result(
+        MigrateResult,
         success=True,
         error_message=None,
         target_schema="main",
         current_schema_version="1",
         dry_run_count=1,
         migrations=[],
-        migrations_applied=[],
         show_sql=False,
     )
 
@@ -655,7 +686,7 @@ def test_handle_migrate_json_preflight_failure_is_a_connection_error(capsys, mes
 
     client = _real_preflight_client(message)
     client.executor.migrate.side_effect = PreflightConnectionError(message)
-    args = SimpleNamespace(format="json", dry_run=dry_run, validate_only=False)
+    args = _args("migrate", format="json", dry_run=dry_run, validate_only=False)
 
     ok, returned = _handle_migrate(CliCommandContext(client=client, args=args, log=MagicMock()))
 
@@ -670,16 +701,16 @@ def test_handle_migrate_dry_run_json(capsys):
     from dblift.cli.handlers.migrate import _handle_migrate
 
     client = MagicMock()
-    client.migrate.return_value = SimpleNamespace(
+    client.migrate.return_value = _result(
+        MigrateResult,
         success=True,
         error_message=None,
         target_schema="main",
         current_schema_version=None,
         dry_run_count=1,
         migrations=[],
-        migrations_applied=[],
     )
-    args = SimpleNamespace(format="json", dry_run=True, validate_only=False)
+    args = _args("migrate", format="json", dry_run=True, validate_only=False)
     ctx = CliCommandContext(client=client, args=args, log=MagicMock())
 
     ok, _ = _handle_migrate(ctx)
@@ -695,16 +726,16 @@ def test_handle_migrate_validate_only_json_uses_validate_payload(capsys):
     from dblift.cli.handlers.migrate import _handle_migrate
 
     client = MagicMock()
-    client.validate.return_value = SimpleNamespace(
+    client.validate.return_value = _result(
+        ValidateResult,
         success=True,
         error_message=None,
         target_schema="main",
         error_count=0,
         validated_migrations=[],
         failed_migrations=[],
-        _preflight_error=None,
     )
-    args = SimpleNamespace(format="json", dry_run=False, validate_only=True)
+    args = _args("migrate", format="json", dry_run=False, validate_only=True)
 
     _handle_migrate(CliCommandContext(client=client, args=args, log=MagicMock()))
 
@@ -718,15 +749,7 @@ def test_validate_result_to_dict_error_is_null_on_success_like_info_and_migrate(
     three read tools."""
     from dblift.cli.handlers.validate import _validate_result_to_dict
 
-    result = SimpleNamespace(
-        success=True,
-        error_message="",
-        target_schema="main",
-        error_count=0,
-        issues=[],
-        validated_migrations=[],
-        failed_migrations=[],
-    )
+    result = _result(ValidateResult, success=True, error_message="", target_schema="main")
 
     assert _validate_result_to_dict(result)["error"] is None
 
@@ -737,14 +760,3 @@ def test_migration_info_to_dict_carries_analysis_or_null():
 
     assert _migration_info_to_dict(_migration(analysis=analysis))["analysis"] == analysis
     assert _migration_info_to_dict(_migration(analysis=None))["analysis"] is None
-
-
-@pytest.mark.unit
-def test_payloads_default_the_history_marker_for_a_result_without_it():
-    from dblift.cli.handlers.info import _info_result_to_dict
-    from dblift.cli.handlers.migrate import _migrate_result_to_dict
-
-    result = SimpleNamespace(success=True, migrations=[])
-
-    assert _info_result_to_dict(result)["history_table_exists"] is True
-    assert _migrate_result_to_dict(result, dry_run=True)["history_table_exists"] is True

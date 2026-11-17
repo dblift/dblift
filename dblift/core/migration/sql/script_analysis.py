@@ -260,10 +260,8 @@ def _analyse(text: str, dialect: str) -> ScriptAnalysis:
             AnalysedObject(obj.type.value, obj.name, obj.schema) for obj in facts.affected_objects
         )
         operation = facts.operation
-        outer_full_table = facts.kind == "DML" and (
-            facts.operation in ("UPDATE", "DELETE") and (not facts.predicate)
-        )
-        full_table = outer_full_table or any(_rewrites_every_row(w) for w in facts.cte_writes)
+        outer_full_table = facts.kind == "DML" and facts.rewrites_every_row
+        full_table = outer_full_table or any(w.rewrites_every_row for w in facts.cte_writes)
         analysed = AnalysedStatement(
             len(fact_statements),
             operation,
@@ -369,10 +367,6 @@ _SERVER_SIDE_COPY = {
 }
 
 
-def _rewrites_every_row(write: DmlEffect) -> bool:
-    return write.operation in ("UPDATE", "DELETE") and not write.predicate
-
-
 def _cte_write_cautions(index: int, writes: Tuple[DmlEffect, ...]) -> List[Caution]:
     """One caution per UPDATE or DELETE a CTE performs, as for the statement written alone."""
     return [
@@ -383,7 +377,7 @@ def _cte_write_cautions(index: int, writes: Tuple[DmlEffect, ...]) -> List[Cauti
                 f"{write.operation} without WHERE rewrites every row of {write.target}",
                 "dml-no-where",
             )
-            if _rewrites_every_row(write)
+            if write.rewrites_every_row
             else Caution(CHANGES_ROWS, index, f"{write.operation} changes rows of {write.target}")
         )
         for write in writes

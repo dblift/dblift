@@ -1,10 +1,9 @@
 """DB2 plugin-owned SQLAlchemy URL construction."""
 
-from types import SimpleNamespace
-
 import pytest
 from sqlalchemy.engine import make_url
 
+from dblift.db.plugins.db2.config import Db2Config
 from dblift.db.plugins.db2.plugin import PLUGIN as DB2_PLUGIN
 from dblift.db.provider_registry import ProviderRegistry
 
@@ -27,7 +26,7 @@ def test_db2_plugin_declares_sqlalchemy_url_builder() -> None:
 def test_db2_registry_builds_ibm_db_sa_url(_reset_registry) -> None:
     ProviderRegistry._plugins["db2"] = DB2_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = Db2Config(
         type="db2",
         host="db2.example.com",
         port=50001,
@@ -60,12 +59,13 @@ def test_db2_registry_builds_ibm_db_sa_url(_reset_registry) -> None:
 def test_db2_raw_url_merges_query_options(_reset_registry) -> None:
     ProviderRegistry._plugins["db2"] = DB2_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = Db2Config(
         type="db2",
         url="db2://db2.example.com:50000/SAMPLE?security=ssl",
         username="db2inst1",
         password="secret",
         schema="APP",
+        connection_timeout=0,
         extra_params={"retrieveMessagesFromServerOnGetMessage": "true"},
     )
 
@@ -86,7 +86,7 @@ def test_db2_sqlalchemy_url_explicit_credentials_override_url_credentials(
 ) -> None:
     ProviderRegistry._plugins["db2"] = DB2_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = Db2Config(
         type="db2",
         url="ibm_db_sa://stale:old@db2.example.com:50000/SAMPLE",
         username="db2inst1",
@@ -102,7 +102,7 @@ def test_db2_sqlalchemy_url_explicit_credentials_override_url_credentials(
 def test_db2_sqlalchemy_url_builder_rejects_database_url(_reset_registry) -> None:
     ProviderRegistry._plugins["db2"] = DB2_PLUGIN
     ProviderRegistry._discovered = True
-    database_config = SimpleNamespace(
+    database_config = Db2Config(
         type="db2",
         url="jdbc:db2://localhost:50000/SAMPLE",
     )

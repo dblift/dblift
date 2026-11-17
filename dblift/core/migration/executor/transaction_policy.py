@@ -11,12 +11,14 @@ from dblift.db.provider_interfaces import TransactionalProvider
 
 @dataclass(frozen=True)
 class TransactionPolicyDecision:
-    """Outcome of policy evaluation: whether to wrap statements in a transaction or run autocommit."""
+    """Outcome of policy evaluation: whether to wrap statements in a transaction or
+    run autocommit."""
 
     transactional: bool
     autocommit_required: bool = False
     unsupported_mixed_mode: bool = False
     reason: str = ""
+    script_managed: bool = False
 
 
 class TransactionPolicy:
@@ -26,14 +28,22 @@ class TransactionPolicy:
         self,
         statements: Iterable[ExecutionStatement],
         provider: Any,
+        *,
+        script_managed: bool = False,
     ) -> TransactionPolicyDecision:
-        """Return the transaction/autocommit decision for ``statements`` on the given ``provider``."""
+        """Return the transaction/autocommit decision for ``statements`` on the
+        given ``provider``."""
         execution_statements: Tuple[ExecutionStatement, ...] = tuple(statements)
         provider_supports_transactions = isinstance(provider, TransactionalProvider)
         if not provider_supports_transactions:
             return TransactionPolicyDecision(
                 transactional=False,
                 reason="Provider does not support explicit transactions",
+            )
+
+        if script_managed:
+            return TransactionPolicyDecision(
+                transactional=False, reason="dblift:no-transaction", script_managed=True
             )
 
         autocommit_statements = [

@@ -24,6 +24,8 @@ max_snapshots: 1  # Maximum number of snapshots to keep (default: 1, oldest dele
 
 > **`schema` is required** for every dialect except SQLite (which always uses `main`). There is no implicit default — you must set it either in `dblift.yaml` or on the command line via `--db-schema`. DBLift creates the history table, lock table, and snapshot table inside this schema, so an incorrect or missing value produces silent cross-schema mismatches (e.g. a history table written in one schema but looked up in another).
 
+If the file sets neither `migrations.directory` nor `migrations.directories`, DBLift uses a `migrations` directory in the configuration file's folder, whatever the working directory. A relative path written in the file is resolved from the file's folder too; `--scripts` is relative to the working directory. Without a configuration file the default is `migrations` in the working directory.
+
 ## Multiple Migration Directories
 
 You can specify multiple migration directories. The first one is the primary directory:
@@ -391,7 +393,7 @@ command-line flag, then environment variable, then the configuration file, then 
 | --- | --- | --- | --- | --- |
 | Level (`debug`, `info`, `warn`, `error`) | `--log-level` | `DBLIFT_LOG_LEVEL` | `log_level` or `logging.level` | `info` |
 | Format (`text`, `json`, `html`, comma-separated for several) | `--log-format` | `DBLIFT_LOG_FORMAT` | `log_format` | `text` |
-| Directory | `--log-dir` | `DBLIFT_LOG_DIR` | `log_dir` | `logs` |
+| Directory | `--log-dir` | `DBLIFT_LOG_DIR` | `log_dir` or `logging.directory` | none |
 | File name | `--log-file` | `DBLIFT_LOG_FILE` | `log_file` | generated |
 
 ```yaml
@@ -399,6 +401,12 @@ log_level: warn
 log_format: text,json
 log_dir: build/logs
 ```
+
+dblift writes no log file unless a directory or a file is requested: logging goes to the console only
+and no `logs/` directory is created. `--log-format` alone does not create a file. A relative `--log-file` name with no directory is written to
+the working directory. `--log-dir logs` (or `DBLIFT_LOG_DIR=logs`, or `log_dir: logs` in the
+configuration file) keeps the layout of earlier versions. The CLI honours `logging.directory`
+as well as `log_dir`; relative paths in the configuration file are resolved from the file's folder.
 
 Level names are case-insensitive, `warning` is accepted for `warn` in the flag, the environment variable and the file, and `critical` for `error` in the environment variable and the file. An unknown level from any of them exits with status 2, as an unknown format does. A level hides everything
 below it on the console and in the log files: `error` shows only errors, `warn` shows warnings and

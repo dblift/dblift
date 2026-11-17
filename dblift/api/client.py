@@ -48,6 +48,7 @@ from dblift.core.migration.executor.migration_executor import (
     MigrationExecutor,
     require_analysis_support,
 )
+from dblift.core.migration.migration import _default_splitter_dialect
 from dblift.core.migration.target_version import (
     available_versions,
     merge_versions,
@@ -58,6 +59,7 @@ from dblift.core.seams.capabilities import CapabilityDeniedError
 from dblift.core.seams.event_listeners import attach_registered_listeners
 from dblift.core.seams.feature_loading import load_feature_extensions
 from dblift.db.base_provider import BaseProvider
+from dblift.db.error import format_connection_error
 from dblift.db.provider_interfaces import ConnectionProvider, TransactionalProvider
 
 __all__ = ["DBLiftClient"]
@@ -81,7 +83,7 @@ def _make_premium_stub_method(api_method_name: str) -> Callable[..., Any]:
     (``cli/_command_handlers.py``): rather than the method being entirely
     absent (a bare ``AttributeError`` on call), it exists, accepts
     whatever arguments a paid caller would pass, and raises
-    ``CapabilityDeniedError`` with the same upsell message the CLI shows
+    ``CapabilityDeniedError`` with the same message the CLI shows
     for the equivalent command. Not decorated with ``@_with_client_emitter``
     — it never runs an operation, so there is nothing to bind an emitter
     around (see ``EXPECTED_DECORATED_OPERATIONS`` in
@@ -97,8 +99,10 @@ def _make_premium_stub_method(api_method_name: str) -> Callable[..., Any]:
         f"Paid-tier stub: '{cmd.name}' is a dblift {cmd.edition} command, "
         f"not available in the open-source edition.\n\n"
         f"Raises:\n"
-        f"    CapabilityDeniedError: always, with an upgrade message. "
-        f"See {UPGRADE_URL}."
+        f"    CapabilityDeniedError: always. In an open-source install the "
+        f"message points to {UPGRADE_URL}; when an extension is installed "
+        f"without the package that provides this command, it says which "
+        f"package to install."
     )
     return _stub
 
@@ -131,15 +135,9 @@ def _with_client_emitter(
     def decorator(inner: _F) -> _F:
         @wraps(inner)
         def wrapper(self: "DBLiftClient", *args: Any, **kwargs: Any) -> Any:
-            # ``getattr`` so tests that bypass ``__init__`` (e.g.
-            # ``DBLiftClient.__new__``) keep working: no lock/tracking is
-            # applied when the attributes aren't there.
-            emitter = getattr(self, "events", None)
-            lock = getattr(self, "_operation_lock", None)
-            thread_state = getattr(self, "_thread_state", None)
-            if lock is None or thread_state is None:
-                with use_client_emitter(emitter):
-                    return inner(self, *args, **kwargs)
+            emitter = self.events
+            lock = self._operation_lock
+            thread_state = self._thread_state
 
             stack = getattr(thread_state, "stack", [])
             if mutating:
@@ -303,7 +301,9 @@ class DBLiftClient:
         config = resolve_config_or_raise(provider, config)
 
         if logger is None:
-            logger = build_default_logger(config, log_level, log_format, log_file)
+            logger = build_default_logger(
+                config, log_level, log_format, log_file, log_dir=kwargs.get("log_dir")
+            )
 
         normalize_migrations_dirs(config, migrations_dir)
         apply_ctor_overrides(config, kwargs, log_level, log_format, log_file)
@@ -383,8 +383,6 @@ class DBLiftClient:
             try:
                 records = self.executor.history_manager.get_applied_migration_records()
             except (OSError, SQLAlchemyError) as exc:
-                from dblift.db.error import format_connection_error
-
                 raise PreflightConnectionError(
                     format_connection_error(exc, self.config.database.type or "")
                 ) from exc
@@ -444,14 +442,14 @@ class DBLiftClient:
         config_dialect = getattr(database, "type", None) if database else None
         if config_dialect == "":
             raise ValueError(
-                "Database type is configured but empty. Please set config.database.type to a valid dialect."
+                "Database type is configured but empty. "
+                "Please set config.database.type to a valid dialect."
             )
         if config_dialect:
             return str(config_dialect).lower()
         # Neither provider nor config supplied a dialect: fall back to the
         # registry-derived generic dialect rather than a hardcoded literal
         # (ADR-26 E5).
-        from dblift.core.migration.migration import _default_splitter_dialect
 
         return _default_splitter_dialect().lower()
 
@@ -532,7 +530,7 @@ class DBLiftClient:
                 "dry_run": dry_run,
                 "show_sql": show_sql,
                 "tags": tags,
-                "dialect": getattr(self, "dialect", None),
+                "dialect": self.dialect,
             },
         )
 
@@ -569,21 +567,21 @@ class DBLiftClient:
                     {
                         "operation": "migrate",
                         "result": result,
-                        "migrations_applied": getattr(result, "migrations_applied", []),
+                        "migrations_applied": result.migrations_applied,
                         "config": self.config,
                         "provider": self.provider,
                         "history_manager": self.executor.history_manager,
                         "log": self.logger,
-                        "dialect": getattr(self, "dialect", None),
+                        "dialect": self.dialect,
                     },
                 )
             else:
                 self.events.emit(
                     EventType.MIGRATION_FAILED,
                     {
-                        "error": getattr(result, "error_message", None),
+                        "error": result.error_message,
                         "target_version": target_version,
-                        "dialect": getattr(self, "dialect", None),
+                        "dialect": self.dialect,
                     },
                 )
 
@@ -594,7 +592,7 @@ class DBLiftClient:
                 {
                     "error": str(e),
                     "target_version": target_version,
-                    "dialect": getattr(self, "dialect", None),
+                    "dialect": self.dialect,
                 },
             )
             preflight = _preflight_connection_failure(e)
@@ -726,7 +724,7 @@ class DBLiftClient:
         self._check_target_version(
             target_version, recursive, additional_dirs, kwargs.get("dir_recursive_map")
         )
-        self.events.emit(EventType.VALIDATION_STARTED, {"dialect": getattr(self, "dialect", None)})
+        self.events.emit(EventType.VALIDATION_STARTED, {"dialect": self.dialect})
 
         try:
             recursive, additional_dirs, dir_recursive_map = self._resolve_script_options(
@@ -747,14 +745,14 @@ class DBLiftClient:
 
             self.events.emit(
                 EventType.VALIDATION_COMPLETED,
-                {"result": result, "dialect": getattr(self, "dialect", None)},
+                {"result": result, "dialect": self.dialect},
             )
 
             return result
         except Exception as e:
             self.events.emit(
                 EventType.VALIDATION_FAILED,
-                {"error": str(e), "dialect": getattr(self, "dialect", None)},
+                {"error": str(e), "dialect": self.dialect},
             )
             preflight = _preflight_connection_failure(e)
             if preflight is not None:
@@ -861,7 +859,7 @@ class DBLiftClient:
                 self.events.emit(
                     EventType.UNDO_FAILED,
                     {
-                        "error": getattr(result, "error_message", None),
+                        "error": result.error_message,
                         "operation": "undo",
                     },
                 )
@@ -941,7 +939,7 @@ class DBLiftClient:
                 self.events.emit(
                     EventType.CLEAN_FAILED,
                     {
-                        "error": getattr(result, "error_message", None),
+                        "error": result.error_message,
                         "operation": "clean",
                     },
                 )
@@ -1004,7 +1002,7 @@ class DBLiftClient:
                 self.events.emit(
                     EventType.BASELINE_FAILED,
                     {
-                        "error": getattr(result, "error_message", None),
+                        "error": result.error_message,
                         "operation": "baseline",
                     },
                 )
@@ -1082,7 +1080,7 @@ class DBLiftClient:
                 self.events.emit(
                     EventType.REPAIR_FAILED,
                     {
-                        "error": getattr(result, "error_message", None),
+                        "error": result.error_message,
                         "operation": "repair",
                     },
                 )
@@ -1115,7 +1113,8 @@ class DBLiftClient:
 
         Args:
             dry_run: If True, don't actually import
-            recursive: Search scripts directory recursively
+            recursive: Accepted for interface compatibility and ignored. The
+                import reads the Flyway history table, not the scripts directory.
             flyway_table: Source Flyway history table name
             **kwargs: Additional options
 
@@ -1370,13 +1369,8 @@ class DBLiftClient:
         ``self._operation_lock``, blocking until another thread's
         operation finishes.
         """
-        thread_state = getattr(self, "_thread_state", None)
-        if thread_state is not None:
-            _raise_if_reentrant(getattr(thread_state, "stack", []), "close")
-        lock = getattr(self, "_operation_lock", None)
-        if lock is None:
-            return self._exit_unlocked(exc_type, exc_val, exc_tb)
-        with lock:
+        _raise_if_reentrant(getattr(self._thread_state, "stack", []), "close")
+        with self._operation_lock:
             return self._exit_unlocked(exc_type, exc_val, exc_tb)
 
     def _exit_unlocked(

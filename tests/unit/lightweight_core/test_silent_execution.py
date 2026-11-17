@@ -1,11 +1,12 @@
 """The explicit null logger runs migrations without presentation dependencies."""
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from sqlalchemy import create_engine
 
 from dblift.api import DBLiftClient
+from dblift.config import DbliftConfig
 from dblift.core.logger import DbliftLogger, LogFormat, NullLog
 from dblift.core.logger.results import MigrateResult, OperationResult, ValidateResult
 from dblift.core.migration.commands.base_command import BaseCommand
@@ -279,8 +280,7 @@ asyncio.run(run())
 
 
 def test_null_logger_finalizes_failed_result_without_rendering() -> None:
-    command = BaseCommand.__new__(BaseCommand)
-    command.log = NullLog()
+    command = BaseCommand(config=Mock(spec=DbliftConfig), log=NullLog())
     result = OperationResult(success=False, error_message="migration failed")
 
     with (

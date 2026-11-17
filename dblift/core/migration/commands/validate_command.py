@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Dict, List, Optional, Set, cast
 if TYPE_CHECKING:
     pass
 from dblift.core.logger.results import MigrationInfo, ValidateResult
+from dblift.core.seams.runtime_checks import SqlPreflightError
+from dblift.core.sql_validator.migration_validator import ValidationResult
 
 from .base_command import BaseCommand
 
@@ -16,7 +18,9 @@ class ValidateCommand(BaseCommand):
     """Handles the 'validate' command execution."""
 
     @staticmethod
-    def _record_validated_migrations(result: ValidateResult, validation_result: object) -> None:
+    def _record_validated_migrations(
+        result: ValidateResult, validation_result: ValidationResult
+    ) -> None:
         """Split the validated scripts into passed / failed on the result.
 
         The validator reports its findings as free-text ``issues`` plus the
@@ -26,10 +30,10 @@ class ValidateCommand(BaseCommand):
         the MCP tool built on it — saw no failures on a failed validation and
         had only the first issue, as ``error_message``, to go on.
         """
-        failed = list(getattr(validation_result, "failed_scripts", []))
-        checked = set(getattr(validation_result, "checked_scripts", []))
+        failed = list(validation_result.failed_scripts)
+        checked = set(validation_result.checked_scripts)
         reported: Set[str] = set()
-        for migration in getattr(validation_result, "migrations", []):
+        for migration in validation_result.migrations:
             script_name = getattr(migration, "script_name", None)
             if script_name is None:
                 continue
@@ -89,13 +93,17 @@ class ValidateCommand(BaseCommand):
 
         read_snapshot = self.state_manager.new_read_snapshot()
 
-        self._prepare_analysis_for_sql_callbacks(
-            scripts_dir,
-            ("beforeValidate", "afterValidate"),
-            recursive,
-            additional_dirs,
-            dir_recursive_map,
-        )
+        try:
+            self._prepare_analysis_for_sql_callbacks(
+                scripts_dir,
+                ("beforeValidate", "afterValidate"),
+                recursive,
+                additional_dirs,
+                dir_recursive_map,
+            )
+        except SqlPreflightError as refusal:
+            self._report_refusal(result, refusal)
+            return result
 
         def body() -> None:
             nonlocal read_snapshot
@@ -116,7 +124,7 @@ class ValidateCommand(BaseCommand):
                 versions=versions,
                 exclude_versions=exclude_versions,
                 read_snapshot=read_snapshot,
-                strict_mode=bool(getattr(self.config, "strict_mode", False)),
+                strict_mode=self.config.strict_mode,
                 dir_recursive_map=dir_recursive_map,
             )
 
@@ -126,7 +134,7 @@ class ValidateCommand(BaseCommand):
 
             result.success = validation_result.success
             result.error_message = validation_result.error_message or ""
-            result.issues = list(getattr(validation_result, "issues", []))
+            result.issues = list(validation_result.issues)
             self._record_validated_migrations(result, validation_result)
             # execution_time is calculated automatically by the base class
 
@@ -134,7 +142,7 @@ class ValidateCommand(BaseCommand):
                 self.log.info("Migration validation passed (SQL not parsed)")
             else:
                 # Log all validation issues
-                if hasattr(validation_result, "issues") and validation_result.issues:
+                if validation_result.issues:
                     for issue in validation_result.issues:
                         self.log.error(issue)
                 else:

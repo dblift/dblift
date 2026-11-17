@@ -9,13 +9,31 @@ from typing import FrozenSet, Iterator, List, Optional, Tuple
 from dblift.core.sql_model.base import SqlObjectType
 from dblift.core.sql_parser.lexical_spec import LexicalSpec
 from dblift.core.sql_parser.lexical_tokenizer import LexicalTokenizer
-from dblift.core.sql_parser.statement_facts import NamedObject, StatementFacts
+from dblift.core.sql_parser.statement_facts import DeclaredConstraint, NamedObject, StatementFacts
 from dblift.core.sql_parser.tokens import Token, TokenType
 from dblift.db.plugins.db2.parser.data_change_cte import holds_data_change, read_data_change_cte
+from dblift.db.plugins.db2.parser.fact_names import fold_name  # noqa: F401 (public re-export)
+from dblift.db.plugins.db2.parser.fact_names import (
+    _KEY_RESERVED,
+    _QUERY_RESERVED,
+    STOP_WORDS,
+    _is_part,
+    _is_symbol,
+    _is_unterminated,
+    _key_columns,
+    _key_names_are_complete,
+    _name_run,
+    _object,
+    _read_name,
+    _unquote,
+    _unread_character,
+)
 from dblift.db.plugins.db2.parser.lexical_spec import DB2_RULES, DB2_SPEC
 
-COLUMNS_UNAVAILABLE = "db2 column-level facts are unavailable: declared columns, constraints and indexed columns are not read"
-UNREAD_NAME = "db2 statement holds U+{code:04X}, which the engine may read as part of a name; its objects are not named"
+COLUMNS_UNAVAILABLE = "db2 column-level facts are unavailable: declared columns, constraints \
+and indexed columns are not read"
+UNREAD_NAME = "db2 statement holds U+{code:04X}, which the engine may read as part of a name; \
+its objects are not named"
 NOT_CLASSIFIED = "db2 {word} statement: not classified"
 CLIENT_COMMAND = "db2 client command: not an SQL statement"
 UNTERMINATED_IDENTIFIER = (
@@ -31,18 +49,6 @@ _DDL = frozenset("CREATE ALTER DROP RENAME COMMENT DECLARE GRANT REVOKE TRUNCATE
 _DML = frozenset("INSERT UPDATE DELETE MERGE".split())
 _QUERY = frozenset("SELECT WITH VALUES".split())
 _TRANSACTION = frozenset("COMMIT ROLLBACK SAVEPOINT RELEASE".split())
-_QUERY_RESERVED = frozenset(
-    """SELECT WITH VALUES FROM WHERE AS INTO FOR UPDATE DELETE INSERT MERGE FINAL NEW OLD
-    TABLE JOIN INNER LEFT RIGHT FULL CROSS ON UNION EXCEPT INTERSECT GROUP ORDER HAVING
-    FETCH OFFSET LIMIT DISTINCT ALL RECURSIVE CONNECT START BY CASE WHEN THEN ELSE END
-    SET RETURNING USING CALL CREATE ALTER DROP""".split()
-)
-
-#: Words that are never a name part.
-STOP_WORDS: FrozenSet[str] = frozenset(
-    """TO ON IS IN FOR AS LIKE WITH SET USING VALUES FROM WHERE INTO IF RESTRICT IMMEDIATE ONLY
-    FOREIGN DATABASE DB CFG SELECT TABLE AUTHORIZATION NOT EXISTS ADD CLONE CASCADE""".split()
-)
 #: ``clone`` is no Db2 keyword, so a program or index may carry it before ``(``, a trigger timing
 #: word or ``ON``; ``add`` and ``cascade`` stay refused (the reserved-word page is not in the repo).
 _PROGRAM_STOP_WORDS: FrozenSet[str] = STOP_WORDS - {"CLONE"}
@@ -243,19 +249,6 @@ def _heads() -> Tuple[Head, ...]:
 HEADS = _heads()
 
 
-def fold_name(token_text: str) -> str:
-    """Fold one name part as Db2 does: quoted exact, unquoted to the engine's case."""
-    if token_text.startswith('"'):
-        return _unquote(token_text)
-    from dblift.db.plugins.db2.quirks import Db2Quirks
-
-    return token_text.upper() if Db2Quirks.unquoted_identifier_case == "uppercase" else token_text
-
-
-def _unquote(text: str) -> str:
-    return text[1:-1].replace('""', '"') if text.startswith('"') else text
-
-
 def _opaque(operation: str, kind: str, diagnostic: str) -> StatementFacts:
     return StatementFacts(operation, kind, diagnostic=diagnostic)
 
@@ -302,43 +295,6 @@ def _match(ups: List[str], head: Head) -> Optional[int]:
     return _skip_optional(ups, at, head.optional)
 
 
-def _is_part(token: Token) -> bool:
-    return token.type in (TokenType.KEYWORD, TokenType.IDENTIFIER)
-
-
-def _name_run(words: List[Token], at: int) -> Tuple[List[Token], int]:
-    """The word and quoted-identifier tokens joined by dots from ``at``, and the index after them."""
-    i = at
-    run: List[Token] = []
-    while i < len(words) and _is_part(words[i]):
-        run.append(words[i])
-        i += 1
-        if i + 1 < len(words) and _is_symbol(words[i], ".") and _is_part(words[i + 1]):
-            i += 1
-        else:
-            break
-    return run, i
-
-
-def _read_name(
-    words: List[Token], at: int, max_parts: int, stop: FrozenSet[str] = STOP_WORDS
-) -> Optional[Tuple[Tuple[str, ...], int, int, Tuple[bool, ...]]]:
-    """The folded name parts, source offset, end index and quoted-part flags."""
-    run, i = _name_run(words, at)
-    if not run or len(run) > max_parts or (i < len(words) and _is_symbol(words[i], ".")):
-        return None
-    if any(t.text == '""' for t in run):
-        return None
-    if any(t.type is TokenType.KEYWORD and t.text.upper() in stop for t in run):
-        return None
-    return (
-        tuple(fold_name(t.text) for t in run),
-        run[0].pos,
-        i,
-        tuple(t.type is TokenType.IDENTIFIER and t.text.startswith('"') for t in run),
-    )
-
-
 def _skip_group(words: List[Token], at: int) -> int:
     """Skip one parenthesised group starting at ``at``, if any."""
     if at < len(words) and _is_symbol(words[at], "("):
@@ -348,17 +304,60 @@ def _skip_group(words: List[Token], at: int) -> int:
     return at
 
 
-def _object(
-    parts: Tuple[str, ...], otype: SqlObjectType, role: str, quoted: Tuple[bool, ...] = ()
-) -> NamedObject:
-    return NamedObject(
-        parts[-1],
-        otype,
-        role,
-        parts[-2] if len(parts) > 1 else None,
-        name_quoted=quoted[-1] if quoted else None,
-        schema_quoted=quoted[-2] if len(quoted) > 1 else None,
+def _added_key(
+    words: List[Token], ups: List[str], at: int
+) -> Optional[Tuple[DeclaredConstraint, Optional[NamedObject], int]]:
+    name = None
+    if ups[at : at + 1] == ["CONSTRAINT"]:
+        named = _read_name(words, at + 1, 1, _KEY_RESERVED)
+        if named is None:
+            return None
+        name, at = named[0][0], named[2]
+    if ups[at : at + 1] == ["UNIQUE"]:
+        kind, at = "UNIQUE", at + 1
+    elif ups[at : at + 2] in (["PRIMARY", "KEY"], ["FOREIGN", "KEY"]):
+        kind, at = ups[at] + "_KEY", at + 2
+    else:
+        return None
+    columns, at = _key_columns(words, at)
+    if not columns:
+        return None
+    if kind != "FOREIGN_KEY":
+        return DeclaredConstraint(kind, columns, name), None, at
+    if ups[at : at + 1] != ["REFERENCES"]:
+        return None
+    target = _read_name(words, at + 1, 2, _KEY_RESERVED)
+    if target is None:
+        return None
+    parts, _, at, quoted = target
+    referenced: Tuple[str, ...] = ()
+    if at < len(words) and _is_symbol(words[at], "("):
+        referenced, at = _key_columns(words, at)
+        if len(referenced) != len(columns):
+            return None
+    return (
+        DeclaredConstraint(kind, columns, name, parts[-1], referenced),
+        _object(parts, SqlObjectType.TABLE, "referenced", quoted),
+        at,
     )
+
+
+def _alter_added_keys(
+    words: List[Token], ups: List[str], at: int, subject: NamedObject
+) -> Optional[StatementFacts]:
+    objects = [subject]
+    constraints = []
+    while ups[at : at + 1] == ["ADD"]:
+        result = _added_key(words, ups, at + 1)
+        if result is None:
+            return None
+        constraint, reference, at = result
+        constraints.append(constraint)
+        if reference is not None:
+            objects.append(reference)
+    if at != len(words) or not constraints or any(_is_unterminated(token) for token in words):
+        return None
+    return StatementFacts("ALTER", "DDL", tuple(objects), declared_constraints=tuple(constraints))
 
 
 def _head_facts(
@@ -436,16 +435,6 @@ def _may_follow(words: List[Token], ups: List[str], head: Head, end: int) -> boo
     return words[end].type is not TokenType.SYMBOL or words[end].text == "("
 
 
-def _is_unterminated(token: Token) -> bool:
-    """Whether a quoted identifier lacks its closing quote (a doubled quote does not close it)."""
-    text = token.text
-    return (
-        token.type is TokenType.IDENTIFIER
-        and text.startswith('"')
-        and (len(text) < 2 or not text.endswith('"') or '"' in text[1:-1].replace('""', ""))
-    )
-
-
 def _second_word_taken(words: List[Token], ups: List[str], at: int, end: int) -> bool:
     """Whether the name is HIERARCHY / MAPPING / EXTENSION followed by the real name."""
     if ups[at] not in SECOND_WORDS or end >= len(words) or not _is_part(words[end]):
@@ -453,12 +442,8 @@ def _second_word_taken(words: List[Token], ups: List[str], at: int, end: int) ->
     return not (ups[0] == "DROP" and ups[end] in ("RESTRICT", "CASCADE"))
 
 
-def _is_symbol(token: Token, text: str) -> bool:
-    return token.type is TokenType.SYMBOL and token.text == text
-
-
 def _walk(words: List[Token], start: int) -> Iterator[Tuple[int, Token, int]]:
-    """Each token from ``start`` with the parenthesis depth it sits at (a group's own parentheses sit outside it)."""
+    """Each token from ``start`` with its parenthesis depth (a group's own ones sit outside it)."""
     depth = 0
     for i in range(start, len(words)):
         if _is_symbol(words[i], ")"):
@@ -482,7 +467,7 @@ def _predicate(sql: str, words: List[Token], where: int) -> str:
 
 
 def _value_end(words: List[Token], start: int) -> int:
-    """Index of the depth-0 comma, WHERE or WHEN (outside CASE ... END) that ends the value at ``start``."""
+    """Index of depth-0 comma, WHERE or WHEN (outside CASE ... END) ending the ``start`` value."""
     cases = 0
     for i, token, depth in _walk(words, start):
         up = token.text.upper() if token.type is TokenType.KEYWORD else ""
@@ -595,20 +580,6 @@ def _read_dml(sql: str, words: List[Token], ups: List[str], first: str) -> State
     )
 
 
-def _unread_character(sql: str, words: List[Token], head_end: int) -> Optional[int]:
-    """Offset of the first non-ASCII character the engine may read as part of a head name."""
-    for token in words[:head_end]:
-        if token.type is TokenType.SYMBOL:
-            for k, char in enumerate(token.text):
-                if ord(char) > 127:
-                    return token.pos + k
-        elif token.type is TokenType.KEYWORD:
-            for at in (token.pos - 1, token.pos + len(token.text)):
-                if 0 <= at < len(sql) and ord(sql[at]) > 127:
-                    return at
-    return None
-
-
 def _head_end(words: List[Token], at: int) -> int:
     """The head words and the next eight tokens, cut after the first opening parenthesis."""
     end = min(len(words), at + 8)
@@ -650,62 +621,117 @@ def _complete_query(words: List[Token], depth: int = 0) -> bool:
         return False
     first = words[0].text.upper()
     if first == "WITH":
-        at = 1
-        while True:
-            end = _query_name(words, at, 1)
-            if end == at or end + 1 >= len(words) or words[end].text.upper() != "AS":
-                return False
-            if not _is_symbol(words[end + 1], "("):
-                return False
-            start = end + 2
-            level = 1
-            at = start
-            while at < len(words) and level:
-                level += _is_symbol(words[at], "(") - _is_symbol(words[at], ")")
-                at += 1
-            if level or not _complete_query(words[start : at - 1], depth + 1):
-                return False
-            if at >= len(words) or not _is_symbol(words[at], ","):
-                return _complete_query(words[at:], depth + 1)
-            at += 1
+        return _complete_with(words, depth)
     if first not in ("SELECT", "VALUES"):
         return False
-    at = 1
-    if first == "VALUES" and at < len(words) and _is_symbol(words[at], "("):
-        at += 1
-        closing = True
-    else:
-        closing = False
-    star = first == "SELECT" and at < len(words) and _is_symbol(words[at], "*")
-    needs_source = False
-    if star:
-        at += 1
-    else:
-        while True:
-            if at < len(words) and words[at].type in (TokenType.KEYWORD, TokenType.IDENTIFIER):
-                needs_source = True
-            end = _query_atom(words, at)
-            if end == at:
-                return False
-            at = end
-            if at < len(words) and _is_symbol(words[at], ","):
-                at += 1
-                continue
-            break
-    if closing:
-        if at >= len(words) or not _is_symbol(words[at], ")"):
-            return False
-        at += 1
+    closing = first == "VALUES" and 1 < len(words) and _is_symbol(words[1], "(")
+    star = first == "SELECT" and 1 < len(words) and _is_symbol(words[1], "*")
+    listed = (2, False) if star else _query_list(words, 1 + closing, closing)
+    if listed is None:
+        return False
+    at, needs_source = listed
     if first == "SELECT" and at < len(words) and words[at].text.upper() == "FROM":
         source = at + 1
         at = _query_name(words, source)
         if at == source:
             return False
-    elif star:
-        return False
-    elif needs_source:
+    elif star or needs_source:
         return False
     return at == len(words)
+
+
+def _complete_with(words: List[Token], depth: int) -> bool:
+    at = 1
+    while True:
+        end = _query_name(words, at, 1)
+        if end == at or end + 1 >= len(words) or words[end].text.upper() != "AS":
+            return False
+        at = _skip_group(words, end + 1)
+        if at == end + 1 or not _complete_query(words[end + 2 : at - 1], depth + 1):
+            return False
+        if at >= len(words) or not _is_symbol(words[at], ","):
+            return _complete_query(words[at:], depth + 1)
+        at += 1
+
+
+def _query_list(words: List[Token], at: int, closing: bool) -> Optional[Tuple[int, bool]]:
+    needs_source = False
+    while True:
+        if at < len(words) and words[at].type in (TokenType.KEYWORD, TokenType.IDENTIFIER):
+            needs_source = True
+        end = _query_atom(words, at)
+        if end == at:
+            return None
+        at = end
+        if not (at < len(words) and _is_symbol(words[at], ",")):
+            break
+        at += 1
+    if closing and (at >= len(words) or not _is_symbol(words[at], ")")):
+        return None
+    return at + closing, needs_source
+
+
+def _set_facts(words: List[Token], ups: List[str]) -> StatementFacts:
+    if ups[1:2] == ["INTEGRITY"]:
+        return _opaque("SET", "UNKNOWN", SET_INTEGRITY)
+    if (
+        ups[1:3] == ["CURRENT", "SCHEMA"]
+        and len(words) == 5
+        and words[3].text == "="
+        and words[4].type is TokenType.STRING
+        and words[4].text.endswith("'")
+        and words[4].text.count("'") % 2 == 0
+    ):
+        return StatementFacts("SET", "UNKNOWN", events=frozenset())
+    return StatementFacts("SET", "UNKNOWN")
+
+
+def _by_head(
+    sql: str,
+    words: List[Token],
+    ups: List[str],
+    first: str,
+    kind: str,
+    open_lexeme: int,
+    tokens: List[Token],
+) -> StatementFacts:
+    """Facts of a statement named by a known head or a DML prefix, else unclassified."""
+    for head in HEADS:
+        at = _match(ups, head)
+        if at is None:
+            continue
+        facts, reached = _head_facts(words, ups, head, at)
+        end = reached + 1 if head.operation in ("GRANT", "REVOKE") else _head_end(words, at)
+        if any(_is_unterminated(t) for t in words[:end]):
+            return _unterminated(head.operation, head.kind)
+        char = _unread_character(sql, words, end)
+        if char is not None:
+            return _opaque(head.operation, head.kind, UNREAD_NAME.format(code=ord(sql[char])))
+        if facts is not None:
+            if (
+                head.words == ("ALTER", "TABLE")
+                and open_lexeme < 0
+                and _key_names_are_complete(sql, tokens)
+            ):
+                return _alter_added_keys(words, ups, reached, facts.objects[0]) or facts
+            return facts
+        return _opaque(
+            head.operation,
+            head.kind,
+            NAME_NOT_READ.format(operation=head.operation, type=head.object_type.name),
+        )
+    prefix = _DML_PREFIX.get(first)
+    if prefix and tuple(ups[: len(prefix)]) == prefix:
+        window = _head_end(words, len(prefix))
+        if any(_is_unterminated(t) for t in words[:window]):
+            return _unterminated(first, kind)
+        char = _unread_character(sql, words, window)
+        if char is not None:
+            return _opaque(first, kind, UNREAD_NAME.format(code=ord(sql[char])))
+        if holds_data_change(ups):
+            return _opaque(first, kind, DATA_CHANGE_QUERY)
+        return _read_dml(sql, words, ups, first)
+    return _opaque(first, kind, NOT_CLASSIFIED.format(word=first))
 
 
 def _is_client_command(ups: List[str]) -> bool:
@@ -726,7 +752,8 @@ class Db2StatementFactsReader:
         """Read one already-split statement."""
         # The tokenizer drops a leading BOM, which would shift every token offset.
         sql = sql[1:] if sql.startswith("\ufeff") else sql
-        tokens = LexicalTokenizer(sql, spec=self.spec).tokenize()
+        tokenizer = LexicalTokenizer(sql, spec=self.spec)
+        tokens = tokenizer.tokenize()
         words = _words(tokens)
         if not words:
             return _opaque("UNKNOWN", "UNKNOWN", NOT_CLASSIFIED.format(word="UNKNOWN"))
@@ -738,18 +765,7 @@ class Db2StatementFactsReader:
         if first in _TRANSACTION:
             return StatementFacts(first, "UNKNOWN")
         if first == "SET":
-            if ups[1:2] == ["INTEGRITY"]:
-                return _opaque(first, "UNKNOWN", SET_INTEGRITY)
-            if (
-                ups[1:3] == ["CURRENT", "SCHEMA"]
-                and len(words) == 5
-                and words[3].text == "="
-                and words[4].type is TokenType.STRING
-                and words[4].text.endswith("'")
-                and words[4].text.count("'") % 2 == 0
-            ):
-                return StatementFacts(first, "UNKNOWN", events=frozenset())
-            return StatementFacts(first, "UNKNOWN")
+            return _set_facts(words, ups)
         if first in _QUERY:
             if holds_data_change(ups):
                 if first == "WITH":
@@ -765,33 +781,4 @@ class Db2StatementFactsReader:
             ) and _complete_query(words):
                 return StatementFacts(first, kind, events=frozenset())
             return StatementFacts(first, kind)
-        for head in HEADS:
-            at = _match(ups, head)
-            if at is None:
-                continue
-            facts, reached = _head_facts(words, ups, head, at)
-            end = reached + 1 if head.operation in ("GRANT", "REVOKE") else _head_end(words, at)
-            if any(_is_unterminated(t) for t in words[:end]):
-                return _unterminated(head.operation, head.kind)
-            char = _unread_character(sql, words, end)
-            if char is not None:
-                return _opaque(head.operation, head.kind, UNREAD_NAME.format(code=ord(sql[char])))
-            if facts is not None:
-                return facts
-            return _opaque(
-                head.operation,
-                head.kind,
-                NAME_NOT_READ.format(operation=head.operation, type=head.object_type.name),
-            )
-        prefix = _DML_PREFIX.get(first)
-        if prefix and tuple(ups[: len(prefix)]) == prefix:
-            window = _head_end(words, len(prefix))
-            if any(_is_unterminated(t) for t in words[:window]):
-                return _unterminated(first, kind)
-            char = _unread_character(sql, words, window)
-            if char is not None:
-                return _opaque(first, kind, UNREAD_NAME.format(code=ord(sql[char])))
-            if holds_data_change(ups):
-                return _opaque(first, kind, DATA_CHANGE_QUERY)
-            return _read_dml(sql, words, ups, first)
-        return _opaque(first, kind, NOT_CLASSIFIED.format(word=first))
+        return _by_head(sql, words, ups, first, kind, tokenizer.open_lexeme, tokens)

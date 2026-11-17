@@ -79,9 +79,9 @@ def test_flag_beats_env_and_yaml(tmp_path):
     assert not (tmp_path / "ylogs").exists()
 
 
-def test_defaults_are_unchanged(tmp_path):
+def test_defaults_write_no_log_file(tmp_path):
     _run(tmp_path)
-    assert _files(tmp_path, "logs") == [".log"]
+    assert not (tmp_path / "logs").exists()
 
 
 def test_invalid_format_from_the_environment_is_rejected(tmp_path):

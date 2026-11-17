@@ -26,6 +26,7 @@ from typing import Any, Dict, FrozenSet, Mapping, Optional, Union
 
 from dblift.core.sql_model.server_info import ServerInfo
 from dblift.db.feature_gate import FeatureGate
+from dblift.db.provider_registry import ProviderRegistry
 
 #: Shared feature-name vocabulary. Names are cross-tier API: consumers key
 #: on them, plugins declare gates under them. Adding a name is MINOR;
@@ -61,7 +62,6 @@ def _ensure_feature_gates() -> None:
     ``dblift.core.sql_model.dialect._ensure_capabilities``.)
     """
     global _feature_gates_seen
-    from dblift.db.provider_registry import ProviderRegistry
 
     ProviderRegistry.discover_plugins()
     expected = sum(len(p.dialects) for p in ProviderRegistry.list_plugins())

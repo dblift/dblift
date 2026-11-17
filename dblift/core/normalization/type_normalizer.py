@@ -24,6 +24,18 @@ from typing import Dict, Optional, Set, Tuple
 from dblift.core.normalization.type_constants import CANONICAL_TO_VARIANTS
 from dblift.db.provider_registry import ProviderRegistry
 
+_DATE_TIME_TYPES = frozenset(
+    {
+        "TIMESTAMP",
+        "TIMESTAMP WITH TIME ZONE",
+        "TIME",
+        "TIME WITH TIME ZONE",
+        "DATETIME",
+        "DATETIME2",
+        "SMALLDATETIME",
+    }
+)
+
 
 class DataTypeNormalizer:
     """Normalizes data types across SQL dialects for comparison.
@@ -114,33 +126,18 @@ class DataTypeNormalizer:
         dialect_mappings = self.type_equivalents.get(dialect, {})
         normalized_type = dialect_mappings.get(base_type, base_type)
 
-        # Add precision/scale back if present, except for date/time families where we ignore precision
+        # Add precision/scale back if present, except for date/time families where we ignore
+        # precision
         if precision is not None:
             base_for_precision = self._extract_base_type(normalized_type).upper()
-            if base_for_precision not in {
-                "TIMESTAMP",
-                "TIMESTAMP WITH TIME ZONE",
-                "TIME",
-                "TIME WITH TIME ZONE",
-                "DATETIME",
-                "DATETIME2",
-                "SMALLDATETIME",
-            }:
+            if base_for_precision not in _DATE_TIME_TYPES:
                 if scale is not None:
                     normalized_type = f"{normalized_type}({precision},{scale})"
                 else:
                     normalized_type = f"{normalized_type}({precision})"
 
         base_normalized = self._extract_base_type(normalized_type).upper()
-        if base_normalized in {
-            "TIMESTAMP",
-            "TIMESTAMP WITH TIME ZONE",
-            "TIME",
-            "TIME WITH TIME ZONE",
-            "DATETIME",
-            "DATETIME2",
-            "SMALLDATETIME",
-        }:
+        if base_normalized in _DATE_TIME_TYPES:
             # Collapse SQL Server datetime family to DATETIME, and drop precision
             if base_normalized in {"DATETIME2", "SMALLDATETIME"}:
                 normalized_type = "DATETIME"

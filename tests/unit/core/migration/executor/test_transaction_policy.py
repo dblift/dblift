@@ -162,6 +162,35 @@ def test_transaction_policy_rejects_mixed_autocommit_and_transactional_statement
 
 
 @pytest.mark.unit
+def test_script_managed_scripts_are_neither_transactional_nor_refused_as_mixed():
+    mixed = [
+        ExecutionStatement("CREATE TABLE users(id int)", "DDL"),
+        classify_execution_statement(
+            "CREATE INDEX CONCURRENTLY idx_users_id ON users(id)",
+            dialect="postgresql",
+            statement_type="DDL",
+        ),
+    ]
+    for statements in (mixed, mixed[:1]):
+        decision = TransactionPolicy().decide(
+            statements, RecordingTransactionalProvider(), script_managed=True
+        )
+        assert decision.transactional is False
+        assert decision.autocommit_required is False
+        assert decision.unsupported_mixed_mode is False
+        assert decision.script_managed is True
+
+
+@pytest.mark.unit
+def test_script_managed_changes_nothing_for_a_provider_without_transactions():
+    statements = [ExecutionStatement("CREATE TABLE users(id int)", "DDL")]
+    plain = TransactionPolicy().decide(statements, object())
+    managed = TransactionPolicy().decide(statements, object(), script_managed=True)
+    assert managed == plain
+    assert managed.script_managed is False
+
+
+@pytest.mark.unit
 def test_execution_engine_runs_autocommit_only_statement_without_migration_transaction():
     provider = RecordingTransactionalProvider()
     history_manager = MagicMock()
