@@ -57,6 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A config file with `logging.level: warn` is no longer rejected as an invalid log level. `warn`
+  now means `WARNING`, as it already did for `--log-level warn`.
 - `--db-url`, `--db-username` and `--db-password` values containing `${VAR}` placeholders are
   now expanded from the environment, as the same placeholders in a config file are. Before, the
   literal `${VAR}` text reached the database driver.
