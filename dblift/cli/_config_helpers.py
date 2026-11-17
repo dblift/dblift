@@ -14,6 +14,7 @@ from dblift.config.config_builder import ConfigBuilder
 from dblift.config.dblift_config import (
     DbliftConfig,
     _placeholder_tokens,
+    _resolve_env_placeholders,
     load_config,
     refuse_empty_migrations_path,
 )
@@ -317,6 +318,9 @@ def _load_and_merge_config(args: argparse.Namespace, log: Any) -> Any:
         db_overrides["schema"] = args.database_schema
 
     if db_overrides:
+        # load_config() already expanded ${VAR} in these values; this second pass
+        # re-applies the raw flags, so it must expand them the same way.
+        db_overrides = _resolve_env_placeholders(db_overrides)
         command = getattr(args, "command", None)
         commands_list = getattr(args, "commands_list", None) or ([command] if command else [])
         is_offline = len(commands_list) == 1 and bool(
