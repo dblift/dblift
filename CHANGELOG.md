@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [5.2.0] - 2026-11-16
+
+### Added
+
 - A SQL script whose leading `--` comments contain `-- dblift:no-transaction` runs with no
   transaction opened by DBLift, on PostgreSQL and SQL Server: its own `BEGIN`, `COMMIT` and
   `ROLLBACK` take effect across statements. A transaction the script leaves open is rolled
