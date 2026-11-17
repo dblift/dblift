@@ -281,7 +281,9 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
         # via the only path that connects a catalog to a schema:
         # sys.fulltext_indexes.object_id -> sys.tables.schema_id ->
         # sys.schemas. Only a catalog referenced by at least one full-text
-        # index on a table in the target schema is enumerated here.
+        # index on a table in the target schema is enumerated here. A catalog
+        # that is also used by a full-text index on a table in another schema
+        # is skipped: DROP FULLTEXT CATALOG fails while any index still uses it.
         fulltext_catalogs_query = """
         SELECT DISTINCT fc.name AS catalog_name
         FROM sys.fulltext_catalogs fc
@@ -289,6 +291,13 @@ class SqlServerSchemaOperations(BaseSchemaOperations):
         INNER JOIN sys.tables t ON fi.object_id = t.object_id
         INNER JOIN sys.schemas s ON t.schema_id = s.schema_id
         WHERE s.name = ?
+          AND NOT EXISTS (
+            SELECT 1
+            FROM sys.fulltext_indexes fi2
+            INNER JOIN sys.tables t2 ON fi2.object_id = t2.object_id
+            WHERE fi2.fulltext_catalog_id = fc.fulltext_catalog_id
+              AND t2.schema_id <> s.schema_id
+          )
         """
         try:
             fulltext_catalogs = self.query_executor.execute_query(
