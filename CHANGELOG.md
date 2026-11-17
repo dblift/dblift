@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Importing `dblift.integrations.fastapi` no longer loads the `dblift.cli` package.
 - The PyPI page now shows project links (homepage, documentation, source, issues, changelog), the
   Apache-2.0 licence as an SPDX expression, the author and the database topic. The licence
   classifier is replaced by that expression.
