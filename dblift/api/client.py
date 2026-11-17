@@ -1113,7 +1113,8 @@ class DBLiftClient:
 
         Args:
             dry_run: If True, don't actually import
-            recursive: Search scripts directory recursively
+            recursive: Accepted for interface compatibility and ignored. The
+                import reads the Flyway history table, not the scripts directory.
             flyway_table: Source Flyway history table name
             **kwargs: Additional options
 
