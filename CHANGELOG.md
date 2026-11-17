@@ -57,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- SQL Server: `clean` no longer fails on a full-text catalog that a full-text index in another
+  schema also uses. Such a shared catalog is left in place; a catalog used only by the cleaned
+  schema is still dropped.
 - The JSON report of `migrate` now includes `performance_summary` and
   `performance_by_object_type`. They were never emitted because the formatter looked up the
   migration name under the wrong attribute.
