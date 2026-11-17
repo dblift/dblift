@@ -322,12 +322,11 @@ class UndoCommand(BaseCommand):
                 if not self._undo_scripts_have_sql(undo_plan, result):
                     return
 
+                callbacks = self._callbacks_for(UNDO_CALLBACK_EVENTS, self._pin_callback_snapshot())
+                undo_scripts = [undo for _, undo in undo_plan] + callbacks
+                # A dry run makes the same refusal the real run does.
+                self._refuse_unsupported_script_sessions(undo_scripts)
                 if not dry_run:
-                    callbacks = self._callbacks_for(
-                        UNDO_CALLBACK_EVENTS, self._pin_callback_snapshot()
-                    )
-                    undo_scripts = [undo for _, undo in undo_plan] + callbacks
-                    self._refuse_unsupported_script_sessions(undo_scripts)
                     if not self._capture_objects or registered_checks("migration.preflight_sql"):
                         self._preflight_execution_sql(undo_scripts)
 
