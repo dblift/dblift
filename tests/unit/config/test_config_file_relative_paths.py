@@ -202,6 +202,40 @@ class TestConfigBuilder:
         assert Path(overridden.database.path) == Path("kw.db")
 
 
+class TestDefaultMigrationsDirectory:
+    """A file that names no migrations directory defaults to ``migrations`` in its folder."""
+
+    BODY = {"database": {"url": "sqlite:///:memory:"}}
+
+    def test_cli_and_client_resolve_the_same_default(self, layout):
+        project, _ = layout
+        path = _write(project, self.BODY)
+        config = load_config(path)
+        scripts_dir, _, _, _ = _resolve_scripts_directories(_args(path), config, None, ["info"])
+        client = DBLiftClient.from_config_file(path)
+        assert scripts_dir == project / "migrations"
+        assert client._get_scripts_dir() == project / "migrations"
+
+    def test_environment_block_directory_still_wins(self, layout):
+        project, _ = layout
+        body = {
+            **self.BODY,
+            "environments": {"dev": {"migrations": {"directory": "dev_sql"}}},
+        }
+        config = ConfigBuilder.build(file_path=_write(project, body), environment="dev")
+        assert Path(config.migrations.directory) == project / "dev_sql"
+
+    def test_without_a_file_the_default_stays_relative(self, layout):
+        config = ConfigBuilder.build(database_url="sqlite:///:memory:")
+        assert Path(config.migrations.directory) == Path("migrations")
+
+    def test_directories_list_is_not_overridden(self, layout):
+        project, _ = layout
+        body = {**self.BODY, "migrations": {"directories": ["a"]}}
+        config = load_config(_write(project, body))
+        assert [d.path for d in config.migrations.get_directory_configs()] == [str(project / "a")]
+
+
 class TestResolveScriptsDirectories:
     def _resolve(self, project, body, **args):
         path = _write(project, body)

@@ -57,6 +57,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A configuration file that sets neither `migrations.directory` nor `migrations.directories` now
+  uses the `migrations` directory in the file's folder for the Python client (and so `migrate`,
+  `info` and `validate`) as well as the CLI. Before, the client used `migrations` in the working
+  directory while `validate-sql` used the one next to the file. This changes which directory is
+  scanned only when such a file is loaded from another working directory.
 - SQL Server: `clean` no longer fails on a full-text catalog that a full-text index in another
   schema also uses. Such a shared catalog is left in place; a catalog used only by the cleaned
   schema is still dropped.

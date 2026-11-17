@@ -24,6 +24,8 @@ max_snapshots: 1  # Maximum number of snapshots to keep (default: 1, oldest dele
 
 > **`schema` is required** for every dialect except SQLite (which always uses `main`). There is no implicit default — you must set it either in `dblift.yaml` or on the command line via `--db-schema`. DBLift creates the history table, lock table, and snapshot table inside this schema, so an incorrect or missing value produces silent cross-schema mismatches (e.g. a history table written in one schema but looked up in another).
 
+If the file sets neither `migrations.directory` nor `migrations.directories`, DBLift uses a `migrations` directory in the configuration file's folder, whatever the working directory. A relative path written in the file is resolved from the file's folder too; `--scripts` is relative to the working directory. Without a configuration file the default is `migrations` in the working directory.
+
 ## Multiple Migration Directories
 
 You can specify multiple migration directories. The first one is the primary directory:

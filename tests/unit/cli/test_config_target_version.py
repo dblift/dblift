@@ -256,6 +256,7 @@ def test_config_data_loader_refuses_empty_target_and_tolerates_other_shapes(tmp_
     assert load("environments: nope\ntarget_version: 2\n") == {
         "environments": "nope",
         "target_version": 2,
+        "migrations": {"directory": str(tmp_path / "migrations")},
     }
     assert load("environments:\n  dev: nope\n")["environments"] == {"dev": "nope"}
     with pytest.raises(InvalidTargetVersionError):

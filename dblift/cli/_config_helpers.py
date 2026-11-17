@@ -608,15 +608,6 @@ def _resolve_scripts_directories(
     additional_scripts_dirs = []
     dir_recursive_map = {}
 
-    # Determine base directory for resolving relative paths.
-    # If a config file was specified, resolve relative to its parent directory;
-    # otherwise fall back to CWD.
-    config_base_dir = Path.cwd()
-    if hasattr(args, "config") and args.config:
-        config_path = Path(args.config)
-        if path_exists(config_path):
-            config_base_dir = config_path.resolve().parent
-
     if hasattr(args, "scripts_list") and args.scripts_list:
         for scripts_path in args.scripts_list:
             try:
@@ -646,27 +637,16 @@ def _resolve_scripts_directories(
 
         recursive = getattr(config.migrations, "recursive", True)
     else:
+        # Relative paths written in a config file were anchored to its folder when the
+        # file was loaded; any other relative path is relative to the working directory.
         dir_configs = config.migrations.get_directory_configs()
-
-        if dir_configs:
-            scripts_dir = Path(dir_configs[0].path)
-            # Resolve relative paths against config file directory
-            if not scripts_dir.is_absolute():
-                scripts_dir = config_base_dir / scripts_dir
-            if len(dir_configs) > 1:
-                for dir_config in dir_configs[1:]:
-                    add_dir = Path(dir_config.path)
-                    if not add_dir.is_absolute():
-                        add_dir = config_base_dir / add_dir
-                    additional_scripts_dirs.append(add_dir)
-                    dir_recursive_map[add_dir] = dir_config.recursive
-
-            dir_recursive_map[scripts_dir] = dir_configs[0].recursive
-
-            recursive = dir_configs[0].recursive
-        else:
-            scripts_dir = config_base_dir / "migrations"
-            recursive = getattr(config.migrations, "recursive", True)
+        scripts_dir = Path(dir_configs[0].path).absolute()
+        for dir_config in dir_configs[1:]:
+            add_dir = Path(dir_config.path).absolute()
+            additional_scripts_dirs.append(add_dir)
+            dir_recursive_map[add_dir] = dir_config.recursive
+        dir_recursive_map[scripts_dir] = dir_configs[0].recursive
+        recursive = dir_configs[0].recursive
 
     # CLI --recursive / --no-recursive wins over config and
     # default. ``recursive_flag`` is ``None`` when neither is passed, so the

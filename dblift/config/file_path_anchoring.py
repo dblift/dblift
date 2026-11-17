@@ -197,3 +197,18 @@ def _anchor_log_paths(
         logging["directory"] = anchor(logging["directory"]) if logging["directory"] else ""
     if isinstance(block.get("log_dir"), str) and block["log_dir"]:
         block["log_dir"] = anchor(block["log_dir"])
+
+
+def default_migrations_directory(data: Dict[str, object], base_dir: Path) -> None:
+    """Give raw configuration-file *data* that names no migrations directory the default
+    ``migrations`` directory in *base_dir*, so every entry point scans the same place.
+
+    A directory key written in the file, even an empty one, is left for the usual checks.
+    """
+    migrations = data.setdefault("migrations", {})
+    if (
+        isinstance(migrations, dict)
+        and "directory" not in migrations
+        and not migrations.get("directories")
+    ):
+        migrations["directory"] = anchorer(base_dir)("migrations")

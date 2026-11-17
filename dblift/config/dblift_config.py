@@ -24,6 +24,7 @@ from dblift.config.file_path_anchoring import (
     URL_SCHEME,
     anchor_file_data,
     anchor_log_file,
+    default_migrations_directory,
     file_url,
     left_relative,
     retain_log_file_fallback,
@@ -1419,6 +1420,7 @@ class DbliftConfig:
             return {}
         _refuse_empty_target_version(resolved)
         anchor_file_data(resolved, Path(config_file).resolve().parent)
+        default_migrations_directory(resolved, Path(config_file).resolve().parent)
         return resolved
 
     def to_dict(self) -> Dict[str, Any]:

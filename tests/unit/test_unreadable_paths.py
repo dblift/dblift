@@ -124,15 +124,6 @@ def _scripts_config() -> MagicMock:
     return config
 
 
-def test_scripts_resolution_does_not_fall_back_when_the_config_path_is_unreadable(unreadable):
-    parser = MagicMock()
-    with pytest.raises(OSError) as raised:
-        _config_helpers._resolve_scripts_directories(
-            _scripts_args(config=str(unreadable)), _scripts_config(), parser, ["migrate"]
-        )
-    assert not isinstance(raised.value, FileNotFoundError)
-
-
 @pytest.mark.parametrize("position", ["first", "additional"])
 def test_scripts_resolution_says_cannot_read_not_not_found(unreadable, tmp_path, position):
     parser = MagicMock()
