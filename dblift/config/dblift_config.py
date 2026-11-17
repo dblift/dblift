@@ -407,6 +407,8 @@ def refuse_unusable_database_locators(database: object) -> None:
 
 
 _DATABASE_LOCATORS = ("path", "database", "url")
+# ``warn`` is the spelling ``--log-level`` documents; it means WARNING.
+_LOG_LEVEL_ALIASES = {"WARN": "WARNING"}
 
 
 def _file_sources(
@@ -1018,6 +1020,7 @@ class DbliftConfig:
         # Validate log level (case-insensitive)
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         log_level_upper = log_level.upper() if isinstance(log_level, str) else log_level
+        log_level_upper = _LOG_LEVEL_ALIASES.get(log_level_upper, log_level_upper)
         if log_level_upper not in valid_levels:
             raise ValueError(f"Invalid log level: {log_level}. Must be one of {valid_levels}")
         log_level = log_level_upper  # Normalize to uppercase
