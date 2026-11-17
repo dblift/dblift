@@ -57,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `--db-url`, `--db-username` and `--db-password` values containing `${VAR}` placeholders are
+  now expanded from the environment, as the same placeholders in a config file are. Before, the
+  literal `${VAR}` text reached the database driver.
 - `info --tags` and `--exclude-tags` now match tags case-insensitively, as `migrate` already did.
   Before, `--tags foo` left out a migration tagged `Foo`.
 - SQL Server: a SQL script (migration, undo script or callback) that ends its transaction itself (a
