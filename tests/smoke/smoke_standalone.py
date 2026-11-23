@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+from contextlib import closing
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
@@ -111,26 +112,34 @@ def probe_postgres_driver(cli, project, env):
         LC_ALL="C",
         PSYCOPG_IMPL="binary",
         PGCONNECT_TIMEOUT="3",
+        DBLIFT_DB_CONNECTION_TIMEOUT="3",
         DBLIFT_DB_URL=(
             f"postgresql+psycopg://standalone:standalone@127.0.0.1:{port}"
             "/standalone?hostaddr=127.0.0.1&connect_timeout=3"
         ),
     )
     result = capture_cli(cli, project, probe_env, "--log-level", "debug", "db", "check-connection")
-    if result.returncode <= 0 or not re.search(
+    refused = re.search(
         r"^psycopg\.OperationalError: .*"
         r"(?:\b(?:connection|actively)\s+refused\b|0x0000274d/10061\b|\[WinError 10061\])",
         result.stderr,
         re.IGNORECASE | re.MULTILINE,
-    ):
-        raise ValueError("PostgreSQL driver did not report a refused loopback connection")
-    print("PostgreSQL binary driver loaded and reached the refused loopback connection", flush=True)
+    )
+    # The Windows runner can time out on the unused port instead of returning a TCP refusal.
+    windows_timeout = sys.platform == "win32" and re.search(
+        r"^psycopg\.errors\.ConnectionTimeout: connection timeout expired$",
+        result.stderr,
+        re.MULTILINE,
+    )
+    if result.returncode <= 0 or not (refused or windows_timeout):
+        raise ValueError("PostgreSQL driver did not report the expected loopback connection error")
+    print("PostgreSQL binary driver loaded and attempted a loopback connection", flush=True)
 
 
 def sqlite_table_exists(database, table_name):
     if not database.exists():
         return False
-    with sqlite3.connect(database) as connection:
+    with closing(sqlite3.connect(database)) as connection:
         row = connection.execute(
             "SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?", (table_name,)
         ).fetchone()

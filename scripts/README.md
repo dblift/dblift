@@ -71,10 +71,11 @@ docker run --rm --platform linux/amd64 \
 On macOS or Windows, run the same two Python scripts with the corresponding
 target and local directories. The smoke runner checks the archive SHA-256,
 native library hashes and wheel identity before running the extracted CLI
-against SQLite in a fresh project directory. The CLI also loads its bundled
-PostgreSQL binary driver and expects a connection refusal from an unused
-loopback port. To exercise the migration against a disposable PostgreSQL
-database, repeat with
+against SQLite in a fresh project directory. The smoke test checks that the
+bundled PostgreSQL binary driver attempts a connection to an unused loopback
+port. It expects a refusal, and on Windows also accepts psycopg's connection
+timeout. To exercise the migration against a disposable PostgreSQL database,
+repeat with
 `DBLIFT_STANDALONE_SMOKE_DB_URL` and
 `DBLIFT_STANDALONE_SMOKE_DIALECT=postgresql`.
 

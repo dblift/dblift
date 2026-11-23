@@ -1,5 +1,6 @@
 """The standalone build consumes one release wheel, and smoke verifies its archive."""
 
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -96,7 +97,7 @@ def test_native_postgres_probe_requires_driver_refusal(
     if expected:
         smoke_standalone.probe_postgres_driver(tmp_path / "dblift", tmp_path, env)
     else:
-        with pytest.raises(ValueError, match="PostgreSQL driver did not report a refused"):
+        with pytest.raises(ValueError, match="PostgreSQL driver did not report the expected"):
             smoke_standalone.probe_postgres_driver(tmp_path / "dblift", tmp_path, env)
 
 
@@ -131,3 +132,35 @@ main()
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.decode("utf-8").strip() == "✅"
+
+
+@pytest.mark.parametrize(("host_platform", "accepted"), [("win32", True), ("darwin", False)])
+def test_driver_probe_handles_observed_windows_timeout(
+    tmp_path, monkeypatch, host_platform, accepted
+):
+    monkeypatch.setattr(smoke_standalone.sys, "platform", host_platform)
+    monkeypatch.setattr(
+        smoke_standalone,
+        "capture_cli",
+        lambda *args: subprocess.CompletedProcess(
+            args, 1, "", "psycopg.errors.ConnectionTimeout: connection timeout expired\n"
+        ),
+    )
+    if accepted:
+        smoke_standalone.probe_postgres_driver(tmp_path / "dblift", tmp_path, {})
+    else:
+        with pytest.raises(ValueError, match="PostgreSQL driver did not"):
+            smoke_standalone.probe_postgres_driver(tmp_path / "dblift", tmp_path, {})
+
+
+def test_sqlite_schema_check_closes_database_handle(tmp_path, monkeypatch):
+    database = tmp_path / "smoke.db"
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute("CREATE TABLE standalone_probe (id INTEGER PRIMARY KEY)")
+        monkeypatch.setattr(smoke_standalone.sqlite3, "connect", lambda path: connection)
+        assert smoke_standalone.sqlite_table_exists(database, "standalone_probe")
+        with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+            connection.execute("SELECT 1")
+    finally:
+        connection.close()
