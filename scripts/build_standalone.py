@@ -134,6 +134,9 @@ def freeze(python, workspace, target):
     ]
     if target == "macos-arm64":
         options.append("--target-architecture=arm64")
+    elif target == "windows-x86_64":
+        # Keep redirected CLI output UTF-8 regardless of the Windows code page.
+        options.extend(["--python-option", "X utf8"])
     subprocess.run([python, "-I", "-m", "PyInstaller", *options, entry], cwd=workspace, check=True)
     return workspace / "dist" / "dblift"
 
