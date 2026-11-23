@@ -98,3 +98,36 @@ def test_native_postgres_probe_requires_driver_refusal(
     else:
         with pytest.raises(ValueError, match="PostgreSQL driver did not report a refused"):
             smoke_standalone.probe_postgres_driver(tmp_path / "dblift", tmp_path, env)
+
+
+def test_smoke_relays_frozen_utf8_output_when_parent_has_legacy_encoding(tmp_path, monkeypatch):
+    monkeypatch.setenv("PYTHONIOENCODING", "cp1252")
+    smoke_path = ROOT / "tests" / "smoke" / "smoke_standalone.py"
+    driver = """
+import os
+import runpy
+import sys
+from pathlib import Path
+
+main = runpy.run_path(sys.argv[1])["main"]
+capture_cli = main.__globals__["capture_cli"]
+
+def check_archive(*args):
+    result = capture_cli(
+        sys.executable, Path.cwd(), os.environ.copy(), "-I", "-X", "utf8",
+        "-c", "print(chr(0x2705))"
+    )
+    result.check_returncode()
+
+main.__globals__["smoke"] = check_archive
+sys.argv = [sys.argv[1], "--archive-dir", ".", "--target", "windows-x86_64"]
+main()
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", driver, str(smoke_path)],
+        cwd=tmp_path,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.decode("utf-8").strip() == "✅"

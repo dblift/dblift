@@ -202,6 +202,10 @@ def smoke(archive_dir, target, wheel_dir):
 
 
 def main():
+    # Relay the frozen CLI's UTF-8 output even under a legacy Windows code page.
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors=stream.errors)
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--archive-dir", type=Path, required=True)
     parser.add_argument("--target", choices=TARGETS, required=True)
