@@ -1,0 +1,129 @@
+name: Build standalone CLI
+
+on:
+  workflow_call:
+    inputs:
+      release_sha:
+        description: Commit selected by the release workflow
+        required: true
+        type: string
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/build-standalone.yml
+      - .github/workflows/publish-pypi.yml
+      - pyproject.toml
+      - scripts/build_standalone.py
+      - 'scripts/standalone-*.requirements.txt'
+      - tests/smoke/smoke_standalone.py
+      - tests/smoke/standalone-linux.sh
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and smoke ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64
+            runner: ubuntu-latest
+          - target: macos-arm64
+            runner: macos-15
+          - target: windows-x86_64
+            runner: windows-2025
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.release_sha || github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Download the published universal wheel
+        if: inputs.release_sha != ''
+        shell: bash
+        run: |
+          VERSION=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          for attempt in 1 2 3 4 5; do
+            if python -m pip download --isolated --disable-pip-version-check \
+              --index-url https://pypi.org/simple --no-deps --only-binary=:all: \
+              --platform any --no-cache-dir --timeout 15 --retries 1 \
+              --dest release-wheel "dblift==$VERSION"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              sleep 10
+            fi
+          done
+          exit 1
+
+      - name: Build a wheel for rehearsal
+        if: inputs.release_sha == ''
+        run: |
+          python -m pip install build
+          python -m build --wheel --outdir release-wheel
+
+      - name: Build CLI on Debian 12
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          mkdir -p standalone-dist
+          docker run --rm --platform linux/amd64 \
+            -v "$PWD:/src:ro" -v "$PWD/release-wheel:/wheel:ro" -v "$PWD/standalone-dist:/out" \
+            python:3.11-slim-bookworm@sha256:a83ba18aef0f865b1a4a611c2cf460fe446f2795673bbb9fe43be570439e3b39 \
+            bash -euc '
+              apt-get update -qq
+              apt-get install -y -qq --no-install-recommends binutils
+              python /src/scripts/build_standalone.py --wheel-dir /wheel --output-dir /out --target linux-x86_64
+            '
+
+      - name: Build native macOS or Windows CLI
+        if: runner.os != 'Linux'
+        env:
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: python scripts/build_standalone.py --wheel-dir release-wheel --output-dir standalone-dist --target "$TARGET"
+
+      - name: Smoke test the native archive
+        env:
+          TARGET: ${{ matrix.target }}
+        shell: bash
+        run: python tests/smoke/smoke_standalone.py --archive-dir standalone-dist --target "$TARGET" --wheel-dir release-wheel
+
+      - name: Smoke test Linux without Python installed
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          VERSION=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          docker run --rm --platform linux/amd64 --network none \
+            -v "$PWD/tests/smoke:/smoke:ro" -v "$PWD/standalone-dist:/out:ro" \
+            debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc \
+            bash -euc '
+              if command -v python >/dev/null || command -v python3 >/dev/null; then
+                echo "The smoke runtime must not contain Python." >&2
+                exit 1
+              fi
+              cd /out
+              archive="dblift-$1-linux-x86_64.tar.gz"
+              sha256sum --check "$archive.sha256"
+              bash /smoke/standalone-linux.sh "$archive" "$1"
+            ' _ "$VERSION"
+
+      - name: Record the tested archive checksum
+        # Public workflow readers can download artifacts. Keep the archive on
+        # the runner while the redistribution evidence is under review.
+        shell: bash
+        run: |
+          {
+            printf '### Standalone archive tested\n\n'
+            printf '```text\n'
+            cat standalone-dist/*.sha256
+            printf '```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
