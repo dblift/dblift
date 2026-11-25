@@ -4,7 +4,9 @@ import argparse
 import gzip
 import hashlib
 import json
+import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -232,6 +234,55 @@ def make_archive(bundle, archive):
                 tar.add(path, arcname=path.name, filter=stable_tar_entry)
 
 
+def record_checksum(artifact):
+    checksum = f"{sha256(artifact)}  {artifact.name}"
+    artifact.with_name(f"{artifact.name}.sha256").write_text(f"{checksum}\n", encoding="utf-8")
+    print(checksum)
+
+
+def build_debian_package(bundle, output_dir):
+    identity = json.loads((bundle / "build-identity.json").read_text(encoding="utf-8"))
+    version = identity["version"]
+    match = re.fullmatch(r"(\d+\.\d+\.\d+)((?:a|b|rc)\d+)?", version)
+    if identity["target"] != "linux-x86_64" or not match:
+        raise ValueError(f"Unsupported Debian package identity: {identity}")
+    release, prerelease = match.groups()
+    deb_version = release + (f"~{prerelease}" if prerelease else "") + "-1"
+    package = output_dir / f"dblift_{deb_version}_amd64.deb"
+    with tempfile.TemporaryDirectory(dir=output_dir) as folder:
+        workspace = Path(folder)
+        root = workspace / "package"
+        shutil.copytree(bundle, root / "usr/lib/dblift", symlinks=True)
+        (root / "usr/bin").mkdir()
+        (root / "usr/bin/dblift").symlink_to("../lib/dblift/dblift")
+        docs = root / "usr/share/doc/dblift"
+        docs.mkdir(parents=True)
+        shutil.copyfile(bundle / "LICENSE", docs / "copyright")
+        # Debian Policy 5.6.20 rounds each file or symlink to KiB separately.
+        installed_kib = sum(
+            (entry.lstat().st_size + 1023) // 1024 if entry.is_symlink() or entry.is_file() else 1
+            for entry in root.rglob("*")
+        )
+        (root / "DEBIAN").mkdir()
+        (root / "DEBIAN/control").write_text(
+            f"Package: dblift\nVersion: {deb_version}\nArchitecture: amd64\n"
+            "Maintainer: DBLift <contact@dblift.com>\nSection: database\nPriority: optional\n"
+            f"Installed-Size: {installed_kib}\n"
+            "Depends: libc6 (>= 2.36), zlib1g\n"
+            "Description: SQL migration CLI with SQLite and PostgreSQL support\n",
+            encoding="utf-8",
+        )
+        staged = workspace / package.name
+        subprocess.run(
+            ["dpkg-deb", "--root-owner-group", "--build", root, staged],
+            env={**os.environ, "SOURCE_DATE_EPOCH": "0"},
+            check=True,
+        )
+        staged.replace(package)
+    record_checksum(package)
+    return package
+
+
 def build(wheel_dir, output_dir, target):
     wheel, version, license_text = read_release_wheel(wheel_dir)
     check_build_host(target)
@@ -272,13 +323,11 @@ def build(wheel_dir, output_dir, target):
         )
         archive = workspace / archive_name
         make_archive(bundle, archive)
-        archive_sha = sha256(archive)
         output_dir.mkdir(parents=True, exist_ok=True)
         shutil.move(archive, output_dir / archive_name)
-        (output_dir / f"{archive_name}.sha256").write_text(
-            f"{archive_sha}  {archive_name}\n", encoding="utf-8"
-        )
-        print(f"{archive_sha}  {archive_name}")
+        record_checksum(output_dir / archive_name)
+        if target == "linux-x86_64":
+            build_debian_package(bundle, output_dir)
 
 
 def main():

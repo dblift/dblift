@@ -47,7 +47,7 @@ CPython 3.11 and the dependency wheels pinned by SHA-256 in
 
 | Target | Builder | Archive |
 | --- | --- | --- |
-| `linux-x86_64` | Debian 12 x86_64 with binutils | `dblift-<version>-linux-x86_64.tar.gz` |
+| `linux-x86_64` | Debian 12 x86_64 with binutils and dpkg-deb | `dblift-<version>-linux-x86_64.tar.gz`, `dblift_<debian-version>_amd64.deb` |
 | `macos-arm64` | Apple Silicon macOS | `dblift-<version>-macos-arm64.tar.gz` |
 | `windows-x86_64` | Windows x64 | `dblift-<version>-windows-x86_64.zip` |
 
@@ -97,6 +97,20 @@ docker run --rm --platform linux/amd64 --network none \
     bash /src/tests/smoke/standalone-linux.sh "$archive" "$2"
   ' _ '<archive filename>' '<wheel version>'
 ```
+
+The Linux build also writes a Debian package and its SHA-256. To rehearse a
+local installation, run these commands as root in a fresh Debian 12 amd64
+container from the output directory (example for 5.2.0):
+
+```bash
+sha256sum -c dblift_5.2.0-1_amd64.deb.sha256
+apt-get install ./dblift_5.2.0-1_amd64.deb
+dblift --version
+```
+
+APT installs the frozen payload under `/usr/lib/dblift` and exposes its CLI on
+`PATH`. The workflow runs a SQLite migration and undo through that installed
+command with networking disabled, then purges the package.
 
 Keep the root executable and the accompanying `_internal` directory together.
 The archive includes the release wheel's license, Python and dependency

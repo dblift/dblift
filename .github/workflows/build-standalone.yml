@@ -105,7 +105,7 @@ jobs:
           docker run --rm --platform linux/amd64 --network none \
             -v "$PWD/tests/smoke:/smoke:ro" -v "$PWD/standalone-dist:/out:ro" \
             debian:bookworm-slim@sha256:734a72b3d6142a71993b4bc580ca01d8ca687f77a2c422d96a961d3376b179bc \
-            bash -euc '
+            bash -euo pipefail -c '
               if command -v python >/dev/null || command -v python3 >/dev/null; then
                 echo "The smoke runtime must not contain Python." >&2
                 exit 1
@@ -114,15 +114,34 @@ jobs:
               archive="dblift-$1-linux-x86_64.tar.gz"
               sha256sum --check "$archive.sha256"
               bash /smoke/standalone-linux.sh "$archive" "$1"
+              packages=(./dblift_*_amd64.deb)
+              test "${#packages[@]}" = 1
+              package="${packages[0]}"
+              sha256sum --check "$package.sha256"
+              test "$(dpkg-deb -f "$package" Installed-Size)" -gt 0
+              apt-get install -y --no-install-recommends "$package"
+              mkdir -m 755 /tmp/reference
+              tar -xzf "$archive" -C /tmp/reference
+              # Compare every file, link, owner and mode. dpkg can reset directory mtimes.
+              hash_tree() {
+                tar --sort=name --mtime=@0 --numeric-owner --hard-dereference -cf - -C "$1" . | sha256sum
+              }
+              hash_tree /tmp/reference > /tmp/reference.sha256
+              hash_tree /usr/lib/dblift | cmp - /tmp/reference.sha256
+              bash /smoke/standalone-linux.sh --installed "$1"
+              apt-get purge -y dblift
+              test ! -e /usr/bin/dblift
+              test ! -L /usr/bin/dblift
+              test ! -e /usr/lib/dblift
             ' _ "$VERSION"
 
-      - name: Record the tested archive checksum
+      - name: Record the tested artifact checksums
         # Public workflow readers can download artifacts. Keep the archive on
         # the runner while the redistribution evidence is under review.
         shell: bash
         run: |
           {
-            printf '### Standalone archive tested\n\n'
+            printf '### Standalone artifacts tested\n\n'
             printf '```text\n'
             cat standalone-dist/*.sha256
             printf '```\n'

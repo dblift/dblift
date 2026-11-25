@@ -65,3 +65,16 @@ def test_standalone_runner_matrix_builds_and_smokes_native_archives():
     assert "smoke_standalone.py" in runs
     assert "release upload" not in runs
     assert not any(step.get("uses", "").startswith("actions/upload-artifact@") for step in steps)
+
+
+def test_linux_rehearsal_installs_the_debian_package_without_network():
+    workflow = yaml.safe_load((WORKFLOWS / "build-standalone.yml").read_text(encoding="utf-8"))
+    linux_steps = [
+        step.get("run", "")
+        for step in workflow["jobs"]["build"]["steps"]
+        if step.get("if") == "runner.os == 'Linux'"
+    ]
+    assert any(
+        "--network none" in run and "apt-get install" in run and ".deb" in run
+        for run in linux_steps
+    ), "the offline Linux rehearsal must install the actual .deb with APT"
