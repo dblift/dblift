@@ -11,16 +11,20 @@ import re
 
 import duckdb
 import pytest
+from packaging.version import Version
 
 from dblift.core.exceptions import UnsafeStatementSplitError
 from dblift.core.sql_parser.blank_pass import kept_stretches
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_RULES, DUCKDB_SPEC
+from tests.support.duckdb_oracle import single_query_text
 
 ENGINE = LexicalEngine(DUCKDB_SPEC)
 NB = chr(0xA0)
 BLANKS = DUCKDB_RULES.blanks
 FOLD = {ord(c): " " for c in BLANKS}
+# Starting in 2.0.1, the replacement preserves UTF-8 byte offsets.
+BYTE_PADDED_BLANKS = Version(duckdb.__version__) >= Version("2.0.1")
 TAIL = " DROP TABLE t; SELECT 3;"
 
 #: script, the statements DuckDB cuts (all accepted by the driver; the table t is dropped by the second)
@@ -95,8 +99,15 @@ def predicted(script):
     out = []
     for at, char in enumerate(script):
         kept = any(found[i] <= at < found[i + 1] for i in range(0, len(found), 2))
-        out.append(" " if char in BLANKS and char >= "\x80" and not kept else char)
+        if char in BLANKS and char >= "\x80" and not kept:
+            char = " " * (len(char.encode("utf-8")) if BYTE_PADDED_BLANKS else 1)
+        out.append(char)
     return "".join(out)
+
+
+def test_blank_pass_preserves_quoted_blanks_and_adjacent_ascii_spaces():
+    script = """SELECT\u3000 'a\u00a0  b' AS "x\u3000 y",\u00a0  2"""
+    assert predicted(script) == single_query_text(script)
 
 
 def test_the_stretches_are_the_text_duckdb_keeps():
