@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing release tag to publish
+        description: Existing release tag name to publish (for example v5.2.0)
         required: true
         type: string
 
@@ -18,10 +18,22 @@ jobs:
   # Gate: never publish to PyPI unless the unit suite passes on the released ref.
   test:
     runs-on: ubuntu-latest
+    outputs:
+      source-sha: ${{ steps.source.outputs.sha }}
+      has-standalone: ${{ steps.source.outputs.has-standalone }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.release_tag || github.ref }}
+          ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.sha }}
+
+      - name: Record the release source
+        id: source
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          # A manually republished older tag may predate the standalone build.
+          if [ -f scripts/build_standalone.py ]; then
+            echo "has-standalone=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: actions/setup-python@v6
         with:
@@ -62,7 +74,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.release_tag || github.ref }}
+          ref: ${{ needs.test.outputs.source-sha }}
 
       - uses: actions/setup-python@v5
         with:
@@ -134,6 +146,15 @@ jobs:
         with:
           name: pytest-dblift-dist
           path: packages/pytest-dblift/dist
+
+  standalone:
+    needs: [test, publish]
+    if: needs.test.outputs.has-standalone == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/build-standalone.yml
+    with:
+      release_sha: ${{ needs.test.outputs.source-sha }}
 
   publish-pytest-dblift:
     needs: publish

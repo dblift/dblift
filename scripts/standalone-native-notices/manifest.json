@@ -1,0 +1,52 @@
+{
+  "common": [
+    "SOURCES.md",
+    "FreeTDS-COPYING_LIB.txt",
+    "OpenSSL-modern-LICENSE.txt",
+    "PostgreSQL-COPYRIGHT"
+  ],
+  "linux-x86_64": {
+    "wheels": [
+      "psycopg-binary==3.3.9 --hash=sha256:0953c1b94c73f97efce5b8fb1dad85cf5e4085b94902e439e27e6805ebc8be99",
+      "pymssql==2.4.6 --hash=sha256:3369b93e35d99cbdb428dd6a237b407abe825c889a7d983494e778c906d474b8"
+    ],
+    "notices": [
+      "krb5-1.22.2-NOTICE",
+      "openldap-2.6.16-COPYRIGHT",
+      "openldap-2.6.16-LICENSE",
+      "AlmaLinux-OpenSSL-LICENSE",
+      "libxcrypt-4.5.2-COPYING.LIB",
+      "keyutils-1.5.8-LICENCE.GPL",
+      "keyutils-1.5.8-LICENCE.LGPL",
+      "e2fsprogs-1.42.9-19.el7.src.rpm-COPYING",
+      "cyrus-sasl-2.1.26-24.el7_9.src.rpm-COPYING",
+      "AlmaLinux-keyutils-libs-1.5.10-9.el8-LICENCE.LGPL",
+      "AlmaLinux-krb5-libs-1.18.2-34.el8_10-LICENSE",
+      "AlmaLinux-libcom_err-1.45.6-7.el8_10-NOTICE",
+      "AlmaLinux-libselinux-2.9-11.el8_10-LICENSE",
+      "AlmaLinux-pcre2-10.32-3.el8_6-COPYING",
+      "AlmaLinux-pcre2-10.32-3.el8_6-LICENCE"
+    ]
+  },
+  "macos-arm64": {
+    "wheels": [
+      "psycopg-binary==3.3.9 --hash=sha256:4c064e4d9f5c6a59b975c6d7f6e2f03cab164359cfd3a592817db97f8b0f463a",
+      "pymssql==2.4.5 --hash=sha256:29e9a463fc19a1029a33df49f29e2f736bf97e511de48e690864c4572a9f8979"
+    ],
+    "notices": [
+      "krb5-1.22.2-NOTICE",
+      "openldap-2.6.16-COPYRIGHT",
+      "openldap-2.6.16-LICENSE"
+    ]
+  },
+  "windows-x86_64": {
+    "wheels": [
+      "psycopg-binary==3.3.9 --hash=sha256:75dc9ebbad779969174e59422c71444c2bd8d0362d5758a7b6f500eff11aa4ac",
+      "pymssql==2.4.6 --hash=sha256:76fccef34fced00b5b9bbe5e30bc6735f13add5a490f10228c2da804a62b7455"
+    ],
+    "notices": [
+      "lz4-1.10.0-LICENSE",
+      "zlib-1.3.2-LICENSE"
+    ]
+  }
+}
