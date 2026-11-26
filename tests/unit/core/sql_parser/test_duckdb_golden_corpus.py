@@ -20,6 +20,7 @@ from dblift.core.migration.sql.statement_reader import StatementReader
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.redaction import describe_statement, mask_string_literals
 from dblift.db.plugins.duckdb.quirks import DuckDBQuirks
+from tests.support.duckdb_oracle import single_query_text
 from tests.support.facts_parser import facts_parser
 
 
@@ -151,7 +152,7 @@ def test_the_entries_duckdb_accepts_have_matching_cuts() -> None:
 
     def agrees(cut: List[str], theirs: List[str]) -> bool:
         # DuckDB 2.0 drops the comments that lead a statement from its text; 1.x keeps them
-        cut = [engine.blank_comments(t).strip() for t in cut if not tail.match(t)]
+        cut = [engine.blank_comments(t).strip() for t in cut]
         theirs = [engine.blank_comments(t).strip() for t in theirs if not tail.match(t)]
 
         def same(a: str, b: str) -> bool:
@@ -160,15 +161,13 @@ def test_the_entries_duckdb_accepts_have_matching_cuts() -> None:
 
         return len(cut) == len(theirs) and all(same(a, b) for a, b in zip(cut, theirs))
 
-    blanks = {ord(c): " " for c in "\xa0\u202f\u205f\u2060\u3000\ufeff"}
-    blanks.update({c: " " for c in range(0x2000, 0x200C)})
     for entry in entries():
         if "error" in entry["views"]:
             continue
         script = entry["script"]
         try:
-            theirs = [q.query.translate(blanks) for q in duckdb.extract_statements(script)]
+            theirs = [q.query for q in duckdb.extract_statements(script)]
         except duckdb.Error:
             continue
-        ours = [t.translate(blanks) for t in engine.split_statements(script)]
+        ours = [single_query_text(t) for t in engine.split_statements(script) if not tail.match(t)]
         assert agrees(ours, theirs), entry["name"]

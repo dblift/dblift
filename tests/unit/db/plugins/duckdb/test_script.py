@@ -15,6 +15,7 @@ from dblift.core.exceptions import UnsafeStatementSplitError, UnsupportedMetaCom
 from dblift.core.sql_parser.lexical_engine import LexicalEngine
 from dblift.core.sql_parser.statement import Statement
 from dblift.db.plugins.duckdb.parser.lexical_spec import DUCKDB_SPEC
+from tests.support.duckdb_oracle import single_query_text
 from tests.support.facts_parser import facts_parser
 
 
@@ -79,16 +80,10 @@ def _statement(rng: random.Random) -> str:
     return "SELECT" + rng.choice(_JOINS) + " || ".join(parts) + rng.choice(_ALIASES)
 
 
-def _fold(text: str) -> str:
-    """The engine's text keeps its leading blanks and its last statement its terminators, and shows
-    a byte order mark as a space: compare with every blank folded to one."""
-    return "".join(" " if char in UNICODE_BLANKS else char for char in text).strip(" \t\r\n;")
-
-
 def _oracle(text: str) -> str:
     """The engine's text with its comments blanked: 1.x hands a comment between two statements to the
     next one and 2.x to the previous one, so the comments are left out of the comparison."""
-    return _fold(LexicalEngine(DUCKDB_SPEC).blank_comments(text))
+    return LexicalEngine(DUCKDB_SPEC).blank_comments(text).strip(" \t\r\n;")
 
 
 def test_the_scanner_cuts_where_the_engine_cuts() -> None:
@@ -111,7 +106,7 @@ def test_the_scanner_cuts_where_the_engine_cuts() -> None:
         except duckdb.Error:
             continue  # the engine rejects the text: no cut to compare
         evaluated += 1
-        ours = [_oracle(text) for text in texts(script)]
+        ours = [_oracle(single_query_text(text)) for text in texts(script)]
         assert ours == [text for text in oracle if text], script
     assert (
         evaluated > 1500
