@@ -1,5 +1,6 @@
 """The standalone build consumes one release wheel, and smoke verifies its archive."""
 
+import json
 import sqlite3
 import subprocess
 import sys
@@ -56,6 +57,58 @@ def test_smoke_rejects_archive_with_wrong_digest(tmp_path):
     )
     assert result.returncode != 0
     assert "Archive SHA-256 mismatch" in result.stderr
+
+
+@pytest.mark.parametrize("inventory_change", ["none", "missing", "duplicate", "non-native"])
+def test_smoke_requires_a_complete_native_library_inventory(
+    tmp_path, monkeypatch, inventory_change
+):
+    from build_standalone import write_notices
+
+    target = "windows-x86_64"
+    version = "5.2.0"
+    bundle = tmp_path / "bundle"
+    internal = bundle / "_internal"
+    internal.mkdir(parents=True)
+    (internal / "libpq.dll").write_bytes(b"postgres driver")
+    (internal / "driver.pyd").write_bytes(b"python extension")
+    (internal / "data.txt").write_bytes(b"runtime data")
+    (bundle / "LICENSE").write_text("DBLift license", encoding="utf-8")
+    (bundle / "build-identity.json").write_text(
+        json.dumps(
+            {
+                "target": target,
+                "version": version,
+                "wheel": f"dblift-{version}-py3-none-any.whl",
+                "wheel_sha256": "0" * 64,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: None)
+    write_notices(sys.executable, bundle, target)
+    (bundle / "licenses" / "Python-LICENSE.txt").write_text("Python license", encoding="utf-8")
+    archive = tmp_path / f"dblift-{version}-{target}.zip"
+    inventory = bundle / "licenses" / "native-library-sha256.txt"
+    entries = inventory.read_text(encoding="utf-8").splitlines()
+    assert {line.split("  ", 1)[1] for line in entries} == {
+        "_internal/driver.pyd",
+        "_internal/libpq.dll",
+    }
+
+    if inventory_change == "none":
+        assert smoke_standalone.verify_bundle(bundle, archive, target, None) == version
+        return
+    if inventory_change == "missing":
+        entries.pop()
+    elif inventory_change == "duplicate":
+        entries.append(entries[0])
+    else:
+        entries.append(f"{smoke_standalone.sha256(internal / 'data.txt')}  _internal/data.txt")
+    inventory.write_text("\n".join(entries) + "\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Native library inventory"):
+        smoke_standalone.verify_bundle(bundle, archive, target, None)
 
 
 @pytest.mark.parametrize(

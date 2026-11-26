@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
 from build_standalone import (  # noqa: E402
     MACOS_OPENSSL_DYLIBS,
     TARGETS,
+    native_library_files,
     native_notice_files,
     read_release_wheel,
     sha256,
@@ -75,12 +76,20 @@ def verify_bundle(bundle, archive, target, wheel_dir):
             raise ValueError(f"Native notice differs from the audited input: {name}")
     hashes = (notices / "native-library-sha256.txt").read_text(encoding="utf-8").splitlines()
     if not hashes:
-        raise ValueError("Missing native library hashes")
+        raise ValueError("Native library inventory is empty")
+    unverified = {
+        file.relative_to(bundle).as_posix(): file for file in native_library_files(bundle)
+    }
+    bundle_root = bundle.resolve()
     for line in hashes:
-        digest, path = line.split("  ", 1)
-        resolved = (bundle / path).resolve()
-        if not resolved.is_relative_to(bundle) or sha256(resolved) != digest:
+        digest, _, path = line.partition("  ")
+        if path not in unverified:
+            raise ValueError(f"Native library inventory has an unexpected or repeated path: {path}")
+        resolved = unverified.pop(path).resolve()
+        if not resolved.is_relative_to(bundle_root) or sha256(resolved) != digest:
             raise ValueError(f"Native library SHA-256 mismatch: {path}")
+    if unverified:
+        raise ValueError(f"Native library inventory is missing: {', '.join(sorted(unverified))}")
 
     if target == "macos-arm64":
         internal = bundle / "_internal"

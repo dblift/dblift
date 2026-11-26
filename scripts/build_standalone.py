@@ -263,6 +263,23 @@ def native_notice_files(target):
     return files
 
 
+def native_library_files(bundle):
+    return sorted(
+        p
+        for p in (bundle / "_internal").rglob("*")
+        if p.is_file()
+        and not p.is_symlink()
+        and (
+            ".so" in p.suffixes
+            or p.suffix.lower() in {".dll", ".dylib", ".pyd"}
+            or any(
+                Path(part).suffix == ".framework" and Path(part).stem == p.name
+                for part in p.relative_to(bundle).parts[:-1]
+            )
+        )
+    )
+
+
 def write_notices(python, bundle, target):
     notices = bundle / "licenses"
     notices.mkdir()
@@ -284,21 +301,9 @@ def write_notices(python, bundle, target):
         )
         (debian / "packages.txt").write_text(packages, encoding="utf-8")
 
-    native_files = sorted(
-        p
-        for p in (bundle / "_internal").rglob("*")
-        if p.is_file()
-        and not p.is_symlink()
-        and (
-            ".so" in p.suffixes
-            or p.suffix.lower() in {".dll", ".dylib", ".pyd"}
-            or any(
-                Path(part).suffix == ".framework" and Path(part).stem == p.name
-                for part in p.relative_to(bundle).parts[:-1]
-            )
-        )
+    inventory = "".join(
+        f"{sha256(p)}  {p.relative_to(bundle).as_posix()}\n" for p in native_library_files(bundle)
     )
-    inventory = "".join(f"{sha256(p)}  {p.relative_to(bundle).as_posix()}\n" for p in native_files)
     (notices / "native-library-sha256.txt").write_text(inventory, encoding="utf-8")
 
 
