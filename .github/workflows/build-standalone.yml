@@ -15,6 +15,7 @@ on:
       - pyproject.toml
       - scripts/build_standalone.py
       - 'scripts/standalone-*.requirements.txt'
+      - 'scripts/standalone-native-notices/**'
       - tests/smoke/smoke_standalone.py
       - tests/smoke/standalone-linux.sh
 

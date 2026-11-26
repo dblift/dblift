@@ -15,7 +15,13 @@ from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-from build_standalone import MACOS_OPENSSL_DYLIBS, TARGETS, read_release_wheel, sha256  # noqa: E402
+from build_standalone import (  # noqa: E402
+    MACOS_OPENSSL_DYLIBS,
+    TARGETS,
+    native_notice_files,
+    read_release_wheel,
+    sha256,
+)
 
 
 def read_archive(archive_dir, target):
@@ -64,6 +70,9 @@ def verify_bundle(bundle, archive, target, wheel_dir):
         or not (notices / "Python-LICENSE.txt").stat().st_size
     ):
         raise ValueError("Missing runtime notices")
+    for name, expected in native_notice_files(target).items():
+        if (notices / "native" / name).read_bytes() != expected:
+            raise ValueError(f"Native notice differs from the audited input: {name}")
     hashes = (notices / "native-library-sha256.txt").read_text(encoding="utf-8").splitlines()
     if not hashes:
         raise ValueError("Missing native library hashes")

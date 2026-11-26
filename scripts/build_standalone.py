@@ -240,10 +240,37 @@ for dist in distributions():
 """
 
 
+def requirement_project(line):
+    match = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)", line)
+    return re.sub(r"[-_.]+", "-", match[1]).lower() if match else ""
+
+
+def native_notice_files(target):
+    source = SCRIPT_DIR / "standalone-native-notices"
+    manifest = json.loads((source / "manifest.json").read_text(encoding="utf-8"))
+    audited_wheels = manifest[target]["wheels"]
+    lock = (SCRIPT_DIR / f"standalone-{target}.requirements.txt").read_text(encoding="utf-8")
+    wheel_names = {requirement_project(line) for line in audited_wheels}
+    locked_wheels = [line for line in lock.splitlines() if requirement_project(line) in wheel_names]
+    if sorted(locked_wheels) != sorted(audited_wheels):
+        raise ValueError(f"Native notices do not match the locked wheels for {target}")
+    filenames = manifest["common"] + manifest[target]["notices"]
+    # Keep the upstream LF text on Windows checkouts that use CRLF.
+    files = {
+        name: (source / name).read_text(encoding="utf-8").encode("utf-8") for name in filenames
+    }
+    files["audited-wheels.txt"] = ("\n".join(audited_wheels) + "\n").encode("utf-8")
+    return files
+
+
 def write_notices(python, bundle, target):
     notices = bundle / "licenses"
     notices.mkdir()
     subprocess.run([python, "-I", "-c", COLLECT_WHEEL_NOTICES, notices], cwd=bundle, check=True)
+    native = notices / "native"
+    native.mkdir()
+    for name, data in native_notice_files(target).items():
+        (native / name).write_bytes(data)
     if target == "linux-x86_64":
         debian = notices / "Debian"
         debian.mkdir()

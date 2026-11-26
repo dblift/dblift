@@ -127,9 +127,13 @@ uses the published wheel for that version. A manual rehearsal builds a local
 wheel for the selected Git ref. The workflow does not upload the standalone
 archives to Actions artifacts or Releases. Those are public distribution
 surfaces, and notices and corresponding-source obligations for the exact
-bundled native libraries remain to be reviewed. The `pymssql` wheels link
-FreeTDS into the SQL Server extensions. Verify the matching FreeTDS source and
-notices for each wheel before redistribution.
+bundled native libraries remain to be reviewed. The archive includes the
+reviewed native notices and upstream source references for the identified
+Psycopg Binary and pymssql components in `licenses/native/`. A wheel update
+requires refreshing this directory's provenance in
+`scripts/standalone-native-notices/`. In particular, the `pymssql` wheels
+statically link FreeTDS. Complete the release's source and relinking materials
+before redistributing these archives.
 
 The macOS build uses an ad-hoc signature for local execution. Before release,
 qualify Gatekeeper with a downloaded, appropriately signed and notarized

@@ -228,3 +228,49 @@ def test_sqlite_archive_smoke_checks_the_bundled_sql_drivers(monkeypatch, tmp_pa
 
     smoke_standalone.exercise_cli(tmp_path, tmp_path / "dblift", "5.2.0")
     assert probed == expected
+
+
+def test_build_copies_freetds_notice_into_native_notices(tmp_path, monkeypatch):
+    from build_standalone import write_notices
+
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: None)
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+
+    write_notices(sys.executable, bundle, "macos-arm64")
+
+    notice = bundle / "licenses" / "native" / "FreeTDS-COPYING_LIB.txt"
+    assert notice.is_file(), "the package must carry the FreeTDS notice even when statically linked"
+    assert "GNU LIBRARY GENERAL PUBLIC LICENSE" in notice.read_text(encoding="utf-8")
+    assert (notice.parent / "SOURCES.md").is_file()
+    audited_wheels = (notice.parent / "audited-wheels.txt").read_text(encoding="utf-8")
+    assert "pymssql==2.4.5 --hash=sha256:" in audited_wheels
+    assert "psycopg-binary==3.3.9 --hash=sha256:" in audited_wheels
+
+
+@pytest.mark.parametrize("change", ["version", "normalized-duplicate"])
+def test_build_refuses_to_reuse_native_notices_for_a_changed_wheel(tmp_path, monkeypatch, change):
+    import build_standalone
+
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    for path in (ROOT / "scripts" / "standalone-native-notices").glob("*"):
+        destination = scripts / "standalone-native-notices" / path.name
+        destination.parent.mkdir(exist_ok=True)
+        destination.write_bytes(path.read_bytes())
+    target = "macos-arm64"
+    lock = scripts / f"standalone-{target}.requirements.txt"
+    audited = (ROOT / "scripts" / lock.name).read_text(encoding="utf-8")
+    if change == "version":
+        changed = audited.replace("pymssql==2.4.5", "pymssql==2.4.6")
+    else:
+        wheel = next(line for line in audited.splitlines() if line.startswith("psycopg-binary=="))
+        changed = audited + "  " + wheel.replace("psycopg-binary==", "PsYcOpG.Binary ==") + "\n"
+    lock.write_text(changed, encoding="utf-8")
+    monkeypatch.setattr(build_standalone, "SCRIPT_DIR", scripts)
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: None)
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+
+    with pytest.raises(ValueError, match="Native notices do not match the locked wheels"):
+        build_standalone.write_notices(sys.executable, bundle, target)
