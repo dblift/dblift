@@ -15,7 +15,7 @@ from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts"))
-from build_standalone import TARGETS, read_release_wheel, sha256  # noqa: E402
+from build_standalone import MACOS_OPENSSL_DYLIBS, TARGETS, read_release_wheel, sha256  # noqa: E402
 
 
 def read_archive(archive_dir, target):
@@ -73,6 +73,13 @@ def verify_bundle(bundle, archive, target, wheel_dir):
         if not resolved.is_relative_to(bundle) or sha256(resolved) != digest:
             raise ValueError(f"Native library SHA-256 mismatch: {path}")
 
+    if target == "macos-arm64":
+        internal = bundle / "_internal"
+        for name in MACOS_OPENSSL_DYLIBS:
+            alias = internal / name
+            if not alias.is_symlink() or alias.readlink() != Path("psycopg_binary/.dylibs") / name:
+                raise ValueError(f"Psycopg OpenSSL alias points to an unexpected library: {name}")
+
     print(f"Wheel {wheel_name} SHA-256 {identity['wheel_sha256']}", flush=True)
     print(f"Verified all {len(hashes)} native library hashes", flush=True)
     return version
@@ -102,11 +109,15 @@ def run_cli(cli, project, env, *arguments):
     return result.stdout + result.stderr
 
 
-def probe_postgres_driver(cli, project, env):
+def unused_loopback_port():
     # macOS drops connections to a bound socket until it is released or listens.
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as reservation:
         reservation.bind(("127.0.0.1", 0))
-        port = reservation.getsockname()[1]
+        return reservation.getsockname()[1]
+
+
+def probe_postgres_driver(cli, project, env):
+    port = unused_loopback_port()
     probe_env = dict(
         {key: value for key, value in env.items() if not key.upper().startswith("PG")},
         LC_ALL="C",
@@ -134,6 +145,49 @@ def probe_postgres_driver(cli, project, env):
     if result.returncode <= 0 or not (refused or windows_timeout):
         raise ValueError("PostgreSQL driver did not report the expected loopback connection error")
     print("PostgreSQL binary driver loaded and attempted a loopback connection", flush=True)
+
+
+def probe_sql_drivers(cli, project, env):
+    probes = (
+        (
+            "MySQL",
+            "mysql+pymysql://standalone:standalone@127.0.0.1:{port}/standalone",
+            r"^pymysql\.err\.OperationalError: \(2003,",
+        ),
+        (
+            "Oracle Thin",
+            "oracle+oracledb://standalone:standalone@127.0.0.1:{port}/?service_name=standalone",
+            r"^oracledb\.exceptions\.OperationalError: DPY-6005:",
+        ),
+        (
+            "SQL Server",
+            "mssql+pymssql://standalone:standalone@127.0.0.1:{port}/standalone",
+            r"^pymssql\.exceptions\.OperationalError: \(20009,",
+        ),
+    )
+    for engine, url, diagnostic in probes:
+        probe_env = dict(
+            {key: value for key, value in env.items() if key.upper() not in {"TDSHOST", "TDSPORT"}},
+            DBLIFT_DB_URL=url.format(port=unused_loopback_port()),
+            DBLIFT_DB_CONNECTION_TIMEOUT="3",
+        )
+        check_macos_openssl = sys.platform == "darwin" and engine == "SQL Server"
+        if check_macos_openssl:
+            probe_env["DYLD_PRINT_LIBRARIES"] = "1"
+        result = capture_cli(
+            cli, project, probe_env, "--log-level", "debug", "db", "check-connection"
+        )
+        if result.returncode <= 0 or not re.search(diagnostic, result.stderr, re.MULTILINE):
+            raise ValueError(
+                f"{engine} driver did not report the expected loopback connection error"
+            )
+        if check_macos_openssl:
+            vendor_dir = cli.resolve().parent / "_internal/pymssql/.dylibs"
+            libraries = re.findall(r"^dyld\[\d+\]: <[^>]+> (.+)$", result.stderr, re.MULTILINE)
+            expected = {str(vendor_dir / name) for name in MACOS_OPENSSL_DYLIBS}
+            if not expected.issubset(libraries):
+                raise ValueError("SQL Server did not load its own OpenSSL libraries")
+        print(f"{engine} driver loaded and attempted a loopback connection", flush=True)
 
 
 def sqlite_table_exists(database, table_name):
@@ -196,6 +250,7 @@ def exercise_cli(workspace, cli, version):
         raise ValueError("Undo did not leave the expected SQLite schema and history")
     if sqlite_database is not None:
         probe_postgres_driver(cli, project, env)
+        probe_sql_drivers(cli, project, env)
 
 
 def smoke(archive_dir, target, wheel_dir):

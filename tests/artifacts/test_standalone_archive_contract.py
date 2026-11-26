@@ -164,3 +164,67 @@ def test_sqlite_schema_check_closes_database_handle(tmp_path, monkeypatch):
             connection.execute("SELECT 1")
     finally:
         connection.close()
+
+
+@pytest.mark.parametrize("target", smoke_standalone.TARGETS)
+def test_sql_driver_wheels_are_locked_on_each_standalone_target(target):
+    lock = ROOT / "scripts" / f"standalone-{target}.requirements.txt"
+    names = {
+        line.split("==", 1)[0].split("[", 1)[0].lower()
+        for line in lock.read_text(encoding="utf-8").splitlines()
+        if " --hash=sha256:" in line
+    }
+    missing = {"oracledb", "pymysql", "pymssql", "cryptography"} - names
+    assert not missing, f"{target} lacks locked SQL driver wheels: {sorted(missing)}"
+
+
+def test_sqlite_archive_smoke_checks_the_bundled_sql_drivers(monkeypatch, tmp_path):
+    expected = {
+        "postgresql+psycopg",
+        "mysql+pymysql",
+        "oracle+oracledb",
+        "mssql+pymssql",
+    }
+    diagnostics = {
+        "postgresql+psycopg": "psycopg.OperationalError: connection failed: Connection refused",
+        "mysql+pymysql": "pymysql.err.OperationalError: (2003, 'Connection refused')",
+        "oracle+oracledb": "oracledb.exceptions.OperationalError: DPY-6005: cannot connect",
+        "mssql+pymssql": "pymssql.exceptions.OperationalError: (20009, b'DB-Lib message')",
+    }
+    probed = set()
+    tables = {"dblift_schema_history"}
+
+    def capture(cli, project, env, *arguments):
+        url = urlsplit(env["DBLIFT_DB_URL"])
+        assert url.hostname == "127.0.0.1"
+        assert url.port is not None
+        assert arguments == ("--log-level", "debug", "db", "check-connection")
+        probed.add(url.scheme)
+        output = diagnostics[url.scheme]
+        if sys.platform == "darwin" and url.scheme == "mssql+pymssql":
+            assert env["DYLD_PRINT_LIBRARIES"] == "1"
+            for name in ("libssl.3.dylib", "libcrypto.3.dylib"):
+                vendor_lib = cli.resolve().parent / "_internal/pymssql/.dylibs" / name
+                output += f"\ndyld[123]: <uuid> {vendor_lib}"
+        return subprocess.CompletedProcess(arguments, 1, "", output)
+
+    def run(cli, project, env, *arguments):
+        if arguments == ("--version",):
+            return "dblift version 5.2.0"
+        if arguments == ("migrate", "--dry-run", "--show-sql"):
+            return "CREATE TABLE standalone_example"
+        if arguments == ("migrate",):
+            tables.add("standalone_example")
+        if arguments == ("undo",):
+            tables.remove("standalone_example")
+            return "Successfully undone migration V1__create_example.sql"
+        return ""
+
+    monkeypatch.delenv("DBLIFT_STANDALONE_SMOKE_DB_URL", raising=False)
+    monkeypatch.delenv("DBLIFT_STANDALONE_SMOKE_DIALECT", raising=False)
+    monkeypatch.setattr(smoke_standalone, "capture_cli", capture)
+    monkeypatch.setattr(smoke_standalone, "run_cli", run)
+    monkeypatch.setattr(smoke_standalone, "sqlite_table_exists", lambda _, name: name in tables)
+
+    smoke_standalone.exercise_cli(tmp_path, tmp_path / "dblift", "5.2.0")
+    assert probed == expected

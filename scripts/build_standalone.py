@@ -22,6 +22,8 @@ TARGETS = {
     "macos-arm64": ("Darwin", "arm64", ".tar.gz"),
     "windows-x86_64": ("Windows", "x86_64", ".zip"),
 }
+MACOS_MINIMUM = 14
+MACOS_OPENSSL_DYLIBS = ("libssl.3.dylib", "libcrypto.3.dylib")
 DEBIAN_LIBRARIES = (
     "libbz2-1.0",
     "libffi8",
@@ -72,6 +74,10 @@ def check_build_host(target):
         raise ValueError(
             f"{target} must be built on {system} {machine}; got {platform.system()} {host}"
         )
+    if target == "macos-arm64" and int(platform.mac_ver()[0].split(".")[0]) < MACOS_MINIMUM:
+        raise ValueError(
+            f"The standalone SQL Server driver requires macOS {MACOS_MINIMUM} or later"
+        )
     if sys.version_info[:2] != (3, 11):
         raise ValueError("Standalone builds require Python 3.11")
     if (
@@ -89,7 +95,9 @@ def build_runtime(workspace, wheel, wheel_sha, target):
     lock = (SCRIPT_DIR / f"standalone-{target}.requirements.txt").read_text(encoding="utf-8")
     requirements = workspace / "requirements.txt"
     requirements.write_text(
-        f"{lock.rstrip()}\ndblift[cli,postgresql] @ {wheel.as_uri()} --hash=sha256:{wheel_sha}\n",
+        f"{lock.rstrip()}\n"
+        f"dblift[cli,postgresql,mysql,oracle,sqlserver] @ {wheel.as_uri()} "
+        f"--hash=sha256:{wheel_sha}\n",
         encoding="utf-8",
     )
     subprocess.run(
@@ -133,6 +141,11 @@ def freeze(python, workspace, target):
         "--collect-submodules=sqlglot.dialects",
         "--collect-all=psycopg",
         "--collect-all=psycopg_binary",
+        "--collect-all=oracledb",
+        "--collect-all=pymssql",
+        "--collect-submodules=pymysql",
+        # Oracle Thin's compiled extensions import cryptography modules at runtime.
+        "--collect-submodules=cryptography",
     ]
     if target == "macos-arm64":
         options.append("--target-architecture=arm64")
@@ -140,7 +153,57 @@ def freeze(python, workspace, target):
         # Keep redirected CLI output UTF-8 regardless of the Windows code page.
         options.extend(["--python-option", "X utf8"])
     subprocess.run([python, "-I", "-m", "PyInstaller", *options, entry], cwd=workspace, check=True)
-    return workspace / "dist" / "dblift"
+    bundle = workspace / "dist" / "dblift"
+    if target == "macos-arm64":
+        bind_macos_sqlserver_openssl(bundle)
+    return bundle
+
+
+def bind_macos_sqlserver_openssl(bundle):
+    # PyInstaller flattens the lookup paths of both drivers to _internal,
+    # where its generic OpenSSL symlinks can resolve to Psycopg's version.
+    internal = bundle / "_internal"
+    driver = internal / "pymssql"
+    ssl, crypto = (driver / ".dylibs" / name for name in MACOS_OPENSSL_DYLIBS)
+    updates = [
+        (ssl, [(f"@rpath/{crypto.name}", f"@loader_path/{crypto.name}")], True),
+        (crypto, [], True),
+    ]
+    dependencies = [
+        (f"@rpath/{library.name}", f"@loader_path/.dylibs/{library.name}")
+        for library in (ssl, crypto)
+    ]
+    for module in ("_mssql", "_pymssql"):
+        extensions = list(driver.glob(f"{module}.*.so"))
+        if len(extensions) != 1:
+            raise ValueError(f"Expected one bundled pymssql extension for {module}")
+        updates.append((extensions[0], dependencies, False))
+
+    for binary, changes, is_library in updates:
+        output = subprocess.check_output(["otool", "-L", binary], text=True)
+        names = [line.strip().partition(" (")[0] for line in output.splitlines()[1:]]
+        if any(old not in names for old, _ in changes) or (
+            is_library and (not names or names[0] != f"@rpath/{binary.name}")
+        ):
+            raise ValueError(f"Unexpected OpenSSL linkage in {binary}")
+        command = ["install_name_tool"]
+        for old, new in changes:
+            command.extend(["-change", old, new])
+        if is_library:
+            command.extend(["-id", f"@rpath/pymssql/.dylibs/{binary.name}"])
+        subprocess.run([*command, binary], check=True)
+        subprocess.run(["codesign", "--force", "--sign", "-", binary], check=True)
+
+    # CPython and Psycopg still use the root aliases.
+    for library in MACOS_OPENSSL_DYLIBS:
+        alias = internal / library
+        target = Path("psycopg_binary/.dylibs") / library
+        is_link = alias.is_symlink()
+        if not (is_link or alias.is_file()) or not (internal / target).is_file():
+            raise ValueError(f"Missing Psycopg OpenSSL alias or library: {library}")
+        if not is_link or alias.readlink() != target:
+            alias.unlink()
+            alias.symlink_to(target)
 
 
 # Run under the build virtual environment so notices come from its wheel files.
@@ -269,7 +332,7 @@ def build_debian_package(bundle, output_dir):
             "Maintainer: DBLift <contact@dblift.com>\nSection: database\nPriority: optional\n"
             f"Installed-Size: {installed_kib}\n"
             "Depends: libc6 (>= 2.36), zlib1g\n"
-            "Description: SQL migration CLI with SQLite and PostgreSQL support\n",
+            "Description: Standalone SQL migration CLI\n",
             encoding="utf-8",
         )
         staged = workspace / package.name
@@ -313,10 +376,17 @@ def build(wheel_dir, output_dir, target):
             + "\n",
             encoding="utf-8",
         )
+        platform_note = (
+            f"Requires macOS {MACOS_MINIMUM} or later on Apple Silicon.\n"
+            if target == "macos-arm64"
+            else ""
+        )
         (bundle / "README.txt").write_text(
             f"DBLift {version} for {target}\n"
             f"Extract the archive and keep {executable_name} and _internal together.\n"
-            f"Run ./{executable_name} --version. SQLite and PostgreSQL drivers are included.\n"
+            f"Run ./{executable_name} --version.\n"
+            "Includes SQLite, PostgreSQL, MySQL, Oracle Thin, and SQL Server drivers.\n"
+            f"{platform_note}"
             "See licenses/ for runtime notices and the native library inventory.\n"
             "https://docs.dblift.com/getting-started/\n",
             encoding="utf-8",
