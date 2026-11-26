@@ -19,7 +19,13 @@
       "keyutils-1.5.8-LICENCE.GPL",
       "keyutils-1.5.8-LICENCE.LGPL",
       "e2fsprogs-1.42.9-19.el7.src.rpm-COPYING",
-      "cyrus-sasl-2.1.26-24.el7_9.src.rpm-COPYING"
+      "cyrus-sasl-2.1.26-24.el7_9.src.rpm-COPYING",
+      "AlmaLinux-keyutils-libs-1.5.10-9.el8-LICENCE.LGPL",
+      "AlmaLinux-krb5-libs-1.18.2-34.el8_10-LICENSE",
+      "AlmaLinux-libcom_err-1.45.6-7.el8_10-NOTICE",
+      "AlmaLinux-libselinux-2.9-11.el8_10-LICENSE",
+      "AlmaLinux-pcre2-10.32-3.el8_6-COPYING",
+      "AlmaLinux-pcre2-10.32-3.el8_6-LICENCE"
     ]
   },
   "macos-arm64": {

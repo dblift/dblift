@@ -12,6 +12,7 @@ directory for Python package notices and hashes of the bundled native files.
 | Psycopg Binary 3.3.9, Linux x86-64 | libcom_err from e2fsprogs 1.42.9-19.el7, keyutils 1.5.8-3.el7, Cyrus SASL 2.1.26-24.el7_9 and libxcrypt 4.5.2 | The ELF build IDs for libcom_err, keyutils and Cyrus SASL match the manylinux build image RPM files. The libxcrypt file matches the auditwheel hash prefix and the image's pkg-config version. |
 | Psycopg Binary 3.3.9, Windows x64 | libpq 18.4, OpenSSL 3.6.5, LZ4 1.10.0 and zlib 1.3.2 | [Matched Windows wheel build](https://github.com/psycopg/psycopg/actions/runs/43127304274) and its vcpkg configuration |
 | pymssql 2.4.6, Linux x86-64 | Statically linked FreeTDS 1.5.19, OpenSSL from AlmaLinux RPM `openssl-libs-1.1.1k-18.el8_6.x86_64` | [Matched Linux wheel build](https://github.com/pymssql/pymssql/actions/runs/40436287488/job/121965692619) and [AlmaLinux advisory](https://errata.almalinux.org/8/ALSA-2026-85968.html). The ELF build IDs and auditwheel hash prefixes for libssl and libcrypto match the RPM. |
+| pymssql 2.4.6, Linux x86-64 | libcom_err, libgssapi_krb5, libk5crypto, libkrb5, libkrb5support, libkeyutils, libpcre2-8 and libselinux | The ELF build IDs and auditwheel hash prefixes match the AlmaLinux 8 binary RPMs listed with their source RPMs below. |
 | pymssql 2.4.5, macOS arm64 | Statically linked FreeTDS 1.5.19, OpenSSL 3.6.3 | [Matched macOS wheel build](https://github.com/pymssql/pymssql/actions/runs/39343251230/job/118369636627) and the version string in the bundled libcrypto |
 | pymssql 2.4.6, Windows x64 | Statically linked FreeTDS 1.5.19, OpenSSL 4.0.3 in the compiled extension | [Matched Windows wheel build](https://github.com/pymssql/pymssql/actions/runs/40436287488/job/121965614293) and the version strings in the compiled extension |
 
@@ -44,6 +45,17 @@ Upstream source references:
 | [e2fsprogs-1.42.9-19.el7.src.rpm](https://vault.centos.org/7.9.2009/os/Source/SPackages/e2fsprogs-1.42.9-19.el7.src.rpm) | `718f64bd465d1770eaf6490157a861d3dba2846b4a636a67d27bd4d38e6b86cf` |
 | [keyutils-1.5.8-3.el7.src.rpm](https://vault.centos.org/7.9.2009/os/Source/SPackages/keyutils-1.5.8-3.el7.src.rpm) | `eff16e16f707fd28436afe4cf7b7c2e34b9f827e7f6beacf3c6eecbf74e9f850` |
 | [cyrus-sasl-2.1.26-24.el7_9.src.rpm](https://vault.centos.org/7.9.2009/updates/Source/SPackages/cyrus-sasl-2.1.26-24.el7_9.src.rpm) | `c49472bd08c6060f53a9dace005b81cf466836790d2dcb407a536820f6319e77` |
+
+The additional Linux pymssql notices come from the matching AlmaLinux binary
+RPMs. The krb5-libs `LICENSE` and `NOTICE` shipped by that RPM are byte-identical.
+
+| AlmaLinux binary RPM (x86-64) | AlmaLinux source RPM | Source RPM SHA-256 |
+| --- | --- | --- |
+| `libcom_err-1.45.6-7.el8_10` | [e2fsprogs-1.45.6-7.el8_10.src.rpm](https://vault.almalinux.org/8.10/BaseOS/Source/Packages/e2fsprogs-1.45.6-7.el8_10.src.rpm) | `7042d97c138a6b6c8d5a9282bf9bb736f8d377d4055fe0da2e0d3f459141b2a0` |
+| `keyutils-libs-1.5.10-9.el8` | [keyutils-1.5.10-9.el8.src.rpm](https://vault.almalinux.org/8.10/BaseOS/Source/Packages/keyutils-1.5.10-9.el8.src.rpm) | `13fec652f642858757755b64195189abef7c0ff8025e9807ddba467e4ad8fbb6` |
+| `krb5-libs-1.18.2-34.el8_10` | [krb5-1.18.2-34.el8_10.src.rpm](https://vault.almalinux.org/8.10/BaseOS/Source/Packages/krb5-1.18.2-34.el8_10.src.rpm) | `2ac8306fe7f9dad151f96017465e5144bc25729257f84f4e4b81c629d0630ef7` |
+| `libselinux-2.9-11.el8_10` | [libselinux-2.9-11.el8_10.src.rpm](https://vault.almalinux.org/8.10/BaseOS/Source/Packages/libselinux-2.9-11.el8_10.src.rpm) | `1a9f9af679cb4f57c4433012f829dccec9b38fe3ac749b63785f2b70f2875afd` |
+| `pcre2-10.32-3.el8_6` | [pcre2-10.32-3.el8_6.src.rpm](https://vault.almalinux.org/8.10/BaseOS/Source/Packages/pcre2-10.32-3.el8_6.src.rpm) | `c995278b025eaa5598ceb2117a5710338210839fa5bca2a3b4a279e8afd25cb9` |
 
 These references record provenance for the identified components. Before public
 redistribution, complete the audit of the other bundled native components and

@@ -274,3 +274,11 @@ def test_build_refuses_to_reuse_native_notices_for_a_changed_wheel(tmp_path, mon
 
     with pytest.raises(ValueError, match="Native notices do not match the locked wheels"):
         build_standalone.write_notices(sys.executable, bundle, target)
+
+
+@pytest.mark.parametrize("target", smoke_standalone.TARGETS)
+def test_almalinux_pymssql_notices_are_only_bundled_on_linux(target):
+    from build_standalone import native_notice_files
+
+    names = set(native_notice_files(target))
+    assert ("AlmaLinux-pcre2-10.32-3.el8_6-LICENCE" in names) == (target == "linux-x86_64")
